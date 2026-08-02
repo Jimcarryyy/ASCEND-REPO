@@ -1,66 +1,265 @@
-# ASCEND-REPO V1 — MASTER PROJECT DOCUMENTATION
+# ASCEND-REPO — MASTER PROJECT DOCUMENTATION
 
-> **Project Entry Point & Source of Truth**  
-> All project architecture, design goals, status, and AI session workflows strictly originate from this document.
-
----
-
-## 1. Executive Summary
-
-**ASCEND-V1** is a lightweight, combat-focused, reward-driven Roblox action-progression game. The game prioritizes high-frequency replayability, smooth fluid movement, strict combat mechanics, rare equipment drops, and deep weapon progression over complex visual effects or heavy graphical environments.
-
-### Core Project Pillars
-* **Roblox-First Performance:** Optimized for high FPS on low-end and mobile devices. Minimalist VFX and low visual clutter.
-* **Combat & Skill Mastery:** Responsive action combat where player skill, timing, and weapon loadouts drive success.
-* **Loot & Progression System:** High-dopamine rare drops, stat scaling, weapon collection, and equipment enhancements.
-* **Server-Authoritative Design:** Zero trust in the client. All combat calculations, damage, loot drops, cooldowns, and inventory state are validated exclusively on the server.
-* **Distinct Visual Philosophy:** Ultra-minimalist, lightweight HUD during active gameplay combined with handcrafted fantasy artwork panels for menus and inventory.
+> **Project Entry Point & Single Source of Truth**
+>
+> Every new AI session MUST begin by reading this document. This file is the master index for the entire project and defines where all project knowledge is located.
 
 ---
 
-## 2. Documentation Architecture
+# 1. Project Overview
 
-Every development session must query these raw links sequentially to rebuild project context:
+**ASCEND** is a lightweight, combat-focused, reward-driven Roblox action RPG that emphasizes satisfying gameplay over visual complexity.
 
-### System Tracking (.ai/)
-1. **Master Entry Point:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/ASCEND.md
-2. **Current Active Task:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/.ai/CURRENT_TASK.md
-3. **Project Status & Lifecycle Phase:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/.ai/PROJECT_STATUS.md
-4. **Architectural Decision Records:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/.ai/DECISIONS.md
-5. **Project Changelog:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/.ai/CHANGELOG.md
-6. **Next Milestones & Step Roadmap:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/.ai/NEXT_STEPS.md
+The project is intentionally designed to:
 
-### Game Specifications & Master Plan (docs/)
-1. **Master Game Design Document (GDD):**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/docs/GAME_DESIGN.md
-2. **Combat System Specification:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/docs/COMBAT_SPEC.md
-3. **Progression & Loot Specification:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/docs/PROGRESSION_SPEC.md
-4. **UI/UX Wireframe & Flow Specification:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/docs/UI_UX_SPEC.md
-5. **Technical Architecture & Data Schemas:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/docs/ARCHITECTURE_SPEC.md
-6. **Master 2D Asset Manifest:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/docs/ASSET_MANIFEST.md
-7. **Complete AI Asset Prompt Guide:**  
-   https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/docs/AI_PROMPT_GUIDE.md
+- prioritize combat feel over excessive VFX
+- use minimalist UI/HUD
+- rely heavily on 2D assets
+- remain highly scalable
+- follow Roblox security best practices
+- maintain clean software architecture
+- support long-term AI-assisted development
+
+Core Pillars
+
+- Roblox-first performance
+- Server-authoritative gameplay
+- Skill-based combat
+- High-dopamine progression
+- Rare loot & equipment
+- Minimalist UI/UX
+- Long-term scalability
 
 ---
 
-## 3. Development Phase Roadmap
+# 2. AI Startup Procedure (MANDATORY)
 
-* [x] **Phase 0: Repository Initialization & Master Documentation**
-* [x] **Phase 1: Master Game Plan & System Specifications (docs/)**
-* [ ] **Phase 2: Minimalist HUD & UI/UX Hierarchy in Roblox Studio**
-* [ ] **Phase 3: Core Luau Framework, Network Pipeline & DataSync**
-* [ ] **Phase 4: Server-Authoritative Combat Engine & Hitbox Pipeline**
-* [ ] **Phase 5: Inventory, Equipment, & Drop Tables**
-* [ ] **Phase 6: Prototype Arena, Enemy AI, & Gameplay Loop**
-* [ ] **Phase 7: Optimization, Security Audit, & Public Release**
+Every NEW chat session MUST execute the following workflow BEFORE answering any project-related question.
+
+## STEP 1 — Read this file completely
+
+This document is always the project entry point.
+
+Do not skip it.
+
+---
+
+## STEP 2 — Read every project tracking document
+
+These files define the current state of development.
+
+Read them IN THIS ORDER.
+
+### Project Status
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.ai/PROJECT_STATUS.md
+
+Determines:
+
+- current phase
+- completed milestones
+- active development stage
+
+---
+
+### Current Task
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.ai/CURRENT_TASK.md
+
+This is the MOST IMPORTANT tracking file.
+
+It defines:
+
+- what feature is currently being built
+- what the AI should focus on
+- what should NOT be worked on
+
+Always prioritize CURRENT_TASK.md over assumptions.
+
+---
+
+### Architectural Decisions
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.ai/DECISIONS.md
+
+Contains:
+
+- architecture decisions
+- conventions
+- coding standards
+- technical agreements
+
+Never contradict these decisions.
+
+---
+
+### Next Planned Work
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.ai/NEXT_STEPS.md
+
+Used only after CURRENT_TASK has been completed.
+
+Never jump ahead unless requested.
+
+---
+
+### Project Changelog
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.ai/CHANGELOG.md
+
+Read this last.
+
+Contains:
+
+- latest updates
+- completed work
+- recent changes
+
+---
+
+# 3. Documentation Lookup
+
+Only read the documentation relevant to the user's request.
+
+Never scan unnecessary files.
+
+## Game Design
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/GAME_DESIGN.md
+
+---
+
+## Combat
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/COMBAT_SPEC.md
+
+---
+
+## Progression
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/PROGRESSION_SPEC.md
+
+---
+
+## UI / UX
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/UI_UX_SPEC.md
+
+---
+
+## Architecture
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/ARCHITECTURE_SPEC.md
+
+---
+
+## Asset Manifest
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/ASSET_MANIFEST.md
+
+---
+
+## AI Prompt Guide
+
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/AI_PROMPT_GUIDE.md
+
+---
+
+# 4. AI Development Rules
+
+The AI must NEVER:
+
+- invent documentation
+- invent folder names
+- invent file names
+- invent project phases
+- invent architecture
+- assume implementation details
+
+If information is missing:
+
+Say exactly which document is required.
+
+Do not guess.
+
+---
+
+# 5. Coding Rules
+
+Before writing code:
+
+1. Read CURRENT_TASK.md.
+2. Read the relevant specification.
+3. Reuse existing architecture.
+4. Never duplicate systems.
+5. Follow Roblox best practices.
+6. Keep the server authoritative.
+7. Never trust the client.
+
+When modifying existing code:
+
+Only output the affected sections unless explicitly asked for the full file.
+
+When creating a new file:
+
+Output the complete file.
+
+---
+
+# 6. Documentation Update Rules
+
+When the user says:
+
+**Generate new updates**
+
+The AI must:
+
+1. Determine which documentation files were affected.
+2. Update ONLY those files.
+3. Leave unrelated documentation untouched.
+4. Produce GitHub-ready Markdown.
+5. Ensure the documentation matches the final agreed implementation exactly.
+6. Update CHANGELOG.md if development progress changed.
+7. Update CURRENT_TASK.md if the active task changed.
+8. Update PROJECT_STATUS.md if a milestone was completed.
+9. Update NEXT_STEPS.md if the roadmap changed.
+
+Never rewrite every document unnecessarily.
+
+---
+
+# 7. Development Roadmap
+
+Current development is intentionally incremental.
+
+- ✅ Phase 0 — Repository Initialization
+- ✅ Phase 1 — Documentation & Planning
+- ⏳ Phase 2 — UI/UX Assets & Roblox Studio Layout
+- ⏳ Phase 3 — Core Framework & Networking
+- ⏳ Phase 4 — Combat System
+- ⏳ Phase 5 — Inventory & Loot
+- ⏳ Phase 6 — Gameplay Loop
+- ⏳ Phase 7 — Optimization & Release
+
+The AI should always work on the CURRENT_TASK before moving to the next phase.
+
+---
+
+# 8. Context Drift Prevention
+
+The AI must treat the `.ai` folder as the project's memory.
+
+Never rely on previous chat history.
+
+Always rebuild context from:
+
+1. ASCEND.md
+2. PROJECT_STATUS.md
+3. CURRENT_TASK.md
+4. DECISIONS.md
+5. NEXT_STEPS.md
+6. CHANGELOG.md
+
+Documentation is always the source of truth.
+
+Conversation history is secondary.
