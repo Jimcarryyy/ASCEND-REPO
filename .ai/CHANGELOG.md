@@ -1,17 +1,14 @@
-# Changelog
+# ASCEND — Changelog
 
-All notable changes to the ASCEND-V1 project will be documented in this file.
+## [Phase 2.1] - 2D Asset Pipeline & AI Prompt Audit Completed
 
-## [0.3.1] - 2D Asset Pipeline Initialization
 ### Added
-- Created `docs/ASSET_MANIFEST.md` defining all 2D image assets, dual UI philosophy, color palettes, and 9-slice rules.
-- Created `docs/AI_PROMPT_GUIDE.md` containing complete copy-paste AI prompts for Midjourney, Leonardo, Flux, and DALL-E.
-- Added ADR-009 in `.ai/DECISIONS.md`.
+* Complete AI prompt suite for Category A through Category F in `docs/AI_PROMPT_GUIDE.md`.
+* Verified "Empty Shell" UI container specifications for all HUD and modal panel assets.
+* Flat 2D vector cell-shaded style guidelines for all weapon, artifact, skill, currency, and status icons.
+* Native Roblox `UIStroke` implementation strategy for Category G (Cultivation Grade Rarities).
 
-### Changed
-- Updated `.ai/CURRENT_TASK.md` to track **Task 2.1: 2D Image & UI Asset Generation**.
-- Updated `.ai/PROJECT_STATUS.md` and `.ai/NEXT_STEPS.md`.
-
-## [0.3.0] - Milestone: Phase 1 Specifications Complete
-### Added
-- Completed all 5 core Phase 1 specification documents in `docs/`.
+### Updated
+* `.ai/CURRENT_TASK.md`: Updated active objective to Task 2.2 (Roblox Studio UI Construction).
+* `.ai/PROJECT_STATUS.md`: Marked Task 2.1 complete.
+* `.ai/NEXT_STEPS.md`: Defined implementation steps for Roblox Studio UI construction and Luau config setup.

@@ -66,7 +66,7 @@ Determines:
 
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.ai/CURRENT_TASK.md
 
-This is the MOST IMPORTANT tracking file.
+This is the MOST IMPORTANT tracking file
 
 It defines:
 
