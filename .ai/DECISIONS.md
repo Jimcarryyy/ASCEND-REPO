@@ -1,6 +1,6 @@
 # Architectural Decision Records (ADR)
 
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/ASCEND.md
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md
 
 ---
 

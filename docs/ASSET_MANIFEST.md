@@ -1,7 +1,7 @@
 # ASCEND-V1 — CULTIVATION 2D ASSET MANIFEST & DESIGN PHILOSOPHY
 
 > **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/ASCEND.md  
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md
 > **Game Identity:** Martial Cultivation / Xianxia / Qi Ascension RPG  
 > **Scope:** Cultivation Item Inventory, Martial Asset Identity, Realm Indicators, & Color Grading.
 

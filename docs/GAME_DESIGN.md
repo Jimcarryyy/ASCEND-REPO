@@ -1,7 +1,7 @@
 # ASCEND-V1 — MASTER GAME DESIGN DOCUMENT (GDD)
 
 > **Source of Truth for Game Design, Combat Logic, Progression, & UI Principles**  
-> **Master Documentation Link:** `https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/ASCEND.md`
+> **Master Documentation Link:** `https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md`
 
 ---
 

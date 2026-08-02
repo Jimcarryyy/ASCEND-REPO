@@ -1,7 +1,7 @@
 # ASCEND-V1 — CULTIVATION AI ASSET GENERATION PROMPT GUIDE
 
 > **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/ASCEND.md  
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md
 > **Theme:** Xianxia / Martial Cultivation / Qi Ascension  
 > **Scope:** Copy-Paste AI Prompts for Midjourney, Leonardo, Flux, and DALL-E.
 

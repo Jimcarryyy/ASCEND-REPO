@@ -1,7 +1,7 @@
 # ASCEND-V1 — CULTIVATION COMBAT SYSTEM SPECIFICATION
 
 > **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/ASCEND.md  
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md
 > **Scope:** Server-Authoritative Combat Engine, Hitbox Pipelines, Combos, Defensive Mechanics, & Qi Formulas.
 
 ---

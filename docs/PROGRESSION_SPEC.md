@@ -1,7 +1,7 @@
 # ASCEND-V1 — CULTIVATION PROGRESSION & LOOT SPECIFICATION
 
 > **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/ASCEND.md  
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
 > **Scope:** Cultivation Realm Engine, Stat Allocation, Grade Rarity Budgeting, & Spirit Stone Drop Tables.
 
 ---

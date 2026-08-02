@@ -1,7 +1,7 @@
 # ASCEND-V1 — UI/UX SPECIFICATION & WIREFRAME MAP
 
 > **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/ASCEND.md  
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md
 > **Scope:** ScreenGui Hierarchy, In-Combat HUD Layout, Out-of-Combat Fantasy Modals, Cross-Platform Responsive Rules, & Floating Combat Text.
 
 ---

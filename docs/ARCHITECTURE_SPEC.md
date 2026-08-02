@@ -1,7 +1,7 @@
 # ASCEND-V1 — TECHNICAL ARCHITECTURE SPECIFICATION
 
 > **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-V1/main/ASCEND.md  
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md
 > **Scope:** Directory Hierarchy, Service-Controller Framework, Network Pipeline, DataStore Schemas, & Lifecycle Hooks.
 
 ---
