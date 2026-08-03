@@ -1,6 +1,7 @@
 --!strict
 --[[
     SpearServer.luau
+    Location: src/ServerScriptService/Server/Combat/Weapons/SpearServer.luau
     Server-side combat handler for Spear weapon attacks, thrust lunges,
     wide sweep hitboxes, and special spear skills.
 ]]
@@ -23,15 +24,6 @@ function SpearServer.ExecuteAttack(player: Player, skillKey: string, payload: an
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then return payload end
 
-	-- Face character towards target direction if provided
-	-- if payload and payload.AimDirection then
-	-- 	local aimDir = payload.AimDirection :: Vector3
-	-- 	local flatDir = Vector3.new(aimDir.X, 0, aimDir.Z)
-	-- 	if flatDir.Magnitude > 0 then
-	-- 		hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatDir.Unit)
-	-- 	end
-	-- end
-
 	local hits, damage
 	if skillKey == "M1" then
 		hits, damage = SpearServer.ExecuteM1Combo(player, hrp)
@@ -39,10 +31,12 @@ function SpearServer.ExecuteAttack(player: Player, skillKey: string, payload: an
 		hits, damage = SpearServer.ExecuteSkill(player, skillKey, hrp, payload)
 	end
 
-	-- Attach hit position and damage to payload for client VFX broadcast
+	-- Attach hit position, damage, and explicit WeaponType for client sound/VFX broadcast
+	payload = payload or {}
+	payload.WeaponType = "Spear"
+
 	if hits and #hits > 0 then
 		local firstHit = hits[1]
-		payload = payload or {}
 		payload.Damage = damage
 		payload.TargetPosition = firstHit.HitPart.Position
 	end

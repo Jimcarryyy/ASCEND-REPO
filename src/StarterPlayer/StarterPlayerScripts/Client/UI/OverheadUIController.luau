@@ -1,109 +1,259 @@
 --!strict
--- OverheadUIController.luau
--- Dynamic overhead HP bars, Cultivation Realm Titles, and Name tags for Players and NPCs.
+--[[
+    OverheadUIController.luau
+    Location: src/StarterPlayer/StarterPlayerScripts/Client/UI/OverheadUIController.luau
+    Purpose: Manages 3D Overhead Player Display (Name, Cultivation Realm, Health, Spirit Qi) above character heads.
+]]
 
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local OverheadUIController = {}
-local localPlayer = Players.LocalPlayer
+local isInitialized = false
+local TWEEN_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-local function CreateOverheadGui(character: Model): BillboardGui?
+-- Color Palette for ASCEND Theme
+local COLOR_HEALTH_FILL = Color3.fromRGB(46, 204, 113)  -- Emerald Health Green
+local COLOR_QI_FILL = Color3.fromRGB(0, 180, 255)       -- Azure Spirit Qi
+local COLOR_BAR_BG = Color3.fromRGB(20, 20, 28)        -- Dark Obsidian Background
+
+local overheadTemplate: BillboardGui?
+
+--------------------------------------------------------------------------------
+-- PRIVATE HELPER FUNCTIONS
+--------------------------------------------------------------------------------
+
+local function getOverheadTemplate(): BillboardGui?
+	if overheadTemplate then
+		return overheadTemplate
+	end
+
+	-- Check directly in ReplicatedStorage or inside ReplicatedStorage.Shared
+	local foundDirect = ReplicatedStorage:FindFirstChild("OverheadBillboardGui") :: BillboardGui?
+	if foundDirect then
+		overheadTemplate = foundDirect
+		return overheadTemplate
+	end
+
+	local sharedFolder = ReplicatedStorage:FindFirstChild("Shared")
+	if sharedFolder then
+		local foundShared = sharedFolder:FindFirstChild("OverheadBillboardGui") :: BillboardGui?
+		if foundShared then
+			overheadTemplate = foundShared
+			return overheadTemplate
+		end
+	end
+
+	return nil
+end
+
+local function attachOverheadToCharacter(character: Model)
 	local head = character:WaitForChild("Head", 5) :: BasePart?
 	local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
-	if not head or not humanoid then return nil end
+	if not head or not humanoid then return end
 
-	-- Remove existing overhead UI if any
-	local existing = head:FindFirstChild("OverheadUI")
-	if existing then existing:Destroy() end
+	-- Destroy old billboard if re-attaching
+	local existing = head:FindFirstChild("OverheadBillboardGui")
+	if existing then
+		existing:Destroy()
+	end
 
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "OverheadUI"
-	billboard.Size = UDim2.new(4, 0, 1.2, 0)
-	billboard.StudsOffset = Vector3.new(0, 2.5, 0)
-	billboard.AlwaysOnTop = false
-	billboard.MaxDistance = 80
-	billboard.Parent = head
+	local template = getOverheadTemplate()
+	local overheadGui: BillboardGui
 
-	-- Container Frame
-	local container = Instance.new("Frame")
-	container.Size = UDim2.new(1, 0, 1, 0)
-	container.BackgroundTransparency = 1
-	container.Parent = billboard
+	if template then
+		overheadGui = template:Clone()
+	else
+		-- Programmatic Fallback Creation
+		overheadGui = Instance.new("BillboardGui")
+		overheadGui.Name = "OverheadBillboardGui"
+		overheadGui.Size = UDim2.new(5, 0, 2.2, 0)
 
-	-- Title / Name Label
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Name = "NameLabel"
-	nameLabel.Size = UDim2.new(1, 0, 0.45, 0)
-	nameLabel.Position = UDim2.new(0, 0, 0, 0)
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Font = Enum.Font.GothamBold
-	nameLabel.TextSize = 13
-	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	nameLabel.TextStrokeTransparency = 0.3
-	nameLabel.Text = character.Name
-	nameLabel.Parent = container
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.Name = "PlayerNameLabel"
+		nameLabel.Size = UDim2.new(1, 0, 0.35, 0)
+		nameLabel.Position = UDim2.new(0, 0, 0, 0)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		nameLabel.TextStrokeTransparency = 0
+		nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		nameLabel.TextScaled = true
+		nameLabel.Font = Enum.Font.GothamBold
+		nameLabel.Text = character.Name
+		nameLabel.Parent = overheadGui
 
-	-- Health Bar Background
-	local hpBg = Instance.new("Frame")
-	hpBg.Name = "HpBackground"
-	hpBg.Size = UDim2.new(0.9, 0, 0.25, 0)
-	hpBg.Position = UDim2.new(0.05, 0, 0.55, 0)
-	hpBg.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-	hpBg.BorderSizePixel = 0
-	hpBg.Parent = container
+		-- Health Bar Setup
+		local healthBg = Instance.new("Frame")
+		healthBg.Name = "HealthBarBackground"
+		healthBg.Size = UDim2.new(1, 0, 0.28, 0)
+		healthBg.Position = UDim2.new(0, 0, 0.38, 0)
+		healthBg.BackgroundColor3 = COLOR_BAR_BG
+		healthBg.BorderSizePixel = 0
+		healthBg.Parent = overheadGui
 
-	local hpBgCorner = Instance.new("UICorner")
-	hpBgCorner.CornerRadius = UDim.new(0, 4)
-	hpBgCorner.Parent = hpBg
+		local healthFill = Instance.new("Frame")
+		healthFill.Name = "HealthBarFill"
+		healthFill.Size = UDim2.new(1, 0, 1, 0)
+		healthFill.BackgroundColor3 = COLOR_HEALTH_FILL
+		healthFill.BorderSizePixel = 0
+		healthFill.ZIndex = 2
+		healthFill.Parent = healthBg
 
-	-- Health Bar Fill
-	local hpFill = Instance.new("Frame")
-	hpFill.Name = "HpFill"
-	hpFill.Size = UDim2.new(humanoid.Health / humanoid.MaxHealth, 0, 1, 0)
-	hpFill.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-	hpFill.BorderSizePixel = 0
-	hpFill.Parent = hpBg
+		local healthText = Instance.new("TextLabel")
+		healthText.Name = "HealthText"
+		healthText.Size = UDim2.new(1, 0, 1, 0)
+		healthText.BackgroundTransparency = 1
+		healthText.TextColor3 = Color3.fromRGB(255, 255, 255)
+		healthText.TextStrokeTransparency = 0.3
+		healthText.TextScaled = true
+		healthText.ZIndex = 3
+		healthText.Font = Enum.Font.GothamMedium
+		healthText.Text = "HP: 100 / 100"
+		healthText.Parent = healthBg
 
-	local hpFillCorner = Instance.new("UICorner")
-	hpFillCorner.CornerRadius = UDim.new(0, 4)
-	hpFillCorner.Parent = hpFill
+		-- Qi Bar Setup
+		local qiBg = Instance.new("Frame")
+		qiBg.Name = "QiBarBackground"
+		qiBg.Size = UDim2.new(1, 0, 0.24, 0)
+		qiBg.Position = UDim2.new(0, 0, 0.70, 0)
+		qiBg.BackgroundColor3 = COLOR_BAR_BG
+		qiBg.BorderSizePixel = 0
+		qiBg.Parent = overheadGui
 
-	-- Listen for Health Changes
-	humanoid.HealthChanged:Connect(function(newHp)
-		local ratio = math.clamp(newHp / humanoid.MaxHealth, 0, 1)
-		TweenService:Create(hpFill, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Size = UDim2.new(ratio, 0, 1, 0)
-		}):Play()
+		local qiFill = Instance.new("Frame")
+		qiFill.Name = "QiBarFill"
+		qiFill.Size = UDim2.new(1, 0, 1, 0)
+		qiFill.BackgroundColor3 = COLOR_QI_FILL
+		qiFill.BorderSizePixel = 0
+		qiFill.ZIndex = 2
+		qiFill.Parent = qiBg
 
-		-- Dynamic color based on health remaining
-		if ratio > 0.5 then
-			hpFill.BackgroundColor3 = Color3.fromRGB(46, 204, 113) -- Green
-		elseif ratio > 0.25 then
-			hpFill.BackgroundColor3 = Color3.fromRGB(241, 196, 15) -- Yellow
-		else
-			hpFill.BackgroundColor3 = Color3.fromRGB(231, 76, 60) -- Red
+		local qiText = Instance.new("TextLabel")
+		qiText.Name = "QiText"
+		qiText.Size = UDim2.new(1, 0, 1, 0)
+		qiText.BackgroundTransparency = 1
+		qiText.TextColor3 = Color3.fromRGB(255, 255, 255)
+		qiText.TextStrokeTransparency = 0.3
+		qiText.TextScaled = true
+		qiText.ZIndex = 3
+		qiText.Font = Enum.Font.GothamMedium
+		qiText.Text = "Qi: 0 / 100"
+		qiText.Parent = qiBg
+	end
+
+	-- Enforce Visibility Properties on Billboard
+	overheadGui.Adornee = head
+	overheadGui.StudsOffset = Vector3.new(0, 3.8, 0)
+	overheadGui.Size = UDim2.new(5.5, 0, 2.2, 0)
+	overheadGui.MaxDistance = 150
+	overheadGui.AlwaysOnTop = true
+	overheadGui.Enabled = true
+	overheadGui.Parent = head
+
+	-- UI References inside billboard
+	local nameLabel = overheadGui:FindFirstChild("PlayerNameLabel") :: TextLabel?
+	local healthBg = overheadGui:FindFirstChild("HealthBarBackground") :: Frame?
+	local healthFill = healthBg and healthBg:FindFirstChild("HealthBarFill") :: Frame?
+	local healthText = healthBg and healthBg:FindFirstChild("HealthText") :: TextLabel?
+	
+	local qiBg = overheadGui:FindFirstChild("QiBarBackground") :: Frame?
+	local qiFill = qiBg and qiBg:FindFirstChild("QiBarFill") :: Frame?
+	local qiText = qiBg and qiBg:FindFirstChild("QiText") :: TextLabel?
+
+	if healthFill then healthFill.BackgroundColor3 = COLOR_HEALTH_FILL end
+	if qiFill then qiFill.BackgroundColor3 = COLOR_QI_FILL end
+
+	-- Format Title
+	local function updateTitle()
+		if not nameLabel then return end
+		local targetPlayer = Players:GetPlayerFromCharacter(character)
+		local sect = character:GetAttribute("Sect") or "Azure Cloud Sect"
+		local realm = character:GetAttribute("Realm") or "Qi Condensation"
+		local displayName = if targetPlayer then targetPlayer.DisplayName else character.Name
+		
+		nameLabel.Text = string.format("[%s] %s (%s)", tostring(sect), displayName, tostring(realm))
+		nameLabel.TextStrokeTransparency = 0.2
+	end
+
+	-- Update Health
+	local function updateHealth()
+		if not humanoid then return end
+		local currentHp = math.floor(humanoid.Health)
+		local maxHp = math.floor(humanoid.MaxHealth)
+		local ratio = math.clamp(humanoid.Health / math.max(1, humanoid.MaxHealth), 0, 1)
+
+		if healthFill then
+			TweenService:Create(healthFill, TWEEN_INFO, { Size = UDim2.new(ratio, 0, 1, 0) }):Play()
+		end
+		if healthText then
+			healthText.Text = string.format("HP: %d / %d", currentHp, maxHp)
+		end
+	end
+
+	-- Update Qi
+	local function updateQi()
+		local currentQi = math.floor(character:GetAttribute("Qi") or 0)
+		local maxQi = math.floor(character:GetAttribute("MaxQi") or 100)
+		local ratio = math.clamp(currentQi / math.max(1, maxQi), 0, 1)
+
+		if qiFill then
+			TweenService:Create(qiFill, TWEEN_INFO, { Size = UDim2.new(ratio, 0, 1, 0) }):Play()
+		end
+		if qiText then
+			qiText.Text = string.format("Qi: %d / %d", currentQi, maxQi)
+		end
+	end
+
+	updateTitle()
+	updateHealth()
+	updateQi()
+
+	humanoid.HealthChanged:Connect(updateHealth)
+	character:GetAttributeChangedSignal("Qi"):Connect(updateQi)
+	character:GetAttributeChangedSignal("MaxQi"):Connect(updateQi)
+	character:GetAttributeChangedSignal("Realm"):Connect(updateTitle)
+	character:GetAttributeChangedSignal("Sect"):Connect(updateTitle)
+end
+
+--------------------------------------------------------------------------------
+-- PUBLIC CONTROLLER API
+--------------------------------------------------------------------------------
+
+function OverheadUIController.Init()
+	if isInitialized then return end
+	isInitialized = true
+
+	local localPlayer = Players.LocalPlayer
+
+	local function onCharacterAdded(char: Model)
+		task.spawn(attachOverheadToCharacter, char)
+	end
+
+	if localPlayer.Character then
+		onCharacterAdded(localPlayer.Character)
+	end
+	localPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+			task.spawn(attachOverheadToCharacter, child)
+		end
+	end
+
+	Workspace.ChildAdded:Connect(function(child: Instance)
+		if child:IsA("Model") then
+			task.spawn(function()
+				local humanoid = child:WaitForChild("Humanoid", 5)
+				if humanoid then
+					attachOverheadToCharacter(child)
+				end
+			end)
 		end
 	end)
 
-	return billboard
+	print("[ASCEND] OverheadUIController Initialized Successfully.")
 end
 
-function OverheadUIController.Init()
-	-- Process workspace characters
-	local function TrackCharacter(model: Instance)
-		if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") then
-			CreateOverheadGui(model)
-		end
-	end
-
-	Workspace.ChildAdded:Connect(TrackCharacter)
-	for _, child in ipairs(Workspace:GetChildren()) do
-		TrackCharacter(child)
-	end
-end
-
-OverheadUIController.Init()
 return OverheadUIController

@@ -237,6 +237,11 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 end
 
 function WeaponManager.EquipWeapon(player: Player, weaponType: WeaponType)
+
+    local character = player.Character
+	if not character then return end
+
+	character:SetAttribute("WeaponType", weaponType)
 	equippedWeapons[player] = weaponType
 
 	-- Spawn and weld 3D Weapon Model or Placeholder

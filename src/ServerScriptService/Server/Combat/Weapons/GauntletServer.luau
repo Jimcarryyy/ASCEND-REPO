@@ -1,6 +1,7 @@
 --!strict
 --[[
     GauntletServer.luau
+    Location: src/ServerScriptService/Server/Combat/Weapons/GauntletServer.luau
     Server-side combat handler for Gauntlet martial arts weapon attacks,
     close-quarters Qi punches, 360° Hundred Palms, and Ground Slam shockwaves.
 ]]
@@ -23,15 +24,6 @@ function GauntletServer.ExecuteAttack(player: Player, skillKey: string, payload:
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then return payload end
 
-	-- Face character towards target direction if provided
-	-- if payload and payload.AimDirection then
-	-- 	local aimDir = payload.AimDirection :: Vector3
-	-- 	local flatDir = Vector3.new(aimDir.X, 0, aimDir.Z)
-	-- 	if flatDir.Magnitude > 0 then
-	-- 		hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatDir.Unit)
-	-- 	end
-	-- end
-
 	local hits, damage
 	if skillKey == "M1" then
 		hits, damage = GauntletServer.ExecuteM1Combo(player, hrp)
@@ -39,10 +31,12 @@ function GauntletServer.ExecuteAttack(player: Player, skillKey: string, payload:
 		hits, damage = GauntletServer.ExecuteSkill(player, skillKey, hrp, payload)
 	end
 
-	-- Attach hit position and damage to payload for client VFX broadcast
+	-- Attach hit position, damage, and explicit WeaponType for client sound/VFX broadcast
+	payload = payload or {}
+	payload.WeaponType = "Gauntlet"
+
 	if hits and #hits > 0 then
 		local firstHit = hits[1]
-		payload = payload or {}
 		payload.Damage = damage
 		payload.TargetPosition = firstHit.HitPart.Position
 	end

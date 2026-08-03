@@ -1,9 +1,9 @@
 --!strict
 --[[
     CombatVFXController.luau
-    Client-side visual and audio effects handler for ASCEND combat.
-    Renders camera shake, floating damage text, white slash trails,
-    swing audio SFX, and hit impact sounds locally.
+    Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
+    Client-side visual and audio effects handler for ASCEND combat and Heavenly Tribulation events.
+    Renders camera shake, floating damage text, slash trails, lightning beams, weapon hit sounds, and ascension bursts.
 ]]
 
 local Players = game:GetService("Players")
@@ -20,35 +20,56 @@ CombatVFXController.__index = CombatVFXController
 local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
--- Sound Effects Asset IDs
-local SWING_SOUND_ID = "rbxassetid://12222216" -- Classic weapon swing SFX
-local HIT_SOUND_ID = "rbxassetid://5633903110"  -- Impact hit SFX
+-- Audio Asset Mappings
+local SWING_SOUND_ID = "rbxassetid://134671877618939"     -- Universal Swing for all weapons
+local THUNDER_SOUND_ID = "rbxassetid://9120021541"   -- Heavenly Tribulation Thunder
+
+local WEAPON_HIT_SOUNDS = {
+	FlyingSword = "rbxassetid://140462043853173",       -- Sword Hit Impact
+	Gauntlet    = "rbxassetid://138208560796742",       -- Punch/Gauntlet Hit Impact
+	Spear       = "rbxassetid://135278368445325",       -- Spear Piercing Hit Impact
+}
 
 function CombatVFXController.Init()
 	local combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 
-	-- Listen for server combat broadcasts
 	combatActionRemote.OnClientEvent:Connect(function(attacker: Player, skillKey: string, payload: any?)
 		CombatVFXController.OnCombatAction(attacker, skillKey, payload)
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized.")
+	print("[ASCEND] CombatVFXController Initialized with Weapon SFX.")
 end
 
 function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, payload: any?)
-	local attackerChar = attacker.Character
+	-- 1. Handle Heavenly Tribulation Visuals & SFX
+	if skillKey == "TribulationTelegraph" and payload then
+		CombatVFXController.CreateTelegraphRing(payload.TargetPosition, payload.TelegraphTime or 1.5, payload.AuraColor)
+		return
+	elseif skillKey == "TribulationStrike" and payload then
+		CombatVFXController.CreateLightningStrike(payload.TargetPosition, payload.AuraColor)
+		CombatVFXController.ShakeCamera(0.4, 1.4)
+		return
+	elseif skillKey == "AscensionBurst" and payload then
+		local char = attacker and attacker.Character
+		if char then
+			CombatVFXController.CreateAscensionBurst(char, payload.AuraColor)
+			CombatVFXController.ShakeCamera(0.5, 1.8)
+		end
+		return
+	end
+
+	-- 2. Standard Weapon Swing Trails & Swing SFX
+	local attackerChar = attacker and attacker.Character
 	if attackerChar then
-		-- 1. Trigger Weapon Slash Trail
 		if skillKey == "M1" or skillKey == "F" or skillKey == "Q" or skillKey == "E" or skillKey == "R" then
 			CombatVFXController.TriggerWeaponTrail(attackerChar, 0.25)
-			CombatVFXController.PlaySound(SWING_SOUND_ID, attackerChar:FindFirstChild("HumanoidRootPart") or attackerChar, 0.5)
+			CombatVFXController.PlaySound(SWING_SOUND_ID, attackerChar:FindFirstChild("HumanoidRootPart") or attackerChar, 0.6)
 		elseif skillKey == "Shift" then
-			-- Shift Dash Motion Trail
 			CombatVFXController.TriggerShiftDashTrail(attackerChar, 0.3)
 		end
 	end
 
-	-- 2. Camera Shake if Local Player is attacker
+	-- 3. Camera Shake for local player attacks
 	if attacker == player then
 		if skillKey == "F" or skillKey == "R" or skillKey == "E" then
 			CombatVFXController.ShakeCamera(0.25, 0.7)
@@ -57,13 +78,27 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 		end
 	end
 
-	-- 3. Render Floating Damage Text, Impact Particles, & Hit Sound ONLY when an enemy is hit
+	-- 4. Hit Impacts & Weapon-Specific Hit Sounds
 	if payload and type(payload) == "table" and payload.Damage and payload.Damage > 0 then
 		if payload.TargetPosition then
 			CombatVFXController.CreateDamageNumber(payload.TargetPosition, payload.Damage, payload.IsCrit)
 			CombatVFXController.CreateHitImpactEffect(payload.TargetPosition)
 			
-			-- Play impact sound at hit location
+			-- Resolve Weapon Type: 1) Payload -> 2) Attacker Character Attribute -> 3) Equipped Model -> Fallback
+			local detectedWeapon = payload.WeaponType
+			if not detectedWeapon and attackerChar then
+				detectedWeapon = attackerChar:GetAttribute("WeaponType")
+			end
+			if not detectedWeapon and attackerChar then
+				local equipped3D = attackerChar:FindFirstChild("Equipped3DWeapon") or attackerChar:FindFirstChild("Equipped3DWeapon", true)
+				if equipped3D then
+					detectedWeapon = equipped3D:GetAttribute("WeaponType")
+				end
+			end
+
+			local weaponType = detectedWeapon or "FlyingSword"
+			local hitSoundId = WEAPON_HIT_SOUNDS[weaponType] or WEAPON_HIT_SOUNDS.FlyingSword
+
 			local hitPart = Instance.new("Part")
 			hitPart.Position = payload.TargetPosition
 			hitPart.Transparency = 1
@@ -71,13 +106,100 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 			hitPart.CanCollide = false
 			hitPart.Parent = Workspace
 			
-			CombatVFXController.PlaySound(HIT_SOUND_ID, hitPart, 0.7)
-			task.delay(1.0, function() hitPart:Destroy() end)
+			CombatVFXController.PlaySound(hitSoundId, hitPart, 0.8)
+			Debris:AddItem(hitPart, 1.0)
 		end
 	end
 end
 
--- Triggers Shift Windstep Dash Motion Trail on HumanoidRootPart
+function CombatVFXController.CreateTelegraphRing(worldPos: Vector3, duration: number, color: Color3?)
+	local ring = Instance.new("Part")
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.2, 1, 1)
+	ring.CFrame = CFrame.new(worldPos - Vector3.new(0, 2.5, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Color = color or Color3.fromRGB(255, 30, 30)
+	ring.Material = Enum.Material.Neon
+	ring.Transparency = 0.3
+	ring.CanCollide = false
+	ring.Anchored = true
+	ring.Parent = Workspace
+
+	local tween = TweenService:Create(ring, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+		Size = Vector3.new(0.2, 14, 14),
+		Transparency = 0.8
+	})
+	tween:Play()
+
+	Debris:AddItem(ring, duration + 0.1)
+end
+
+function CombatVFXController.CreateLightningStrike(worldPos: Vector3, color: Color3?)
+	local strikeColor = color or Color3.fromRGB(255, 50, 50)
+
+	local bolt = Instance.new("Part")
+	bolt.Name = "LightningBolt"
+	bolt.Size = Vector3.new(3.5, 220, 3.5)
+	bolt.Position = worldPos + Vector3.new(0, 110, 0)
+	bolt.Color = strikeColor
+	bolt.Material = Enum.Material.Neon
+	bolt.CanCollide = false
+	bolt.Anchored = true
+	bolt.Parent = Workspace
+
+	local lightPart = Instance.new("Part")
+	lightPart.Position = worldPos
+	lightPart.Transparency = 1
+	lightPart.Anchored = true
+	lightPart.CanCollide = false
+	lightPart.Parent = Workspace
+
+	local light = Instance.new("PointLight")
+	light.Range = 40
+	light.Brightness = 15
+	light.Color = strikeColor
+	light.Parent = lightPart
+
+	pcall(function()
+		CombatVFXController.PlaySound(THUNDER_SOUND_ID, lightPart, 0.8)
+	end)
+
+	TweenService:Create(bolt, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.1, 220, 0.1),
+		Transparency = 1
+	}):Play()
+
+	TweenService:Create(light, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Brightness = 0
+	}):Play()
+
+	Debris:AddItem(bolt, 0.3)
+	Debris:AddItem(lightPart, 0.5)
+end
+
+function CombatVFXController.CreateAscensionBurst(character: Model, color: Color3?)
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return end
+
+	local burstColor = color or Color3.fromRGB(255, 215, 0)
+
+	local burstRing = Instance.new("Part")
+	burstRing.Shape = Enum.PartType.Cylinder
+	burstRing.Size = Vector3.new(0.5, 2, 2)
+	burstRing.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	burstRing.Color = burstColor
+	burstRing.Material = Enum.Material.Neon
+	burstRing.CanCollide = false
+	burstRing.Anchored = true
+	burstRing.Parent = Workspace
+
+	TweenService:Create(burstRing, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.5, 30, 30),
+		Transparency = 1
+	}):Play()
+
+	Debris:AddItem(burstRing, 0.65)
+end
+
 function CombatVFXController.TriggerShiftDashTrail(character: Model, duration: number)
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then return end
@@ -112,12 +234,10 @@ function CombatVFXController.TriggerShiftDashTrail(character: Model, duration: n
 	end)
 end
 
--- Triggers weapon slash trail (uses existing trail or dynamically creates one)
 function CombatVFXController.TriggerWeaponTrail(character: Model, duration: number)
 	local weapon = character:FindFirstChild("Equipped3DWeapon") or character:FindFirstChild("Equipped3DWeapon", true)
 	if not weapon then return end
 
-	-- Check for pre-existing WeaponTrail
 	local existingTrail = weapon:FindFirstChild("WeaponTrail", true) :: Trail?
 	if existingTrail then
 		existingTrail.Enabled = true
@@ -127,7 +247,6 @@ function CombatVFXController.TriggerWeaponTrail(character: Model, duration: numb
 		return
 	end
 
-	-- Dynamic fallback trail generation if weapon model doesn't have a pre-built trail
 	local handle = weapon:FindFirstChild("Handle") or weapon:FindFirstChildOfClass("MeshPart") or weapon:FindFirstChildOfClass("BasePart")
 	if not handle then return end
 
@@ -160,13 +279,15 @@ function CombatVFXController.TriggerWeaponTrail(character: Model, duration: numb
 end
 
 function CombatVFXController.PlaySound(soundId: string, parent: Instance, volume: number?)
-	local sound = Instance.new("Sound")
-	sound.SoundId = soundId
-	sound.Volume = volume or 0.5
-	sound.Parent = parent
-	sound:Play()
-	sound.Ended:Connect(function()
-		sound:Destroy()
+	pcall(function()
+		local sound = Instance.new("Sound")
+		sound.SoundId = soundId
+		sound.Volume = volume or 0.6
+		sound.Parent = parent
+		sound:Play()
+		sound.Ended:Connect(function()
+			sound:Destroy()
+		end)
 	end)
 end
 
@@ -213,7 +334,6 @@ function CombatVFXController.CreateDamageNumber(worldPosition: Vector3, damageAm
 	textLabel.TextStrokeColor3 = Color3.fromRGB(20, 20, 25)
 	textLabel.Parent = billboard
 
-	-- Animate floating upward and fading out over 0.8 seconds
 	local tweenPosition = TweenService:Create(part, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Position = part.Position + Vector3.new(0, 3.5, 0)
 	})
@@ -242,7 +362,6 @@ function CombatVFXController.CreateHitImpactEffect(worldPosition: Vector3)
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = part
 
-	-- Spirit Impact Particle Burst
 	local particles = Instance.new("ParticleEmitter")
 	particles.Texture = "rbxassetid://132857904784003"
 	particles.Rate = 0
@@ -258,9 +377,7 @@ function CombatVFXController.CreateHitImpactEffect(worldPosition: Vector3)
 
 	particles:Emit(16)
 
-	task.delay(0.5, function()
-		part:Destroy()
-	end)
+	Debris:AddItem(part, 0.5)
 end
 
 return CombatVFXController

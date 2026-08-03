@@ -2,7 +2,7 @@
 --[[
     AnimationController.luau
     Client controller for playing character attack animations,
-    instant mouse rotation, and smooth walkspeed action layering.
+    instant mouse rotation, smooth walkspeed action layering, and floating meditation camera framing.
 ]]
 
 local Players = game:GetService("Players")
@@ -25,7 +25,6 @@ function AnimationController.Init()
 	local combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	local updateSkillStateRemote = RemoteEvents.GetRemote("UpdateSkillState")
 
-	-- Custom Floating Meditation Track & Steady Front View Camera
 	local MEDITATION_ANIM_ID = "rbxassetid://116333173300889"
 	local meditationTrack: AnimationTrack? = nil
 	local camera = Workspace.CurrentCamera
@@ -42,46 +41,45 @@ function AnimationController.Init()
 
 		local InputController = require(script.Parent:WaitForChild("InputController") :: ModuleScript)
 
-		if data.IsMeditating then
-			-- Lock client movement keys
-			InputController.SetEnabled(false)
+        -- Smooth Camera Transition Logic
+        local camTween: Tween? = nil
 
-			-- Start custom floating animation loop
-			if not meditationTrack then
-				local anim = Instance.new("Animation")
-				anim.AnimationId = MEDITATION_ANIM_ID
-				meditationTrack = animator:LoadAnimation(anim)
-			end
+        if data.IsMeditating or data.IsTribulationActive then
+            InputController.SetEnabled(false)
 
-			if meditationTrack and not meditationTrack.IsPlaying then
-				meditationTrack.Priority = Enum.AnimationPriority.Action4
-				meditationTrack.Looped = true
-				-- Play at 0.65 speed for slow, serene floating motion
-				meditationTrack:Play(0.6, 1, 0.65)
-			end
+            camera.CameraType = Enum.CameraType.Scriptable
+            local baseCFrame = hrp.CFrame
+            local camDistance = if data.IsTribulationActive then -18.5 else -13.5
+            local camHeight = if data.IsTribulationActive then 3.2 else 1.8
+            local targetCFrame = (baseCFrame * CFrame.new(0, camHeight, camDistance)) * CFrame.Angles(0, math.rad(180), 0)
 
-			-- Calibrated Camera View (Backed up to 13.5 studs for comfortable framing)
-			camera.CameraType = Enum.CameraType.Scriptable
-			local baseCFrame = hrp.CFrame
-			camera.CFrame = (baseCFrame * CFrame.new(0, 1.8, -13.5)) * CFrame.Angles(0, math.rad(180), 0)
-		else
-			-- Exit Meditation: Restore Camera & Unlock Controls
-			camera.CameraType = Enum.CameraType.Custom
-			InputController.SetEnabled(true)
-
-			if meditationTrack and meditationTrack.IsPlaying then
-				meditationTrack:Stop(0.4)
-			end
-		end
+            if camTween then camTween:Cancel() end
+            camTween = TweenService:Create(camera, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                CFrame = targetCFrame
+            })
+            camTween:Play()
+        else
+            InputController.SetEnabled(true)
+            if camera.CameraType == Enum.CameraType.Scriptable then
+                if camTween then camTween:Cancel() end
+                camTween = TweenService:Create(camera, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    CFrame = hrp.CFrame * CFrame.new(0, 2, 12)
+                })
+                camTween:Play()
+                camTween.Completed:Connect(function()
+                    if not (data.IsMeditating or data.IsTribulationActive) then
+                        camera.CameraType = Enum.CameraType.Custom
+                    end
+                end)
+            end
+        end
 	end)
 
-	-- Track weapon type changes
 	updateSkillStateRemote.OnClientEvent:Connect(function(weaponType: string)
 		currentWeapon = weaponType
 		AnimationController.ClearLoadedTracks()
 	end)
 
-	-- Listen for combat actions to play animation & smooth rotation locally
 	combatActionRemote.OnClientEvent:Connect(function(attacker: Player, skillKey: string, payload: any?)
 		if attacker == player then
 			AnimationController.PlayAttackAnimation(skillKey)
@@ -122,16 +120,13 @@ function AnimationController.PlayAttackAnimation(skillKey: string)
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not humanoid or not hrp then return end
 
-	-- Handle Shift Windstep Dash with directional dodge impulse
 	if skillKey == "Shift" then
 		local moveDir = humanoid.MoveDirection
 		local dashDir = if moveDir.Magnitude > 0 then moveDir.Unit else hrp.CFrame.LookVector
 		
-		-- Physical lunge burst in WASD or facing direction
 		local dashImpulse = dashDir * 75 + Vector3.new(0, 8, 0)
 		hrp.AssemblyLinearVelocity = dashImpulse
 
-		-- Speed boost
 		humanoid.WalkSpeed = 32
 		task.delay(0.22, function()
 			if humanoid and humanoid.Parent then
@@ -150,7 +145,6 @@ function AnimationController.PlayAttackAnimation(skillKey: string)
 	local animDef = weaponConfig[skillKey]
 	if not animDef or animDef.AnimationId == "" then return end
 
-	-- Load track or fetch cached
 	local trackKey = currentWeapon .. "_" .. skillKey
 	local track = loadedTracks[trackKey]
 	if not track then
@@ -160,17 +154,12 @@ function AnimationController.PlayAttackAnimation(skillKey: string)
 		loadedTracks[trackKey] = track
 	end
 
-	-- Force Action priority & disable looping so pose doesn't freeze
 	track.Priority = Enum.AnimationPriority.Action
 	track.Looped = false
-
-	-- Play animation with snappy blend
 	track:Play(animDef.FadeTime, 1, animDef.Speed)
 
-	-- Apply WalkSpeed dampening
 	humanoid.WalkSpeed = animDef.WalkSpeedDampen
 
-	-- Auto-stop animation and restore normal WalkSpeed
 	task.delay(animDef.CastDuration, function()
 		if track and track.IsPlaying then
 			track:Stop(0.15)
