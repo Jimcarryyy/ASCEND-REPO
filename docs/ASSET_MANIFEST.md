@@ -1,7 +1,12 @@
+---
+
+# File 8: `docs/ASSET_MANIFEST.md`
+
+```markdown
 # ASCEND-V1 — CULTIVATION 2D ASSET MANIFEST & DESIGN PHILOSOPHY
 
 > **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
 > **Game Identity:** Martial Cultivation / Xianxia / Qi Ascension RPG  
 > **Scope:** Cultivation Item Inventory, Martial Asset Identity, Realm Indicators, & Color Grading.
 
@@ -11,7 +16,7 @@
 
 ASCEND-V1 embraces an authentic **Xianxia / Martial Cultivation** aesthetic:
 
-* **In-Combat HUD Identity:** Clean, ethereal, lightweight indicators. Soft Qi aura flows, acupuncture/meridian status points, and floating flying sword cooldown slots.
+* **In-Combat HUD Identity:** Clean, ethereal, lightweight indicators. Soft Qi aura flows, acupuncture/meridian status points, dynamic overhead HP bars, and floating flying sword cooldown slots.
 * **Out-of-Combat Menu Panels:** Handcrafted ancient Chinese scroll & jade parchment aesthetics, dark bamboo slate textures, carved dragon/phoenix gold borders, and glowing Qi trigram emblems.
 
 ---
@@ -40,7 +45,7 @@ Instead of generic Western rarities, items and weapons scale across authentic **
 | hud_slot_base | 128x128 PNG | #1E1E23 (Slate) | Taoist Bagua / Trigram action skill slot container |
 | hud_slot_active | 128x128 PNG | #2192FF (Qi Blue) | Active Spiritual Qi resonance outline glow |
 | hud_cooldown_mask | 128x128 PNG | #000000 (80% Alpha) | Ink wash / Qi dissipation cooldown mask |
-| hud_key_badge | 64x64 PNG | #2A2A30 (Dark Stone) | Engraved stone rune keybind badge (M1, M2, Q, E, R, Shift) |
+| hud_key_badge | 64x64 PNG | #2A2A30 (Dark Stone) | Engraved stone rune keybind badge (M1, F, Q, E, R, Shift) |
 | hud_reticle_dot | 32x32 PNG | #FFFFFF (Pure Qi) | Spiritual consciousness aim focus dot |
 | hud_boss_frame | 512x64 PNG | #141418, #FFD700 | Ancient Dragon-carved Demon Boss health bar frame |
 | hud_tribulation_bar | 512x32 PNG | #FF1E1E (Crimson) | Heavenly Tribulation meter bar for Boss Phase transitions |
@@ -78,8 +83,8 @@ Instead of generic Western rarities, items and weapons scale across authentic **
 | Asset Name | Skill Keybind | Cultivation Skill Identity |
 | :--- | :--- | :--- |
 | icon_skill_m1_swordart | Light Attack (M1) | Triple Qi Sword Slash art (3-hit sword light) |
-| icon_skill_m2_heavyslam | Heavy Attack (M2) | Mountain Splitting Palm (Ground shattering energy slam) |
-| icon_skill_dodge_windstep | Dodge / Roll | Wind Walk / Flash Step shadow blur silhouette |
+| icon_skill_m2_heavyslam | Heavy Attack (F) | Mountain Splitting Palm (Ground shattering energy slam) |
+| icon_skill_dodge_windstep | Dodge / Roll (Shift) | Wind Walk / Flash Step shadow blur silhouette |
 | icon_skill_parry_qi_shield | Parry / Deflect | Bagua Qi Barrier deflecting incoming spiritual hit |
 | icon_skill_sword_tempest | Flying Sword Q | Thousand Sword Formation flying in spinning circle |
 | icon_skill_dragon_roar | Spear Archetype Q | Flaming Azure Dragon phantom thrusting forward |
@@ -95,9 +100,12 @@ Instead of generic Western rarities, items and weapons scale across authentic **
 | icon_currency_spiritstone_low | Currency | Low-Grade Spirit Stone (Polished Jade Crystal) |
 | icon_currency_spiritstone_high | Currency | High-Grade Spirit Stone (Radiant Gold Qi Gem) |
 | icon_mat_pill_qi_gathering | Consumable | Qi Gathering Pill (Glowing blue elixir sphere) |
+| icon_mat_pill_healing_dan | Consumable | Spirit Healing Dan (Glowing red elixir sphere) |
+| icon_mat_pill_physique | Consumable | Physique Tempering Pill (Glowing yellow elixir sphere) |
 | icon_mat_pill_breakthrough | Consumable | Foundation Breakthrough Dan (Gold pill in porcelain dish) |
 | icon_mat_herb_ginseng | Crafting Material | 1000-Year Spirit Ginseng root with glowing veins |
 | icon_mat_demon_core | Crafting Material | Beast Demon Core (Glowing crimson sphere) |
+| icon_mat_spirit_water | Crafting Material | Celestial Dew Water (Glowing azure water drop) |
 
 ---
 
@@ -110,6 +118,7 @@ Instead of generic Western rarities, items and weapons scale across authentic **
 | icon_status_tribulation_burn | Fire Debuff | Heavenly Crimson Flame aura burning character |
 | icon_status_body_tempered | Defense Buff | Golden Bell Shield aura covering character |
 
+---
 
 # Asset Manifest — ASCEND
 
@@ -159,6 +168,7 @@ Central asset ID mapping for all UI textures, weapon meshes, animation tracks, a
 * **High Spirit Stone**: `rbxassetid://103503361995261`
 * **Breakthrough Pill**: `rbxassetid://126575322817243`
 * **Qi Gathering Pill**: `rbxassetid://88019278886655`
+* **Spirit Healing Dan**: `rbxassetid://88019278886655`
 * **Ginseng Herb**: `rbxassetid://109989287833700`
 * **Demon Core**: `rbxassetid://99733786523930`
 

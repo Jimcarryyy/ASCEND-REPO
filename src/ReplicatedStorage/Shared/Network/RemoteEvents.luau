@@ -14,7 +14,19 @@ export type RemoteName =
 	| "SyncCooldown" 
 	| "InventoryAction" 
 	| "BossStateUpdate"
-    | "UpdateCultivation"
+	| "UpdateCultivation"
+	| "AlchemyAction"
+
+local ALL_REMOTES: { RemoteName } = {
+	"CombatAction",
+	"UpdateSkillState",
+	"SyncCooldown",
+	"InventoryAction",
+	"BossStateUpdate",
+	"UpdateCultivation",
+	"AlchemyAction",
+}
+
 local RemoteEvents = {}
 local remotesFolder: Folder
 
@@ -25,6 +37,15 @@ function RemoteEvents.Init(): Folder
 			remotesFolder = Instance.new("Folder")
 			remotesFolder.Name = "Remotes"
 			remotesFolder.Parent = ReplicatedStorage
+
+			-- Pre-create all registered remote events on server start
+			for _, name in ipairs(ALL_REMOTES) do
+				if not remotesFolder:FindFirstChild(name) then
+					local newRemote = Instance.new("RemoteEvent")
+					newRemote.Name = name
+					newRemote.Parent = remotesFolder
+				end
+			end
 		else
 			remotesFolder = ReplicatedStorage:WaitForChild("Remotes", 10) :: Folder
 		end
@@ -59,5 +80,8 @@ function RemoteEvents.GetRemote(name: RemoteName): RemoteEvent
 
 	return remote
 end
+
+-- Auto-initialize remote folder on load
+RemoteEvents.Init()
 
 return RemoteEvents

@@ -1,29 +1,17 @@
+---
+
+# File 11: `docs/PROGRESSION_SPEC.md`
+
+```markdown
 # ASCEND-V1 — CULTIVATION PROGRESSION & LOOT SPECIFICATION
 
 > **Technical Specification Document**  
 > **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
-> **Scope:** Cultivation Realm Engine, Stat Allocation, Grade Rarity Budgeting, & Spirit Stone Drop Tables.
+> **Scope:** Cultivation Realm Engine, Alchemy Recipes, Stat Allocation, Grade Rarity Budgeting, & Spirit Stone Drop Tables.
 
 ---
 
-## 1. Cultivation Realm Engine & Experience Formula
-
-Character progression is structured around Cultivation Realms instead of generic level numbers:
-
-| Realm Tier | Level Range | Breakthrough Requirement | Unlocked Features (V1 Scope) |
-| :--- | :--- | :--- | :--- |
-| Mortal Body Tempering | Levels 1 – 10 | Base Meridian Awakening | Flying Sword basic attacks (M1/M2) |
-| Qi Condensation | Levels 11 – 20 | Gathering Qi Pill + Tribulation Trial | Skill Slot Q (Wind Step Dodge + Qi Skill) |
-| Foundation Establishment | Levels 21 – 40 (V2 Scope) | Foundation Pill + Heavenly Lightning | Skill Slot E (Archetype Skill) |
-| Golden Core | Levels 41 – 60 (V2 Scope) | Core Formation Dan + Boss Trial | Skill Slot R (Ultimate Skill) |
-
-# Progression Specification — ASCEND
-
-Technical specification for cultivation realms, Qi gathering mechanics, breakthrough thresholds, and stat scaling.
-
----
-
-## 🌌 Cultivation Realm Hierarchy
+## 1. Cultivation Realm Hierarchy
 
 | Realm Name | Tier | Max Qi Reservoir | Gather Rate (Qi/sec) | Health Multiplier | Aura Color |
 | :--- | :---: | :---: | :---: | :---: | :---: |
@@ -38,10 +26,10 @@ Technical specification for cultivation realms, Qi gathering mechanics, breakthr
 ## 🧘 Qi Meditation Mechanics (`Hotkey G`)
 
 * **Stance**: Avatar plays custom floating cultivation pose (`rbxassetid://116333173300889`).
-* **Hovering**: Anchored 2.2 studs steadily above ground with zero physics bobbing/jitter.
+* **Hovering**: Anchored steadily in the air with calm float height offset (`0.5` studs).
 * **Aura Wrap**: Lightweight `Highlight` instance (95% fill transparency, 25% outline transparency) wrapping character body in realm aura color.
-* **Cinematic Camera**: Client camera zooms to a steady, front-facing close-up facing the character.
-* **Control Lock**: Movement keys (WASD, Space, LMB, hotkeys) are locked during meditation—only **Hotkey `G`** exits meditation.
+* **Cinematic Camera**: Client camera zooms to a steady, front-facing close-up (`-13.5` studs view distance, elevated `1.8` studs).
+* **Control Lock**: Movement keys are locked during meditation—only **Hotkey `G`** exits meditation.
 
 ---
 
@@ -51,12 +39,16 @@ Technical specification for cultivation realms, Qi gathering mechanics, breakthr
 2. **Execution**: Pressing **`B`** advances player to the next Realm tier.
 3. **Stat Scaling**: Instantly resets `CurrentQi` to 0, applies the new realm's `HealthMultiplier` to `Humanoid.MaxHealth` and `Health`, and unlocks the new realm's Qi aura color.
 
-### Experience Formula
-Required Experience to reach Level N from Level N-1 is calculated on the server:
+---
 
-  RequiredXP(N) = math.floor(100 * ((N - 1) ^ 1.85) + 50)
+## 🧪 Spirit Pill Alchemy Recipes (`AlchemyConfig.luau`)
 
-Each level up awards +3 Unallocated Stat Points.
+| Pill Name | Recipe ID | Rarity | Ingredients Required | Craft Time | Success Rate | Consumable Effects |
+| :--- | :--- | :--- | :--- | :---: | :---: | :--- |
+| **Qi Gathering Pill** | `pill_qi_gathering` | Earth | 3x `mat_spirit_herb`, 1x `mat_spirit_water` | 2.0s | 95% | +50 Qi instantly; +50% meditation gather rate for 30s. |
+| **Spirit Healing Dan** | `pill_healing_dan` | Earth | 2x `mat_spirit_herb`, 2x `mat_spirit_water` | 1.5s | 90% | Restores 40% Max HP over 5 seconds. |
+| **Physique Tempering Pill** | `pill_physique_tempering` | Heaven | 4x `mat_spirit_herb`, 1x `mat_demon_core` | 3.0s | 85% | Increases Physique damage by +20% for 60 seconds. |
+| **Foundation Gathering Dan**| `pill_breakthrough` | Spirit | 8x `mat_spirit_herb`, 3x `mat_demon_core`, 5x `mat_spirit_water` | 5.0s | 75% | +250 Qi instantly; grants breakthrough success boost. |
 
 ---
 
@@ -73,28 +65,13 @@ Players manually allocate stat points into 4 primary attributes via the Characte
 
 ---
 
-## 3. Cultivation Grade Rarity Pipeline
-
-All items scale their stats using a base budget multiplied by a Cultivation Grade Factor:
-
-| Cultivation Grade | Hex Color Code | Stat Budget Multiplier | Base Drop Rate Weight |
-| :--- | :--- | :--- | :--- |
-| Mortal Grade | #FFFFFF (White) | 1.00x | 60.0% (6000) |
-| Earth Grade | #38E54D (Green) | 1.25x | 25.0% (2500) |
-| Heaven Grade | #2192FF (Blue) | 1.60x | 10.0% (1000) |
-| Spirit Grade | #9C2C77 (Purple) | 2.10x | 4.0% (400) |
-| Sacred Grade | #FFD700 (Gold) | 2.80x | 0.9% (90) |
-| Immortal Grade | #FF1E1E (Crimson) | 3.80x | 0.1% (10) |
-
----
-
-## 4. Server-Authoritative Loot Engine & Pity Counter
+## 3. Server-Authoritative Loot Engine & Pity Counter
 
 Loot generation occurs strictly on the server when a mob or Demon Boss entity dies:
 
 1. Mob Death Trigger: Server verifies mob hit history and tags participating players who dealt >= 5% total damage.
 2. Roll Currency: Award Spirit Stones scaled by mob level.
 3. Roll Drop Table: Iterate through the entity's Drop Table array using weighted random selection:
-   TotalWeight = Sum of all Item Weights
-   Roll = math.random(1, TotalWeight)
+   `TotalWeight = Sum of all Item Weights`
+   `Roll = math.random(1, TotalWeight)`
 4. Boss Pity Counter: Every Demon Boss kill increments the player's PityCounter by +1. At 50 kills without a Sacred/Immortal drop, the next kill forcefully awards a Sacred Grade artifact and resets PityCounter = 0.

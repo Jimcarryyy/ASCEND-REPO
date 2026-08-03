@@ -5,134 +5,481 @@
 
 ---
 
-## 1. Executive Vision & Core Pillars
+# 1. Executive Vision & Core Pillars
 
-**ASCEND-V1** is a lightweight, combat-focused, reward-driven action RPG on Roblox. The game is designed to prioritize gameplay feel, performance, combat depth, and progression satisfaction over graphical complexity or visual bloat.
+## Overview
 
-### Core Design Pillars
+**ASCEND-V1** is a lightweight, combat-focused, reward-driven **Xianxia Action RPG** built specifically for the Roblox platform.
 
-1. **Lightweight & Roblox-First Design:**
-   - Optimized for high FPS across low-end, desktop, and mobile devices.
-   - Low visual clutter and restrained VFX. Visual effects exist solely to communicate hit feedback, attack ranges, and active status effects.
+The project emphasizes:
 
-2. **Server-Authoritative Combat Depth:**
-   - Zero-trust security model. All damage, cooldowns, movement mechanics, hit registration, and drops are calculated and validated exclusively on the server.
-   - High skill ceiling based on timing, positioning, combos, parries, and dodges.
+- Responsive and satisfying combat
+- Meaningful long-term progression
+- High-performance gameplay
+- Server-authoritative systems
+- Expandable content architecture
 
-3. **High-Dopamine Progression & Loot Loop:**
-   - Excitement driven by rare weapon drops, stat scaling, weapon collection, skill mastery, and equipment progression.
-   - Long-term replayability through iterative updates and expandable endgame systems.
+Rather than competing through graphical complexity, ASCEND focuses on **gameplay feel**, **combat responsiveness**, **clear visual communication**, and **player progression satisfaction**.
 
-4. **Dual UI Philosophy:**
-   - **In-Combat HUD:** Ultra-minimalist, clean, unobtrusive, highly readable, large touch targets, low clutter.
-   - **Out-of-Combat Modals:** Handcrafted fantasy artwork panels for inventory, equipment, skill trees, and crafting.
-   - Clear visual separation between active gameplay HUD and heavy menu panels.
+Every system is designed around the philosophy that gameplay should always remain readable, responsive, scalable, and rewarding.
 
 ---
 
-## 2. Core Gameplay Loop
+# 2. Core Design Pillars
 
+## 2.1 Lightweight & Roblox-First Design
+
+ASCEND is designed from the ground up to perform well across the broad range of hardware capable of running Roblox.
+
+### Objectives
+
+- Maintain consistently high frame rates.
+- Support desktop, laptop, tablet, and mobile devices.
+- Keep memory usage predictable.
+- Reduce unnecessary rendering overhead.
+
+### Design Principles
+
+Visual effects exist only when they improve gameplay readability.
+
+Examples include:
+
+- Hit confirmation
+- Attack direction
+- Skill activation
+- Area-of-effect visualization
+- Active status effects
+- Dodge feedback
+- Impact feedback
+
+Visual clutter should never interfere with player awareness.
+
+---
+
+## 2.2 Server-Authoritative Combat & Alchemy Depth
+
+ASCEND follows a **zero-trust networking model**.
+
+No gameplay-critical calculations are trusted from the client.
+
+### Server Responsibilities
+
+The server exclusively validates and calculates:
+
+- Damage
+- Cooldowns
+- Hit registration
+- Movement mechanics
+- Dodge validation
+- Parry validation
+- Skill execution
+- Qi consumption
+- Cultivation progression
+- Spirit Pill crafting
+- Loot generation
+- Currency rewards
+- Inventory modification
+
+### Design Goals
+
+Combat should reward:
+
+- Timing
+- Positioning
+- Mechanical skill
+- Resource management
+- Weapon mastery
+- Alchemy preparation
+
+Player success should come primarily from mastery rather than numerical power alone.
+
+---
+
+## 2.3 High-Dopamine Progression & Loot Loop
+
+Progression is built around continuous, meaningful rewards.
+
+Players should constantly feel they are moving toward stronger builds and new gameplay opportunities.
+
+### Primary Reward Sources
+
+- Rare weapon drops
+- Equipment upgrades
+- Spirit Pill crafting
+- Skill mastery
+- Weapon mastery
+- Cultivation breakthroughs
+- Boss rewards
+- Material collection
+- Realm advancement
+
+### Long-Term Goals
+
+The progression system is intentionally expandable, allowing future updates to introduce:
+
+- New realms
+- New weapon archetypes
+- Additional skills
+- New equipment tiers
+- Endgame activities
+- Additional crafting systems
+
+without requiring major redesigns.
+
+---
+
+## 2.4 Dual UI Philosophy
+
+ASCEND separates gameplay UI into two distinct experiences.
+
+---
+
+### In-Combat HUD
+
+The combat interface is intentionally minimal.
+
+Objectives include:
+
+- Maximum visibility
+- Low distraction
+- Fast readability
+- Clear cooldown communication
+- Large touch targets
+- Minimal screen obstruction
+
+The HUD should provide only the information required during active gameplay.
+
+---
+
+### Out-of-Combat Panels
+
+Management interfaces intentionally become more decorative.
+
+Examples include:
+
+- Inventory
+- Character Equipment
+- Skill Trees
+- Alchemy Furnace
+- Character Progression
+
+These menus use handcrafted fantasy-inspired artwork while remaining organized and readable.
+
+This creates a clear visual distinction between:
+
+- Active combat
+- Character management
+
+---
+
+# 3. Core Gameplay Loop
+
+```text
 ┌─────────────────────────┐
-                    │   1. LOBBY / HUB AREA   │
-                    └────────────┬────────────┘
-                                 │ Select Stage / Area
-                                 ▼
-                    ┌─────────────────────────┐
-                    │   2. FAST COMBAT ZONE   │
-                    └────────────┬────────────┘
-                                 │ Fight Enemies & Bosses
-                                 ▼
-                    ┌─────────────────────────┐
-                    │  3. REWARD & RARE DROPS │
-                    └────────────┬────────────┘
-                                 │ Collect Gold, Gear & XP
-                                 ▼
-                    ┌─────────────────────────┐
-                    │  4. UPGRADE & ASCEND    │
-                    └────────────┬────────────┘
-                                 │ Equip Weapons & Master Skills
-                                 └────────────┘
-
-### Detailed Loop Phases
-1. **Prepare:** Player manages loadout, upgrades weapons, allocates stat points, and selects active skills in the Hub using handcrafted fantasy panels.
-2. **Engage:** Player enters an arena or dungeon zone with minimalist UI. Engages in fast, fluid action combat against regular enemies and elite bosses.
-3. **Reward:** Defeating enemies awards XP, currency, upgrade materials, and weighted rare drops (weapons, armor, skill scrolls).
-4. **Ascend:** Player returns to the Hub to equip rare drops, level up weapon mastery, and unlock higher-tier combat zones.
-
----
-
-## 3. Combat System Architecture
-
-### Weapon Archetypes & Playstyles
-Each weapon archetype features distinct light combo chains, heavy finishers, attack speeds, ranges, and resource costs:
-
-| Weapon Archetype | Combat Role | Primary Stat | Mechanics |
-| :--- | :--- | :--- | :--- |
-| **Katana / Curved Blade** | Fast Combo / Counter | Dexterity | Rapid light strings, high critical multiplier, precise parry windows. |
-| **Greatsword** | Heavy Crowd Control | Strength | High damage per hit, super armor on heavy attacks, hyper-impact knockback. |
-| **Dual Daggers** | Mobility / Burst | Dexterity / Speed | High attack speed, short dash attacks, damage stacking bleed debuffs. |
-| **Magic Staff / Wand** | Ranged Zoning | Intelligence | Projectile management, energy cost management, area-of-effect control. |
-
-### Core Action Mechanics
-* **Light Attack Combo (M1):** 4-hit auto-chain ending in a combo finisher. Validated server-side via time-since-last-attack checks.
-* **Heavy / Charged Attack (M2):** Consumes stamina to break enemy block or deal heavy impact damage.
-* **Dodge / Roll (Space / Shift):** Grants invulnerability frames (i-frames) for a brief duration. Consumes stamina.
-* **Parry / Deflect (F Key / Tap):** Precision block. Successful parry stuns the attacker and restores stamina.
-* **Skill Abilities (Q, E, R):** Weapon-specific active abilities managed by server cooldown timers.
+│   1. LOBBY / HUB AREA   │
+└────────────┬────────────┘
+             │
+             │ Select Stage / Area
+             ▼
+┌─────────────────────────┐
+│   2. FAST COMBAT ZONE   │
+└────────────┬────────────┘
+             │
+             │ Fight Enemies, Bosses & Harvest Herbs
+             ▼
+┌─────────────────────────┐
+│  3. REWARD & RARE DROPS │
+└────────────┬────────────┘
+             │
+             │ Collect Spirit Stones, Materials & Equipment
+             ▼
+┌─────────────────────────┐
+│   4. ALCHEMY & ASCEND   │
+└────────────┬────────────┘
+             │
+             │ Refine Pills, Meditate & Break Through
+             ▼
+          Repeat Loop
+```
 
 ---
 
-## 4. Progression, Stats & Loot System
+## Phase 1 — Prepare
 
-### Rarity Tiering Engine
-Items follow a strict, color-coded rarity pipeline:
-* **Common (White):** Base equipment with zero bonus attributes.
-* **Uncommon (Green):** Minor stat bonuses (+Strength/Dexterity).
-* **Rare (Blue):** Multi-stat bonuses + 1 passive slot.
-* **Epic (Purple):** High stat scaling + unique weapon effect.
-* **Legendary (Gold):** Signature boss drops with game-changing skill modifiers.
-* **Mythic (Red):** Pinnacle endgame drops with ultra-rare drop weights.
+Players begin in the Hub where they prepare for their next expedition.
 
-### Stat Attributes
-* **Strength (STR):** Increases base physical damage and heavy attack impact.
-* **Dexterity (DEX):** Increases attack speed, critical hit chance, and movement speed.
-* **Intelligence (INT):** Increases skill damage, energy reserves, and cooldown reduction.
-* **Vitality (VIT):** Increases maximum health and health regeneration rate.
-* **Endurance (END):** Increases maximum stamina and stamina recovery speed.
+Preparation activities include:
 
-### Weapon Mastery System
-* Using a weapon type gains **Mastery XP** for that weapon category.
-* Higher mastery levels unlock passive talent nodes in the weapon's skill tree (e.g., +5% Katana speed, +10% Greatsword block resistance).
+- Equipping weapons
+- Managing inventory
+- Upgrading equipment
+- Allocating stat points
+- Refining Spirit Pills
+- Organizing consumables
+- Selecting active combat skills
+
+These interactions occur primarily through handcrafted fantasy UI panels.
 
 ---
 
-## 5. UI/UX Specification Guidelines
+## Phase 2 — Engage
 
-### In-Combat HUD Rules
-* Must remain invisible or low-opacity until combat is initiated.
-* Health and Stamina bars positioned at the bottom-left with dynamic fill transitions.
-* Ability slots positioned at bottom-center with clear sweep cooldown overlays.
-* Boss health bars displayed at the top-center with clear phase indicators.
-* Over-the-head indicators for enemy health and stun state to prevent screen clutter.
+Players enter combat zones, arenas, or dungeons.
 
-### Fantasy Panel Rules (Out-of-Combat)
-* Full-screen or modal overlays opened via keybinds (e.g., `I` for Inventory, `C` for Character Stats).
-* Uses handcrafted fantasy border frames, textured backgrounds, and high-contrast typography.
-* Large drag-and-drop slots for mobile and PC usability.
+Primary objectives include:
+
+- Defeat enemies
+- Clear encounters
+- Challenge elite enemies
+- Fight bosses
+- Gather herbs
+- Collect crafting resources
+
+Gameplay emphasizes:
+
+- Fast combat
+- Positioning
+- Combo execution
+- Dodging
+- Parrying
+- Skill usage
 
 ---
 
-## 6. Security & Server Authority Rules
+## Phase 3 — Reward
 
-To ensure a fair and exploit-proof environment:
-1. **Server Hitbox Generation:** The client sends an "intent to attack" signal. The server verifies cooldowns, checks player position, performs spatial hitbox queries, and applies damage.
-2. **Server Cooldown Trackers:** All cooldowns are tracked on the server using `os.clock()`. Client-side cooldown visuals are purely predictive.
-3. **Server Data Verification:** Currency, inventory updates, equipment toggles, and stat allocations are processed strictly through server Services.
+Successful encounters reward players with progression resources.
+
+Possible rewards include:
+
+- Experience
+- Gold
+- Spirit Stones
+- Upgrade materials
+- Demon Cores
+- Spirit Herbs
+- Weapons
+- Armor
+- Skill Scrolls
+- Rare equipment
+
+Loot uses weighted rarity distributions.
 
 ---
 
-## 7. Roadmap & Update Strategy
+## Phase 4 — Ascend
 
-* **Version 1.0 (Core Release):** 3 Weapon Archetypes, 1 Hub, 2 Combat Zones, Core HUD, Inventory Panel.
-* **Content Update 1:** New Weapon Archetype (Staff), Boss Raid Arena, Crafting System.
-* **Content Update 2:** Ascension System (Prestige level reset with permanent stat buffs), Mythic Drop Tier.
+After combat, players return to the Hub.
+
+Activities include:
+
+- Equipping upgrades
+- Managing inventory
+- Crafting Spirit Pills
+- Meditating (`G`)
+- Attempting Realm Breakthroughs (`B`)
+- Preparing for the next combat cycle
+
+This completes the primary gameplay loop before repeating.
+
+---
+
+# 4. Combat & Alchemy Architecture
+
+## Weapon Archetypes & Playstyles
+
+Each weapon archetype provides a unique combat identity through distinct:
+
+- Combo chains
+- Heavy attacks
+- Attack speed
+- Effective range
+- Qi costs
+- Skill abilities
+
+| Weapon Archetype | Combat Role | Primary Stat | Combat Identity |
+|-----------------|-------------|--------------|-----------------|
+| **Flying Sword (Jian)** | Fast Telekinesis / Burst | Soul Force / Qi | Telekinetic slash strings, sword formations, ranged barrages |
+| **Spear** | Reach / Lunge Physics | Physique | Piercing thrusts, airborne vaulting slams, wide clearing sweeps |
+| **Gauntlets** | Close Martial Arts | Physique / Agility | Rapid Qi punches, 360° palm flurries, earth-shattering ground slams |
+
+---
+
+## Core Combat Mechanics
+
+### Light Attack Combo (M1)
+
+- Four-hit combo chain
+- Server-authoritative validation
+- Time-based combo progression
+- Finisher concludes combo sequence
+
+---
+
+### Heavy / Charged Attack (F)
+
+- Consumes Qi
+- Breaks enemy guard
+- High-impact strike
+- Longer commitment than light attacks
+
+---
+
+### Dodge / Windstep (Shift)
+
+- Grants temporary invulnerability frames
+- Applies movement impulse
+- Consumes Qi
+- Rewards precise timing
+
+---
+
+### Parry / Deflect (F Tap)
+
+- Precision defensive mechanic
+- Successful timing stuns attackers
+- Restores Qi
+- Encourages skill-based defense
+
+---
+
+### Active Skills (Q / E / R)
+
+Weapon-specific abilities featuring:
+
+- Individual cooldowns
+- Server-side validation
+- Unique animations
+- Distinct combat roles
+
+---
+
+### Alchemy Furnace
+
+Players combine materials such as:
+
+- Spirit Herbs
+- Spirit Water
+- Demon Cores
+
+to craft consumables that provide:
+
+- Instant Qi restoration
+- Health regeneration
+- Temporary enhancements
+- Breakthrough assistance
+
+---
+
+# 5. Progression, Stats & Loot System
+
+## Rarity Tiering Engine
+
+Equipment follows a standardized rarity hierarchy.
+
+| Tier | Color | Description |
+|------|-------|-------------|
+| Mortal Grade | White | Base equipment with no bonus attributes |
+| Earth Grade | Green | Minor stat bonuses (Physique / Agility) |
+| Heaven Grade | Blue | Multiple stat bonuses and one passive slot |
+| Spirit Grade | Purple | High stat scaling and unique weapon effects |
+| Sacred Grade | Gold | Signature boss drops with game-changing modifiers |
+| Immortal Grade | Crimson | Pinnacle endgame rewards with extremely low drop rates |
+
+---
+
+## Core Attributes
+
+### Physique (Body Tempering)
+
+Increases:
+
+- Physical Damage
+- Maximum Health
+
+---
+
+### Qi Capacity (Spiritual Energy)
+
+Increases:
+
+- Maximum Qi
+- Skill Damage
+
+---
+
+### Agility (Wind Walk)
+
+Improves:
+
+- Attack Speed
+- Movement Speed
+- Dodge Distance
+
+---
+
+### Soul Force (Consciousness)
+
+Improves:
+
+- Critical Hit Chance
+- Critical Damage Multiplier
+
+---
+
+# 6. UI/UX Specification Guidelines
+
+## In-Combat HUD
+
+The combat interface prioritizes readability over decoration.
+
+### Rules
+
+- Hidden or low-opacity outside combat
+- Minimal visual clutter
+- Bottom-center ability bar
+- Sweep-style cooldown overlays
+- Dynamic overhead UI
+- Boss health bar at top-center
+- Clear phase indicators
+- High readability during fast combat
+
+---
+
+## Dynamic Overhead UI
+
+Displays:
+
+- Character Name
+- Cultivation Realm
+- Dynamic Health Bar
+
+Health colors transition based on remaining health:
+
+- Green
+- Yellow
+- Red
+
+---
+
+## Fantasy Panels (Out-of-Combat)
+
+Management interfaces emphasize immersion while remaining organized.
+
+Examples include:
+
+- Inventory
+- Equipment
+- Character Stats
+- Skill Tree
+- Alchemy Furnace
+
+### Visual Guidelines
+
+- Full-screen or modal presentation
+- Handcrafted fantasy border frames
+- Textured backgrounds
+- 3D `ViewportFrame` previews
+- High-contrast typography
+- Consistent spacing and layout hierarchy
+- Clear separation between gameplay HUD and management interfaces

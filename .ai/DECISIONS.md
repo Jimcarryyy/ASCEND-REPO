@@ -48,3 +48,13 @@
 * **Status:** Accepted
 * **Context:** UI assembly requires standardized 2D assets before Studio layout construction.
 * **Decision:** Establish `docs/ASSET_MANIFEST.md` for complete asset inventory and `docs/AI_PROMPT_GUIDE.md` for exact copy-paste AI prompt generation.
+
+## ADR-010: Server-Authoritative Alchemy & Crafting Engine
+* **Status:** Accepted
+* **Context:** Alchemy pill crafting and consumption impact player health, Qi, and damage stats. Client-side crafting calculations would allow item duplication and stat spoofing.
+* **Decision:** Implement `AlchemyManager.luau` strictly on the server. The client sends `AlchemyAction` intents (`CraftPill`, `ConsumePill`). The server verifies ingredient quantities, processes timed crafting loops, rolls success probabilities, and applies consumable stat buffs.
+
+## ADR-011: Pre-Created Network Remote Registry
+* **Status:** Accepted
+* **Context:** Clients timing out while waiting for server managers to initialize remote event instances.
+* **Decision:** Update `RemoteEvents.luau` to pre-create all registered `RemoteEvent` instances automatically during `RemoteEvents.Init()` on server startup, guaranteeing remotes exist before any client script connects.

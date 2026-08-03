@@ -9,6 +9,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
 local Workspace = game:GetService("Workspace")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -37,10 +38,13 @@ end
 function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, payload: any?)
 	local attackerChar = attacker.Character
 	if attackerChar then
-		-- 1. Trigger Crisp White Weapon Slash Trail
+		-- 1. Trigger Weapon Slash Trail
 		if skillKey == "M1" or skillKey == "F" or skillKey == "Q" or skillKey == "E" or skillKey == "R" then
 			CombatVFXController.TriggerWeaponTrail(attackerChar, 0.25)
 			CombatVFXController.PlaySound(SWING_SOUND_ID, attackerChar:FindFirstChild("HumanoidRootPart") or attackerChar, 0.5)
+		elseif skillKey == "Shift" then
+			-- Shift Dash Motion Trail
+			CombatVFXController.TriggerShiftDashTrail(attackerChar, 0.3)
 		end
 	end
 
@@ -73,19 +77,86 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 	end
 end
 
+-- Triggers Shift Windstep Dash Motion Trail on HumanoidRootPart
+function CombatVFXController.TriggerShiftDashTrail(character: Model, duration: number)
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return end
+
+	local att0 = Instance.new("Attachment")
+	att0.Position = Vector3.new(0, 1.8, 0)
+	att0.Parent = hrp
+
+	local att1 = Instance.new("Attachment")
+	att1.Position = Vector3.new(0, -1.8, 0)
+	att1.Parent = hrp
+
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = att0
+	trail.Attachment1 = att1
+	trail.Color = ColorSequence.new(Color3.fromRGB(0, 230, 255), Color3.fromRGB(255, 255, 255))
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.1),
+		NumberSequenceKeypoint.new(0.8, 0.5),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	trail.Lifetime = 0.3
+	trail.MinLength = 0.1
+	trail.LightEmission = 0.85
+	trail.Parent = hrp
+
+	task.delay(duration, function()
+		trail.Enabled = false
+		Debris:AddItem(att0, 0.4)
+		Debris:AddItem(att1, 0.4)
+		Debris:AddItem(trail, 0.4)
+	end)
+end
+
+-- Triggers weapon slash trail (uses existing trail or dynamically creates one)
 function CombatVFXController.TriggerWeaponTrail(character: Model, duration: number)
 	local weapon = character:FindFirstChild("Equipped3DWeapon") or character:FindFirstChild("Equipped3DWeapon", true)
 	if not weapon then return end
 
-	local trail = weapon:FindFirstChild("WeaponTrail", true) :: Trail?
-	if trail then
-		trail.Enabled = true
+	-- Check for pre-existing WeaponTrail
+	local existingTrail = weapon:FindFirstChild("WeaponTrail", true) :: Trail?
+	if existingTrail then
+		existingTrail.Enabled = true
 		task.delay(duration, function()
-			if trail then
-				trail.Enabled = false
-			end
+			if existingTrail then existingTrail.Enabled = false end
 		end)
+		return
 	end
+
+	-- Dynamic fallback trail generation if weapon model doesn't have a pre-built trail
+	local handle = weapon:FindFirstChild("Handle") or weapon:FindFirstChildOfClass("MeshPart") or weapon:FindFirstChildOfClass("BasePart")
+	if not handle then return end
+
+	local att0 = handle:FindFirstChild("TrailAtt0") :: Attachment? or Instance.new("Attachment")
+	att0.Name = "TrailAtt0"
+	att0.Position = Vector3.new(0, 1.5, 0)
+	att0.Parent = handle
+
+	local att1 = handle:FindFirstChild("TrailAtt1") :: Attachment? or Instance.new("Attachment")
+	att1.Name = "TrailAtt1"
+	att1.Position = Vector3.new(0, -1.5, 0)
+	att1.Parent = handle
+
+	local dynamicTrail = Instance.new("Trail")
+	dynamicTrail.Attachment0 = att0
+	dynamicTrail.Attachment1 = att1
+	dynamicTrail.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(150, 220, 255))
+	dynamicTrail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.1),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	dynamicTrail.Lifetime = 0.25
+	dynamicTrail.LightEmission = 0.9
+	dynamicTrail.Parent = handle
+
+	task.delay(duration, function()
+		dynamicTrail.Enabled = false
+		Debris:AddItem(dynamicTrail, 0.3)
+	end)
 end
 
 function CombatVFXController.PlaySound(soundId: string, parent: Instance, volume: number?)

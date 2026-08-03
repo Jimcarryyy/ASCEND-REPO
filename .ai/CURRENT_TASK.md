@@ -22,17 +22,58 @@
 ### Phase 4: Weapon Systems & Combat Mechanics
 - [x] **Task 4.1**: Flying Sword Combat Mechanics (`FlyingSwordConfig.luau`, `FlyingSwordServer.luau`, `HitboxManager.luau`)
 - [x] **Task 4.2**: Spear Weapon Mechanics & Live Swapping (`SpearConfig.luau`, `SpearServer.luau`, `WeaponManager.luau`, hotkeys `1` and `2`)
-- [x] **Task 4.3**: Client Combat VFX, Animations & Impact FX (`CombatVFXController.luau`, 3D floating damage text, camera shake, hit impact particles, white slash trails, swing & hit SFX)
-- [x] **Task 4.4**: Character Animation Controller & Responsive Combat Movement (`AnimationController.luau`, `AnimationConfig.luau`, Motor6D attachments, `Tool.Grip` compatibility, procedural Qi placeholders)
+- [x] **Task 4.3**: Client Combat VFX, Animations & Impact FX (`CombatVFXController.luau`, 3D floating damage text, camera shake, hit impact particles, white slash trails, swing & hit SFX, dynamic fallback weapon trails, Shift Dash trail)
+- [x] **Task 4.4**: Character Animation Controller & Responsive Combat Movement (`AnimationController.luau`, `AnimationConfig.luau`, Motor6D attachments, `Tool.Grip` compatibility, procedural Qi placeholders, calibrated camera)
 - [x] **Task 4.5**: Gauntlet Weapon Mechanics & Dual Qi Bracers (`GauntletConfig.luau`, `GauntletServer.luau`, 360° Hundred Palms, Ground Slam, hotkey `3`)
 
 ### Phase 5: Cultivation & Character Progression Systems
-- [x] **Task 5.1**: Cultivation Realm System & Qi Meditation Mechanics (`CultivationConfig.luau`, `CultivationManager.luau`, Hotkey `G` meditation, custom floating pose, steady hover, light ethereal body wrap, cinematic front camera, Hotkey `B` breakthrough, health stat scaling)
-- [ ] **Task 5.2**: Alchemy & Spirit Pill Crafting System (`AlchemyConfig.luau`, `AlchemyManager.luau`, crafting furnace, herb/core recipes)
+- [x] **Task 5.1**: Cultivation Realm System & Qi Meditation Mechanics (`CultivationConfig.luau`, `CultivationManager.luau`, `CultivationController.luau`, Hotkey `G` meditation, custom floating pose, steady hover, light ethereal body wrap, cinematic front camera, Hotkey `B` breakthrough, health stat scaling)
+- [x] **Task 5.2**: Alchemy & Spirit Pill Crafting System (`AlchemyConfig.luau`, `AlchemyManager.luau`, crafting furnace, herb/core recipes, consumable pill effects, server inventory validation, `AlchemyAction` remote)
 - [ ] **Task 5.3**: Heavenly Tribulation Lightning Boss Event
+- [ ] **Task 5.4**: Sect / Faction System & Alignment Mechanics
+- [ ] **Task 5.5**: World Zone Progression, Spirit Veins & Domain Hazards
 
 ---
 
 ## Current Status
-- **Current Task**: Task 5.1 Completed and Verified in Roblox Studio.
-- **Next Task**: Task 5.2 — Alchemy & Spirit Pill Crafting System.
+- **Current Task**: Task 5.2 Completed and Verified in Roblox Studio.
+- **Next Task**: Task 5.3 — Heavenly Tribulation Lightning Boss Event.
+
+---
+
+## Task 5.2 Technical Accomplishments & Code Additions
+
+1. **`src/ReplicatedStorage/Shared/Configs/AlchemyConfig.luau`**:
+   - Registered craftable spirit pills: `pill_qi_gathering`, `pill_healing_dan`, `pill_physique_tempering`, `pill_breakthrough`.
+   - Registered materials: `mat_spirit_herb`, `mat_demon_core`, `mat_spirit_water`.
+   - Integrated fault-tolerant `getIcon()` safe helper to prevent runtime indexing crashes on missing asset paths.
+
+2. **`src/ServerScriptService/Server/Cultivation/AlchemyManager.luau`**:
+   - Server-authoritative furnace crafting logic with duration delays, success rate rolls, and ingredient consumption.
+   - Pill consumption effects: Instant Qi replenishment, heal-over-time tasks, meditation gather speed buffs, and temporary stat modifiers.
+   - Built-in `EnsurePlayerData()` initializing default starter inventory testing data.
+
+3. **`src/ReplicatedStorage/Shared/Network/RemoteEvents.luau`**:
+   - Updated `RemoteEvents.Init()` to automatically pre-create all registered remote events (`AlchemyAction`, `CombatAction`, `UpdateSkillState`, `SyncCooldown`, `UpdateCultivation`, `InventoryAction`) on server boot, resolving client timeout warnings.
+
+4. **Client UI & Visual Refinements**:
+   - **`OverheadUIController.luau`**: Dynamic BillboardGui above all heads displaying Player/NPC Name, Cultivation Realm Title, and dynamic green/yellow/red Health Bar.
+   - **`CultivationController.luau` & `AnimationController.luau`**: Calibrated meditation camera distance (`-13.5` studs front view, elevated `1.8` studs) and slowed animation playback (`0.65`) for serene floating.
+   - **`CombatVFXController.luau`**: Added fallback dynamic weapon trail creation and Shift Windstep Dash trails.
+   - **`InventoryConfig.luau` & `InventoryController.luau`**: Configured 3D ViewportFrame item placeholders and client-server sync.
+
+---
+
+## Registered Known Issues for Future Task Polish
+
+1. **Breakthrough Meditation Pose Transition**:
+   - *Issue:* Pressing "B" to break through currently reuses standard meditation.
+   - *Requirement:* The player must stop standard meditating and enter a dedicated, distinct **Breakthrough Meditation Pose** (same base pose but separate logic/visual state from normal meditation) prior to the heavenly tribulation lightning phase.
+
+2. **Meditation Pose Up-and-Down Oscillation**:
+   - *Issue:* The current floating meditation animation asset (`rbxassetid://116333173300889`) contains an internal rapid up-and-down movement.
+   - *Requirement:* Smooth or replace the animation keyframes to maintain a calm, flat floating pose.
+
+3. **Combat Motion & Weapon Synchronization**:
+   - *Issue:* Character combat movements and swings for Flying Swords, Spears, and Gauntlets are stiff and lack frame-accurate alignment with weapon swing arcs.
+   - *Requirement:* Re-align animation keyframes with `HitboxManager.luau` spatial query timings and refine weapon swing arcs per archetype.

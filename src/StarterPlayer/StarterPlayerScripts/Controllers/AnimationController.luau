@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
@@ -24,7 +25,7 @@ function AnimationController.Init()
 	local combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	local updateSkillStateRemote = RemoteEvents.GetRemote("UpdateSkillState")
 
--- Custom Floating Meditation Track & Steady Front View Camera
+	-- Custom Floating Meditation Track & Steady Front View Camera
 	local MEDITATION_ANIM_ID = "rbxassetid://116333173300889"
 	local meditationTrack: AnimationTrack? = nil
 	local camera = Workspace.CurrentCamera
@@ -55,15 +56,14 @@ function AnimationController.Init()
 			if meditationTrack and not meditationTrack.IsPlaying then
 				meditationTrack.Priority = Enum.AnimationPriority.Action4
 				meditationTrack.Looped = true
-				meditationTrack:Play(0.4, 1, 1.0)
+				-- Play at 0.65 speed for slow, serene floating motion
+				meditationTrack:Play(0.6, 1, 0.65)
 			end
 
-			-- Steady Front View Camera Position (Zero Up-and-Down Bobbing)
+			-- Calibrated Camera View (Backed up to 13.5 studs for comfortable framing)
 			camera.CameraType = Enum.CameraType.Scriptable
 			local baseCFrame = hrp.CFrame
-			
-			-- Position camera steadily in front facing character
-			camera.CFrame = (baseCFrame * CFrame.new(0, 0.8, -6.0)) * CFrame.Angles(0, math.rad(180), 0)
+			camera.CFrame = (baseCFrame * CFrame.new(0, 1.8, -13.5)) * CFrame.Angles(0, math.rad(180), 0)
 		else
 			-- Exit Meditation: Restore Camera & Unlock Controls
 			camera.CameraType = Enum.CameraType.Custom

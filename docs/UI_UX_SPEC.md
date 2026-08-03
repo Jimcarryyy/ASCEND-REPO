@@ -1,8 +1,8 @@
 # ASCEND-V1 — UI/UX SPECIFICATION & WIREFRAME MAP
 
 > **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md
-> **Scope:** ScreenGui Hierarchy, In-Combat HUD Layout, Out-of-Combat Fantasy Modals, Cross-Platform Responsive Rules, & Floating Combat Text.
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
+> **Scope:** ScreenGui Hierarchy, In-Combat HUD Layout, Overhead Health Display, Out-of-Combat Modals, & Floating Combat Text.
 
 ---
 
@@ -10,12 +10,33 @@
 
 ASCEND-V1 enforces a strict visual separation between active combat gameplay and out-of-combat menu management:
 
-* **In-Combat HUD:** Minimalist, unobtrusive, clean geometric progress bars (Health, Stamina, Energy). Zero screen-covering text or bloat. Over-the-head indicators for mob health and stun state.
-* **Menu Modals:** Handcrafted fantasy artwork frames with heavy stone/parchment textures and gold trim highlights. Full-screen or centered modal overlays opened via explicit user keybinds or menu buttons.
+* **In-Combat HUD:** Minimalist, unobtrusive, clean geometric progress bars (Health, Stamina, Energy). Dynamic overhead HP bars above player and mob heads. Zero screen-covering text or bloat.
+* **Menu Modals:** Handcrafted fantasy artwork frames with heavy stone/parchment textures, 3D ViewportFrame item slot placeholders, and gold trim highlights. Full-screen or centered modal overlays opened via keybinds.
 
 ---
 
-## 2. Complete Roblox Studio Screen Hierarchy
+## 2. Dynamic Overhead Health & Cultivation Bar (`OverheadUIController.luau`)
+
+Every player, NPC, and dummy in Workspace receives a server-synced floating BillboardGui:
+
+* **Attachment:** Attached to `Head` part (`StudsOffset = Vector3.new(0, 2.5, 0)`, `MaxDistance = 80`).
+* **Title Label:** Displays Character Name and Cultivation Realm Title (e.g. `[Qi Condensation - Tier 1]`).
+* **Health Fill Transitions:**
+  * `> 50% HP`: Emerald Green (`#2ECC71`)
+  * `25% - 50% HP`: Gold Yellow (`#F1C40F`)
+  * `< 25% HP`: Crimson Red (`#E74C3C`)
+
+---
+
+## 3. Meditation Camera & Visual Wrap
+
+* **Front-View Cinematic Camera**: When meditating (**`G`**), client camera switches to `Scriptable` and positions at `{0, 1.8, -13.5}` facing the character's front.
+* **Calm Floating Motion**: Character hovers with a slow, serene `0.5` stud height sine wave (`floatSpeed = 1.6`).
+* **Lightweight Body Highlight**: Ethereal `Highlight` wrapper (`FillTransparency = 0.95`, `OutlineTransparency = 0.25`) wrapping player clothing, face, and body in cultivation realm aura.
+
+---
+
+## 4. Complete Roblox Studio Screen Hierarchy
 
 All UI elements reside in StarterGui under two primary master ScreenGui containers:
 
@@ -39,7 +60,6 @@ All UI elements reside in StarterGui under two primary master ScreenGui containe
       - Slot_Dodge (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
     - TopCenter_BossHUD (Frame, AnchorPoint: 0.5, 0, Position: {0.5, 0}, {0.03, 0})
       - BossHealthBar_BG -> Fill -> PhaseIndicatorText
-    - Overhead_Container (Folder for BillboardGuis projected on mob heads)
 
 ### B. MenuModals (ScreenGui)
 * ResetOnSpawn: false
@@ -48,69 +68,12 @@ All UI elements reside in StarterGui under two primary master ScreenGui containe
 * Hierarchy Layout:
   - BackgroundDim (Frame, Size: {1, 0}, {1, 0}, BackgroundColor3: #000000, Transparency: 0.5)
   - InventoryModal (Frame, AnchorPoint: 0.5, 0.5, Size: {0.7, 0}, {0.75, 0})
-    - FantasyFrame_BG (ImageLabel - Handcrafted Art Asset)
+    - FantasyFrame_BG (ImageLabel)
     - ItemGridContainer (ScrollingFrame + UIGridLayout)
-    - EquipmentSlots (Frame - Armor, Weapon, Accessory slots)
-    - ItemTooltip (Frame - Dynamic stat hover panel)
-  - CharacterStatsModal (Frame, AnchorPoint: 0.5, 0.5, Size: {0.6, 0}, {0.7, 0})
-    - StatAllocationList (STR, DEX, INT, VIT, END rows with [+] buttons)
-
----
-
-## 3. HUD Color Palette & Indicator Standards
-
-To maximize legibility during intense action combat:
-
-| Element | Background Color | Fill Color | Accent / Glow |
-| :--- | :--- | :--- | :--- |
-| Health Bar | #1E1E23 (Dark Charcoal) | #D73737 (Clean Crimson) | #FF6B6B |
-| Stamina Bar | #1E1E23 (Dark Charcoal) | #2DB978 (Emerald Green) | #51E5A5 |
-| Energy / Mana Bar | #1E1E23 (Dark Charcoal) | #2192FF (Celestial Blue) | #74B9FF |
-| Cooldown Active | #000000 (80% Alpha) | N/A (Vertical Sweep) | #FFFFFF (Timer Text) |
-| Boss Health Bar | #141418 (Deep Black) | #9C2C77 (Royal Violet) | #FFD700 (Gold Border) |
-
-
-# UI/UX Specification — ASCEND
-
-Specification for user interface layout, HUD design, action skill bar, and camera presentation.
-
----
-
-## 🗡️ Minimalist Action Skill Bar (`HUDGui`)
-
-* **Position**: Bottom-center screen (`AnchorPoint = (0.5, 1)`, `Position = {0.5, 0, 0.95, 0}`).
-* **6 Active Slots**: `Slot_M1` (LMB), `Slot_F` (F), `Slot_Q` (Q), `Slot_E` (E), `Slot_R` (R), `Slot_Shift` (SHIFT).
-* **Dynamic Skill Swap**: Weapon swapping (**`1`**, **`2`**, **`3`**) fires `UpdateSkillState` from the server, instantly updating all 6 HUD skill slot icons.
-* **Cooldown Overlay**:
-  * Semi-transparent dark sweeping box (`BackgroundColor3 = Black`, `BackgroundTransparency = 0.45`, `ClipsDescendants = true`).
-  * Center live timer text (`CooldownText` TextLabel, `Font = GothamBold`, `TextScaled = true`) formatted in real-time decimals (e.g. `4.5`, `3.1`, `0.8`).
-* **Disabled CoreGui**: Default Roblox Backpack hotbar (`CoreGuiType.Backpack`) is disabled via script to prevent UI clutter.
-
----
-
-## 🧘 Meditation Camera & Visual Wrap
-
-* **Front-View Cinematic Camera**: When meditating (**`G`**), client camera switches to `Scriptable` and positions at `{0, 0.8, -6.0}` facing the character's front.
-* **Lightweight Body Highlight**: Ethereal `Highlight` wrapper (`FillTransparency = 0.95`, `OutlineTransparency = 0.25`) wrapping player clothing, face, and body in cultivation realm aura.
-* **Floor Light Ring**: `PointLight` ring placed on the floor under the hovering cultivator.
-
----
-
-## 4. Cross-Platform Responsiveness & Mobile Rules
-
-### Scale Units
-All frame positions and sizes must strictly use relative Scale units ({X_Scale, 0}, {Y_Scale, 0}). Fixed pixel Offset is strictly forbidden except for thin 1px/2px borders.
-
-### Touch Target Minimums
-For mobile usability, all interactive buttons must maintain a minimum physical screen footprint equivalent to 44x44 dp.
-
-### Mobile Action Layout
-When UserInputService.TouchEnabled is true, the BottomCenter_Abilities container converts automatically into an arc-like thumb layout in the bottom-right quadrant:
-
-* Top Layer: Skill R
-* Upper Middle Layer: Skill E | Dodge
-* Lower Middle Layer: Skill Q | Heavy M2
-* Bottom Main Target: Light M1 (Largest Target)
+    - ViewportFrame (3D Placeholder Item Preview)
+  - AlchemyModal (Frame)
+    - FurnaceRefinementGrid
+    - CraftButton
 
 ---
 
@@ -118,7 +81,7 @@ When UserInputService.TouchEnabled is true, the BottomCenter_Abilities container
 
 When a hit is registered on the server, a client event fires to spawn Floating Combat Text in world space:
 
-* Normal Hit: White text (#FFFFFF), Size 18pt, floats upward 3 studs over 0.5 seconds and fades out.
-* Critical Hit: Yellow text (#FFD700), Size 26pt bold, scale bounce animation (1.0x -> 1.3x -> 1.0x), floats upward 4 studs.
-* Blocked Hit: Blue text (#74B9FF), Size 16pt, text displays "BLOCKED".
-* Status Debuff: Purple/Red text (#9C2C77), displays debuff name (e.g., "STUNNED", "BLEED").
+* Normal Hit: White text (`#FFFFFF`), Size 18pt, floats upward 3 studs over 0.5 seconds and fades out.
+* Critical Hit: Yellow text (`#FFD700`), Size 26pt bold, scale bounce animation (1.0x -> 1.3x -> 1.0x), floats upward 4 studs.
+* Blocked Hit: Blue text (`#74B9FF`), Size 16pt, text displays "BLOCKED".
+* Status Debuff: Purple/Red text (`#9C2C77`), displays debuff name (e.g., "STUNNED", "QI DEVIATION").

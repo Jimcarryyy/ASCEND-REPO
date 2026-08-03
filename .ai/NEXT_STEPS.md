@@ -2,15 +2,21 @@
 
 ## Immediate Tasks
 
-1. **Task 5.2: Alchemy & Spirit Pill Crafting System**:
-   - Create `ReplicatedStorage/Shared/Configs/AlchemyConfig.luau` for herb/core recipes and pill effects (*Breakthrough Pill, Qi Gathering Pill, Healing Pill*).
-   - Create `ServerScriptService/Server/Cultivation/AlchemyManager.luau` to handle furnace crafting, recipe validation, and pill consumption.
-   - Connect Inventory UI item usage for alchemy materials (`icon_mat_pill_breakthrough`, `icon_mat_herb_ginseng`, `icon_mat_demon_core`).
+1. **Task 5.3: Heavenly Tribulation Lightning Boss Event**:
+   - Build server-authoritative Tribulation Lightning Strike event triggered during Golden Core, Nascent Soul, or major realm breakthroughs.
+   - Implement dynamic weather transformation (dark skybox, thunder SFX) and targeted lightning strike telegraphs requiring dodge timing (Hotkey `Shift`).
+   - Spawn a Tribulation Avatar boss encounter during major ascension trials.
 
-2. **Task 5.3: Heavenly Tribulation Lightning Event**:
-   - Build server-authoritative Tribulation Lightning Strike event when attempting Golden Core or Nascent Soul breakthroughs.
-   - Random lightning strike strikes down from the sky, requiring player dodge timing (Hotkey `Shift`) to survive the breakthrough.
+2. **Refinement Queue (Registered Known Issues)**:
+   - **Breakthrough Meditation Pose Transition**: Update breakthrough keybind (`B`) to transition the player out of regular meditation into a dedicated **Breakthrough Meditation Pose** prior to lightning strikes.
+   - **Meditation Pose Floating Smoothing**: Replace or adjust animation keyframe speed for `rbxassetid://116333173300889` to eliminate rapid internal up/down bobbing.
+   - **Combat Weapon Motion Synchronization**: Synchronize character animation keyframe events with `HitboxManager.luau` active damage frames for Flying Swords, Spears, and Gauntlets.
 
-3. **Phase 6: NPC AI & Boss Encounter Engines**:
-   - Construct server-authoritative NPC enemy AI (*Demonic Beasts, Cultivator Rivals, Heavenly Demon Boss*).
-   - Integrate `BossHealthBar` UI updates with live boss phase transitions.
+3. **Task 5.4: Sect / Faction System & Alignment Mechanics**:
+   - Construct Orthodox vs. Unorthodox sect selection, sect contribution ranks, and reputation alignment meters.
+
+4. **Task 5.5: World Zone Progression & Spirit Veins**:
+   - Construct Spirit Vein zones (+100% to +300% Qi gather rates) and environmental domain hazards (Miasma, Frost, Fire).
+
+5. **Phase 6: Data Persistence & Infrastructure**:
+   - Integrate ProfileService / DataStore v2 for saving inventory, spirit pills, stats, and cultivation progress.
