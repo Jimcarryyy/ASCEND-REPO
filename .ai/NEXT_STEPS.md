@@ -1,20 +1,16 @@
-# ASCEND — Next Steps
+# Next Steps & Immediate Priorities
 
-## 🚀 Immediate Next Steps (Task 2.2)
+## Immediate Tasks
 
-1. **Set Up Central Registry Configurations in Roblox Studio**:
-   - Create `ReplicatedStorage/Shared/Configs/UIAssets.luau` to map all `rbxassetid://` references.
-   - Create `ReplicatedStorage/Shared/Configs/RarityConfig.luau` mapping Mortal to Immortal grade hex colors.
+1. **Task 5.2: Alchemy & Spirit Pill Crafting System**:
+   - Create `ReplicatedStorage/Shared/Configs/AlchemyConfig.luau` for herb/core recipes and pill effects (*Breakthrough Pill, Qi Gathering Pill, Healing Pill*).
+   - Create `ServerScriptService/Server/Cultivation/AlchemyManager.luau` to handle furnace crafting, recipe validation, and pill consumption.
+   - Connect Inventory UI item usage for alchemy materials (`icon_mat_pill_breakthrough`, `icon_mat_herb_ginseng`, `icon_mat_demon_core`).
 
-2. **Construct `StarterGui/HUDGui`**:
-   - Layout action skill bar (Slots M1, M2, Q, E, R, Shift) using `hud_slot_base.png`, `hud_slot_active.png`, and `hud_key_badge.png`.
-   - Layout top boss health bar (`hud_boss_frame.png`) with dynamic inner fill frame.
-   - Set up aim focus reticle (`hud_reticle_dot.png`).
+2. **Task 5.3: Heavenly Tribulation Lightning Event**:
+   - Build server-authoritative Tribulation Lightning Strike event when attempting Golden Core or Nascent Soul breakthroughs.
+   - Random lightning strike strikes down from the sky, requiring player dodge timing (Hotkey `Shift`) to survive the breakthrough.
 
-3. **Construct `StarterGui/InventoryGui`**:
-   - Build main modal panel (`panel_modal_bg.png`) with header banner (`panel_header_banner.png`) and section dividers (`panel_divider_line.png`).
-   - Create item grid container using `panel_grid_slot.png` with dynamic `UIStroke` rarity borders.
-   - Add primary action button (`panel_button_primary.png`).
-
-4. **Implement Client UI Scripts**:
-   - Create client-side UI controller to handle slot keybind labels, active skill highlights, cooldown masks, and inventory item rendering.
+3. **Phase 6: NPC AI & Boss Encounter Engines**:
+   - Construct server-authoritative NPC enemy AI (*Demonic Beasts, Cultivator Rivals, Heavenly Demon Boss*).
+   - Integrate `BossHealthBar` UI updates with live boss phase transitions.

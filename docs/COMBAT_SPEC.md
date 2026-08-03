@@ -82,3 +82,58 @@ Attacker Continues        Attacker Stunned (1.2s)     Qi Drained
 - CritRoll = math.random() <= (SoulForce * 0.003)
 - FinalDamage = CritRoll ? (RawDamage * (1.5 + (SoulForce * 0.005))) : RawDamage
 - DamageTaken = FinalDamage * (100 / (100 + TargetArmor))
+
+
+# Combat Specification — ASCEND
+
+Technical specification for ASCEND's server-authoritative combat engine, keybind mappings, multi-weapon systems, and visual feedback pipeline.
+
+---
+
+## 🎮 Classical ARPG Control Mappings
+
+* **LMB**: Light Attack M1 Combo String (Steps 1 → 2 → 3 → Finisher 4).
+* **F**: Heavy Attack / Parry / Heavy Slam.
+* **Q**: Special Technique 1 (*Sword Tempest / Parry Qi Shield / Hundred Palms 360*).
+* **E**: Special Technique 2 (*Telekinesis Thrust / Whirlwind Sweep / Mountain Palm*).
+* **R**: Ultimate Technique (*Sword Barrage / Dragon Charge / Earth Shattering Ground Slam*).
+* **Shift**: Directional Physical Dodge / Windstep Dash (`AssemblyLinearVelocity` impulse).
+* **RMB**: Reserved 100% for free Camera Rotation (zero attack firing conflict).
+* **1, 2, 3**: Live Weapon Swapping (*1 = Flying Sword, 2 = Spear, 3 = Gauntlet*).
+* **G, B**: Qi Meditation Toggle and Realm Breakthrough.
+
+---
+
+## ⚔️ Weapon Combat Systems
+
+### 1. Flying Sword
+* **M1 Combo**: 4-step telekinesis slash string (15 → 15 → 20 → 35 damage).
+* **F Heavy Slam**: Downward heavy shockwave (40 damage).
+* **Q Sword Tempest**: 360° swirling blade vortex (60 damage).
+* **E Telekinesis Thrust**: Forward piercing lunge (80 damage).
+* **R Sword Barrage**: Multi-blade rain strike (120 damage).
+
+### 2. Spear
+* **M1 Combo**: 4-step thrust string with forward lunge physics (18 → 18 → 24 → 42 damage 360° sweep).
+* **F Vaulting Slam**: Airborne impact slam (45 damage).
+* **Q Serpent Thrust**: High-speed forward lunge (65 damage).
+* **E Whirlwind Sweep**: Wide 360° clearing sweep (85 damage).
+* **R Dragon Spirit Charge**: Piercing dragon charge (135 damage).
+
+### 3. Gauntlets (Martial Arts)
+* **M1 Combo**: 4-step rapid punch string (14 → 14 → 22 → 38 damage uppercut).
+* **F Qi Shield Parry**: Defensive stance / block.
+* **Q Hundred Palms**: 360° rapid palm barrage (75 damage).
+* **E Mountain Palm**: Heavy forward shockwave thrust (90 damage).
+* **R Ground Slam**: Earth shattering slam with vertical launch knockback (140 damage).
+
+---
+
+## 🛡️ Hitbox Engine & Attachment Architecture
+
+* **Server Hitboxes** (`HitboxManager.luau`): Server-authoritative `Workspace:GetPartBoundsInBox` spatial queries. Applies server damage and linear velocity physics knockbacks.
+* **Motor6D Attachment** (`WeaponManager.luau`): Attaches custom `MeshPart` / `Model` / `Tool` handles directly to `RightHand.RightGripAttachment` via `Motor6D`. Supports custom `Grip` attachments, native `Tool.Grip`, and procedural Qi energy placeholders.
+* **Client Juice & VFX** (`CombatVFXController.luau`):
+  * **Floating Damage Numbers**: Animated 3D BillboardGuis over damaged enemies.
+  * **Camera Shake**: Impulse-driven camera shake on heavy attacks.
+  * **White Slash Trails**: Native Roblox `Trail` drawing crisp white 3D slash arcs during swings.

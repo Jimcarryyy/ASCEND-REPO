@@ -109,3 +109,72 @@ Instead of generic Western rarities, items and weapons scale across authentic **
 | icon_status_poison | Corrosive Debuff | Green Toxic Venom Qi droplet |
 | icon_status_tribulation_burn | Fire Debuff | Heavenly Crimson Flame aura burning character |
 | icon_status_body_tempered | Defense Buff | Golden Bell Shield aura covering character |
+
+
+# Asset Manifest — ASCEND
+
+Central asset ID mapping for all UI textures, weapon meshes, animation tracks, and audio SFX used across ASCEND.
+
+---
+
+## 🎨 UI Textures (`UIAssets.luau`)
+
+### HUD Assets
+* **Reticle Dot**: `rbxassetid://91967824711199`
+* **Slot Base**: `rbxassetid://130801066203315`
+* **Key Badge**: `rbxassetid://100047016230704`
+* **Boss Frame**: `rbxassetid://135743022798866`
+* **Slot Active**: `rbxassetid://101243757444363`
+* **Tribulation Bar**: `rbxassetid://116053311300978`
+* **Cooldown Mask**: `rbxassetid://122590929808037`
+
+### Panel Assets
+* **Modal Background**: `rbxassetid://107541216755976`
+* **Header Banner**: `rbxassetid://98859547252438`
+* **Divider Line**: `rbxassetid://84097505475730`
+* **Button Primary**: `rbxassetid://85491533300951`
+* **Grid Slot**: `rbxassetid://102206331438130`
+
+### Weapon Icons
+* **Flying Sword**: `rbxassetid://91700918054626`
+* **Spear**: `rbxassetid://137933099173294`
+* **Gauntlet**: `rbxassetid://139039770600421`
+* **Robes**: `rbxassetid://89364653325641`
+* **Pendant**: `rbxassetid://82725794143925`
+* **Ring**: `rbxassetid://91941666846046`
+* **Talisman Banner**: `rbxassetid://80831618004196`
+
+### Skill Icons
+* **M1 Sword Art**: `rbxassetid://105049604836680`
+* **Heavy Slam**: `rbxassetid://112434505017874`
+* **Sword Tempest**: `rbxassetid://78370022706412`
+* **Dragon Roar / Thrust**: `rbxassetid://125652382062875`
+* **Tribulation Bolt / Barrage**: `rbxassetid://128833809862475`
+* **Dodge Windstep**: `rbxassetid://112980465072041`
+* **Parry Qi Shield**: `rbxassetid://102896450348273`
+* **Hundred Palms**: `rbxassetid://99885781952768`
+
+### Material & Status Icons
+* **Low Spirit Stone**: `rbxassetid://86714482204043`
+* **High Spirit Stone**: `rbxassetid://103503361995261`
+* **Breakthrough Pill**: `rbxassetid://126575322817243`
+* **Qi Gathering Pill**: `rbxassetid://88019278886655`
+* **Ginseng Herb**: `rbxassetid://109989287833700`
+* **Demon Core**: `rbxassetid://99733786523930`
+
+---
+
+## 🎬 Animation Tracks (`AnimationConfig.luau`)
+
+* **Custom Floating Meditation**: `rbxassetid://116333173300889`
+* **R15 Tool Slash**: `rbxassetid://507768375`
+* **R15 Tool Lunge / Thrust**: `rbxassetid://507767714`
+* **R15 Overhead Cast / Slam**: `rbxassetid://507765644`
+
+---
+
+## 🔊 Audio SFX (`CombatVFXController.luau`)
+
+* **Weapon Swing SFX**: `rbxassetid://1222216`
+* **Impact Hit SFX**: `rbxassetid://5633903110`
+* **Spirit Impact Particle Texture**: `rbxassetid://132857904784003`

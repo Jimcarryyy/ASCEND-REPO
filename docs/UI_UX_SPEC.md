@@ -32,7 +32,7 @@ All UI elements reside in StarterGui under two primary master ScreenGui containe
     - BottomCenter_Abilities (Frame, AnchorPoint: 0.5, 1, Position: {0.5, 0}, {0.96, 0})
       - UIListLayout (FillDirection: Horizontal, Padding: UDim.new(0.02, 0))
       - Slot_M1 (Frame) -> Icon (ImageLabel) -> KeybindHint (TextLabel)
-      - Slot_M2 (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
+      - Slot_F (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
       - Slot_Q (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
       - Slot_E (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
       - Slot_R (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
@@ -68,6 +68,31 @@ To maximize legibility during intense action combat:
 | Energy / Mana Bar | #1E1E23 (Dark Charcoal) | #2192FF (Celestial Blue) | #74B9FF |
 | Cooldown Active | #000000 (80% Alpha) | N/A (Vertical Sweep) | #FFFFFF (Timer Text) |
 | Boss Health Bar | #141418 (Deep Black) | #9C2C77 (Royal Violet) | #FFD700 (Gold Border) |
+
+
+# UI/UX Specification — ASCEND
+
+Specification for user interface layout, HUD design, action skill bar, and camera presentation.
+
+---
+
+## 🗡️ Minimalist Action Skill Bar (`HUDGui`)
+
+* **Position**: Bottom-center screen (`AnchorPoint = (0.5, 1)`, `Position = {0.5, 0, 0.95, 0}`).
+* **6 Active Slots**: `Slot_M1` (LMB), `Slot_F` (F), `Slot_Q` (Q), `Slot_E` (E), `Slot_R` (R), `Slot_Shift` (SHIFT).
+* **Dynamic Skill Swap**: Weapon swapping (**`1`**, **`2`**, **`3`**) fires `UpdateSkillState` from the server, instantly updating all 6 HUD skill slot icons.
+* **Cooldown Overlay**:
+  * Semi-transparent dark sweeping box (`BackgroundColor3 = Black`, `BackgroundTransparency = 0.45`, `ClipsDescendants = true`).
+  * Center live timer text (`CooldownText` TextLabel, `Font = GothamBold`, `TextScaled = true`) formatted in real-time decimals (e.g. `4.5`, `3.1`, `0.8`).
+* **Disabled CoreGui**: Default Roblox Backpack hotbar (`CoreGuiType.Backpack`) is disabled via script to prevent UI clutter.
+
+---
+
+## 🧘 Meditation Camera & Visual Wrap
+
+* **Front-View Cinematic Camera**: When meditating (**`G`**), client camera switches to `Scriptable` and positions at `{0, 0.8, -6.0}` facing the character's front.
+* **Lightweight Body Highlight**: Ethereal `Highlight` wrapper (`FillTransparency = 0.95`, `OutlineTransparency = 0.25`) wrapping player clothing, face, and body in cultivation realm aura.
+* **Floor Light Ring**: `PointLight` ring placed on the floor under the hovering cultivator.
 
 ---
 

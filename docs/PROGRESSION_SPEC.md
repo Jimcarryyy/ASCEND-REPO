@@ -17,6 +17,40 @@ Character progression is structured around Cultivation Realms instead of generic
 | Foundation Establishment | Levels 21 – 40 (V2 Scope) | Foundation Pill + Heavenly Lightning | Skill Slot E (Archetype Skill) |
 | Golden Core | Levels 41 – 60 (V2 Scope) | Core Formation Dan + Boss Trial | Skill Slot R (Ultimate Skill) |
 
+# Progression Specification — ASCEND
+
+Technical specification for cultivation realms, Qi gathering mechanics, breakthrough thresholds, and stat scaling.
+
+---
+
+## 🌌 Cultivation Realm Hierarchy
+
+| Realm Name | Tier | Max Qi Reservoir | Gather Rate (Qi/sec) | Health Multiplier | Aura Color |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Qi Condensation** | 1 | 100 Qi | 15 Qi/s | 1.0x (100 HP) | Cyan (`#00DCFF`) |
+| **Foundation Establishment** | 2 | 250 Qi | 30 Qi/s | 1.5x (150 HP) | Emerald Jade (`#32FF78`) |
+| **Golden Core** | 3 | 500 Qi | 50 Qi/s | 2.2x (220 HP) | Imperial Gold (`#FFD700`) |
+| **Nascent Soul** | 4 | 1,000 Qi | 85 Qi/s | 3.5x (350 HP) | Spirit Purple (`#B432FF`) |
+| **Heavenly Tribulation** | 5 | 2,500 Qi | 120 Qi/s | 5.0x (500 HP) | Crimson Tribulation (`#FF1E1E`) |
+
+---
+
+## 🧘 Qi Meditation Mechanics (`Hotkey G`)
+
+* **Stance**: Avatar plays custom floating cultivation pose (`rbxassetid://116333173300889`).
+* **Hovering**: Anchored 2.2 studs steadily above ground with zero physics bobbing/jitter.
+* **Aura Wrap**: Lightweight `Highlight` instance (95% fill transparency, 25% outline transparency) wrapping character body in realm aura color.
+* **Cinematic Camera**: Client camera zooms to a steady, front-facing close-up facing the character.
+* **Control Lock**: Movement keys (WASD, Space, LMB, hotkeys) are locked during meditation—only **Hotkey `G`** exits meditation.
+
+---
+
+## ⚡ Breakthrough Mechanics (`Hotkey B`)
+
+1. **Validation**: Player must absorb Qi until `CurrentQi >= MaxQi`.
+2. **Execution**: Pressing **`B`** advances player to the next Realm tier.
+3. **Stat Scaling**: Instantly resets `CurrentQi` to 0, applies the new realm's `HealthMultiplier` to `Humanoid.MaxHealth` and `Health`, and unlocks the new realm's Qi aura color.
+
 ### Experience Formula
 Required Experience to reach Level N from Level N-1 is calculated on the server:
 

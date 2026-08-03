@@ -1,33 +1,38 @@
-# ASCEND — Current Active Task
+# Current Task: ASCEND Development Progress
 
-## 🎯 Active Objective
-**Task 2.2: Roblox Studio UI Construction & Client Layout Setup**
-
----
-
-## 📋 Task Checklist
-
-### Phase 2: UI/UX & Asset Pipeline
-- [x] **Task 2.1: 2D Game Image Generation & Asset Audit**
-  - [x] Complete Phase 1 Game Specifications in `docs/`
-  - [x] Create `docs/ASSET_MANIFEST.md` and `docs/AI_PROMPT_GUIDE.md`
-  - [x] Audit HUD assets (Category A) — Minimalist dark slate containers, empty shells, key badges, boss bar, reticle.
-  - [x] Audit Modal Panels (Category B) — Dark obsidian modal background, banner, divider line, grid slot, primary button.
-  - [x] Audit Weapons & Gear Icons (Category C) — Flying sword, spear, gauntlet, robes, pendant, ring (Flat 2D cell-shaded vector).
-  - [x] Audit Martial Technique Skill Icons (Category D) — M1, M2, Dodge, Parry, Tempest, Dragon, Palms, Lightning (Flat 2D vector emblems).
-  - [x] Refine Currencies & Pills (Category E) — Standalone spirit stones, alchemy pills, spirit herbs, demon cores (No plates/dishes).
-  - [x] Audit Status Effect Indicators (Category F) — Qi deviation, poison, tribulation burn, golden body.
-  - [x] Refine Rarity System (Category G) — Integrated native Roblox `UIStroke` color system (`#FFFFFF`, `#38E54D`, `#2192FF`, `#9C2C77`, `#FFD700`, `#FF1E1E`).
-
-- [ ] **Task 2.2: Roblox Studio UI Construction & Layout**
-  - [ ] Create central asset registry script `ReplicatedStorage/Shared/Configs/UIAssets.luau`
-  - [ ] Create rarity color configuration `ReplicatedStorage/Shared/Configs/RarityConfig.luau`
-  - [ ] Build Minimalist HUD Layout in `StarterGui/HUDGui`
-  - [ ] Build Inventory & Stats Modal Window in `StarterGui/InventoryGui`
-  - [ ] Set up client-side UI controller scripts for dynamic skill slot & inventory slot updates
+## Active Milestone
+**Phase 5: Cultivation & Character Progression Systems**
 
 ---
 
-## 📌 Notes & Technical Guidance
-* **Empty Shell Rule:** All UI frames, containers, and slots in Studio are pure blank shells. All text, numbers, progress bars, and icon overlays are managed dynamically via Luau client scripts.
-* **Rarity Styling:** Use native Roblox `UIStroke` on `panel_grid_slot` for 100% crisp vector rarity borders across all screen resolutions without image memory overhead.
+## Task Progress
+
+### Phase 1: Environment & Spatial Layout
+- [x] **Task 1.1**: World Scale & Zone Layout Setup
+- [x] **Task 1.2**: Cultivation Map Visual Pass
+
+### Phase 2: User Interface & Asset Integration
+- [x] **Task 2.1**: UI Visual Asset Prep & Registry Mapping (`UIAssets.luau`, `RarityConfig.luau`)
+- [x] **Task 2.2**: Roblox Studio UI Construction & Client Layout Setup (`HUDGui`, `InventoryGui`, `HUDController.luau`, `InventoryController.luau`)
+
+### Phase 3: Core Framework & Networking Setup
+- [x] **Task 3.1**: Server-Authoritative Combat State Engine & Network Remotes (`RemoteEvents.luau`, `CombatStateManager.luau`, `ServerMain.server.luau`)
+- [x] **Task 3.2**: Input Controller & Client Action Pipeline (`InputController.luau`, mouse 3D world targeting payloads, Classical ARPG keybind scheme)
+
+### Phase 4: Weapon Systems & Combat Mechanics
+- [x] **Task 4.1**: Flying Sword Combat Mechanics (`FlyingSwordConfig.luau`, `FlyingSwordServer.luau`, `HitboxManager.luau`)
+- [x] **Task 4.2**: Spear Weapon Mechanics & Live Swapping (`SpearConfig.luau`, `SpearServer.luau`, `WeaponManager.luau`, hotkeys `1` and `2`)
+- [x] **Task 4.3**: Client Combat VFX, Animations & Impact FX (`CombatVFXController.luau`, 3D floating damage text, camera shake, hit impact particles, white slash trails, swing & hit SFX)
+- [x] **Task 4.4**: Character Animation Controller & Responsive Combat Movement (`AnimationController.luau`, `AnimationConfig.luau`, Motor6D attachments, `Tool.Grip` compatibility, procedural Qi placeholders)
+- [x] **Task 4.5**: Gauntlet Weapon Mechanics & Dual Qi Bracers (`GauntletConfig.luau`, `GauntletServer.luau`, 360° Hundred Palms, Ground Slam, hotkey `3`)
+
+### Phase 5: Cultivation & Character Progression Systems
+- [x] **Task 5.1**: Cultivation Realm System & Qi Meditation Mechanics (`CultivationConfig.luau`, `CultivationManager.luau`, Hotkey `G` meditation, custom floating pose, steady hover, light ethereal body wrap, cinematic front camera, Hotkey `B` breakthrough, health stat scaling)
+- [ ] **Task 5.2**: Alchemy & Spirit Pill Crafting System (`AlchemyConfig.luau`, `AlchemyManager.luau`, crafting furnace, herb/core recipes)
+- [ ] **Task 5.3**: Heavenly Tribulation Lightning Boss Event
+
+---
+
+## Current Status
+- **Current Task**: Task 5.1 Completed and Verified in Roblox Studio.
+- **Next Task**: Task 5.2 — Alchemy & Spirit Pill Crafting System.
