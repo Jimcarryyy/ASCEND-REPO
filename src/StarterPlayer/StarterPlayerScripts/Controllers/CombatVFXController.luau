@@ -3,7 +3,7 @@
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
     Client-side visual and audio effects handler for ASCEND combat and Heavenly Tribulation events.
-    Renders camera shake, floating damage text, slash trails, lightning beams, weapon hit sounds, and ascension bursts.
+    Renders weapon skill particles, shockwaves, damage numbers, trails, lightning strikes, and ascension bursts.
 ]]
 
 local Players = game:GetService("Players")
@@ -21,13 +21,38 @@ local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
 -- Audio Asset Mappings
-local SWING_SOUND_ID = "rbxassetid://134671877618939"     -- Universal Swing for all weapons
-local THUNDER_SOUND_ID = "rbxassetid://9120021541"   -- Heavenly Tribulation Thunder
+local SWING_SOUND_ID = "rbxassetid://134671877618939"
+local THUNDER_SOUND_ID = "rbxassetid://9120021541"
 
 local WEAPON_HIT_SOUNDS = {
-	FlyingSword = "rbxassetid://140462043853173",       -- Sword Hit Impact
-	Gauntlet    = "rbxassetid://138208560796742",       -- Punch/Gauntlet Hit Impact
-	Spear       = "rbxassetid://135278368445325",       -- Spear Piercing Hit Impact
+	FlyingSword = "rbxassetid://140462043853173",
+	Gauntlet    = "rbxassetid://138208560796742",
+	Spear       = "rbxassetid://135278368445325",
+}
+
+local SKILL_SOUNDS: { [string]: any } = {
+	Shift = "rbxassetid://74818885604525",
+
+	FlyingSword = {
+		F = "rbxassetid://80602493348966",
+		Q = "rbxassetid://127120106558731",
+		E = "rbxassetid://109735549169421",
+		R = "rbxassetid://121761867811041",
+	},
+
+	Gauntlet = {
+		F = "rbxassetid://71854224710325",
+		Q = "rbxassetid://74149238738530",
+		E = "rbxassetid://117788607414639",
+		R = "rbxassetid://89831667531136",
+	},
+
+	Spear = {
+		F = "rbxassetid://75659442102661",
+		Q = "rbxassetid://107036259074552",
+		E = "rbxassetid://106487622631513",
+		R = "rbxassetid://1835331298",
+	},
 }
 
 function CombatVFXController.Init()
@@ -37,11 +62,11 @@ function CombatVFXController.Init()
 		CombatVFXController.OnCombatAction(attacker, skillKey, payload)
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized with Weapon SFX.")
+	print("[ASCEND] CombatVFXController Initialized with Skill Particles & SFX.")
 end
 
 function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, payload: any?)
-	-- 1. Handle Heavenly Tribulation Visuals & SFX
+	-- 1. Handle Heavenly Tribulation
 	if skillKey == "TribulationTelegraph" and payload then
 		CombatVFXController.CreateTelegraphRing(payload.TargetPosition, payload.TelegraphTime or 1.5, payload.AuraColor)
 		return
@@ -58,45 +83,51 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 		return
 	end
 
-	-- 2. Standard Weapon Swing Trails & Swing SFX
 	local attackerChar = attacker and attacker.Character
+	local weaponType = (payload and payload.WeaponType)
+		or (attackerChar and attackerChar:GetAttribute("WeaponType"))
+		or "FlyingSword"
+
+	-- 2. Play Skill Audio, Trails & Particles
 	if attackerChar then
-		if skillKey == "M1" or skillKey == "F" or skillKey == "Q" or skillKey == "E" or skillKey == "R" then
-			CombatVFXController.TriggerWeaponTrail(attackerChar, 0.25)
-			CombatVFXController.PlaySound(SWING_SOUND_ID, attackerChar:FindFirstChild("HumanoidRootPart") or attackerChar, 0.6)
-		elseif skillKey == "Shift" then
-			CombatVFXController.TriggerShiftDashTrail(attackerChar, 0.3)
+		local hrp = attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if hrp then
+			if skillKey == "Shift" then
+				CombatVFXController.TriggerShiftDashTrail(attackerChar, 0.3)
+				CombatVFXController.PlaySound(SKILL_SOUNDS.Shift, hrp, 0.7)
+			elseif skillKey == "M1" then
+				CombatVFXController.TriggerWeaponTrail(attackerChar, 0.25)
+				CombatVFXController.PlaySound(SWING_SOUND_ID, hrp, 0.6)
+			elseif skillKey == "F" or skillKey == "Q" or skillKey == "E" or skillKey == "R" then
+				CombatVFXController.TriggerWeaponTrail(attackerChar, 0.35)
+				
+				local weaponSkillMap = SKILL_SOUNDS[weaponType] or SKILL_SOUNDS.FlyingSword
+				local skillSoundId = weaponSkillMap[skillKey] or SWING_SOUND_ID
+				CombatVFXController.PlaySound(skillSoundId, hrp, 0.85)
+
+				-- Render Procedural Skill Visual Effects
+				CombatVFXController.RenderSkillParticleEffect(attackerChar, weaponType, skillKey)
+			end
 		end
 	end
 
-	-- 3. Camera Shake for local player attacks
+	-- 3. Camera Shake for Local Attacker
 	if attacker == player then
-		if skillKey == "F" or skillKey == "R" or skillKey == "E" then
-			CombatVFXController.ShakeCamera(0.25, 0.7)
-		elseif skillKey == "M1" or skillKey == "Q" then
-			CombatVFXController.ShakeCamera(0.12, 0.3)
+		if skillKey == "R" then
+			CombatVFXController.ShakeCamera(0.35, 1.2)
+		elseif skillKey == "F" or skillKey == "E" or skillKey == "Q" then
+			CombatVFXController.ShakeCamera(0.2, 0.6)
+		elseif skillKey == "M1" then
+			CombatVFXController.ShakeCamera(0.1, 0.25)
 		end
 	end
 
-	-- 4. Hit Impacts & Weapon-Specific Hit Sounds
+	-- 4. Damage Numbers & Hit Impacts
 	if payload and type(payload) == "table" and payload.Damage and payload.Damage > 0 then
 		if payload.TargetPosition then
 			CombatVFXController.CreateDamageNumber(payload.TargetPosition, payload.Damage, payload.IsCrit)
 			CombatVFXController.CreateHitImpactEffect(payload.TargetPosition)
 			
-			-- Resolve Weapon Type: 1) Payload -> 2) Attacker Character Attribute -> 3) Equipped Model -> Fallback
-			local detectedWeapon = payload.WeaponType
-			if not detectedWeapon and attackerChar then
-				detectedWeapon = attackerChar:GetAttribute("WeaponType")
-			end
-			if not detectedWeapon and attackerChar then
-				local equipped3D = attackerChar:FindFirstChild("Equipped3DWeapon") or attackerChar:FindFirstChild("Equipped3DWeapon", true)
-				if equipped3D then
-					detectedWeapon = equipped3D:GetAttribute("WeaponType")
-				end
-			end
-
-			local weaponType = detectedWeapon or "FlyingSword"
 			local hitSoundId = WEAPON_HIT_SOUNDS[weaponType] or WEAPON_HIT_SOUNDS.FlyingSword
 
 			local hitPart = Instance.new("Part")
@@ -111,6 +142,242 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 		end
 	end
 end
+
+--------------------------------------------------------------------------------
+-- PROCEDURAL SKILL VISUAL EFFECTS RENDERER
+--------------------------------------------------------------------------------
+
+function CombatVFXController.RenderSkillParticleEffect(character: Model, weaponType: string, skillKey: string)
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return end
+
+	if weaponType == "FlyingSword" then
+		local color = Color3.fromRGB(0, 220, 255) -- Cyan Qi
+		if skillKey == "F" then
+			-- Piercing Qi Beam Thrust
+			local beam = Instance.new("Part")
+			beam.Size = Vector3.new(1.2, 1.2, 14)
+			beam.CFrame = hrp.CFrame * CFrame.new(0, 0, -8)
+			beam.Color = color
+			beam.Material = Enum.Material.Neon
+			beam.CanCollide = false
+			beam.Anchored = true
+			beam.Parent = Workspace
+
+			TweenService:Create(beam, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(0.1, 0.1, 16),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(beam, 0.35)
+
+		elseif skillKey == "Q" then
+			-- Sword Tempest Ring
+			local ring = Instance.new("Part")
+			ring.Shape = Enum.PartType.Cylinder
+			ring.Size = Vector3.new(0.4, 4, 4)
+			ring.CFrame = hrp.CFrame * CFrame.Angles(0, 0, math.rad(90))
+			ring.Color = color
+			ring.Material = Enum.Material.Neon
+			ring.Transparency = 0.2
+			ring.CanCollide = false
+			ring.Anchored = true
+			ring.Parent = Workspace
+
+			TweenService:Create(ring, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(0.4, 18, 18),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(ring, 0.45)
+
+		elseif skillKey == "E" then
+			-- Flying Sword Surge
+			local swordWave = Instance.new("Part")
+			swordWave.Size = Vector3.new(6, 0.4, 2)
+			swordWave.CFrame = hrp.CFrame * CFrame.new(0, 0, -3)
+			swordWave.Color = color
+			swordWave.Material = Enum.Material.Neon
+			swordWave.CanCollide = false
+			swordWave.Anchored = true
+			swordWave.Parent = Workspace
+
+			TweenService:Create(swordWave, TweenInfo.new(0.4, Enum.EasingStyle.Linear), {
+				CFrame = hrp.CFrame * CFrame.new(0, 0, -30),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(swordWave, 0.45)
+
+		elseif skillKey == "R" then
+			-- Heavenly Sword Beam Blast (ULT)
+			local burst = Instance.new("Part")
+			burst.Size = Vector3.new(8, 28, 8)
+			burst.CFrame = hrp.CFrame * CFrame.new(0, 8, -12)
+			burst.Color = Color3.fromRGB(255, 220, 100)
+			burst.Material = Enum.Material.Neon
+			burst.CanCollide = false
+			burst.Anchored = true
+			burst.Parent = Workspace
+
+			TweenService:Create(burst, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(16, 36, 16),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(burst, 0.55)
+		end
+
+	elseif weaponType == "Gauntlet" then
+		local color = Color3.fromRGB(255, 170, 0) -- Imperial Gold
+		if skillKey == "F" then
+			-- Heavy Upper Fist Blast
+			local fistPart = Instance.new("Part")
+			fistPart.Shape = Enum.PartType.Ball
+			fistPart.Size = Vector3.new(4, 4, 4)
+			fistPart.Position = hrp.Position + hrp.CFrame.LookVector * 3 + Vector3.new(0, 1, 0)
+			fistPart.Color = color
+			fistPart.Material = Enum.Material.Neon
+			fistPart.CanCollide = false
+			fistPart.Anchored = true
+			fistPart.Parent = Workspace
+
+			TweenService:Create(fistPart, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(9, 9, 9),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(fistPart, 0.35)
+
+		elseif skillKey == "Q" then
+			-- Earth Rupture Ground Slam
+			local slamRing = Instance.new("Part")
+			slamRing.Shape = Enum.PartType.Cylinder
+			slamRing.Size = Vector3.new(0.5, 2, 2)
+			slamRing.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 2.8, 0)) * CFrame.Angles(0, 0, math.rad(90))
+			slamRing.Color = Color3.fromRGB(180, 100, 30)
+			slamRing.Material = Enum.Material.Slate
+			slamRing.CanCollide = false
+			slamRing.Anchored = true
+			slamRing.Parent = Workspace
+
+			TweenService:Create(slamRing, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(0.5, 22, 22),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(slamRing, 0.45)
+
+		elseif skillKey == "E" then
+			-- Hundred Palms Rapid Bursts
+			for i = 1, 4 do
+				task.delay(i * 0.08, function()
+					if not hrp or not hrp.Parent then return end
+					local p = Instance.new("Part")
+					p.Shape = Enum.PartType.Ball
+					p.Size = Vector3.new(2.5, 2.5, 2.5)
+					p.Position = hrp.Position + hrp.CFrame.LookVector * (2 + i * 1.5) + Vector3.new(math.random(-1,1), math.random(-1,1), 0)
+					p.Color = color
+					p.Material = Enum.Material.Neon
+					p.CanCollide = false
+					p.Anchored = true
+					p.Parent = Workspace
+
+					TweenService:Create(p, TweenInfo.new(0.2, Enum.EasingStyle.Quad), { Size = Vector3.new(0,0,0), Transparency = 1 }):Play()
+					Debris:AddItem(p, 0.25)
+				end)
+			end
+
+		elseif skillKey == "R" then
+			-- Dragon Strikeforce Blast (ULT)
+			local dragonPart = Instance.new("Part")
+			dragonPart.Size = Vector3.new(10, 10, 10)
+			dragonPart.CFrame = hrp.CFrame * CFrame.new(0, 0, -6)
+			dragonPart.Color = Color3.fromRGB(255, 80, 0)
+			dragonPart.Material = Enum.Material.Neon
+			dragonPart.CanCollide = false
+			dragonPart.Anchored = true
+			dragonPart.Parent = Workspace
+
+			TweenService:Create(dragonPart, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(22, 22, 22),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(dragonPart, 0.55)
+		end
+
+	elseif weaponType == "Spear" then
+		local color = Color3.fromRGB(50, 255, 120) -- Emerald Jade
+		if skillKey == "F" then
+			-- Crescent Sweep Ring
+			local sweep = Instance.new("Part")
+			sweep.Shape = Enum.PartType.Cylinder
+			sweep.Size = Vector3.new(0.3, 3, 3)
+			sweep.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 1.5, 0)) * CFrame.Angles(0, 0, math.rad(90))
+			sweep.Color = color
+			sweep.Material = Enum.Material.Neon
+			sweep.CanCollide = false
+			sweep.Anchored = true
+			sweep.Parent = Workspace
+
+			TweenService:Create(sweep, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(0.3, 16, 16),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(sweep, 0.4)
+
+		elseif skillKey == "Q" then
+			-- Piercing Dragon Charge Helix
+			local helix = Instance.new("Part")
+			helix.Size = Vector3.new(2, 2, 16)
+			helix.CFrame = hrp.CFrame * CFrame.new(0, 0, -8)
+			helix.Color = color
+			helix.Material = Enum.Material.Neon
+			helix.CanCollide = false
+			helix.Anchored = true
+			helix.Parent = Workspace
+
+			TweenService:Create(helix, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+				Size = Vector3.new(0.2, 0.2, 18),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(helix, 0.35)
+
+		elseif skillKey == "E" then
+			-- Cyclone Spear Guard Vortex
+			local vortex = Instance.new("Part")
+			vortex.Shape = Enum.PartType.Cylinder
+			vortex.Size = Vector3.new(6, 6, 6)
+			vortex.CFrame = hrp.CFrame * CFrame.Angles(math.rad(90), 0, 0)
+			vortex.Color = color
+			vortex.Material = Enum.Material.Forcefield
+			vortex.CanCollide = false
+			vortex.Anchored = true
+			vortex.Parent = Workspace
+
+			TweenService:Create(vortex, TweenInfo.new(0.5, Enum.EasingStyle.Linear), {
+				Size = Vector3.new(12, 12, 12),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(vortex, 0.55)
+
+		elseif skillKey == "R" then
+			-- Sky Piercer Meteor Slam (ULT)
+			local meteor = Instance.new("Part")
+			meteor.Size = Vector3.new(6, 120, 6)
+			meteor.Position = hrp.Position + hrp.CFrame.LookVector * 10 + Vector3.new(0, 60, 0)
+			meteor.Color = color
+			meteor.Material = Enum.Material.Neon
+			meteor.CanCollide = false
+			meteor.Anchored = true
+			meteor.Parent = Workspace
+
+			TweenService:Create(meteor, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(0.2, 120, 0.2),
+				Transparency = 1
+			}):Play()
+			Debris:AddItem(meteor, 0.45)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- UTILITY RENDER FUNCTIONS
+--------------------------------------------------------------------------------
 
 function CombatVFXController.CreateTelegraphRing(worldPos: Vector3, duration: number, color: Color3?)
 	local ring = Instance.new("Part")

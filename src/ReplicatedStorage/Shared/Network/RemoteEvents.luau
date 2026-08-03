@@ -1,8 +1,9 @@
 --!strict
 --[[
     RemoteEvents.luau
+    Location: src/ReplicatedStorage/Shared/Network/RemoteEvents.luau
     Centralized network remote management for ASCEND.
-    Dynamically creates and exposes typed RemoteEvents and RemoteFunctions.
+    Safely creates and exposes typed RemoteEvents and RemoteFunctions.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,6 +14,7 @@ export type RemoteName =
 	| "UpdateSkillState" 
 	| "SyncCooldown" 
 	| "InventoryAction" 
+	| "UpdateInventory"
 	| "BossStateUpdate"
 	| "UpdateCultivation"
 	| "AlchemyAction"
@@ -22,52 +24,63 @@ local ALL_REMOTES: { RemoteName } = {
 	"UpdateSkillState",
 	"SyncCooldown",
 	"InventoryAction",
+	"UpdateInventory",
 	"BossStateUpdate",
 	"UpdateCultivation",
 	"AlchemyAction",
 }
 
 local RemoteEvents = {}
-local remotesFolder: Folder
+local remotesFolder: Folder?
 
 function RemoteEvents.Init(): Folder
-	remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") :: Folder
-	if not remotesFolder then
-		if RunService:IsServer() then
-			remotesFolder = Instance.new("Folder")
-			remotesFolder.Name = "Remotes"
-			remotesFolder.Parent = ReplicatedStorage
-
-			-- Pre-create all registered remote events on server start
-			for _, name in ipairs(ALL_REMOTES) do
-				if not remotesFolder:FindFirstChild(name) then
-					local newRemote = Instance.new("RemoteEvent")
-					newRemote.Name = name
-					newRemote.Parent = remotesFolder
-				end
-			end
-		else
-			remotesFolder = ReplicatedStorage:WaitForChild("Remotes", 10) :: Folder
-		end
+	if remotesFolder then
+		return remotesFolder
 	end
 
-	return remotesFolder
+	local found = ReplicatedStorage:FindFirstChild("Remotes") :: Folder?
+	if found then
+		remotesFolder = found
+		return found
+	end
+
+	if RunService:IsServer() then
+		local newFolder = Instance.new("Folder")
+		newFolder.Name = "Remotes"
+		newFolder.Parent = ReplicatedStorage
+		remotesFolder = newFolder
+
+		-- Pre-create all registered remote events on server start
+		for _, name in ipairs(ALL_REMOTES) do
+			if not newFolder:FindFirstChild(name) then
+				local newRemote = Instance.new("RemoteEvent")
+				newRemote.Name = name
+				newRemote.Parent = newFolder
+			end
+		end
+		return newFolder
+	else
+		local waitedFolder = ReplicatedStorage:WaitForChild("Remotes", 10) :: Folder?
+		if not waitedFolder then
+			error("[RemoteEvents] Client timed out waiting for 'Remotes' folder in ReplicatedStorage!")
+		end
+		remotesFolder = waitedFolder
+		return waitedFolder
+	end
 end
 
 function RemoteEvents.GetRemote(name: RemoteName): RemoteEvent
-	if not remotesFolder then
-		RemoteEvents.Init()
-	end
+	local folder = RemoteEvents.Init()
 
-	local remote = remotesFolder:FindFirstChild(name) :: RemoteEvent?
+	local remote = folder:FindFirstChild(name) :: RemoteEvent?
 	if not remote then
 		if RunService:IsServer() then
 			local newRemote = Instance.new("RemoteEvent")
 			newRemote.Name = name
-			newRemote.Parent = remotesFolder
+			newRemote.Parent = folder
 			return newRemote
 		else
-			local found = remotesFolder:WaitForChild(name, 10) :: RemoteEvent?
+			local found = folder:WaitForChild(name, 10) :: RemoteEvent?
 			if not found then
 				warn("[RemoteEvents] Client timed out waiting for remote: " .. tostring(name))
 				local fallback = Instance.new("RemoteEvent")

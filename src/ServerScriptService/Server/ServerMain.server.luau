@@ -1,27 +1,23 @@
 --!strict
 --[[
     ServerMain.server.luau
-    Main server entry point for initializing core framework and state engines.
+    Location: src/ServerScriptService/Server/ServerMain.server.luau
+    Server entry point for ASCEND Roblox project.
 ]]
 
 local ServerScriptService = game:GetService("ServerScriptService")
-local Server = ServerScriptService:WaitForChild("Server")
 
-local CombatStateManager = require(Server:WaitForChild("State"):WaitForChild("CombatStateManager") :: ModuleScript)
-local WeaponManager = require(Server:WaitForChild("Combat"):WaitForChild("WeaponManager") :: ModuleScript)
-local CultivationManager = require(Server:WaitForChild("Cultivation"):WaitForChild("CultivationManager") :: ModuleScript)
+local RemoteEvents = require(game:GetService("ReplicatedStorage").Shared.Network.RemoteEvents)
+RemoteEvents.Init()
 
--- Initialize Server Engines
-if CombatStateManager and type(CombatStateManager) == "table" then
-	CombatStateManager.Init()
-end
+local CombatStateManager = require(ServerScriptService.Server.State.CombatStateManager)
+local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
+local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
 
-if WeaponManager and type(WeaponManager) == "table" then
-	WeaponManager.Init()
-end
-
-if CultivationManager and type(CultivationManager) == "table" then
-	CultivationManager.Init()
-end
+CombatStateManager.Init()
+WeaponManager.Init()
+CultivationManager.Init()
+InventoryManager.Init()
 
 print("[ASCEND] Server Main Engine Initialized Successfully!")
