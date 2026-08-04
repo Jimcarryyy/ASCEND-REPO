@@ -56,14 +56,16 @@ function CultivationManager.Init()
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
-	playerData[player] = {
-		Realm = "QiCondensation",
-		CurrentQi = 0,
-		IsMeditating = false,
-		IsTribulationActive = false,
-		TribulationWave = 0,
-		TotalWaves = 0,
-	}
+	if not playerData[player] then
+		playerData[player] = {
+			Realm = "QiCondensation",
+			CurrentQi = 0,
+			IsMeditating = false,
+			IsTribulationActive = false,
+			TribulationWave = 0,
+			TotalWaves = 0,
+		}
+	end
 
 	player.CharacterAdded:Connect(function(character)
 		task.wait(0.5)
@@ -112,7 +114,6 @@ function CultivationManager.ToggleMeditation(player: Player)
 	if not pData or pData.IsTribulationActive then return end
 
 	pData.IsMeditating = not pData.IsMeditating
-
 	local character = player.Character
 	if not character then return end
 
@@ -125,11 +126,15 @@ function CultivationManager.ToggleMeditation(player: Player)
 				local realmInfo = CultivationConfig[pData.Realm]
 				if not realmInfo then break end
 
-				pData.CurrentQi = math.min(realmInfo.MaxQi, pData.CurrentQi + (realmInfo.GatherRate * 0.5))
+				-- If recovering depleted Qi, apply Fast Regen Multiplier!
+				local isRecovering = pData.CurrentQi < realmInfo.MaxQi
+				local rate = realmInfo.GatherRate * (if isRecovering then realmInfo.RegenMultiplier else 1.0)
+
+				pData.CurrentQi = math.min(realmInfo.MaxQi, pData.CurrentQi + (rate * 0.5))
 				CultivationManager.SyncClient(player)
 
 				if pData.CurrentQi >= realmInfo.MaxQi then
-					print(string.format("[CultivationManager] %s reached Max Qi for %s! Press 'B' for Breakthrough!", player.Name, realmInfo.Name))
+					print(string.format("[CultivationManager] %s at Max Qi capacity (%d/%d)! Ready for Breakthrough ('B')!", player.Name, math.round(pData.CurrentQi), realmInfo.MaxQi))
 				end
 
 				task.wait(0.5)
@@ -140,12 +145,32 @@ function CultivationManager.ToggleMeditation(player: Player)
 			task.cancel(meditationThreads[player])
 			meditationThreads[player] = nil
 		end
-
 		CultivationManager.RemoveMeditationAura(character)
 		print(string.format("[CultivationManager] %s exited Qi Meditation.", player.Name))
 	end
 
 	CultivationManager.SyncClient(player)
+end
+
+function CultivationManager.ConsumeQi(player: Player, amount: number): boolean
+	local pData = playerData[player]
+	if not pData then return false end
+
+	if pData.CurrentQi < amount then
+		return false
+	end
+
+	pData.CurrentQi = math.max(0, pData.CurrentQi - amount)
+	CultivationManager.SyncClient(player)
+	return true
+end
+
+function CultivationManager.GetDamageMultiplier(player: Player): number
+	local pData = playerData[player]
+	if not pData then return 1.0 end
+
+	local realmInfo = CultivationConfig[pData.Realm]
+	return if realmInfo then realmInfo.DamageMultiplier else 1.0
 end
 
 function CultivationManager.AttemptBreakthrough(player: Player): boolean
@@ -261,21 +286,20 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 
             -- Breakthrough Success Check
             local humanoid = character:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                pData.Realm = nextRealm
-                pData.CurrentQi = 0
-                pData.IsTribulationActive = false
-                pData.TribulationWave = 0
+			if humanoid and humanoid.Health > 0 then
+				pData.Realm = nextRealm
+				-- pData.CurrentQi is PRESERVED naturally (e.g. 100/250 Qi)!
+				pData.IsTribulationActive = false
+				pData.TribulationWave = 0
 
-                CultivationManager.RemoveMeditationAura(character)
-                CultivationManager.ApplyRealmStats(player)
+				CultivationManager.RemoveMeditationAura(character)
+				CultivationManager.ApplyRealmStats(player)
 
-                -- Trigger Ascension burst VFX
-                combatActionRemote:FireAllClients(player, "AscensionBurst", {
-                    AuraColor = CultivationConfig[nextRealm].AuraColor,
-                })
+				combatActionRemote:FireAllClients(player, "AscensionBurst", {
+					AuraColor = CultivationConfig[nextRealm].AuraColor,
+				})
 
-                print(string.format("[CultivationManager] 🔥 HEAVENLY TRIBULATION CONQUERED! %s advanced to %s!", player.Name, CultivationConfig[nextRealm].Name))
+				print(string.format("[CultivationManager] 🔥 HEAVENLY TRIBULATION CONQUERED! %s advanced to %s (Qi Preserved: %d/%d)!", player.Name, CultivationConfig[nextRealm].Name, math.round(pData.CurrentQi), CultivationConfig[nextRealm].MaxQi))
             else
                 pData.IsTribulationActive = false
                 pData.TribulationWave = 0
@@ -392,6 +416,22 @@ function CultivationManager.RemoveMeditationAura(character: Model)
 		humanoid.WalkSpeed = 16
 		humanoid.JumpPower = 50
 		humanoid.AutoRotate = true
+	end
+end
+
+
+function CultivationManager.SetPlayerData(player: Player, realm: CultivationConfig.RealmTier, currentQi: number)
+	playerData[player] = {
+		Realm = realm or "QiCondensation",
+		CurrentQi = currentQi or 0,
+		IsMeditating = false,
+		IsTribulationActive = false,
+		TribulationWave = 0,
+		TotalWaves = 0,
+	}
+
+	if player.Character then
+		CultivationManager.ApplyRealmStats(player)
 	end
 end
 

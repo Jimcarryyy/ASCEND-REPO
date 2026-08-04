@@ -9,6 +9,8 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
+local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 local SpearServer = require(ServerScriptService.Server.Combat.Weapons.SpearServer)
 local FlyingSwordServer = require(ServerScriptService.Server.Combat.Weapons.FlyingSwordServer)
@@ -114,40 +116,39 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return false end
 
-	-- 2. Validate player combat state (reject if stunned or in Qi Deviation)
+	-- 2. Validate player combat state
 	local currentState = CombatStateManager.GetPlayerState(player)
 	if currentState == "Stunned" or currentState == "QiDeviation" then
-		warn(string.format("[CombatStateManager] Request rejected for %s: player is %s", player.Name, currentState))
 		return false
 	end
 
-	-- 3. Validate skill key definition
+	-- 3. Validate skill key
 	local cooldownDuration = SKILL_COOLDOWNS[skillKey]
-	if not cooldownDuration then
-		warn(string.format("[CombatStateManager] Unknown skill key requested: %s by %s", skillKey, player.Name))
-		return false
-	end
+	if not cooldownDuration then return false end
 
 	-- 4. Check server cooldown
 	if CombatStateManager.IsSkillOnCooldown(player, skillKey) then
-		local remaining = CombatStateManager.GetRemainingCooldown(player, skillKey)
-		warn(string.format("[CombatStateManager] Skill %s on cooldown for %s (%.1fs remaining)", skillKey, player.Name, remaining))
 		return false
 	end
 
-	-- 5. Record server cooldown
+	-- 5. CHECK & CONSUME QI RESOURCE
+	local qiCost = CultivationConfig.SkillCosts[skillKey] or 0
+	if qiCost > 0 then
+		local hasQi = CultivationManager.ConsumeQi(player, qiCost)
+		if not hasQi then
+			warn(string.format("[CombatStateManager] Request rejected for %s: Insufficient Qi for skill %s (%d required).", player.Name, skillKey, qiCost))
+			return false
+		end
+	end
+
+	-- 6. Record server cooldown & Sync
 	playerCooldowns[player][skillKey] = {
 		Duration = cooldownDuration,
 		Timestamp = os.clock(),
 	}
-
-	-- 6. Trigger client UI cooldown sync
 	syncCooldownRemote:FireClient(player, skillKey, cooldownDuration)
 
-	-- 7. Broadcast skill execution with targeting payload to nearby players for VFX/SFX
-	combatActionRemote:FireAllClients(player, skillKey, payload)
-
-    -- 7. Execute weapon attack mechanics & hitboxes based on equipped weapon
+	-- 7. Execute weapon attack mechanics
 	local equippedWeapon = WeaponManager.GetEquippedWeapon(player)
 	if equippedWeapon == "Spear" then
 		payload = SpearServer.ExecuteAttack(player, skillKey, payload)
@@ -157,11 +158,7 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 		payload = FlyingSwordServer.ExecuteAttack(player, skillKey, payload)
 	end
 
-	-- 8. Broadcast skill execution with targeting payload to nearby players for VFX/SFX
 	combatActionRemote:FireAllClients(player, skillKey, payload)
-
-	local targetPosText = if payload and payload.TargetPosition then string.format(" at target (%.1f, %.1f, %.1f)", payload.TargetPosition.X, payload.TargetPosition.Y, payload.TargetPosition.Z) else ""
-	print(string.format("[CombatStateManager] Player %s executed skill %s%s (Cooldown: %.1fs)", player.Name, skillKey, targetPosText, cooldownDuration))
 	return true
 end
 

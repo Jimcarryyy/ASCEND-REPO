@@ -55,18 +55,20 @@ function InventoryManager.Init()
 end
 
 function InventoryManager.OnPlayerAdded(player: Player)
-	playerInventories[player] = {}
+	if not playerInventories[player] then
+		playerInventories[player] = {}
 
-	-- Populate Starter Items
-	InventoryManager.AddItem(player, "SpiritHealingDan", 5)
-	InventoryManager.AddItem(player, "FoundationGatheringDan", 3)
-	InventoryManager.AddItem(player, "SpiritGrass", 12)
-	InventoryManager.AddItem(player, "FlyingSwordItem", 1)
-	InventoryManager.AddItem(player, "GauntletItem", 1)
-	InventoryManager.AddItem(player, "SpearItem", 1)
+		-- Populate Starter Items if initial default load
+		InventoryManager.AddItem(player, "SpiritHealingDan", 5)
+		InventoryManager.AddItem(player, "FoundationGatheringDan", 3)
+		InventoryManager.AddItem(player, "SpiritGrass", 12)
+		InventoryManager.AddItem(player, "FlyingSwordItem", 1)
+		InventoryManager.AddItem(player, "GauntletItem", 1)
+		InventoryManager.AddItem(player, "SpearItem", 1)
 
-	task.wait(1.0)
-	InventoryManager.SyncClient(player)
+		task.wait(1.0)
+		InventoryManager.SyncClient(player)
+	end
 end
 
 function InventoryManager.OnPlayerRemoving(player: Player)
@@ -115,6 +117,24 @@ function InventoryManager.AddItem(player: Player, itemId: string, count: number)
 
 	InventoryManager.SyncClient(player)
 	return remaining == 0
+end
+
+function InventoryManager.SetInventory(player: Player, inventoryData: { [number]: InventorySlot? })
+	playerInventories[player] = {}
+	
+	if inventoryData then
+		for slotIdx, slot in pairs(inventoryData) do
+			if slot and type(slot.ItemId) == "string" and type(slot.Count) == "number" then
+				playerInventories[player][slotIdx] = {
+					ItemId = slot.ItemId,
+					Count = slot.Count,
+				}
+			end
+		end
+	end
+
+	task.wait(0.5)
+	InventoryManager.SyncClient(player)
 end
 
 function InventoryManager.UseItem(player: Player, slotIndex: number)
