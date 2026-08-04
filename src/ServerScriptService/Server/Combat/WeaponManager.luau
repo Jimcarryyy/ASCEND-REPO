@@ -1,8 +1,9 @@
 --!strict
 --[[
     WeaponManager.luau
+    Location: src/ServerScriptService/Server/Combat/WeaponManager.luau
     Modern MeshPart / Model / Tool / Procedural Qi weapon attachment manager.
-    Adds programmatic White Weapon Swing Trail attachments to all weapons.
+    Attaches 3D weapons using RightHand RightGripAttachment alignment.
 ]]
 
 local Players = game:GetService("Players")
@@ -54,10 +55,10 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 	local character = player.Character
 	if not character then return end
 
-	local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+	local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm") :: BasePart?
 	if not rightHand then return end
 
-	local leftHand = character:FindFirstChild("LeftHand") or character:FindFirstChild("Left Arm")
+	local leftHand = character:FindFirstChild("LeftHand") or character:FindFirstChild("Left Arm") :: BasePart?
 
 	-- Remove old 3D weapon models & old Motor6D grips
 	local oldWeapon = character:FindFirstChild("Equipped3DWeapon")
@@ -122,7 +123,6 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 
 	local weaponInstance: Instance?
 	local handle: BasePart?
-	local toolGripCFrame: CFrame?
 
 	if weaponTemplate then
 		weaponInstance = weaponTemplate:Clone()
@@ -136,8 +136,6 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 		end
 
 		if weaponTemplate:IsA("Tool") then
-			local tool = weaponTemplate :: Tool
-			toolGripCFrame = tool.Grip
 			handle = weaponInstance:FindFirstChild("Handle") :: BasePart?
 		elseif weaponInstance:IsA("Model") then
 			local modelInst = weaponInstance :: Model
@@ -149,9 +147,7 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 	end
 
 	-- Fallback placeholder Part if no model is found
-	local isPlaceholder = false
 	if not handle then
-		isPlaceholder = true
 		local placeholder = Instance.new("Part")
 		placeholder.Name = "Equipped3DWeapon"
 		placeholder.CanCollide = false
@@ -165,13 +161,13 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 		auraLight.Parent = placeholder
 
 		if weaponType == "FlyingSword" then
-			placeholder.Size = Vector3.new(0.3, 4.2, 0.8)
+			placeholder.Size = Vector3.new(0.5, 0.3, 4.5)
 			placeholder.Color = Color3.fromRGB(0, 220, 255)
 			auraLight.Color = Color3.fromRGB(0, 220, 255)
 		elseif weaponType == "Spear" then
-			placeholder.Size = Vector3.new(0.3, 6.5, 0.3)
-			placeholder.Color = Color3.fromRGB(255, 180, 40)
-			auraLight.Color = Color3.fromRGB(255, 180, 40)
+			placeholder.Size = Vector3.new(0.4, 0.4, 7.5)
+			placeholder.Color = Color3.fromRGB(50, 255, 120)
+			auraLight.Color = Color3.fromRGB(50, 255, 120)
 		end
 
 		weaponInstance = placeholder
@@ -198,7 +194,7 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 	trail.Name = "WeaponTrail"
 	trail.Attachment0 = topAttach
 	trail.Attachment1 = botAttach
-	trail.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255)) -- Crisp White
+	trail.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
 	trail.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0.05),
 		NumberSequenceKeypoint.new(1, 1)
@@ -207,38 +203,47 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 	trail.Enabled = false
 	trail.Parent = handle
 
-	-- Create Motor6D joint attached to RightHand
-	local rightGrip = rightHand:FindFirstChild("RightGripAttachment") :: Attachment?
-	local customGripAttachment = handle:FindFirstChild("Grip") :: Attachment? or weaponInstance:FindFirstChild("Grip", true) :: Attachment?
+	-- 1. Ensure Arm RightGripAttachment exists
+	local armGrip = rightHand:FindFirstChild("RightGripAttachment") :: Attachment?
+	if not armGrip then
+		armGrip = Instance.new("Attachment")
+		armGrip.Name = "RightGripAttachment"
+		armGrip.Position = Vector3.new(0, -1, 0)
+		armGrip.Orientation = Vector3.new(0, 0, 0)
+		armGrip.Parent = rightHand
+	end
 
+	-- 2. Read RightGripAttachment or Grip Attachment from Weapon
+	local customGripAttachment = handle:FindFirstChild("RightGripAttachment") :: Attachment? 
+		or handle:FindFirstChild("Grip") :: Attachment? 
+		or weaponInstance:FindFirstChild("RightGripAttachment", true) :: Attachment? 
+		or weaponInstance:FindFirstChild("Grip", true) :: Attachment?
+
+	-- Auto-create attachment if missing on placeholder or model
+	if not customGripAttachment then
+		local newAtt = Instance.new("Attachment")
+		newAtt.Name = "RightGripAttachment"
+		newAtt.Position = Vector3.new(0, 0, -2)
+		newAtt.Orientation = Vector3.new(0, 90, 90)
+		newAtt.Parent = handle
+		customGripAttachment = newAtt
+	end
+
+	-- 3. Connect Motor6D Joint using Attachment Alignment
 	local motor = Instance.new("Motor6D")
 	motor.Name = "WeaponGrip"
 	motor.Part0 = rightHand
 	motor.Part1 = handle
-
-	local baseCFrame = if rightGrip then rightGrip.CFrame else CFrame.new(0, 0, 0)
-
-	if isPlaceholder then
-		motor.C0 = CFrame.new(0, 0, 0)
-		motor.C1 = CFrame.new(0, 0, 0)
-	elseif toolGripCFrame then
-		motor.C0 = baseCFrame
-		motor.C1 = toolGripCFrame * CFrame.Angles(math.rad(-90), 0, 0)
-	elseif customGripAttachment then
-		motor.C0 = baseCFrame
-		motor.C1 = customGripAttachment.CFrame
-	else
-		motor.C0 = CFrame.new(0, 0, 0)
-		motor.C1 = CFrame.new(0, 0, 0)
-	end
-
+	motor.C0 = armGrip.CFrame
+	motor.C1 = customGripAttachment.CFrame
 	motor.Parent = rightHand
+
 	weaponInstance.Parent = character
+	print(string.format("[WeaponManager] Attached %s to %s via RightGripAttachment alignment.", weaponType, player.Name))
 end
 
 function WeaponManager.EquipWeapon(player: Player, weaponType: WeaponType)
-
-    local character = player.Character
+	local character = player.Character
 	if not character then return end
 
 	character:SetAttribute("WeaponType", weaponType)

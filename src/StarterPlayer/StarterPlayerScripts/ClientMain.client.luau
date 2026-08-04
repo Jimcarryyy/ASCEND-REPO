@@ -14,6 +14,7 @@ local InputController = require(Controllers:WaitForChild("InputController") :: M
 local CombatVFXController = require(Controllers:WaitForChild("CombatVFXController") :: ModuleScript)
 local AnimationController = require(Controllers:WaitForChild("AnimationController") :: ModuleScript)
 local InventoryController = require(Controllers:WaitForChild("InventoryController") :: ModuleScript)
+local AlchemyController = require(Controllers:WaitForChild("AlchemyController") :: ModuleScript)
 local OverheadUIController = require(UI:WaitForChild("OverheadUIController") :: ModuleScript)
 
 -- Initialize Client Controllers
@@ -22,6 +23,7 @@ InputController.Init()
 CombatVFXController.Init()
 AnimationController.Init()
 InventoryController.Init()
+AlchemyController.Init()
 OverheadUIController.Init()
 
 print("[ASCEND] All Client Controllers Initialized Successfully!")
