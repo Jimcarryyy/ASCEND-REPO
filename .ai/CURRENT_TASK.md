@@ -77,3 +77,41 @@
 3. **Combat Motion & Weapon Synchronization**:
    - *Issue:* Character combat movements and swings for Flying Swords, Spears, and Gauntlets are stiff and lack frame-accurate alignment with weapon swing arcs.
    - *Requirement:* Re-align animation keyframes with `HitboxManager.luau` spatial query timings and refine weapon swing arcs per archetype.
+
+
+# Current Task Specification
+
+## Active Milestone: Phase 5 — Cultivation & Character Progression Systems
+
+---
+
+### Task Status Summary
+
+| Task ID | Task Description | Status | Verification |
+| :--- | :--- | :--- | :--- |
+| **Task 5.1** | Cultivation & Qi Absorption Engine (Hotkey G) | **Completed** | Verified in Studio |
+| **Task 5.2** | Alchemy & Spirit Pill Crafting Backend System | **Completed** | Verified in Studio |
+| **Task 5.3** | Heavenly Tribulation Lightning Boss Event (Hotkey B) | **Completed** | Verified in Studio |
+| **Subtask 5.3A** | Spirit Pouch & Inventory System Panel (100% Code-Driven UI) | **Completed** | Verified in Studio |
+| **Subtask 5.3B** | Spirit Cauldron Alchemy Crafting UI Panel | **Completed** | Verified in Studio |
+
+---
+
+### Active Objectives Completed in This Session
+1. **Heavenly Tribulation Lightning Boss Event (Task 5.3)**:
+   - Configured `TribulationConfig` per realm tier in `CultivationConfig.luau`.
+   - Built server-authoritative multi-wave tribulation event loop in `CultivationManager.luau`.
+   - Spawns overhead Tribulation Storm Cloud, telegraphed ground warning rings, vertical sky-to-ground lightning strikes, camera shake, and thunder SFX.
+   - Applies damage, checks player survival, advances realm tier (`pData.Realm`), resets Qi, and triggers ascension burst VFX.
+2. **Spirit Pouch & Inventory System Panel**:
+   - Built complete server-authoritative backend (`ItemConfig.luau`, `InventoryManager.luau`) for 30 inventory slots, item stacking, pill consumption (healing HP / restoring Qi), weapon equips, and slot swapping.
+   - Built 100% code-driven UI (`InventoryController.luau`) featuring the Dark Obsidian palette, `FredokaOne` font, sharp 90° corners, 5-column grid with non-stretching fitted slots, rarity header pills, search/sort filters, independent right inspection card, and real-time 3D character viewport doll.
+3. **Spirit Cauldron Alchemy UI Panel**:
+   - Built `AlchemyController.luau` matching the exact design philosophy and color palette of the inventory.
+   - Connected to server `AlchemyManager.luau` for crafting validation and herb consumption.
+
+---
+
+### Next Active Task: Phase 6.1 — Sect Affiliation, Master NPCs & DataStore Persistence
+* **Objective 1**: Implement `DataStoreService` data persistence to permanently save player Realm tier, Current Qi, Inventory items, and Equipped Weapon across game sessions.
+* **Objective 2**: Implement Sect Faction Selection (*Azure Cloud Sect*, *Crimson Flame Sect*, *Shadow Void Sect*) and Master NPC interaction system.

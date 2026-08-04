@@ -1,22 +1,33 @@
-# Next Steps & Immediate Priorities
+# Next Steps & Project Roadmap
 
-## Immediate Tasks
+This document outlines the upcoming development tasks for ASCEND.
 
-1. **Task 5.3: Heavenly Tribulation Lightning Boss Event**:
-   - Build server-authoritative Tribulation Lightning Strike event triggered during Golden Core, Nascent Soul, or major realm breakthroughs.
-   - Implement dynamic weather transformation (dark skybox, thunder SFX) and targeted lightning strike telegraphs requiring dodge timing (Hotkey `Shift`).
-   - Spawn a Tribulation Avatar boss encounter during major ascension trials.
+---
 
-2. **Refinement Queue (Registered Known Issues)**:
-   - **Breakthrough Meditation Pose Transition**: Update breakthrough keybind (`B`) to transition the player out of regular meditation into a dedicated **Breakthrough Meditation Pose** prior to lightning strikes.
-   - **Meditation Pose Floating Smoothing**: Replace or adjust animation keyframe speed for `rbxassetid://116333173300889` to eliminate rapid internal up/down bobbing.
-   - **Combat Weapon Motion Synchronization**: Synchronize character animation keyframe events with `HitboxManager.luau` active damage frames for Flying Swords, Spears, and Gauntlets.
+## 🚀 Immediate Next Steps (Phase 6)
 
-3. **Task 5.4: Sect / Faction System & Alignment Mechanics**:
-   - Construct Orthodox vs. Unorthodox sect selection, sect contribution ranks, and reputation alignment meters.
+### 1. DataStore Data Persistence (Task 6.1)
+- [ ] Implement `DataStoreService` wrapper module in `src/ServerScriptService/Server/State/` to save player profile data upon leaving and load upon joining.
+- [ ] Save fields: `Realm`, `CurrentQi`, `InventorySlots`, `EquippedWeapon`, `Sect`.
+- [ ] Add auto-save background loop (every 5 minutes) and emergency save on server shutdown (`BindToClose`).
 
-4. **Task 5.5: World Zone Progression & Spirit Veins**:
-   - Construct Spirit Vein zones (+100% to +300% Qi gather rates) and environmental domain hazards (Miasma, Frost, Fire).
+### 2. Sect Affiliation & Master NPC System (Task 6.2)
+- [ ] Create `SectConfig.luau` defining Xianxia Sects (*Azure Cloud Sect*, *Crimson Flame Sect*, *Shadow Void Sect*) and passive faction buffs.
+- [ ] Build Master NPC interaction prompts in the world for realm breakthrough guidance and sect skill learning.
+- [ ] Implement Sect Duty & Daily Quest log (`Hotkey J`).
 
-5. **Phase 6: Data Persistence & Infrastructure**:
-   - Integrate ProfileService / DataStore v2 for saving inventory, spirit pills, stats, and cultivation progress.
+### 3. Equipment Forging & Spirit Refining Panel (Task 6.3)
+- [ ] Create `ForgingController.luau` UI for weapon enhancement (+1 to +10) using Spirit Stones and Demon Cores.
+- [ ] Add Talisman and Gem socketing for bonus attributes (+Atk, +Crit Rate).
+
+---
+
+## 🔮 Future Roadmap (Phase 7 & Beyond)
+
+### Phase 7: Open World & Beast AI
+- [ ] **Wilderness Spirit Beasts**: Server-authoritative monster AI with aggro radius, attack combos, loot drops (*Demon Cores*), and respawn timers.
+- [ ] **World Boss Encounters**: Multi-player team boss encounters with telegraphed AOE attacks.
+
+### Phase 8: Xianxia Visual Polish
+- [ ] Replace temporary placeholder sounds with final audio assets from Audio Search Manifest.
+- [ ] Add post-processing bloom and depth-of-field atmospheric effects in `Lighting`.

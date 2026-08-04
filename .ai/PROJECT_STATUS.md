@@ -534,3 +534,82 @@ Completed:
 | Pill Crafting                | ✅ Complete |
 | Overhead UI                  | ✅ Complete |
 | Inventory Placeholder Engine | ✅ Complete |
+
+
+# ASCEND Project Status
+
+**Current Phase**: Phase 5 — Cultivation & Progression Systems (Completed) ➔ Phase 6 (Sects & Data Persistence)  
+**Overall Completion**: ~72%
+
+---
+
+## Subsystem Health & Readiness
+
+| Subsystem | Status | Key Modules |
+| :--- | :--- | :--- |
+| **Combat Engine** | 🟢 Operational | `CombatStateManager`, `HitboxManager`, `WeaponManager`, `FlyingSwordServer`, `GauntletServer`, `SpearServer` |
+| **Cultivation Engine** | 🟢 Operational | `CultivationManager`, `CultivationConfig`, `AnimationController`, `CombatVFXController` |
+| **Tribulation Boss Event** | 🟢 Operational | `CultivationManager`, `CombatVFXController` |
+| **Inventory & Items** | 🟢 Operational | `ItemConfig`, `InventoryManager`, `InventoryController` |
+| **Alchemy System** | 🟢 Operational | `AlchemyConfig`, `AlchemyManager`, `AlchemyController` |
+| **UI/UX Suite** | 🟢 Operational | `HUDController`, `OverheadUIController`, `InventoryController`, `AlchemyController` |
+| **Data Persistence** | 🟡 Pending | Planned for Phase 6.1 (`DataStoreService`) |
+
+---
+
+## Directory File Map
+
+```text
+src/
+├─ ReplicatedFirst/
+├─ ReplicatedStorage/
+│  └─ Shared/
+│     ├─ Configs/
+│     │  ├─ AlchemyConfig.luau
+│     │  ├─ AnimationConfig.luau
+│     │  ├─ CultivationConfig.luau
+│     │  ├─ InventoryConfig.luau
+│     │  ├─ ItemConfig.luau
+│     │  ├─ RarityConfig.luau
+│     │  ├─ UIAssets.luau
+│     │  └─ Weapons/
+│     │     ├─ FlyingSwordConfig.luau
+│     │     ├─ GauntletConfig.luau
+│     │     └─ SpearConfig.luau
+│     └─ Network/
+│        └─ RemoteEvents.luau
+├─ ServerScriptService/
+│  └─ Server/
+│     ├─ ServerMain.server.luau
+│     ├─ Combat/
+│     │  ├─ HitboxManager.luau
+│     │  ├─ WeaponManager.luau
+│     │  └─ Weapons/
+│     │     ├─ FlyingSwordServer.luau
+│     │     ├─ GauntletServer.luau
+│     │     └─ SpearServer.luau
+│     ├─ Cultivation/
+│     │  ├─ AlchemyManager.luau
+│     │  └─ CultivationManager.luau
+│     └─ State/
+│        ├─ CombatStateManager.luau
+│        └─ InventoryManager.luau
+├─ ServerStorage/
+├─ StarterGui/
+├─ StarterPack/
+├─ StarterPlayer/
+│  ├─ StarterCharacterScripts/
+│  └─ StarterPlayerScripts/
+│     ├─ ClientMain.client.luau
+│     ├─ Client/
+│     │  └─ UI/
+│     │     └─ OverheadUIController.luau
+│     └─ Controllers/
+│        ├─ AlchemyController.luau
+│        ├─ AnimationController.luau
+│        ├─ CombatVFXController.luau
+│        ├─ CultivationController.luau
+│        ├─ HUDController.luau
+│        ├─ InputController.luau
+│        └─ InventoryController.luau
+└─ Workspace/
