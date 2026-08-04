@@ -1,6 +1,7 @@
 --!strict
 --[[
     CombatStateManager.luau
+    Location: src/ServerScriptService/Server/State/CombatStateManager.luau
     Server-authoritative combat state engine for ASCEND.
     Tracks player combat states, manages server-side cooldowns,
     and validates skill activation requests to prevent client exploits.
@@ -9,13 +10,12 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
+
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 local SpearServer = require(ServerScriptService.Server.Combat.Weapons.SpearServer)
 local FlyingSwordServer = require(ServerScriptService.Server.Combat.Weapons.FlyingSwordServer)
 local GauntletServer = require(ServerScriptService.Server.Combat.Weapons.GauntletServer)
-
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 export type PlayerState = "Idle" | "Casting" | "Cooldown" | "Stunned" | "QiDeviation" | "IFrame"
@@ -28,13 +28,9 @@ export type SkillCooldownData = {
 local CombatStateManager = {}
 CombatStateManager.__index = CombatStateManager
 
--- Player State Storage: [Player] -> State
 local playerStates: { [Player]: PlayerState } = {}
-
--- Server Cooldown Storage: [Player] -> { [SkillKey]: SkillCooldownData }
 local playerCooldowns: { [Player]: { [string]: SkillCooldownData } } = {}
 
--- Base Skill Cooldown Definitions (Server Truth)
 local SKILL_COOLDOWNS: { [string]: number } = {
 	M1 = 0.6,
 	F = 1.5,
@@ -46,6 +42,14 @@ local SKILL_COOLDOWNS: { [string]: number } = {
 
 local combatActionRemote: RemoteEvent
 local syncCooldownRemote: RemoteEvent
+local cultivationManagerRef: any = nil
+
+function CombatStateManager.GetCultivationManager(): any
+	if not cultivationManagerRef then
+		cultivationManagerRef = require(ServerScriptService.Server.Cultivation.CultivationManager)
+	end
+	return cultivationManagerRef
+end
 
 function CombatStateManager.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
@@ -58,7 +62,7 @@ function CombatStateManager.Init()
 		CombatStateManager.OnPlayerAdded(player)
 	end
 
-    combatActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
+	combatActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
 		if type(payload) == "string" then
 			CombatStateManager.HandleSkillRequest(player, payload, nil)
 		elseif type(payload) == "table" and type(payload.SkillKey) == "string" then
@@ -131,13 +135,16 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 		return false
 	end
 
-	-- 5. CHECK & CONSUME QI RESOURCE
+	-- 5. CHECK & CONSUME QI RESOURCE (Lazy-resolved to prevent circular require lock)
 	local qiCost = CultivationConfig.SkillCosts[skillKey] or 0
 	if qiCost > 0 then
-		local hasQi = CultivationManager.ConsumeQi(player, qiCost)
-		if not hasQi then
-			warn(string.format("[CombatStateManager] Request rejected for %s: Insufficient Qi for skill %s (%d required).", player.Name, skillKey, qiCost))
-			return false
+		local cultMgr = CombatStateManager.GetCultivationManager()
+		if cultMgr and cultMgr.ConsumeQi then
+			local hasQi = cultMgr.ConsumeQi(player, qiCost)
+			if not hasQi then
+				warn(string.format("[CombatStateManager] Request rejected for %s: Insufficient Qi for skill %s (%d required).", player.Name, skillKey, qiCost))
+				return false
+			end
 		end
 	end
 

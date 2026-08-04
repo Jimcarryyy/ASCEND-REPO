@@ -1,8 +1,9 @@
 --!strict
 --[[
     AnimationController.luau
+    Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
     Client controller for playing character attack animations,
-    instant mouse rotation, smooth walkspeed action layering, and floating meditation camera framing.
+    instant mouse rotation, smooth walkspeed action layering, and levitating meditation poses.
 ]]
 
 local Players = game:GetService("Players")
@@ -41,38 +42,60 @@ function AnimationController.Init()
 
 		local InputController = require(script.Parent:WaitForChild("InputController") :: ModuleScript)
 
-        -- Smooth Camera Transition Logic
-        local camTween: Tween? = nil
+		-- Smooth Camera Transition Logic
+		local camTween: Tween? = nil
 
-        if data.IsMeditating or data.IsTribulationActive then
-            InputController.SetEnabled(false)
+		-- Play / Stop Meditation Pose Animation
+		if data.IsMeditating then
+			if not meditationTrack then
+				local animInstance = Instance.new("Animation")
+				animInstance.AnimationId = MEDITATION_ANIM_ID
+				meditationTrack = animator:LoadAnimation(animInstance)
+				if meditationTrack then
+					meditationTrack.Priority = Enum.AnimationPriority.Action4 -- Overrides idle pose
+					meditationTrack.Looped = true
+				end
+			end
 
-            camera.CameraType = Enum.CameraType.Scriptable
-            local baseCFrame = hrp.CFrame
-            local camDistance = if data.IsTribulationActive then -18.5 else -13.5
-            local camHeight = if data.IsTribulationActive then 3.2 else 1.8
-            local targetCFrame = (baseCFrame * CFrame.new(0, camHeight, camDistance)) * CFrame.Angles(0, math.rad(180), 0)
+			if meditationTrack and not meditationTrack.IsPlaying then
+				meditationTrack:Play(0.3)
+			end
+		else
+			if meditationTrack and meditationTrack.IsPlaying then
+				meditationTrack:Stop(0.3)
+			end
+		end
 
-            if camTween then camTween:Cancel() end
-            camTween = TweenService:Create(camera, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                CFrame = targetCFrame
-            })
-            camTween:Play()
-        else
-            InputController.SetEnabled(true)
-            if camera.CameraType == Enum.CameraType.Scriptable then
-                if camTween then camTween:Cancel() end
-                camTween = TweenService:Create(camera, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                    CFrame = hrp.CFrame * CFrame.new(0, 2, 12)
-                })
-                camTween:Play()
-                camTween.Completed:Connect(function()
-                    if not (data.IsMeditating or data.IsTribulationActive) then
-                        camera.CameraType = Enum.CameraType.Custom
-                    end
-                end)
-            end
-        end
+		-- Camera Framing Logic
+		if data.IsMeditating or data.IsTribulationActive then
+			InputController.SetEnabled(false)
+
+			camera.CameraType = Enum.CameraType.Scriptable
+			local baseCFrame = hrp.CFrame
+			local camDistance = if data.IsTribulationActive then -18.5 else -13.5
+			local camHeight = if data.IsTribulationActive then 3.2 else 1.8
+			local targetCFrame = (baseCFrame * CFrame.new(0, camHeight, camDistance)) * CFrame.Angles(0, math.rad(180), 0)
+
+			if camTween then camTween:Cancel() end
+			camTween = TweenService:Create(camera, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				CFrame = targetCFrame
+			})
+			camTween:Play()
+		else
+			InputController.SetEnabled(true)
+			if camera.CameraType == Enum.CameraType.Scriptable then
+				if camTween then camTween:Cancel() end
+				camTween = TweenService:Create(camera, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					CFrame = hrp.CFrame * CFrame.new(0, 2, 12)
+				})
+				camTween:Play()
+				camTween.Completed:Connect(function()
+					if not (data.IsMeditating or data.IsTribulationActive) then
+						camera.CameraType = Enum.CameraType.Custom
+					end
+				end)
+			end
+		end
 	end)
 
 	updateSkillStateRemote.OnClientEvent:Connect(function(weaponType: string)
@@ -86,7 +109,7 @@ function AnimationController.Init()
 		end
 	end)
 
-	print("[ASCEND] AnimationController Initialized.")
+	print("[ASCEND] AnimationController Initialized with Meditation Pose Binding.")
 end
 
 function AnimationController.ClearLoadedTracks()

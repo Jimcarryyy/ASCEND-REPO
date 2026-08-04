@@ -190,21 +190,22 @@ function CombatVFXController.RenderSkillParticleEffect(character: Model, weaponT
 			Debris:AddItem(ring, 0.45)
 
 		elseif skillKey == "E" then
-			-- Flying Sword Surge
-			local swordWave = Instance.new("Part")
-			swordWave.Size = Vector3.new(6, 0.4, 2)
-			swordWave.CFrame = hrp.CFrame * CFrame.new(0, 0, -3)
-			swordWave.Color = color
-			swordWave.Material = Enum.Material.Neon
-			swordWave.CanCollide = false
-			swordWave.Anchored = true
-			swordWave.Parent = Workspace
+			-- Cyclone Spear Guard Vortex
+			local vortex = Instance.new("Part")
+			vortex.Shape = Enum.PartType.Cylinder
+			vortex.Size = Vector3.new(6, 6, 6)
+			vortex.CFrame = hrp.CFrame * CFrame.Angles(math.rad(90), 0, 0)
+			vortex.Color = color
+			vortex.Material = Enum.Material.ForceField -- Fixed capital 'F'
+			vortex.CanCollide = false
+			vortex.Anchored = true
+			vortex.Parent = Workspace
 
-			TweenService:Create(swordWave, TweenInfo.new(0.4, Enum.EasingStyle.Linear), {
-				CFrame = hrp.CFrame * CFrame.new(0, 0, -30),
+			TweenService:Create(vortex, TweenInfo.new(0.5, Enum.EasingStyle.Linear), {
+				Size = Vector3.new(12, 12, 12),
 				Transparency = 1
 			}):Play()
-			Debris:AddItem(swordWave, 0.45)
+			Debris:AddItem(vortex, 0.55)
 
 		elseif skillKey == "R" then
 			-- Heavenly Sword Beam Blast (ULT)
@@ -344,7 +345,7 @@ function CombatVFXController.RenderSkillParticleEffect(character: Model, weaponT
 			vortex.Size = Vector3.new(6, 6, 6)
 			vortex.CFrame = hrp.CFrame * CFrame.Angles(math.rad(90), 0, 0)
 			vortex.Color = color
-			vortex.Material = Enum.Material.Forcefield
+			vortex.Material = Enum.Material.ForceField -- Fixed capital 'F'
 			vortex.CanCollide = false
 			vortex.Anchored = true
 			vortex.Parent = Workspace

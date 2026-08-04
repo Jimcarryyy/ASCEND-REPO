@@ -2,7 +2,8 @@
 --[[
     OverheadUIController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Client/UI/OverheadUIController.luau
-    Purpose: Manages 3D Overhead Player Display (Name, Cultivation Realm, Health, Spirit Qi) above character heads.
+    Purpose: Manages 3D Overhead Display for OTHER players and world NPCs/Dummies.
+    Skips local player to prevent screen clutter.
 ]]
 
 local Players = game:GetService("Players")
@@ -30,7 +31,6 @@ local function getOverheadTemplate(): BillboardGui?
 		return overheadTemplate
 	end
 
-	-- Check directly in ReplicatedStorage or inside ReplicatedStorage.Shared
 	local foundDirect = ReplicatedStorage:FindFirstChild("OverheadBillboardGui") :: BillboardGui?
 	if foundDirect then
 		overheadTemplate = foundDirect
@@ -50,6 +50,14 @@ local function getOverheadTemplate(): BillboardGui?
 end
 
 local function attachOverheadToCharacter(character: Model)
+	local targetPlayer = Players:GetPlayerFromCharacter(character)
+	local localPlayer = Players.LocalPlayer
+
+	-- 🚀 SKIP LOCAL PLAYER: Local player stats are handled by the Bottom HUD Panel!
+	if targetPlayer and targetPlayer == localPlayer then
+		return
+	end
+
 	local head = character:WaitForChild("Head", 5) :: BasePart?
 	local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
 	if not head or not humanoid then return end
@@ -143,7 +151,6 @@ local function attachOverheadToCharacter(character: Model)
 		qiText.Parent = qiBg
 	end
 
-	-- Enforce Visibility Properties on Billboard
 	overheadGui.Adornee = head
 	overheadGui.StudsOffset = Vector3.new(0, 3.8, 0)
 	overheadGui.Size = UDim2.new(5.5, 0, 2.2, 0)
@@ -152,7 +159,6 @@ local function attachOverheadToCharacter(character: Model)
 	overheadGui.Enabled = true
 	overheadGui.Parent = head
 
-	-- UI References inside billboard
 	local nameLabel = overheadGui:FindFirstChild("PlayerNameLabel") :: TextLabel?
 	local healthBg = overheadGui:FindFirstChild("HealthBarBackground") :: Frame?
 	local healthFill = healthBg and healthBg:FindFirstChild("HealthBarFill") :: Frame?
@@ -165,10 +171,8 @@ local function attachOverheadToCharacter(character: Model)
 	if healthFill then healthFill.BackgroundColor3 = COLOR_HEALTH_FILL end
 	if qiFill then qiFill.BackgroundColor3 = COLOR_QI_FILL end
 
-	-- Format Title
 	local function updateTitle()
 		if not nameLabel then return end
-		local targetPlayer = Players:GetPlayerFromCharacter(character)
 		local sect = character:GetAttribute("Sect") or "Azure Cloud Sect"
 		local realm = character:GetAttribute("Realm") or "Qi Condensation"
 		local displayName = if targetPlayer then targetPlayer.DisplayName else character.Name
@@ -177,7 +181,6 @@ local function attachOverheadToCharacter(character: Model)
 		nameLabel.TextStrokeTransparency = 0.2
 	end
 
-	-- Update Health
 	local function updateHealth()
 		if not humanoid then return end
 		local currentHp = math.floor(humanoid.Health)
@@ -192,7 +195,6 @@ local function attachOverheadToCharacter(character: Model)
 		end
 	end
 
-	-- Update Qi
 	local function updateQi()
 		local currentQi = math.floor(character:GetAttribute("Qi") or 0)
 		local maxQi = math.floor(character:GetAttribute("MaxQi") or 100)
@@ -253,7 +255,7 @@ function OverheadUIController.Init()
 		end
 	end)
 
-	print("[ASCEND] OverheadUIController Initialized Successfully.")
+	print("[ASCEND] OverheadUIController Initialized (Local Overhead Hidden).")
 end
 
 return OverheadUIController
