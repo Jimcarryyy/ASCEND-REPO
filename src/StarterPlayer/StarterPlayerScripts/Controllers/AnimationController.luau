@@ -2,14 +2,13 @@
 --[[
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
-    Client controller for playing character attack animations,
-    instant mouse rotation, smooth walkspeed action layering, and levitating meditation poses.
+    Client controller for ASCEND animation state, smooth camera framing,
+    and official R15 levitating sit pose.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -22,15 +21,18 @@ local player = Players.LocalPlayer
 local currentWeapon = "FlyingSword"
 local loadedTracks: { [string]: AnimationTrack } = {}
 
+-- Official Public Roblox R15 Sitting Animation
+local MEDITATION_ANIM_ID = "rbxassetid://2506281703"
+local meditationTrack: AnimationTrack? = nil
+local isCurrentlyMeditating = false
+local camTween: Tween? = nil
+
 function AnimationController.Init()
 	local combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	local updateSkillStateRemote = RemoteEvents.GetRemote("UpdateSkillState")
-
-	local MEDITATION_ANIM_ID = "rbxassetid://116333173300889"
-	local meditationTrack: AnimationTrack? = nil
+	local updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 	local camera = Workspace.CurrentCamera
 
-	local updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 	updateCultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		local character = player.Character
 		if not character then return end
@@ -38,21 +40,19 @@ function AnimationController.Init()
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
-		if not animator or not hrp then return end
+		if not humanoid or not hrp or not animator then return end
 
 		local InputController = require(script.Parent:WaitForChild("InputController") :: ModuleScript)
+		local newMeditatingState = (data.IsMeditating == true)
 
-		-- Smooth Camera Transition Logic
-		local camTween: Tween? = nil
-
-		-- Play / Stop Meditation Pose Animation
-		if data.IsMeditating then
+		-- Toggle Sitting Pose
+		if newMeditatingState then
 			if not meditationTrack then
 				local animInstance = Instance.new("Animation")
 				animInstance.AnimationId = MEDITATION_ANIM_ID
 				meditationTrack = animator:LoadAnimation(animInstance)
 				if meditationTrack then
-					meditationTrack.Priority = Enum.AnimationPriority.Action4 -- Overrides idle pose
+					meditationTrack.Priority = Enum.AnimationPriority.Action4
 					meditationTrack.Looped = true
 				end
 			end
@@ -66,34 +66,35 @@ function AnimationController.Init()
 			end
 		end
 
-		-- Camera Framing Logic
-		if data.IsMeditating or data.IsTribulationActive then
-			InputController.SetEnabled(false)
+		-- Toggle Camera Transition (Only on State Changes)
+		if newMeditatingState ~= isCurrentlyMeditating then
+			isCurrentlyMeditating = newMeditatingState
 
-			camera.CameraType = Enum.CameraType.Scriptable
-			local baseCFrame = hrp.CFrame
-			local camDistance = if data.IsTribulationActive then -18.5 else -13.5
-			local camHeight = if data.IsTribulationActive then 3.2 else 1.8
-			local targetCFrame = (baseCFrame * CFrame.new(0, camHeight, camDistance)) * CFrame.Angles(0, math.rad(180), 0)
+			if isCurrentlyMeditating then
+				InputController.SetEnabled(false)
+				camera.CameraType = Enum.CameraType.Scriptable
+				local baseCFrame = hrp.CFrame
+				local targetCFrame = (baseCFrame * CFrame.new(0, 1.8, -13.5)) * CFrame.Angles(0, math.rad(180), 0)
 
-			if camTween then camTween:Cancel() end
-			camTween = TweenService:Create(camera, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				CFrame = targetCFrame
-			})
-			camTween:Play()
-		else
-			InputController.SetEnabled(true)
-			if camera.CameraType == Enum.CameraType.Scriptable then
 				if camTween then camTween:Cancel() end
-				camTween = TweenService:Create(camera, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-					CFrame = hrp.CFrame * CFrame.new(0, 2, 12)
+				camTween = TweenService:Create(camera, TweenInfo.new(1.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+					CFrame = targetCFrame
 				})
 				camTween:Play()
-				camTween.Completed:Connect(function()
-					if not (data.IsMeditating or data.IsTribulationActive) then
-						camera.CameraType = Enum.CameraType.Custom
-					end
-				end)
+			else
+				InputController.SetEnabled(true)
+				if camera.CameraType == Enum.CameraType.Scriptable then
+					if camTween then camTween:Cancel() end
+					camTween = TweenService:Create(camera, TweenInfo.new(0.8, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+						CFrame = hrp.CFrame * CFrame.new(0, 2, 12)
+					})
+					camTween:Play()
+					camTween.Completed:Connect(function()
+						if not isCurrentlyMeditating then
+							camera.CameraType = Enum.CameraType.Custom
+						end
+					end)
+				end
 			end
 		end
 	end)
@@ -109,7 +110,7 @@ function AnimationController.Init()
 		end
 	end)
 
-	print("[ASCEND] AnimationController Initialized with Meditation Pose Binding.")
+	print("[ASCEND] AnimationController Initialized with Official R15 Sit Pose.")
 end
 
 function AnimationController.ClearLoadedTracks()
@@ -118,21 +119,6 @@ function AnimationController.ClearLoadedTracks()
 		track:Destroy()
 	end
 	table.clear(loadedTracks)
-end
-
-function AnimationController.SmoothRotateCharacter(aimDirection: Vector3)
-	local character = player.Character
-	if not character then return end
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not hrp then return end
-
-	local flatDir = Vector3.new(aimDirection.X, 0, aimDirection.Z)
-	if flatDir.Magnitude > 0 then
-		local targetCFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatDir.Unit)
-		TweenService:Create(hrp, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			CFrame = targetCFrame
-		}):Play()
-	end
 end
 
 function AnimationController.PlayAttackAnimation(skillKey: string)

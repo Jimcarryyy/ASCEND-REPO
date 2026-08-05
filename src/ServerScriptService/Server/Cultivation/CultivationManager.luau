@@ -2,12 +2,14 @@
 --[[
     CultivationManager.luau
     Location: src/ServerScriptService/Server/Cultivation/CultivationManager.luau
-    Server-authoritative cultivation state engine with 9 Orders per Realm.
+    Server-authoritative cultivation state engine for ASCEND.
+    Includes PlatformStand physics stabilization and slow 3-second celestial floating.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
+local ServerScriptService = game:GetService("ServerScriptService")
+local TweenService = game:GetService("TweenService")
 
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -25,10 +27,19 @@ export type PlayerCultivationData = {
 local CultivationManager = {}
 local playerData: { [Player]: PlayerCultivationData } = {}
 local meditationThreads: { [Player]: thread } = {}
+local levitationTweens: { [Player]: Tween } = {}
 local tribulationThreads: { [Player]: thread } = {}
 
 local updateCultivationRemote: RemoteEvent
 local combatActionRemote: RemoteEvent
+local weaponManagerRef: any = nil
+
+local function getWeaponManager(): any
+	if not weaponManagerRef then
+		weaponManagerRef = require(ServerScriptService.Server.Combat.WeaponManager)
+	end
+	return weaponManagerRef
+end
 
 function CultivationManager.Init()
 	updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
@@ -51,7 +62,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Engine Initialized (45 Stages).")
+	print("[ASCEND] CultivationManager Engine Initialized (Celestial Float System).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -77,6 +88,10 @@ function CultivationManager.OnPlayerRemoving(player: Player)
 	if meditationThreads[player] then
 		task.cancel(meditationThreads[player])
 		meditationThreads[player] = nil
+	end
+	if levitationTweens[player] then
+		levitationTweens[player]:Cancel()
+		levitationTweens[player] = nil
 	end
 	if tribulationThreads[player] then
 		task.cancel(tribulationThreads[player])
@@ -122,6 +137,19 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	CultivationManager.SyncClient(player)
 end
 
+function CultivationManager.ConsumeQi(player: Player, amount: number): boolean
+	local pData = playerData[player]
+	if not pData then return false end
+
+	if pData.CurrentQi < amount then
+		return false
+	end
+
+	pData.CurrentQi = math.max(0, pData.CurrentQi - amount)
+	CultivationManager.SyncClient(player)
+	return true
+end
+
 function CultivationManager.ToggleMeditation(player: Player)
 	local pData = playerData[player]
 	if not pData or pData.IsTribulationActive then return end
@@ -130,8 +158,15 @@ function CultivationManager.ToggleMeditation(player: Player)
 	local character = player.Character
 	if not character then return end
 
+	local weaponMgr = getWeaponManager()
+
 	if pData.IsMeditating then
-		CultivationManager.SpawnMeditationAura(character, pData.Realm, false)
+		-- Hide weapon when entering meditation
+		if weaponMgr and weaponMgr.SetWeaponVisibility then
+			weaponMgr.SetWeaponVisibility(player, false)
+		end
+
+		CultivationManager.StartCelestialLevitation(player, character, pData.Realm, false)
 
 		meditationThreads[player] = task.spawn(function()
 			while pData.IsMeditating and player.Parent and character.Parent do
@@ -153,10 +188,101 @@ function CultivationManager.ToggleMeditation(player: Player)
 			task.cancel(meditationThreads[player])
 			meditationThreads[player] = nil
 		end
-		CultivationManager.RemoveMeditationAura(character)
+
+		-- Restore weapon visibility when exiting meditation
+		if weaponMgr and weaponMgr.SetWeaponVisibility then
+			weaponMgr.SetWeaponVisibility(player, true)
+		end
+
+		CultivationManager.StopCelestialLevitation(player, character)
 	end
 
 	CultivationManager.SyncClient(player)
+end
+
+-- Inside CultivationManager.StartCelestialLevitation:
+function CultivationManager.StartCelestialLevitation(player: Player, character: Model, realm: CultivationConfig.RealmTier, isBreakthrough: boolean)
+	CultivationManager.StopCelestialLevitation(player, character)
+
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not hrp or not humanoid then return end
+
+	local realmInfo = CultivationConfig[realm]
+	local auraColor = if realmInfo then (if isBreakthrough then realmInfo.Tribulation.AuraColor else realmInfo.AuraColor) else Color3.fromRGB(0, 220, 255)
+
+	humanoid.Sit = true
+	humanoid.WalkSpeed = 0
+	humanoid.JumpPower = 0
+	humanoid.AutoRotate = false
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "QiMeditationHighlight"
+	highlight.Adornee = character
+	highlight.FillColor = auraColor
+	highlight.FillTransparency = if isBreakthrough then 0.85 else 0.95
+	highlight.OutlineColor = auraColor
+	highlight.OutlineTransparency = 0.2
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = character
+
+	local auraPart = Instance.new("Part")
+	auraPart.Name = "QiMeditationAura"
+	auraPart.Size = Vector3.new(10, 0.2, 10)
+	auraPart.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 2.8, hrp.Position.Z)
+	auraPart.CanCollide = false
+	auraPart.Transparency = 1
+	auraPart.Anchored = true
+	auraPart.Parent = character
+
+	hrp.Anchored = true
+	local startY = hrp.Position.Y
+	local levitateBaseHeight = if isBreakthrough then 3.2 else 2.0
+
+	-- Step 1: Smooth 1.0s initial ascension to levitation height
+	local riseTween = TweenService:Create(hrp, TweenInfo.new(1.0, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+		CFrame = CFrame.new(hrp.Position.X, startY + levitateBaseHeight, hrp.Position.Z) * hrp.CFrame.Rotation
+	})
+	riseTween:Play()
+
+	-- Step 2: Slow 3.0s Celestial Sine Floating Loop (0.5 studs up & down)
+	riseTween.Completed:Connect(function()
+		local pData = playerData[player]
+		if pData and pData.IsMeditating and hrp and hrp.Parent then
+			local slowFloatInfo = TweenInfo.new(3.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+			local slowFloatTween = TweenService:Create(hrp, slowFloatInfo, {
+				CFrame = CFrame.new(hrp.Position.X, startY + levitateBaseHeight + 0.5, hrp.Position.Z) * hrp.CFrame.Rotation
+			})
+			levitationTweens[player] = slowFloatTween
+			slowFloatTween:Play()
+		end
+	end)
+end
+
+function CultivationManager.StopCelestialLevitation(player: Player, character: Model)
+	if levitationTweens[player] then
+		levitationTweens[player]:Cancel()
+		levitationTweens[player] = nil
+	end
+
+	local aura = character:FindFirstChild("QiMeditationAura")
+	if aura then aura:Destroy() end
+
+	local highlight = character:FindFirstChild("QiMeditationHighlight")
+	if highlight then highlight:Destroy() end
+
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	
+	if hrp then
+		hrp.Anchored = false
+	end
+	if humanoid then
+		humanoid.Sit = false
+		humanoid.WalkSpeed = 16
+		humanoid.JumpPower = 50
+		humanoid.AutoRotate = true
+	end
 end
 
 function CultivationManager.AttemptBreakthrough(player: Player): boolean
@@ -201,7 +327,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		return false
 	end
 
-	CultivationManager.SpawnMeditationAura(character, pData.Realm, true)
+	CultivationManager.StartCelestialLevitation(player, character, pData.Realm, true)
 	CultivationManager.SyncClient(player)
 
 	tribulationThreads[player] = task.spawn(function()
@@ -239,7 +365,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 				pData.IsTribulationActive = false
 				pData.TribulationWave = 0
 				if stormCloud then stormCloud:Destroy() end
-				CultivationManager.RemoveMeditationAura(character)
+				CultivationManager.StopCelestialLevitation(player, character)
 				CultivationManager.SyncClient(player)
 				return
 			end
@@ -256,7 +382,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			pData.IsTribulationActive = false
 			pData.TribulationWave = 0
 
-			CultivationManager.RemoveMeditationAura(character)
+			CultivationManager.StopCelestialLevitation(player, character)
 			CultivationManager.ApplyRealmStats(player)
 
 			combatActionRemote:FireAllClients(player, "AscensionBurst", {
@@ -265,7 +391,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		else
 			pData.IsTribulationActive = false
 			pData.TribulationWave = 0
-			CultivationManager.RemoveMeditationAura(character)
+			CultivationManager.StopCelestialLevitation(player, character)
 			CultivationManager.SyncClient(player)
 		end
 	end)
@@ -293,60 +419,6 @@ function CultivationManager.SpawnStormCloud(character: Model, auraColor: Color3)
 	light.Parent = cloud
 
 	return cloud
-end
-
-function CultivationManager.SpawnMeditationAura(character: Model, realm: CultivationConfig.RealmTier, isBreakthrough: boolean)
-	CultivationManager.RemoveMeditationAura(character)
-
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if not hrp or not humanoid then return end
-
-	local realmInfo = CultivationConfig[realm]
-	local auraColor = if realmInfo then (if isBreakthrough then realmInfo.Tribulation.AuraColor else realmInfo.AuraColor) else Color3.fromRGB(0, 220, 255)
-
-	humanoid.WalkSpeed = 0
-	humanoid.JumpPower = 0
-	humanoid.AutoRotate = false
-
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "QiMeditationHighlight"
-	highlight.Adornee = character
-	highlight.FillColor = auraColor
-	highlight.FillTransparency = if isBreakthrough then 0.85 else 0.95
-	highlight.OutlineColor = auraColor
-	highlight.OutlineTransparency = 0.2
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.Parent = character
-
-	local auraPart = Instance.new("Part")
-	auraPart.Name = "QiMeditationAura"
-	auraPart.Size = Vector3.new(10, 0.2, 10)
-	auraPart.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 2.8, hrp.Position.Z)
-	auraPart.CanCollide = false
-	auraPart.Transparency = 1
-	auraPart.Anchored = true
-	auraPart.Parent = character
-
-	hrp.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y + (if isBreakthrough then 3.5 else 2.2), hrp.Position.Z) * hrp.CFrame.Rotation
-	hrp.Anchored = true
-end
-
-function CultivationManager.RemoveMeditationAura(character: Model)
-	local aura = character:FindFirstChild("QiMeditationAura")
-	if aura then aura:Destroy() end
-
-	local highlight = character:FindFirstChild("QiMeditationHighlight")
-	if highlight then highlight:Destroy() end
-
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if hrp then hrp.Anchored = false end
-	if humanoid then
-		humanoid.WalkSpeed = 16
-		humanoid.JumpPower = 50
-		humanoid.AutoRotate = true
-	end
 end
 
 function CultivationManager.SyncClient(player: Player)

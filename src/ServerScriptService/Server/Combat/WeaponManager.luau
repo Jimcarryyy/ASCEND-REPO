@@ -242,6 +242,27 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 	print(string.format("[WeaponManager] Attached %s to %s via RightGripAttachment alignment.", weaponType, player.Name))
 end
 
+-- Add SetWeaponVisibility function to WeaponManager.luau
+
+function WeaponManager.SetWeaponVisibility(player: Player, visible: boolean)
+	local character = player.Character
+	if not character then return end
+
+	local weaponPart = character:FindFirstChild("Equipped3DWeapon") :: BasePart?
+	if weaponPart then
+		weaponPart.Transparency = if visible then 0 else 1
+		local light = weaponPart:FindFirstChildOfClass("PointLight")
+		if light then light.Enabled = visible end
+	end
+
+	local gauntletLeft = character:FindFirstChild("Equipped3DGauntlet_Left") :: BasePart?
+	if gauntletLeft then
+		gauntletLeft.Transparency = if visible then 0.3 else 1
+		local light = gauntletLeft:FindFirstChildOfClass("PointLight")
+		if light then light.Enabled = visible end
+	end
+end
+
 function WeaponManager.EquipWeapon(player: Player, weaponType: WeaponType)
 	local character = player.Character
 	if not character then return end

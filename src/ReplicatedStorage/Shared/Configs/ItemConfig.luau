@@ -146,6 +146,16 @@ local ItemConfig: { [string]: ItemData } = {
 		MaxStack = 1,
 		WeaponType = "Spear",
 	},
+	HeavenlyVoidBladeItem = {
+		Id = "HeavenlyVoidBladeItem",
+		Name = "Heavenly Void Blade",
+		Rarity = "Mythic",
+		ItemType = "Weapon",
+		WeaponType = "FlyingSword",     -- Uses FlyingSword animation set
+		ModelName = "HeavenlyVoidBlade", -- Matches Model name in ReplicatedStorage
+		AttackPower = 250,
+		CritRate = 0.20,
+	}
 }
 
 return ItemConfig

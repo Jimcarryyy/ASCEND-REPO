@@ -15,11 +15,11 @@ export type AnimDef = {
 
 local AnimationConfig = {
 	FlyingSword = {
-		M1 = { AnimationId = "rbxassetid://507768375", Speed = 1.8, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 14 },
-		F = { AnimationId = "rbxassetid://507767714", Speed = 1.6, FadeTime = 0.03, CastDuration = 0.25, WalkSpeedDampen = 12 },
-		Q = { AnimationId = "rbxassetid://507765644", Speed = 1.5, FadeTime = 0.03, CastDuration = 0.3, WalkSpeedDampen = 10 },
-		E = { AnimationId = "rbxassetid://507767714", Speed = 1.6, FadeTime = 0.03, CastDuration = 0.25, WalkSpeedDampen = 12 },
-		R = { AnimationId = "rbxassetid://507765644", Speed = 1.4, FadeTime = 0.05, CastDuration = 0.35, WalkSpeedDampen = 10 },
+		M1 = { AnimationId = "rbxassetid://93342220169849", Speed = 1.8, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 14 },
+		F = { AnimationId = "rbxassetid://93342220169849", Speed = 1.6, FadeTime = 0.03, CastDuration = 0.25, WalkSpeedDampen = 12 },
+		Q = { AnimationId = "rbxassetid://93342220169849", Speed = 1.5, FadeTime = 0.03, CastDuration = 0.3, WalkSpeedDampen = 10 },
+		E = { AnimationId = "rbxassetid://93342220169849", Speed = 1.6, FadeTime = 0.03, CastDuration = 0.25, WalkSpeedDampen = 12 },
+		R = { AnimationId = "rbxassetid://93342220169849", Speed = 1.4, FadeTime = 0.05, CastDuration = 0.35, WalkSpeedDampen = 10 },
 		Shift = { AnimationId = "", Speed = 1.0, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 28 }, -- Movement Dash
 	},
 	Spear = {
