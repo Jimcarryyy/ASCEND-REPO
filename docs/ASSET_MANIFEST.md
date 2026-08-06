@@ -9,6 +9,14 @@
 > **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
 > **Scope:** 3D Sword Models, 3D Floating Back-Crests, 2D Skill Icons, UI Textures, & Audio SFX.
 
+## Purpose
+This document catalogs approved visual assets, model names, and UI/audio asset mappings for ASCEND.
+
+## Document Connectivity
+- Use this manifest to validate asset names, tiers, and visual style before importing into Studio.
+- Pair it with `docs/AI_PROMPT_GUIDE.md` for prompt generation and `docs/ARCHITECTURE_SPEC.md` for asset placement guidance.
+- This file does not define combat rules or mechanics.
+
 ---
 
 ## 1. 3D Mythic Paired Assets Manifest

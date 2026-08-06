@@ -10,6 +10,18 @@
 
 ---
 
+## Purpose
+This document captures the high-level game vision, player-facing experience, core gameplay loop, and design pillars for the ASCEND project.
+
+## Document Connectivity
+- Use this doc first for overall game direction and player experience.
+- Pair with `docs/ARCHITECTURE_SPEC.md` for technical architecture mapping.
+- Pair with `docs/COMBAT_SPEC.md` for server-authoritative combat rules.
+- Pair with `docs/PROGRESSION_SPEC.md` for cultivation progression and reward design.
+- Pair with `docs/UI_UX_SPEC.md` for HUD and modal UI styling.
+
+---
+
 # 1. Executive Vision & Core Pillars
 
 ## Overview

@@ -3,6 +3,14 @@
 ## 📌 OVERVIEW
 Following our strategic pivot to a **Pure Sword Cultivator (100% Flying Swords + Floating Back Armors)** paradigm, normalized RPG stat curves, and a Unified Open World, legacy weapon implementations and inflated configuration scales MUST be pruned and refactored to maintain a clean architecture.
 
+## Purpose
+This guide defines the safe cleanup path, the files targeted for pruning, and the architectural changes required to keep ASCEND aligned with the current game plan.
+
+## Document Connectivity
+- Use this guide when implementing Phase 6.2 Codebase Pruning.
+- Pair with `docs/ARCHITECTURE_SPEC.md` to validate structural cleanup decisions.
+- Pair with `.ai/CURRENT_TASK.md` to ensure cleanup work matches active task scope.
+
 ---
 
 ## ❌ 1. FILES TO BE REMOVED (REDUNDANCY PRUNING)

@@ -1,5 +1,13 @@
 # 🪙 DUAL PLAYSTYLE ECONOMY & MARKET SPECIFICATION (ASCEND V1)
 
+## Purpose
+This document defines the Spirit Stone economy, merchant pricing, market systems, and reward sinks for ASCEND.
+
+## Document Connectivity
+- Use this guide when designing vendor systems, item pricing, and reward pacing.
+- Pair it with `docs/PROGRESSION_SPEC.md` for how economy scales with player progression and `docs/GAME_DESIGN.md` for player experience goals.
+- It does not define combat mechanics or asset creation rules.
+
 ## 📌 OVERVIEW
 ASCEND V1 implements a balanced, goal-driven economy that accommodates two distinct player playstyles:
 1. **The PVE Combat Hunter**: Focuses on mob farming, boss bounties, and dungeon runs. Sells excess dropped loot (common/uncommon weapons, monster cores) for Spirit Stones to purchase ready-made Breakthrough Pills and potions directly from the Market Shop.

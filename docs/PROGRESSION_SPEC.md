@@ -9,6 +9,14 @@
 > **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
 > **Scope:** 45-Stage Realm Engine, Sword Mastery Ranks, Floating Back-Swords, & Alchemy Recipes.
 
+## Purpose
+This document defines progression mechanics, cultivation realms, breakthrough behavior, and reward systems for ASCEND.
+
+## Document Connectivity
+- Use this doc when designing or modifying cultivation balance, Qi scaling, breakthrough behavior, and floating back-sword progression.
+- Pair it with `docs/COMBAT_SPEC.md` for combat scaling and with `docs/ARCHITECTURE_SPEC.md` for the data and service boundaries.
+- It is not a market or economy document; use `docs/ECONOMY_AND_MARKET_SPEC.md` for financial systems.
+
 ---
 
 ## 1. 45-Stage Cultivation Realm Engine

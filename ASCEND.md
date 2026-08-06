@@ -72,7 +72,10 @@ https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.ai/CHANGELOG.md
 # 3. Documentation Index & Specifications Lookup
 
 Only read the documentation relevant to the user's request. Never scan unnecessary files.
+## 📘 Docs Folder Entry Point
+`docs/README.md` — Use this file first when navigating the documentation directory.
 
+---
 ## 📖 Game Design
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/GAME_DESIGN.md  
 *Executive vision, core pillars, gameplay loop, and high-level design.*

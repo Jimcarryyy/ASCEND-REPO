@@ -4,6 +4,14 @@
 > **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
 > **Scope:** Pure Sword Cultivator Paradigm, Dynamic Jade Scroll Skills, Floating Back-Sword Array, & 4 Paired Mythic Sets.
 
+## Purpose
+This document defines the Sword Art Jade Scroll system, mastery progression, and floating back-sword cosmetic progression for ASCEND.
+
+## Document Connectivity
+- Use this doc when designing or implementing skill slot behavior, mastery XP, and floating back-sword visuals.
+- Pair it with `docs/PROGRESSION_SPEC.md` for progression thresholds and `docs/ARCHITECTURE_SPEC.md` for the underlying module structure.
+- This file is not a UI spec; use `docs/UI_UX_SPEC.md` for presentation details.
+
 ---
 
 ## 1. Pure Sword Cultivator Paradigm (剑修)

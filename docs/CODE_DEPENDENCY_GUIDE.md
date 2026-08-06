@@ -9,6 +9,11 @@ This document explains the codebase dependency relationships for the ASCEND proj
 - Client controllers under `src/StarterPlayer/StarterPlayerScripts`
 - Excludes `Workspace/` content and generated Studio assets
 
+## Document Connectivity
+- Use this guide when tracing module dependencies and file connectivity.
+- Pair with `docs/ARCHITECTURE_SPEC.md` for the intended architecture and system boundaries.
+- Pair with `docs/CODEBASE_CLEANUP_GUIDE.md` when removing legacy or redundant weapon modules.
+
 ---
 
 ## High-Level Architecture

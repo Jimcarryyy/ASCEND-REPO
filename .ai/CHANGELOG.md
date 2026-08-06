@@ -1,6 +1,12 @@
 # CHANGELOG
 
-All notable changes, system implementations, and architectural updates to the ASCEND Roblox project are documented in this file.
+## Purpose
+This document tracks released and unreleased changes, feature additions, and architectural updates for ASCEND.
+
+## Connectivity
+- Use this file to audit historical development and ensure documentation aligns with actual progress.
+- Pair it with `.ai/PROJECT_STATUS.md` to confirm which milestones are reflected in the current release state.
+- It is not a task list; it records completed or in-progress changes after implementation.
 
 ---
 

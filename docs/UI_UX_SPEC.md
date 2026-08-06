@@ -4,6 +4,14 @@
 > **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
 > **Scope:** Dark Obsidian Palette, Sharp 90° Corners, `FredokaOne` Typography, Bottom HUD Panel, & Spirit Pouch.
 
+## Purpose
+This document defines the HUD, menu, and modal presentation rules, including typography, colors, and UI behavior for ASCEND.
+
+## Document Connectivity
+- Use this doc when updating HUDController, InventoryController, OverheadUIController, or any game interface.
+- Pair it with `docs/ARCHITECTURE_SPEC.md` for UI code boundaries and `docs/AI_PROMPT_GUIDE.md` for asset generation rules.
+- It does not define gameplay mechanics; use `docs/COMBAT_SPEC.md` and `docs/PROGRESSION_SPEC.md` for those systems.
+
 ---
 
 ## 1. Dark Obsidian Design System ("Same Skin, Different Body")

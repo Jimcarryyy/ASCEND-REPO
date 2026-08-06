@@ -1,5 +1,13 @@
 # Next Steps & Project Roadmap — ASCEND
 
+## Purpose
+This file lays out the next planned development milestones and future roadmap. Use it after completing the current task or when planning the next phase.
+
+## Connectivity
+- Follows `.ai/CURRENT_TASK.md` and `.ai/PROJECT_STATUS.md`.
+- Points to future Phase 6, Phase 7, and Phase 8 work.
+- Does not replace the active task approval sequence.
+
 ## 🚀 Immediate Next Steps (Phase 6)
 
 ### 1. World Zone & Qi Multiplier Binding (Task 6.2A)

@@ -1,5 +1,13 @@
 # Current Task Specification — ASCEND
 
+## Purpose
+This file defines the active milestone, current progress summary, and the exact tasks approved for immediate work. Use it as the primary guide for what to build now.
+
+## Connectivity
+- Read this file first when starting a new session.
+- Use `.ai/PROJECT_STATUS.md` for subsystem health and completion context.
+- Use `.ai/NEXT_STEPS.md` for planned work after the current task is complete.
+
 ## Active Milestone: Phase 6 — Infrastructure, Persistence & Pure Sword Cultivator Expansion
 
 ---

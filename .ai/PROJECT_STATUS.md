@@ -1,5 +1,13 @@
 # ASCEND — Project Status Overview
 
+## Purpose
+This file reports the current phase status, subsystem readiness, and repository structure snapshot. Use it to verify progress before making major changes.
+
+## Connectivity
+- Supports `.ai/CURRENT_TASK.md` by providing health and completion context.
+- Supports `.ai/NEXT_STEPS.md` by confirming readiness for planned milestones.
+- Reports status only; it does not define active implementation tasks.
+
 ## 📊 Overall Progress Overview
 * **Phase 1: Architecture & Game Design Specifications** — `100% Completed`
 * **Phase 2: UI/UX & Asset Pipeline** — `100% Completed`

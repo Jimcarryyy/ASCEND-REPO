@@ -1,6 +1,12 @@
 # Architecture Decision Log
 
-This document records key architectural decisions made during the development of ASCEND.
+## Purpose
+This document records key architecture decisions for ASCEND, including accepted design patterns, security rules, and strategic pivots.
+
+## Connectivity
+- Use this file to verify whether a change follows established architecture decisions.
+- Pair it with `.ai/CURRENT_TASK.md` for approved task scope and `.ai/PROJECT_STATUS.md` for subsystem readiness.
+- Do not treat this file as implementation guidance; it is a decision log, not a specification.
 
 ---
 

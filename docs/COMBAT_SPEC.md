@@ -4,6 +4,14 @@
 > **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
 > **Scope:** Server-Authoritative Sword Engine, Flexible Jade Scrolls, Hitboxes, Defensive Mechanics, & Qi Formulas.
 
+## Purpose
+This document defines combat systems, input intent validation, hitbox behavior, and how the Sword Art scroll system integrates with server-authoritative execution.
+
+## Document Connectivity
+- Use this doc when implementing or changing combat code such as `CombatStateManager`, `WeaponManager`, `HitboxManager`, or `FlyingSwordServer`.
+- Pair it with `docs/ARCHITECTURE_SPEC.md` for implementation boundaries and `docs/PROGRESSION_SPEC.md` for how combat scales with Cultivation.
+- Do not use this file for UI presentation details; that is covered by `docs/UI_UX_SPEC.md`.
+
 ---
 
 ## 1. Security Architecture & Server Intent Pipeline

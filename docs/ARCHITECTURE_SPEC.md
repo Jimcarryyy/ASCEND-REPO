@@ -11,6 +11,16 @@
 
 ---
 
+## Purpose
+This document defines the ASCEND code architecture, data flow, network remote mapping, and service/controller separation.
+
+## Document Connectivity
+- Use this doc for code structure and system architecture decisions.
+- Pair with `docs/CODE_DEPENDENCY_GUIDE.md` when tracing actual script relationships.
+- Pair with `.ai` tracking docs to link architecture with current active tasks and project status.
+
+---
+
 ## 1. Roblox Studio Project Directory Structure
 
 ASCEND-V1 uses a modular, single-script entry point architecture for both server and client execution contexts, tailored for the **Pure Sword Cultivator Paradigm**:

@@ -10,6 +10,14 @@
 > **Source of Truth for 2D UI & 3D Asset Generation**  
 > This guide defines the exact prompt structures, style guidelines, and post-processing steps used to generate all 2D UI assets and 3D game models for **ASCEND**.
 
+## Purpose
+This document provides the AI asset generation workflow, style rules, and prompt reference for visual production.
+
+## Document Connectivity
+- Use this guide when generating or reviewing art assets, 2D UI templates, and 3D mesh concepts.
+- Pair it with `docs/ASSET_MANIFEST.md` to ensure generated assets match the approved item catalog and quality requirements.
+- This file does not define gameplay systems; it defines visual and asset production rules only.
+
 ---
 
 ## 🏛️ Core Design Principles

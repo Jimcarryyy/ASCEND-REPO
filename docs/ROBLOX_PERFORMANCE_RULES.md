@@ -1,5 +1,13 @@
 # ⚡ ROBLOX PERFORMANCE RULES & OPTIMIZATION SPEC (ASCEND V1)
 
+## Purpose
+This document defines performance budgets, optimization rules, and anti-patterns for all ASCEND assets and code.
+
+## Document Connectivity
+- Use this guide when importing assets, writing combat loops, or optimising Studio content.
+- Pair it with `docs/ASSET_MANIFEST.md` for asset budget validation and `docs/ARCHITECTURE_SPEC.md` for performance-sensitive code architecture.
+- It does not define game mechanics or economy rules.
+
 ## 📌 OVERVIEW & CORE PHILOSOPHY
 This document serves as the mandatory technical performance guide for ASCEND. Over 60% of Roblox players access games via mobile devices (iOS/Android) and low-end hardware. To prevent client memory crashes, thermal throttling, and frame drops, all 3D assets, UI panels, combat scripts, and world structures MUST strictly adhere to these performance budgets.
 
