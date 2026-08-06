@@ -2,86 +2,32 @@
 
 > **Technical Specification Document**  
 > **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
-> **Scope:** ScreenGui Hierarchy, In-Combat HUD Layout, Overhead Health Display, Out-of-Combat Modals, & Floating Combat Text.
+> **Scope:** Dark Obsidian Palette, Sharp 90° Corners, `FredokaOne` Typography, Bottom HUD Panel, & Spirit Pouch.
 
 ---
 
-## 1. UI Architecture & Dual Visual Philosophy
+## 1. Dark Obsidian Design System ("Same Skin, Different Body")
 
-ASCEND-V1 enforces a strict visual separation between active combat gameplay and out-of-combat menu management:
+All HUD components and out-of-combat modals enforce the exact same design language:
 
-* **In-Combat HUD:** Minimalist, unobtrusive, clean geometric progress bars (Health, Stamina, Energy). Dynamic overhead HP bars above player and mob heads. Zero screen-covering text or bloat.
-* **Menu Modals:** Handcrafted fantasy artwork frames with heavy stone/parchment textures, 3D ViewportFrame item slot placeholders, and gold trim highlights. Full-screen or centered modal overlays opened via keybinds.
-
----
-
-## 2. Dynamic Overhead Health & Cultivation Bar (`OverheadUIController.luau`)
-
-Every player, NPC, and dummy in Workspace receives a server-synced floating BillboardGui:
-
-* **Attachment:** Attached to `Head` part (`StudsOffset = Vector3.new(0, 2.5, 0)`, `MaxDistance = 80`).
-* **Title Label:** Displays Character Name and Cultivation Realm Title (e.g. `[Qi Condensation - Tier 1]`).
-* **Health Fill Transitions:**
-  * `> 50% HP`: Emerald Green (`#2ECC71`)
-  * `25% - 50% HP`: Gold Yellow (`#F1C40F`)
-  * `< 25% HP`: Crimson Red (`#E74C3C`)
+* **Main Background**: `#0C0E14` (`Color3.fromRGB(12, 14, 20)`)
+* **Sub-Panels / Cards**: `#121520` (`Color3.fromRGB(18, 21, 32)`)
+* **Border Stroke**: `#1E2330` (`Color3.fromRGB(30, 35, 48)`), `Thickness = 1.5`
+* **Typography**: `Enum.Font.FredokaOne` across all headers, meters, and item cards.
+* **Corners**: **100% Sharp 90° Corners** (0px border-radius, no `UICorner`).
+* **Text Colors**: `#F1F5F9` (Crisp Pure White for titles & numbers), `#94A3B8` (Muted Grey), `#EAB308` (Gold Prompts), `#38BDF8` (Cyan Qi), `#22C55E` (Green HP).
 
 ---
 
-## 3. Meditation Camera & Visual Wrap
+## 2. Bottom-Center HUD Panel (`HUDController.luau`)
 
-* **Front-View Cinematic Camera**: When meditating (**`G`**), client camera switches to `Scriptable` and positions at `{0, 1.8, -13.5}` facing the character's front.
-* **Calm Floating Motion**: Character hovers with a slow, serene `0.5` stud height sine wave (`floatSpeed = 1.6`).
-* **Lightweight Body Highlight**: Ethereal `Highlight` wrapper (`FillTransparency = 0.95`, `OutlineTransparency = 0.25`) wrapping player clothing, face, and body in cultivation realm aura.
+Single enclosed dark obsidian window (`500x185` px) positioned at `UDim2.new(0.5, -250, 1, -200)`:
 
----
-
-## 4. Complete Roblox Studio Screen Hierarchy
-
-All UI elements reside in StarterGui under two primary master ScreenGui containers:
-
-### A. MainHUD (ScreenGui)
-* ResetOnSpawn: false
-* IgnoreGuiInset: true
-* DisplayOrder: 10
-* Hierarchy Layout:
-  - SafeArea (Frame, Size: {1, 0}, {1, 0}, BackgroundTransparency: 1)
-    - BottomLeft_Status (Frame, AnchorPoint: 0, 1, Position: {0.02, 0}, {0.96, 0})
-      - HealthBar_BG (Frame) -> Fill (Frame) -> HealthText (TextLabel)
-      - StaminaBar_BG (Frame) -> Fill (Frame)
-      - LevelBadge (Frame) -> LevelText (TextLabel)
-    - BottomCenter_Abilities (Frame, AnchorPoint: 0.5, 1, Position: {0.5, 0}, {0.96, 0})
-      - UIListLayout (FillDirection: Horizontal, Padding: UDim.new(0.02, 0))
-      - Slot_M1 (Frame) -> Icon (ImageLabel) -> KeybindHint (TextLabel)
-      - Slot_F (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
-      - Slot_Q (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
-      - Slot_E (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
-      - Slot_R (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
-      - Slot_Dodge (Frame) -> Icon (ImageLabel) -> CooldownOverlay (Frame)
-    - TopCenter_BossHUD (Frame, AnchorPoint: 0.5, 0, Position: {0.5, 0}, {0.03, 0})
-      - BossHealthBar_BG -> Fill -> PhaseIndicatorText
-
-### B. MenuModals (ScreenGui)
-* ResetOnSpawn: false
-* IgnoreGuiInset: true
-* DisplayOrder: 20
-* Hierarchy Layout:
-  - BackgroundDim (Frame, Size: {1, 0}, {1, 0}, BackgroundColor3: #000000, Transparency: 0.5)
-  - InventoryModal (Frame, AnchorPoint: 0.5, 0.5, Size: {0.7, 0}, {0.75, 0})
-    - FantasyFrame_BG (ImageLabel)
-    - ItemGridContainer (ScrollingFrame + UIGridLayout)
-    - ViewportFrame (3D Placeholder Item Preview)
-  - AlchemyModal (Frame)
-    - FurnaceRefinementGrid
-    - CraftButton
-
----
-
-## 5. Floating Combat Text (FCT) Specification
-
-When a hit is registered on the server, a client event fires to spawn Floating Combat Text in world space:
-
-* Normal Hit: White text (`#FFFFFF`), Size 18pt, floats upward 3 studs over 0.5 seconds and fades out.
-* Critical Hit: Yellow text (`#FFD700`), Size 26pt bold, scale bounce animation (1.0x -> 1.3x -> 1.0x), floats upward 4 studs.
-* Blocked Hit: Blue text (`#74B9FF`), Size 16pt, text displays "BLOCKED".
-* Status Debuff: Purple/Red text (`#9C2C77`), displays debuff name (e.g., "STUNNED", "QI DEVIATION").
+1. **HP Bar Box (Height: 28px)**: Dark `#121520` container with `#22C55E` green fill + bold white text (`50.0K / 50.0K HP`).
+2. **Qi Bar Box (Height: 28px)**: Dark `#121520` container with `#38BDF8` cyan fill + **pure white text ALWAYS** (`Golden Core — Order 1` on left, `19.01M / 19.01M (100.0%)` on right).
+3. **Action Prompt Line (Height: 22px)**: Clean text line (`[G] HOLD TO MEDITATE` / `PRESS 'B' FOR MINOR BREAKTHROUGH`), **100% free of icon emojis (`✨`, `⚡`, `🧘`)**.
+4. **Skill Hotbar Slots (58x58px Sharp Square Cards)**:
+   * 6 slots: `LMB`, `F`, `Q`, `E`, `R`, `Shift`.
+   * Skill artwork image centered inside.
+   * Keybind badge at bottom-right corner (`24x14` px, `#0C0E14` background).
+   * Cooldown mask overlay + centered decimal timer text (`2.5s`).

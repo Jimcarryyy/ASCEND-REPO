@@ -51,6 +51,37 @@ function WeaponManager.GetEquippedWeapon(player: Player): WeaponType
 	return equippedWeapons[player] or "FlyingSword"
 end
 
+function WeaponManager.SetWeaponVisibility(player: Player, visible: boolean)
+	local character = player.Character
+	if not character then return end
+
+	local weaponInst = character:FindFirstChild("Equipped3DWeapon")
+	if weaponInst then
+		if weaponInst:IsA("Model") then
+			for _, descendant in ipairs(weaponInst:GetDescendants()) do
+				if descendant:IsA("BasePart") then
+					descendant.Transparency = if visible then 0 else 1
+				end
+			end
+		elseif weaponInst:IsA("BasePart") then
+			weaponInst.Transparency = if visible then 0 else 1
+		end
+	end
+
+	local gauntletLeft = character:FindFirstChild("Equipped3DGauntlet_Left")
+	if gauntletLeft then
+		if gauntletLeft:IsA("Model") then
+			for _, descendant in ipairs(gauntletLeft:GetDescendants()) do
+				if descendant:IsA("BasePart") then
+					descendant.Transparency = if visible then 0 else 1
+				end
+			end
+		elseif gauntletLeft:IsA("BasePart") then
+			gauntletLeft.Transparency = if visible then 0.3 else 1
+		end
+	end
+end
+
 function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 	local character = player.Character
 	if not character then return end
@@ -109,45 +140,54 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 		return
 	end
 
-	-- Search for custom 3D weapon model in ReplicatedStorage/Weapons or ReplicatedStorage/Shared/Configs/Weapons
-	local weaponsFolder = ReplicatedStorage:FindFirstChild("Weapons") :: Folder?
-	if not weaponsFolder then
-		local shared = ReplicatedStorage:FindFirstChild("Shared")
-		local configs = if shared then shared:FindFirstChild("Configs") else nil
-		if configs then
-			weaponsFolder = configs:FindFirstChild("Weapons") :: Folder?
+	-- 1. SEARCH REPLICATEDSTORAGE DIRECTLY (Top Level & Subfolders)
+	local weaponTemplate: Instance? = nil
+
+	if weaponType == "FlyingSword" then
+		weaponTemplate = ReplicatedStorage:FindFirstChild("HeavenlyVoidBlade")
+			or ReplicatedStorage:FindFirstChild("VoidFlyingSword")
+			or ReplicatedStorage:FindFirstChild("FlyingSword")
+	elseif weaponType == "Spear" then
+		weaponTemplate = ReplicatedStorage:FindFirstChild("DragonSovereignSpear")
+			or ReplicatedStorage:FindFirstChild("Spear")
+	end
+
+	-- Fallback search inside ReplicatedStorage.Weapons if present
+	if not weaponTemplate then
+		local weaponsFolder = ReplicatedStorage:FindFirstChild("Weapons") :: Folder?
+		if weaponsFolder then
+			weaponTemplate = weaponsFolder:FindFirstChild(weaponType)
 		end
 	end
 
-	local weaponTemplate = if weaponsFolder then weaponsFolder:FindFirstChild(weaponType) else nil
-
-	local weaponInstance: Instance?
-	local handle: BasePart?
+	local weaponInstance: Instance? = nil
+	local handle: BasePart? = nil
 
 	if weaponTemplate then
 		weaponInstance = weaponTemplate:Clone()
 		weaponInstance.Name = "Equipped3DWeapon"
 
-		-- Clean up legacy scripts inside custom model/tool
+		-- Clean up legacy scripts inside custom model
 		for _, scriptInst in ipairs(weaponInstance:GetDescendants()) do
 			if scriptInst:IsA("LuaSourceContainer") then
 				scriptInst:Destroy()
 			end
 		end
 
-		if weaponTemplate:IsA("Tool") then
-			handle = weaponInstance:FindFirstChild("Handle") :: BasePart?
-		elseif weaponInstance:IsA("Model") then
+		if weaponInstance:IsA("Model") then
 			local modelInst = weaponInstance :: Model
-			local primary = modelInst.PrimaryPart or weaponInstance:FindFirstChild("Handle") :: BasePart?
-			handle = primary or (weaponInstance:FindFirstChildOfClass("BasePart") :: BasePart)
+			handle = modelInst.PrimaryPart 
+				or (weaponInstance:FindFirstChild("Handle") :: BasePart?) 
+				or weaponInstance:FindFirstChildOfClass("MeshPart") 
+				or weaponInstance:FindFirstChildOfClass("BasePart")
 		elseif weaponInstance:IsA("BasePart") then
 			handle = weaponInstance :: BasePart
 		end
 	end
 
-	-- Fallback placeholder Part if no model is found
+	-- 2. PROCEDURAL FALLBACK ONLY IF NO MODEL IS FOUND
 	if not handle then
+		warn(string.format("[WeaponManager] Model for %s not found in ReplicatedStorage. Using procedural fallback.", weaponType))
 		local placeholder = Instance.new("Part")
 		placeholder.Name = "Equipped3DWeapon"
 		placeholder.CanCollide = false
@@ -179,18 +219,18 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 	handle.CanCollide = false
 	handle.Massless = true
 
-	-- Programmatically Add Crisp White Weapon Trail
-	local topAttach = Instance.new("Attachment")
+	-- Programmatically Add Weapon Trail Attachments
+	local topAttach = handle:FindFirstChild("TrailTop") :: Attachment? or Instance.new("Attachment")
 	topAttach.Name = "TrailTop"
 	topAttach.Position = Vector3.new(0, 2.2, 0)
 	topAttach.Parent = handle
 
-	local botAttach = Instance.new("Attachment")
+	local botAttach = handle:FindFirstChild("TrailBottom") :: Attachment? or Instance.new("Attachment")
 	botAttach.Name = "TrailBottom"
 	botAttach.Position = Vector3.new(0, -0.8, 0)
 	botAttach.Parent = handle
 
-	local trail = Instance.new("Trail")
+	local trail = handle:FindFirstChild("WeaponTrail") :: Trail? or Instance.new("Trail")
 	trail.Name = "WeaponTrail"
 	trail.Attachment0 = topAttach
 	trail.Attachment1 = botAttach
@@ -219,17 +259,17 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 		or weaponInstance:FindFirstChild("RightGripAttachment", true) :: Attachment? 
 		or weaponInstance:FindFirstChild("Grip", true) :: Attachment?
 
-	-- Auto-create attachment if missing on placeholder or model
+	-- Auto-create attachment if missing
 	if not customGripAttachment then
 		local newAtt = Instance.new("Attachment")
 		newAtt.Name = "RightGripAttachment"
-		newAtt.Position = Vector3.new(0, 0, -2)
+		newAtt.Position = Vector3.new(0, 0, 0)
 		newAtt.Orientation = Vector3.new(0, 90, 90)
 		newAtt.Parent = handle
 		customGripAttachment = newAtt
 	end
 
-	-- 3. Connect Motor6D Joint using Attachment Alignment
+	-- 3. Connect Motor6D Joint
 	local motor = Instance.new("Motor6D")
 	motor.Name = "WeaponGrip"
 	motor.Part0 = rightHand
@@ -239,28 +279,7 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponType: WeaponType)
 	motor.Parent = rightHand
 
 	weaponInstance.Parent = character
-	print(string.format("[WeaponManager] Attached %s to %s via RightGripAttachment alignment.", weaponType, player.Name))
-end
-
--- Add SetWeaponVisibility function to WeaponManager.luau
-
-function WeaponManager.SetWeaponVisibility(player: Player, visible: boolean)
-	local character = player.Character
-	if not character then return end
-
-	local weaponPart = character:FindFirstChild("Equipped3DWeapon") :: BasePart?
-	if weaponPart then
-		weaponPart.Transparency = if visible then 0 else 1
-		local light = weaponPart:FindFirstChildOfClass("PointLight")
-		if light then light.Enabled = visible end
-	end
-
-	local gauntletLeft = character:FindFirstChild("Equipped3DGauntlet_Left") :: BasePart?
-	if gauntletLeft then
-		gauntletLeft.Transparency = if visible then 0.3 else 1
-		local light = gauntletLeft:FindFirstChildOfClass("PointLight")
-		if light then light.Enabled = visible end
-	end
+	print(string.format("[WeaponManager] Successfully attached 3D Model '%s' to %s.", weaponInstance.Name, player.Name))
 end
 
 function WeaponManager.EquipWeapon(player: Player, weaponType: WeaponType)
@@ -270,43 +289,18 @@ function WeaponManager.EquipWeapon(player: Player, weaponType: WeaponType)
 	character:SetAttribute("WeaponType", weaponType)
 	equippedWeapons[player] = weaponType
 
-	-- Spawn and weld 3D Weapon Model or Placeholder
 	WeaponManager.AttachWeaponModel(player, weaponType)
 
-	-- Generate skill icon map for the client HUD
-	local skillIcons = {}
-	if weaponType == "FlyingSword" then
-		skillIcons = {
-			M1 = UIAssets.Skills.M1_SwordArt,
-			F = UIAssets.Skills.M2_HeavySlam,
-			Q = UIAssets.Skills.SwordTempest,
-			E = UIAssets.Skills.DragonRoar,
-			R = UIAssets.Skills.TribulationBolt,
-			Shift = UIAssets.Skills.DodgeWindstep,
-		}
-	elseif weaponType == "Spear" then
-		skillIcons = {
-			M1 = UIAssets.Weapons.Spear,
-			F = UIAssets.Skills.HundredPalms,
-			Q = UIAssets.Skills.ParryQiShield,
-			E = UIAssets.Skills.DragonRoar,
-			R = UIAssets.Skills.TribulationBolt,
-			Shift = UIAssets.Skills.DodgeWindstep,
-		}
-	elseif weaponType == "Gauntlet" then
-		skillIcons = {
-			M1 = UIAssets.Weapons.Gauntlet,
-			F = UIAssets.Skills.ParryQiShield,
-			Q = UIAssets.Skills.HundredPalms,
-			E = UIAssets.Skills.M2_HeavySlam,
-			R = UIAssets.Skills.TribulationBolt,
-			Shift = UIAssets.Skills.DodgeWindstep,
-		}
-	end
+	local skillIcons = {
+		M1 = UIAssets.Skills.M1_SwordArt,
+		F = UIAssets.Skills.M2_HeavySlam,
+		Q = UIAssets.Skills.SwordTempest,
+		E = UIAssets.Skills.DragonRoar,
+		R = UIAssets.Skills.TribulationBolt,
+		Shift = UIAssets.Skills.DodgeWindstep,
+	}
 
-	-- Notify client HUD to update skill slot icons
 	updateSkillStateRemote:FireClient(player, weaponType, skillIcons)
-
 	print(string.format("[WeaponManager] Player %s equipped weapon: %s", player.Name, weaponType))
 end
 
