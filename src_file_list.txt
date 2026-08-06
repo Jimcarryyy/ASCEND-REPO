@@ -1,0 +1,73 @@
+src\ReplicatedStorage\Shared\Configs\AlchemyConfig.luau
+src\ReplicatedStorage\Shared\Configs\AnimationConfig.luau
+src\ReplicatedStorage\Shared\Configs\CultivationConfig.luau
+src\ReplicatedStorage\Shared\Configs\InventoryConfig.luau
+src\ReplicatedStorage\Shared\Configs\ItemConfig.luau
+src\ReplicatedStorage\Shared\Configs\RarityConfig.luau
+src\ReplicatedStorage\Shared\Configs\UIAssets.luau
+src\ReplicatedStorage\Shared\Configs\Weapons\FlyingSwordConfig.luau
+src\ReplicatedStorage\Shared\Configs\Weapons\GauntletConfig.luau
+src\ReplicatedStorage\Shared\Configs\Weapons\SpearConfig.luau
+src\ReplicatedStorage\Shared\Network\RemoteEvents.luau
+src\ServerScriptService\Server\Combat\HitboxManager.luau
+src\ServerScriptService\Server\Combat\WeaponManager.luau
+src\ServerScriptService\Server\Combat\Weapons\FlyingSwordServer.luau
+src\ServerScriptService\Server\Combat\Weapons\GauntletServer.luau
+src\ServerScriptService\Server\Combat\Weapons\SpearServer.luau
+src\ServerScriptService\Server\Cultivation\AlchemyManager.luau
+src\ServerScriptService\Server\Cultivation\CultivationManager.luau
+src\ServerScriptService\Server\ServerMain.server.luau
+src\ServerScriptService\Server\State\CombatStateManager.luau
+src\ServerScriptService\Server\State\InventoryManager.luau
+src\ServerScriptService\Server\State\PlayerDataManager.luau
+src\StarterPlayer\StarterPlayerScripts\Client\UI\OverheadUIController.luau
+src\StarterPlayer\StarterPlayerScripts\ClientMain.client.luau
+src\StarterPlayer\StarterPlayerScripts\Controllers\AlchemyController.luau
+src\StarterPlayer\StarterPlayerScripts\Controllers\AnimationController.luau
+src\StarterPlayer\StarterPlayerScripts\Controllers\CombatVFXController.luau
+src\StarterPlayer\StarterPlayerScripts\Controllers\CultivationController.luau
+src\StarterPlayer\StarterPlayerScripts\Controllers\HUDController.luau
+src\StarterPlayer\StarterPlayerScripts\Controllers\InputController.luau
+src\StarterPlayer\StarterPlayerScripts\Controllers\InventoryController.luau
+src\Workspace\Mihari Morph\Animation.meta.json
+src\Workspace\Mihari Morph\Animation.server.luau
+src\Workspace\Mihari Morph\Animator.meta.json
+src\Workspace\Mihari Morph\Animator.server.luau
+src\Workspace\Mihari Morph\FindPlayer.meta.json
+src\Workspace\Mihari Morph\FindPlayer.server.luau
+src\Workspace\Mihari Morph\init.meta.json
+src\Workspace\Mihari Morph\MihariEye\init.meta.json
+src\Workspace\Mihari Morph\MihariEye\Transparency script.meta.json
+src\Workspace\Mihari Morph\MihariEye\Transparency script.server.luau
+src\Workspace\Mihari Morph\Morph Pad\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\Backpack\Kill\Client.client.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\Backpack\Kill\Client.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\Backpack\Kill\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\Backpack\Kill\Server.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\Backpack\Kill\Server.server.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\CharacterScripts\Footsteps\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\CharacterScripts\Footsteps\init.server.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\CharacterScripts\Footsteps\Settings.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\CharacterScripts\Footsteps\Settings.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\Jumpscare\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\Jumpscare\TextButton\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\Jumpscare\TextButton\LocalScript.client.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\Place me in StarterGUI.client.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\Scare sound\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\Scare sound\TextButton\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\Scare sound\TextButton\LocalScript.client.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\OpenSettings\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\OpenSettings\Settings OnOff Script.client.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\OpenSettings\Settings OnOff Script.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\SettingsFrame\DayNight\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\SettingsFrame\DayNight\LocalScript.client.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\SettingsFrame\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\SettingsFrame\Low Graphics\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\SettingsFrame\Low Graphics\LocalScript.client.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\SETTINGS\SettingsFrame\Main.client.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\GUIs\ShiftToSprint.client.luau
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\init.meta.json
+src\Workspace\Mihari Morph\Morph Pad\MainFrame\init.server.luau
+src\Workspace\Mihari Morph\Respawn.server.luau
+src\Workspace\Mihari Morph\Teleporter.server.luau

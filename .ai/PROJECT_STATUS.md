@@ -92,3 +92,40 @@ src/
 │        ├─ InputController.luau
 │        └─ InventoryController.luau
 └─ Workspace/
+
+# 📊 PROJECT STATUS & SYSTEM DIRECTORY MAP
+
+## 🌟 Overall Project Completion: ~85%
+
+### 🧱 Subsystem Health Summary
+* **Core Combat & Jade Scroll Skill Engine**: 🟢 Healthy (Pure Flying Sword Paradigm)
+* **Datastore Persistence (`PlayerDataManager.luau`)**: 🟢 Healthy (3-attempt pcall, auto-save, shutdown hooks)
+* **Stat Scale & Progression Curve**: 🟡 Refactoring to Normalized RPG Scale
+* **3D Asset Pipeline**: 🟢 Complete (13 Swords, 13 Back Armors, 5 Zone Environments, Props & Bosses)
+* **UI/UX Infrastructure**: 🟡 Refactoring to Light-Mode Flat 2D Aesthetics
+
+---
+
+## 📁 Repository Documentation Directory Map
+
+```text
+ASCEND-REPO/
+├── ASCEND.md                           # Master Entry Point & Core Guidelines
+├── docs/
+│   ├── ARCHITECTURE_SPEC.md            # Pure Sword Cultivator & Server-Authoritative Architecture
+│   ├── COMBAT_SPEC.md                  # Combat State Machine, Hitboxes & Jade Scroll Engine
+│   ├── PROGRESSION_SPEC.md             # Normalized 45-Stage Realm Progression (1K - 100K Qi)
+│   ├── SWORD_MASTERY_SPEC.md          # Sword Intent Leveling (Crit %, Sharpness, Back Slots)
+│   ├── ASSET_MANIFEST.md               # Complete 3D Asset Manifest (Gear, World Props, Bosses)
+│   ├── GAME_DESIGN.md                  # Unified Single-Continent World Design & Lore
+│   ├── UI_UX_SPEC.md                   # Light-Mode Flat 2D UI/UX Palette & Typography
+│   ├── AI_PROMPT_GUIDE.md              # Gemini 2D Concept Art Prompts (Low-Poly 3D Pipeline)
+│   ├── ROBLOX_PERFORMANCE_RULES.md     # Polycount, Memory (<500MB) & 60 FPS Safety Guide [NEW]
+│   ├── ECONOMY_AND_MARKET_SPEC.md      # Dual Economy, Spirit Stones & Pity Drop System [NEW]
+│   └── CODEBASE_CLEANUP_GUIDE.md       # Codebase Refactoring & Legacy Removal Plan [NEW]
+└── .ai/
+    ├── CURRENT_TASK.md                 # Active Task Tracking (Phase 6.2)
+    ├── PROJECT_STATUS.md              # Subsystem Health & Directory Map
+    ├── DECISIONS.md                    # Architecture Decision Records (ADR-001 to ADR-014)
+    ├── NEXT_STEPS.md                   # Phase Roadmap & Milestones
+    └── CHANGELOG.md                    # Detailed Revision History

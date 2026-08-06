@@ -49,3 +49,20 @@
 - **Objective 1**: Bind physical `Workspace.QiZones` regions (*Mortal Grounds*, *Spirit Spring*, *Azure Peak*, *Dragon Cavern*, *Celestial Void*) to `QiZoneManager.luau` to dynamically apply meditation multipliers ($1\times \rightarrow 150\times$).
 - **Objective 2**: Build Sect Faction Selection (*Azure Cloud Sect*, *Crimson Flame Sect*, *Shadow Void Sect*) and Master NPC interaction system (`SectManager.luau`).
 - **Objective 3**: Register all 4 Paired Mythic Sets in `ItemConfig.luau` and `WeaponManager.luau` to dynamically equip 3D sword meshes and 3D floating back-crest arrays.
+
+
+# 🎯 CURRENT TASK: Phase 6.2 — Codebase Refactoring & Unified World Architecture
+
+## 📌 Active Objective
+Execute the master architectural transition to the **Pure Sword Cultivator Paradigm**, **Normalized RPG Stat Curve**, **Unified Single-Continent World Map**, and **Light-Mode Flat 2D UI/UX**.
+
+---
+
+## 📋 Task Checklist
+
+- [x] **Subtask 6.2A**: 2D/3D Asset Pipeline Completion (13 Flying Swords, 13 Back Armors, World Terrain Props, Herbs, Ores, Cauldrons, Mobs & Bosses).
+- [x] **Subtask 6.2B**: Establish Performance & Economy Specifications (`ROBLOX_PERFORMANCE_RULES.md` & `ECONOMY_AND_MARKET_SPEC.md`).
+- [ ] **Subtask 6.2C**: Codebase Pruning — Delete legacy files (`GauntletServer`, `SpearServer`, `GauntletConfig`, `SpearConfig`).
+- [ ] **Subtask 6.2D**: `CultivationConfig.luau` Normalization — Scale Qi (100 $\rightarrow$ 10,000) and HP (100 $\rightarrow$ 10,000).
+- [ ] **Subtask 6.2E**: `WeaponManager.luau` Expansion — Integrate 3D Floating Back Armor attachment (`BodyBackAttachment`) & stat boosts (+HP, +DEF%).
+- [ ] **Subtask 6.2F**: Light-Mode UI/UX Overhaul — Transition `UIAssets.luau` & HUD controllers to crisp light-mode flat 2D panels.
