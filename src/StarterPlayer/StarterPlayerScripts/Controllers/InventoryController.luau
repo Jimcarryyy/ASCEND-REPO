@@ -3,7 +3,8 @@
     InventoryController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
     Client UI controller for ASCEND Spirit Pouch & Character Hub.
-    Engineered with centered 3D standing character viewport doll and real-time dynamic weapon equipment sync.
+    Engineered with centered 3D standing character viewport doll and real-time dynamic gear sync.
+    Light-Mode Flat 2D UI with crisp high-contrast charcoal text & clamped Qi display.
 ]]
 
 local Players = game:GetService("Players")
@@ -21,27 +22,26 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- BOLD, COMPACT FONT STYLE
 local UI_FONT = Enum.Font.FredokaOne
 
--- DARK OBSIDIAN COLOR PALETTE
-local COLOR_OBSIDIAN_MAIN   = Color3.fromRGB(12, 14, 20)  -- #0C0E14 Main Window
-local COLOR_OBSIDIAN_PANEL  = Color3.fromRGB(18, 21, 32)  -- #121520 Sub-Panels
-local COLOR_OBSIDIAN_CARD   = Color3.fromRGB(12, 14, 20)  -- #0C0E14 Cards & Slots
-local COLOR_OBSIDIAN_BORDER = Color3.fromRGB(30, 35, 48)  -- #1E2330 Edge Borders
-local COLOR_BORDER          = Color3.fromRGB(30, 35, 48)  -- Fallback Border
+-- LIGHT-MODE FLAT 2D PALETTE
+local COLOR_LIGHT_MAIN     = Color3.fromRGB(248, 250, 249) -- #F8FAF9 Main Window
+local COLOR_LIGHT_PANEL    = Color3.fromRGB(241, 245, 249) -- #F1F5F9 Sub-Panels
+local COLOR_LIGHT_CARD     = Color3.fromRGB(255, 255, 255) -- #FFFFFF Cards & Slots
+local COLOR_LIGHT_BORDER   = Color3.fromRGB(203, 213, 225) -- #CBD5E1 Edge Borders
 
-local COLOR_TEXT_MAIN       = Color3.fromRGB(241, 245, 249) -- #F1F5F9 Off-White
-local COLOR_TEXT_SUB        = Color3.fromRGB(148, 163, 184) -- #94A3B8 Muted Grey
-local COLOR_AZURE           = Color3.fromRGB(56, 189, 248)  -- #38BDF8 Cyan
-local COLOR_HP_GREEN        = Color3.fromRGB(34, 197, 94)   -- #22C55E Green
-local COLOR_ACTION_GOLD     = Color3.fromRGB(234, 179, 8)   -- #EAB308 Gold
-local COLOR_BUTTON_DARK     = Color3.fromRGB(58, 69, 92)    -- #3A455C
+local COLOR_TEXT_MAIN      = Color3.fromRGB(15, 23, 42)    -- #0F172A Deep Charcoal
+local COLOR_TEXT_SUB       = Color3.fromRGB(100, 116, 139)  -- #64748B Muted Subtext
+local COLOR_AZURE          = Color3.fromRGB(59, 130, 246)   -- #3B82F6 Sapphire Blue
+local COLOR_HP_GREEN       = Color3.fromRGB(16, 185, 129)  -- #10B981 Emerald Green
+local COLOR_ACTION_GOLD    = Color3.fromRGB(217, 119, 6)   -- #D97706 Warm Amber Gold
+local COLOR_BUTTON_DARK    = Color3.fromRGB(226, 232, 240)  -- #E2E8F0 Soft Slate Button
 
 local RARITY_COLORS = {
-	Immortal  = Color3.fromRGB(239, 68, 68),   -- #EF4444 Red
-	Legendary = Color3.fromRGB(245, 158, 11),  -- #F59E0B Gold
-	Epic      = Color3.fromRGB(168, 85, 247),  -- #A855F7 Purple
-	Rare      = Color3.fromRGB(59, 130, 246),  -- #3B82F6 Blue
-	Uncommon  = Color3.fromRGB(16, 185, 129),  -- #10B981 Green
-	Common    = Color3.fromRGB(100, 116, 139), -- #64748B Gray
+	Immortal  = Color3.fromRGB(225, 29, 72),   -- Red
+	Legendary = Color3.fromRGB(217, 119, 6),   -- Gold
+	Epic      = Color3.fromRGB(147, 51, 234),  -- Purple
+	Rare      = Color3.fromRGB(59, 130, 246),  -- Blue
+	Uncommon  = Color3.fromRGB(16, 185, 129),  -- Green
+	Common    = Color3.fromRGB(100, 116, 139), -- Gray
 }
 
 local spiritPouchGui: ScreenGui
@@ -96,11 +96,10 @@ function InventoryController.Init()
 		currentInventory = inventoryData
 		InventoryController.RefreshGrid()
 		InventoryController.UpdateVitalStats()
-		InventoryController.Update3DDoll() -- Dynamically refresh character doll on inventory change
+		InventoryController.Update3DDoll()
 		InventoryController.InspectSlot(selectedSlotIndex or 1)
 	end)
 
-	-- Hotkey 'K' Toggle
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 
@@ -115,7 +114,7 @@ function InventoryController.Init()
 		end
 	end)
 
-	print("[ASCEND] InventoryController Centered 3D Doll & Dynamic Gear Sync Engine Initialized.")
+	print("[ASCEND] Light-Mode InventoryController Initialized.")
 end
 
 function InventoryController.BuildUI()
@@ -129,7 +128,6 @@ function InventoryController.BuildUI()
 	spiritPouchGui.Enabled = true
 	spiritPouchGui.Parent = playerGui
 
-	-- Transparent Backdrop
 	overlayBackdrop = Instance.new("Frame")
 	overlayBackdrop.Name = "OverlayBackdrop"
 	overlayBackdrop.Size = UDim2.new(1, 0, 1, 0)
@@ -138,22 +136,19 @@ function InventoryController.BuildUI()
 	overlayBackdrop.Visible = false
 	overlayBackdrop.Parent = spiritPouchGui
 
-	-- Main Modal Frame
 	mainModal = Instance.new("Frame")
 	mainModal.Name = "MainModal"
 	mainModal.Size = UDim2.new(0, 1300, 0, 700)
 	mainModal.Position = UDim2.new(0.5, -650, 0.5, -350)
-	mainModal.BackgroundColor3 = COLOR_OBSIDIAN_MAIN
-	mainModal.BackgroundTransparency = 0
+	mainModal.BackgroundColor3 = COLOR_LIGHT_MAIN
 	mainModal.BorderSizePixel = 0
 	mainModal.Parent = overlayBackdrop
 
 	local mStroke = Instance.new("UIStroke")
-	mStroke.Color = COLOR_OBSIDIAN_BORDER
+	mStroke.Color = COLOR_LIGHT_BORDER
 	mStroke.Thickness = 1.5
 	mStroke.Parent = mainModal
 
-	-- Header Title
 	local headerTitle = Instance.new("TextLabel")
 	headerTitle.Size = UDim2.new(1, 0, 0, 56)
 	headerTitle.BackgroundTransparency = 1
@@ -168,7 +163,7 @@ function InventoryController.BuildUI()
 	closeBtn.Position = UDim2.new(1, -48, 0, 9)
 	closeBtn.BackgroundColor3 = RARITY_COLORS.Immortal
 	closeBtn.Text = "X"
-	closeBtn.TextColor3 = COLOR_TEXT_MAIN
+	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	closeBtn.Font = UI_FONT
 	closeBtn.TextSize = 22
 	closeBtn.Parent = mainModal
@@ -177,17 +172,16 @@ function InventoryController.BuildUI()
 		overlayBackdrop.Visible = false
 	end)
 
-	-- 1. LEFT SIDEBAR (120px Width)
 	local verticalTabBar = Instance.new("Frame")
 	verticalTabBar.Name = "VerticalTabBar"
 	verticalTabBar.Size = UDim2.new(0, 120, 1, -70)
 	verticalTabBar.Position = UDim2.new(0, 10, 0, 58)
-	verticalTabBar.BackgroundColor3 = COLOR_OBSIDIAN_PANEL
+	verticalTabBar.BackgroundColor3 = COLOR_LIGHT_PANEL
 	verticalTabBar.BorderSizePixel = 0
 	verticalTabBar.Parent = mainModal
 
 	local vtStroke = Instance.new("UIStroke")
-	vtStroke.Color = COLOR_OBSIDIAN_BORDER
+	vtStroke.Color = COLOR_LIGHT_BORDER
 	vtStroke.Thickness = 1.5
 	vtStroke.Parent = verticalTabBar
 
@@ -209,9 +203,9 @@ function InventoryController.BuildUI()
 		btn.Name = "Tab_" .. tabData.Id
 		btn.Size = UDim2.new(1, -12, 0, 52)
 		btn.Position = UDim2.new(0, 6, 0, 0)
-		btn.BackgroundColor3 = if idx == 1 then COLOR_OBSIDIAN_BORDER else COLOR_OBSIDIAN_MAIN
+		btn.BackgroundColor3 = if idx == 1 then COLOR_LIGHT_BORDER else COLOR_LIGHT_MAIN
 		btn.Text = tabData.Label
-		btn.TextColor3 = if idx == 1 then COLOR_TEXT_MAIN else COLOR_TEXT_SUB
+		btn.TextColor3 = COLOR_TEXT_MAIN
 		btn.Font = UI_FONT
 		btn.TextSize = 16
 		btn.Parent = verticalTabBar
@@ -225,45 +219,33 @@ function InventoryController.BuildUI()
 		activeBar.Visible = (idx == 1)
 		activeBar.Parent = btn
 
-		btn.MouseEnter:Connect(function()
-			if activeCategoryFilter ~= tabData.Id then
-				TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = COLOR_OBSIDIAN_BORDER }):Play()
-			end
-		end)
-		btn.MouseLeave:Connect(function()
-			if activeCategoryFilter ~= tabData.Id then
-				TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = COLOR_OBSIDIAN_MAIN }):Play()
-			end
-		end)
-
 		btn.MouseButton1Click:Connect(function()
 			activeCategoryFilter = tabData.Id
 			for _, child in ipairs(verticalTabBar:GetChildren()) do
 				if child:IsA("TextButton") then
-					child.BackgroundColor3 = COLOR_OBSIDIAN_MAIN
+					child.BackgroundColor3 = COLOR_LIGHT_MAIN
 					child.TextColor3 = COLOR_TEXT_SUB
 					local bar = child:FindFirstChild("ActiveBar") :: Frame?
 					if bar then bar.Visible = false end
 				end
 			end
-			btn.BackgroundColor3 = COLOR_OBSIDIAN_BORDER
+			btn.BackgroundColor3 = COLOR_LIGHT_BORDER
 			btn.TextColor3 = COLOR_TEXT_MAIN
 			activeBar.Visible = true
 			InventoryController.RefreshGrid()
 		end)
 	end
 
-	-- 2. LEFT PANEL: Character Hub & Equipment (380px Width)
 	local leftPanel = Instance.new("Frame")
 	leftPanel.Name = "LeftPanel_CharacterHub"
 	leftPanel.Size = UDim2.new(0, 380, 1, -70)
 	leftPanel.Position = UDim2.new(0, 140, 0, 58)
-	leftPanel.BackgroundColor3 = COLOR_OBSIDIAN_PANEL
+	leftPanel.BackgroundColor3 = COLOR_LIGHT_PANEL
 	leftPanel.BorderSizePixel = 0
 	leftPanel.Parent = mainModal
 
 	local lpStroke = Instance.new("UIStroke")
-	lpStroke.Color = COLOR_OBSIDIAN_BORDER
+	lpStroke.Color = COLOR_LIGHT_BORDER
 	lpStroke.Thickness = 1.5
 	lpStroke.Parent = leftPanel
 
@@ -277,7 +259,6 @@ function InventoryController.BuildUI()
 	pouchTitle.TextSize = 28
 	pouchTitle.Parent = leftPanel
 
-	-- Perfectly Positioned ViewportFrame for 3D Player Character
 	characterViewport = Instance.new("ViewportFrame")
 	characterViewport.Name = "CharacterViewport"
 	characterViewport.Size = UDim2.new(0, 230, 0, 310)
@@ -285,7 +266,6 @@ function InventoryController.BuildUI()
 	characterViewport.BackgroundTransparency = 1
 	characterViewport.Parent = leftPanel
 
-	-- 4 Equipment Slots Stacked Vertically
 	local eqContainer = Instance.new("Frame")
 	eqContainer.Size = UDim2.new(0, 90, 0, 330)
 	eqContainer.Position = UDim2.new(1, -105, 0, 48)
@@ -302,12 +282,12 @@ function InventoryController.BuildUI()
 		local slot = Instance.new("Frame")
 		slot.Name = "Slot_" .. slotName
 		slot.Size = UDim2.new(0, 90, 0, 72)
-		slot.BackgroundColor3 = COLOR_OBSIDIAN_CARD
+		slot.BackgroundColor3 = COLOR_LIGHT_CARD
 		slot.BorderSizePixel = 0
 		slot.Parent = eqContainer
 
 		local sStroke = Instance.new("UIStroke")
-		sStroke.Color = COLOR_OBSIDIAN_BORDER
+		sStroke.Color = COLOR_LIGHT_BORDER
 		sStroke.Thickness = 1.5
 		sStroke.Parent = slot
 
@@ -323,25 +303,23 @@ function InventoryController.BuildUI()
 		gearSlots[slotName] = slot
 	end
 
-	-- Dedicated Inset Stats Container Card
 	statsCardContainer = Instance.new("Frame")
 	statsCardContainer.Name = "StatsContainerCard"
 	statsCardContainer.Size = UDim2.new(1, -24, 0, 210)
 	statsCardContainer.Position = UDim2.new(0, 12, 1, -222)
-	statsCardContainer.BackgroundColor3 = COLOR_OBSIDIAN_CARD
+	statsCardContainer.BackgroundColor3 = COLOR_LIGHT_CARD
 	statsCardContainer.BorderSizePixel = 0
 	statsCardContainer.Parent = leftPanel
 
 	local scStroke = Instance.new("UIStroke")
-	scStroke.Color = COLOR_OBSIDIAN_BORDER
+	scStroke.Color = COLOR_LIGHT_BORDER
 	scStroke.Thickness = 1.5
 	scStroke.Parent = statsCardContainer
 
-	-- HP Gauge Bar
 	local hpBg = Instance.new("Frame")
 	hpBg.Size = UDim2.new(1, -65, 0, 28)
 	hpBg.Position = UDim2.new(0, 50, 0, 18)
-	hpBg.BackgroundColor3 = COLOR_OBSIDIAN_MAIN
+	hpBg.BackgroundColor3 = COLOR_LIGHT_PANEL
 	hpBg.BorderSizePixel = 0
 	hpBg.Parent = statsCardContainer
 
@@ -354,7 +332,7 @@ function InventoryController.BuildUI()
 	hpBarText = Instance.new("TextLabel")
 	hpBarText.Size = UDim2.new(1, 0, 1, 0)
 	hpBarText.BackgroundTransparency = 1
-	hpBarText.Text = "7200 / 7200"
+	hpBarText.Text = "800 / 800"
 	hpBarText.TextColor3 = COLOR_TEXT_MAIN
 	hpBarText.Font = UI_FONT
 	hpBarText.TextSize = 17
@@ -372,11 +350,10 @@ function InventoryController.BuildUI()
 	hpLabel.TextXAlignment = Enum.TextXAlignment.Right
 	hpLabel.Parent = hpBg
 
-	-- Qi Gauge Bar
 	local qiBg = Instance.new("Frame")
 	qiBg.Size = UDim2.new(1, -65, 0, 28)
 	qiBg.Position = UDim2.new(0, 50, 0, 58)
-	qiBg.BackgroundColor3 = COLOR_OBSIDIAN_MAIN
+	qiBg.BackgroundColor3 = COLOR_LIGHT_PANEL
 	qiBg.BorderSizePixel = 0
 	qiBg.Parent = statsCardContainer
 
@@ -389,7 +366,7 @@ function InventoryController.BuildUI()
 	qiBarText = Instance.new("TextLabel")
 	qiBarText.Size = UDim2.new(1, 0, 1, 0)
 	qiBarText.BackgroundTransparency = 1
-	qiBarText.Text = "4500 / 4500"
+	qiBarText.Text = "800 / 800"
 	qiBarText.TextColor3 = COLOR_TEXT_MAIN
 	qiBarText.Font = UI_FONT
 	qiBarText.TextSize = 17
@@ -407,7 +384,6 @@ function InventoryController.BuildUI()
 	qiLabel.TextXAlignment = Enum.TextXAlignment.Right
 	qiLabel.Parent = qiBg
 
-	-- Realm Title Label
 	realmTitleLabel = Instance.new("TextLabel")
 	realmTitleLabel.Size = UDim2.new(1, -24, 0, 28)
 	realmTitleLabel.Position = UDim2.new(0, 12, 0, 108)
@@ -419,42 +395,39 @@ function InventoryController.BuildUI()
 	realmTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	realmTitleLabel.Parent = statsCardContainer
 
-	-- Capacity Indicator
 	capacityLabel = Instance.new("TextLabel")
 	capacityLabel.Size = UDim2.new(1, -24, 0, 24)
 	capacityLabel.Position = UDim2.new(0, 12, 0, 148)
 	capacityLabel.BackgroundTransparency = 1
-	capacityLabel.Text = "STORAGE  14 / 30 SLOTS"
+	capacityLabel.Text = "STORAGE  0 / 30 SLOTS"
 	capacityLabel.TextColor3 = COLOR_TEXT_SUB
 	capacityLabel.Font = UI_FONT
 	capacityLabel.TextSize = 17
 	capacityLabel.TextXAlignment = Enum.TextXAlignment.Left
 	capacityLabel.Parent = statsCardContainer
 
-	-- 3. MIDDLE PANEL: Item Grid Panel (460px Width)
 	local midPanel = Instance.new("Frame")
 	midPanel.Name = "MidPanel_InventoryGrid"
 	midPanel.Size = UDim2.new(0, 460, 1, -70)
 	midPanel.Position = UDim2.new(0, 530, 0, 58)
-	midPanel.BackgroundColor3 = COLOR_OBSIDIAN_PANEL
+	midPanel.BackgroundColor3 = COLOR_LIGHT_PANEL
 	midPanel.BorderSizePixel = 0
 	midPanel.Parent = mainModal
 
 	local mpStroke = Instance.new("UIStroke")
-	mpStroke.Color = COLOR_OBSIDIAN_BORDER
+	mpStroke.Color = COLOR_LIGHT_BORDER
 	mpStroke.Thickness = 1.5
 	mpStroke.Parent = midPanel
 
-	-- Search Bar
 	local searchBg = Instance.new("Frame")
 	searchBg.Size = UDim2.new(0, 260, 0, 40)
 	searchBg.Position = UDim2.new(0, 12, 0, 12)
-	searchBg.BackgroundColor3 = COLOR_OBSIDIAN_CARD
+	searchBg.BackgroundColor3 = COLOR_LIGHT_CARD
 	searchBg.BorderSizePixel = 0
 	searchBg.Parent = midPanel
 
 	local sbStroke = Instance.new("UIStroke")
-	sbStroke.Color = COLOR_OBSIDIAN_BORDER
+	sbStroke.Color = COLOR_LIGHT_BORDER
 	sbStroke.Thickness = 1.5
 	sbStroke.Parent = searchBg
 
@@ -472,23 +445,10 @@ function InventoryController.BuildUI()
 	searchBox.ClearTextOnFocus = false
 	searchBox.Parent = searchBg
 
-	searchBox.Focused:Connect(function()
-		TweenService:Create(sbStroke, TweenInfo.new(0.15), { Color = COLOR_AZURE }):Play()
-	end)
-	searchBox.FocusLost:Connect(function()
-		TweenService:Create(sbStroke, TweenInfo.new(0.15), { Color = COLOR_OBSIDIAN_BORDER }):Play()
-	end)
-
-	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-		currentSearchQuery = searchBox.Text:lower()
-		InventoryController.RefreshGrid()
-	end)
-
-	-- Sort Dropdown
 	sortDropdownBtn = Instance.new("TextButton")
 	sortDropdownBtn.Size = UDim2.new(0, 160, 0, 40)
 	sortDropdownBtn.Position = UDim2.new(1, -172, 0, 12)
-	sortDropdownBtn.BackgroundColor3 = COLOR_OBSIDIAN_CARD
+	sortDropdownBtn.BackgroundColor3 = COLOR_LIGHT_CARD
 	sortDropdownBtn.Text = "Sort by Rarity"
 	sortDropdownBtn.TextColor3 = COLOR_TEXT_MAIN
 	sortDropdownBtn.Font = UI_FONT
@@ -496,22 +456,10 @@ function InventoryController.BuildUI()
 	sortDropdownBtn.Parent = midPanel
 
 	local sdStroke = Instance.new("UIStroke")
-	sdStroke.Color = COLOR_OBSIDIAN_BORDER
+	sdStroke.Color = COLOR_LIGHT_BORDER
 	sdStroke.Thickness = 1.5
 	sdStroke.Parent = sortDropdownBtn
 
-	sortDropdownBtn.MouseButton1Click:Connect(function()
-		if currentSortMode == "Rarity" then
-			currentSortMode = "Quantity"
-			sortDropdownBtn.Text = "Sort by Quantity"
-		else
-			currentSortMode = "Rarity"
-			sortDropdownBtn.Text = "Sort by Rarity"
-		end
-		InventoryController.RefreshGrid()
-	end)
-
-	-- 5-Column Grid Layout with Non-Stretching Fitted Slots (76px x 76px)
 	itemGrid = Instance.new("ScrollingFrame")
 	itemGrid.Name = "ItemGrid"
 	itemGrid.Size = UDim2.new(1, -20, 1, -68)
@@ -528,17 +476,16 @@ function InventoryController.BuildUI()
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	gridLayout.Parent = itemGrid
 
-	-- 4. RIGHT PANEL: Independent Item Card Inspection Container (300px Width)
 	itemCardContainer = Instance.new("Frame")
 	itemCardContainer.Name = "RightItemCardContainer"
 	itemCardContainer.Size = UDim2.new(0, 300, 1, -70)
 	itemCardContainer.Position = UDim2.new(0, 990, 0, 58)
-	itemCardContainer.BackgroundColor3 = COLOR_OBSIDIAN_PANEL
+	itemCardContainer.BackgroundColor3 = COLOR_LIGHT_PANEL
 	itemCardContainer.BorderSizePixel = 0
 	itemCardContainer.Parent = mainModal
 
 	local icStroke = Instance.new("UIStroke")
-	icStroke.Color = COLOR_OBSIDIAN_BORDER
+	icStroke.Color = COLOR_LIGHT_BORDER
 	icStroke.Thickness = 1.5
 	icStroke.Parent = itemCardContainer
 
@@ -563,16 +510,15 @@ function InventoryController.BuildUI()
 	tooltipRarityBadge.TextXAlignment = Enum.TextXAlignment.Center
 	tooltipRarityBadge.Parent = itemCardContainer
 
-	-- Icon Preview Box
 	tooltipIconBox = Instance.new("Frame")
 	tooltipIconBox.Size = UDim2.new(0, 110, 0, 110)
 	tooltipIconBox.Position = UDim2.new(0.5, -55, 0, 78)
-	tooltipIconBox.BackgroundColor3 = COLOR_OBSIDIAN_CARD
+	tooltipIconBox.BackgroundColor3 = COLOR_LIGHT_CARD
 	tooltipIconBox.BorderSizePixel = 0
 	tooltipIconBox.Parent = itemCardContainer
 
 	local ibStroke = Instance.new("UIStroke")
-	ibStroke.Color = COLOR_OBSIDIAN_BORDER
+	ibStroke.Color = COLOR_LIGHT_BORDER
 	ibStroke.Thickness = 1.5
 	ibStroke.Parent = tooltipIconBox
 
@@ -583,16 +529,15 @@ function InventoryController.BuildUI()
 	tooltipIcon.ScaleType = Enum.ScaleType.Fit
 	tooltipIcon.Parent = tooltipIconBox
 
-	-- Stat Box
 	tooltipStatsBox = Instance.new("Frame")
 	tooltipStatsBox.Size = UDim2.new(1, -24, 0, 70)
 	tooltipStatsBox.Position = UDim2.new(0, 12, 0, 200)
-	tooltipStatsBox.BackgroundColor3 = COLOR_OBSIDIAN_CARD
+	tooltipStatsBox.BackgroundColor3 = COLOR_LIGHT_CARD
 	tooltipStatsBox.BorderSizePixel = 0
 	tooltipStatsBox.Parent = itemCardContainer
 
 	local sbBoxStroke = Instance.new("UIStroke")
-	sbBoxStroke.Color = COLOR_OBSIDIAN_BORDER
+	sbBoxStroke.Color = COLOR_LIGHT_BORDER
 	sbBoxStroke.Thickness = 1
 	sbBoxStroke.Parent = tooltipStatsBox
 
@@ -607,25 +552,17 @@ function InventoryController.BuildUI()
 	tooltipStats.TextXAlignment = Enum.TextXAlignment.Left
 	tooltipStats.Parent = tooltipStatsBox
 
-	-- Lore Box
 	tooltipDescBox = Instance.new("Frame")
 	tooltipDescBox.Size = UDim2.new(1, -24, 0, 120)
 	tooltipDescBox.Position = UDim2.new(0, 12, 0, 282)
-	tooltipDescBox.BackgroundColor3 = COLOR_OBSIDIAN_CARD
+	tooltipDescBox.BackgroundColor3 = COLOR_LIGHT_CARD
 	tooltipDescBox.BorderSizePixel = 0
 	tooltipDescBox.Parent = itemCardContainer
 
 	local lbStroke = Instance.new("UIStroke")
-	lbStroke.Color = COLOR_OBSIDIAN_BORDER
+	lbStroke.Color = COLOR_LIGHT_BORDER
 	lbStroke.Thickness = 1
 	lbStroke.Parent = tooltipDescBox
-
-	local lbPadding = Instance.new("UIPadding")
-	lbPadding.PaddingTop = UDim.new(0, 6)
-	lbPadding.PaddingBottom = UDim.new(0, 6)
-	lbPadding.PaddingLeft = UDim.new(0, 8)
-	lbPadding.PaddingRight = UDim.new(0, 8)
-	lbPadding.Parent = tooltipDescBox
 
 	tooltipDesc = Instance.new("TextLabel")
 	tooltipDesc.Size = UDim2.new(1, 0, 1, 0)
@@ -638,23 +575,15 @@ function InventoryController.BuildUI()
 	tooltipDesc.TextYAlignment = Enum.TextYAlignment.Top
 	tooltipDesc.Parent = tooltipDescBox
 
-	-- Action Buttons
 	actionPrimaryBtn = Instance.new("TextButton")
 	actionPrimaryBtn.Size = UDim2.new(1, -24, 0, 44)
 	actionPrimaryBtn.Position = UDim2.new(0, 12, 1, -104)
 	actionPrimaryBtn.BackgroundColor3 = COLOR_ACTION_GOLD
 	actionPrimaryBtn.Text = "EQUIP"
-	actionPrimaryBtn.TextColor3 = COLOR_OBSIDIAN_CARD
+	actionPrimaryBtn.TextColor3 = COLOR_LIGHT_CARD
 	actionPrimaryBtn.Font = UI_FONT
 	actionPrimaryBtn.TextSize = 22
 	actionPrimaryBtn.Parent = itemCardContainer
-
-	actionPrimaryBtn.MouseEnter:Connect(function()
-		TweenService:Create(actionPrimaryBtn, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(250, 204, 21) }):Play()
-	end)
-	actionPrimaryBtn.MouseLeave:Connect(function()
-		TweenService:Create(actionPrimaryBtn, TweenInfo.new(0.15), { BackgroundColor3 = COLOR_ACTION_GOLD }):Play()
-	end)
 
 	actionDropBtn = Instance.new("TextButton")
 	actionDropBtn.Size = UDim2.new(1, -24, 0, 44)
@@ -665,24 +594,6 @@ function InventoryController.BuildUI()
 	actionDropBtn.Font = UI_FONT
 	actionDropBtn.TextSize = 22
 	actionDropBtn.Parent = itemCardContainer
-
-	local drStroke = Instance.new("UIStroke")
-	drStroke.Color = COLOR_OBSIDIAN_BORDER
-	drStroke.Thickness = 1
-	drStroke.Parent = actionDropBtn
-
-	actionDropBtn.MouseEnter:Connect(function()
-		TweenService:Create(actionDropBtn, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(71, 85, 105) }):Play()
-	end)
-	actionDropBtn.MouseLeave:Connect(function()
-		TweenService:Create(actionDropBtn, TweenInfo.new(0.15), { BackgroundColor3 = COLOR_BUTTON_DARK }):Play()
-	end)
-
-	actionPrimaryBtn.MouseButton1Click:Connect(function()
-		if selectedSlotIndex then
-			InventoryController.UseSlot(selectedSlotIndex)
-		end
-	end)
 
 	InventoryController.SetupGridSlots()
 end
@@ -705,7 +616,6 @@ function InventoryController.Update3DDoll()
 	local charClone = char:Clone()
 	char.Archivable = false
 
-	-- Strip heavy scripts/sounds from clone
 	for _, child in ipairs(charClone:GetDescendants()) do
 		if child:IsA("LuaSourceContainer") or child:IsA("Sound") then
 			child:Destroy()
@@ -717,7 +627,6 @@ function InventoryController.Update3DDoll()
 	local hrp = charClone:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if hrp then
 		hrp.CFrame = CFrame.new(0, 0, 0)
-		-- Camera positioned directly in front facing character standing centered
 		camera.CFrame = CFrame.new(Vector3.new(0, 0.2, -6.2), Vector3.new(0, 0.1, 0))
 	end
 end
@@ -727,26 +636,21 @@ function InventoryController.SetupGridSlots()
 		local slot = Instance.new("Frame")
 		slot.Name = "Slot_" .. i
 		slot.LayoutOrder = i
-		slot.BackgroundColor3 = COLOR_OBSIDIAN_CARD
+		slot.BackgroundColor3 = COLOR_LIGHT_CARD
 		slot.BorderSizePixel = 0
 		slot.Parent = itemGrid
-
-		local aspect = Instance.new("UIAspectRatioConstraint")
-		aspect.AspectRatio = 1.0
-		aspect.AspectType = Enum.AspectType.FitWithinMaxSize
-		aspect.Parent = slot
 
 		local stroke = Instance.new("UIStroke")
 		stroke.Name = "RarityBorder"
 		stroke.Thickness = 1.5
-		stroke.Color = COLOR_OBSIDIAN_BORDER
+		stroke.Color = COLOR_LIGHT_BORDER
 		stroke.Parent = slot
 
 		local rarityHeader = Instance.new("TextLabel")
 		rarityHeader.Name = "RarityHeader"
 		rarityHeader.Size = UDim2.new(1, 0, 0, 18)
 		rarityHeader.Position = UDim2.new(0, 0, 0, 0)
-		rarityHeader.BackgroundColor3 = COLOR_OBSIDIAN_BORDER
+		rarityHeader.BackgroundColor3 = COLOR_LIGHT_BORDER
 		rarityHeader.Text = ""
 		rarityHeader.TextColor3 = COLOR_TEXT_MAIN
 		rarityHeader.Font = UI_FONT
@@ -769,7 +673,6 @@ function InventoryController.SetupGridSlots()
 		quantity.Position = UDim2.new(0, 0, 1, -16)
 		quantity.BackgroundTransparency = 1
 		quantity.TextColor3 = COLOR_TEXT_MAIN
-		quantity.TextStrokeTransparency = 0
 		quantity.Font = UI_FONT
 		quantity.TextSize = 14
 		quantity.TextXAlignment = Enum.TextXAlignment.Right
@@ -781,21 +684,6 @@ function InventoryController.SetupGridSlots()
 		btn.BackgroundTransparency = 1
 		btn.Text = ""
 		btn.Parent = slot
-
-		btn.MouseEnter:Connect(function()
-			if selectedSlotIndex ~= i then
-				stroke.Thickness = 2
-				stroke.Color = COLOR_AZURE
-			end
-		end)
-		btn.MouseLeave:Connect(function()
-			if selectedSlotIndex ~= i then
-				local slotData = currentInventory[i]
-				local itemDef = if slotData then ItemConfig[slotData.ItemId] else nil
-				stroke.Thickness = 1.5
-				stroke.Color = if itemDef then (RARITY_COLORS[itemDef.Rarity] or COLOR_OBSIDIAN_BORDER) else COLOR_OBSIDIAN_BORDER
-			end
-		end)
 
 		btn.MouseButton1Click:Connect(function()
 			InventoryController.InspectSlot(i)
@@ -833,11 +721,11 @@ function InventoryController.RefreshGrid()
 				end
 
 				if isVisible then
-					local rarityColor = RARITY_COLORS[itemDef.Rarity] or COLOR_OBSIDIAN_CARD
-					slotFrame.BackgroundColor3 = rarityColor
+					local rarityColor = RARITY_COLORS[itemDef.Rarity] or COLOR_LIGHT_CARD
+					slotFrame.BackgroundColor3 = COLOR_LIGHT_CARD
 
 					if icon then
-						icon.Image = itemDef.Icon
+						icon.Image = itemDef.Icon or ""
 						icon.Visible = true
 					end
 					if quantity then
@@ -855,7 +743,7 @@ function InventoryController.RefreshGrid()
 				end
 			end
 		else
-			slotFrame.BackgroundColor3 = COLOR_OBSIDIAN_CARD
+			slotFrame.BackgroundColor3 = COLOR_LIGHT_CARD
 			isVisible = (activeCategoryFilter == "ALL" and currentSearchQuery == "")
 		end
 
@@ -864,7 +752,7 @@ function InventoryController.RefreshGrid()
 			if icon then icon.Visible = false end
 			if quantity then quantity.Text = "" end
 			if rarityHeader then rarityHeader.Visible = false end
-			if stroke then stroke.Color = COLOR_OBSIDIAN_BORDER end
+			if stroke then stroke.Color = COLOR_LIGHT_BORDER end
 		end
 	end
 
@@ -892,7 +780,7 @@ function InventoryController.InspectSlot(slotIdx: number)
 	tooltipRarityBadge.Text = string.format("%s %s", itemDef.Rarity:upper(), itemDef.Category:upper())
 	tooltipRarityBadge.TextColor3 = RARITY_COLORS[itemDef.Rarity] or COLOR_TEXT_MAIN
 	tooltipDesc.Text = itemDef.Description
-	tooltipIcon.Image = itemDef.Icon
+	tooltipIcon.Image = itemDef.Icon or ""
 	tooltipIcon.Visible = true
 
 	if itemDef.Category == "Consumable" then
@@ -910,9 +798,6 @@ function InventoryController.InspectSlot(slotIdx: number)
 	if itemDef.QiAmount and itemDef.QiAmount > 0 then
 		statText ..= string.format("SPIRIT QI RESTORED: +%d\n", itemDef.QiAmount)
 	end
-	if itemDef.WeaponType then
-		statText ..= string.format("ATTACK POWER: +350\nCRIT RATE: +15%%")
-	end
 	tooltipStats.Text = statText
 end
 
@@ -928,12 +813,13 @@ function InventoryController.UpdateVitalStats()
 	end
 
 	local currentQi = char:GetAttribute("Qi") or 0
-	local maxQi = char:GetAttribute("MaxQi") or 100
-	local qiRatio = math.clamp(currentQi / math.max(1, maxQi), 0, 1)
+	local maxQi = char:GetAttribute("MaxQi") or 800
+	-- Clamped legacy saved Qi value
+	local clampedQi = math.min(currentQi, maxQi)
+	local qiRatio = math.clamp(clampedQi / math.max(1, maxQi), 0, 1)
 	qiBarFill.Size = UDim2.new(qiRatio, 0, 1, 0)
-	qiBarText.Text = string.format("%d / %d", math.floor(currentQi), math.floor(maxQi))
+	qiBarText.Text = string.format("%d / %d", math.floor(clampedQi), math.floor(maxQi))
 
-	local realm = char:GetAttribute("Realm") or "Golden Core"
 	realmTitleLabel.Text = string.format("Foundation Establishment — Tier 2")
 end
 

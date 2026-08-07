@@ -2,8 +2,8 @@
 --[[
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
-    Client-side visual and audio effects handler for ASCEND combat and Heavenly Tribulation events.
-    Renders weapon skill particles, shockwaves, damage numbers, trails, lightning strikes, and ascension bursts.
+    Client-side visual and audio effects engine for ASCEND.
+    Features Mythic Magma Quality & 3-Wave Sharp Crescent Moon Cleave Effects.
 ]]
 
 local Players = game:GetService("Players")
@@ -39,20 +39,6 @@ local SKILL_SOUNDS: { [string]: any } = {
 		E = "rbxassetid://109735549169421",
 		R = "rbxassetid://121761867811041",
 	},
-
-	Gauntlet = {
-		F = "rbxassetid://71854224710325",
-		Q = "rbxassetid://74149238738530",
-		E = "rbxassetid://117788607414639",
-		R = "rbxassetid://89831667531136",
-	},
-
-	Spear = {
-		F = "rbxassetid://75659442102661",
-		Q = "rbxassetid://107036259074552",
-		E = "rbxassetid://106487622631513",
-		R = "rbxassetid://1835331298",
-	},
 }
 
 function CombatVFXController.Init()
@@ -62,7 +48,7 @@ function CombatVFXController.Init()
 		CombatVFXController.OnCombatAction(attacker, skillKey, payload)
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized with Skill Particles & SFX.")
+	print("[ASCEND] CombatVFXController Initialized with 3-Wave Magma Crescent Moon VFX.")
 end
 
 function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, payload: any?)
@@ -88,6 +74,8 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 		or (attackerChar and attackerChar:GetAttribute("WeaponType"))
 		or "FlyingSword"
 
+	local equippedWeapon = (attackerChar and attackerChar:GetAttribute("EquippedWeaponId")) or "SunSlayerCrimsonSword"
+
 	-- 2. Play Skill Audio, Trails & Particles
 	if attackerChar then
 		local hrp = attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -98,6 +86,7 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 			elseif skillKey == "M1" then
 				CombatVFXController.TriggerWeaponTrail(attackerChar, 0.25)
 				CombatVFXController.PlaySound(SWING_SOUND_ID, hrp, 0.6)
+				CombatVFXController.RenderSkillParticleEffect(attackerChar, weaponType, "M1", tostring(equippedWeapon))
 			elseif skillKey == "F" or skillKey == "Q" or skillKey == "E" or skillKey == "R" then
 				CombatVFXController.TriggerWeaponTrail(attackerChar, 0.35)
 				
@@ -105,8 +94,7 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 				local skillSoundId = weaponSkillMap[skillKey] or SWING_SOUND_ID
 				CombatVFXController.PlaySound(skillSoundId, hrp, 0.85)
 
-				-- Render Procedural Skill Visual Effects
-				CombatVFXController.RenderSkillParticleEffect(attackerChar, weaponType, skillKey)
+				CombatVFXController.RenderSkillParticleEffect(attackerChar, weaponType, skillKey, tostring(equippedWeapon))
 			end
 		end
 	end
@@ -114,11 +102,13 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 	-- 3. Camera Shake for Local Attacker
 	if attacker == player then
 		if skillKey == "R" then
-			CombatVFXController.ShakeCamera(0.35, 1.2)
-		elseif skillKey == "F" or skillKey == "E" or skillKey == "Q" then
+			CombatVFXController.ShakeCamera(0.4, 1.5)
+		elseif skillKey == "F" then
+			CombatVFXController.ShakeCamera(0.25, 0.8)
+		elseif skillKey == "E" or skillKey == "Q" then
 			CombatVFXController.ShakeCamera(0.2, 0.6)
 		elseif skillKey == "M1" then
-			CombatVFXController.ShakeCamera(0.1, 0.25)
+			CombatVFXController.ShakeCamera(0.08, 0.2)
 		end
 	end
 
@@ -144,39 +134,122 @@ function CombatVFXController.OnCombatAction(attacker: Player, skillKey: string, 
 end
 
 --------------------------------------------------------------------------------
--- PROCEDURAL SKILL VISUAL EFFECTS RENDERER
+-- HELPER: CONSECUTIVE CRESCENT MOON MAGMA CLEAVE WAVE SPANWER
+--------------------------------------------------------------------------------
+local function SpawnCrescentMagmaWave(hrp: BasePart, offsetAngle: number, delayTime: number, scaleFactor: number)
+	task.delay(delayTime, function()
+		if not hrp or not hrp.Parent then return end
+
+		-- Sharp Crescent Moon Wave Part
+		local wave = Instance.new("Part")
+		wave.Name = "MagmaCrescentWave"
+		wave.Size = Vector3.new(0.3, 10 * scaleFactor, 3.5 * scaleFactor)
+		wave.CFrame = hrp.CFrame * CFrame.new(0, 0, -2) * CFrame.Angles(0, math.rad(offsetAngle), math.rad(90 + offsetAngle * 0.5))
+		wave.Color = Color3.fromRGB(255, 70, 0) -- Incandescent Magma Orange-Red
+		wave.Material = Enum.Material.Neon
+		wave.CanCollide = false
+		wave.Anchored = true
+		wave.Parent = Workspace
+
+		-- Sphere mesh scaled to create a sharp crescent moon arc shape
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Scale = Vector3.new(0.08, 1.3, 0.4)
+		mesh.Parent = wave
+
+		-- Trailing Molten Lava Flames
+		local flame = Instance.new("ParticleEmitter")
+		flame.Name = "MagmaWaveTrail"
+		flame.Texture = "rbxassetid://242203597" -- Flame / Ember texture
+		flame.LightEmission = 0.8
+		flame.LightInfluence = 0.1
+		flame.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 210, 60)), -- Gold-White Core
+			ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 60, 0)),  -- Molten Lava Orange
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 10, 0))    -- Dark Crimson Ash
+		})
+		flame.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.5 * scaleFactor),
+			NumberSequenceKeypoint.new(1, 0)
+		})
+		flame.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.1),
+			NumberSequenceKeypoint.new(1, 1)
+		})
+		flame.Lifetime = NumberRange.new(0.2, 0.4)
+		flame.Rate = 22
+		flame.Speed = NumberRange.new(1.5, 3.5)
+		flame.Parent = wave
+
+		-- Forward Crescent Wave Motion
+		local travelDistance = 34 * scaleFactor
+		local targetCFrame = wave.CFrame * CFrame.new(0, travelDistance, 0)
+		
+		local tween = TweenService:Create(wave, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = targetCFrame,
+			Transparency = 1
+		})
+		
+		local meshTween = TweenService:Create(mesh, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Scale = Vector3.new(0.02, 2.4 * scaleFactor, 0.9 * scaleFactor) -- Crescent arc expands & sharpens as it slices forward
+		})
+
+		tween:Play()
+		meshTween:Play()
+		Debris:AddItem(wave, 0.38)
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- PROCEDURAL SKILL VISUAL EFFECTS RENDERER (Magma Quality Engine)
 --------------------------------------------------------------------------------
 
-function CombatVFXController.RenderSkillParticleEffect(character: Model, weaponType: string, skillKey: string)
+function CombatVFXController.RenderSkillParticleEffect(character: Model, weaponType: string, skillKey: string, equippedWeaponId: string?)
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then return end
 
-	if weaponType == "FlyingSword" then
-		local color = Color3.fromRGB(0, 220, 255) -- Cyan Qi
-		if skillKey == "F" then
-			-- Piercing Qi Beam Thrust
-			local beam = Instance.new("Part")
-			beam.Size = Vector3.new(1.2, 1.2, 14)
-			beam.CFrame = hrp.CFrame * CFrame.new(0, 0, -8)
-			beam.Color = color
-			beam.Material = Enum.Material.Neon
-			beam.CanCollide = false
-			beam.Anchored = true
-			beam.Parent = Workspace
+	local isSunSlayer = (equippedWeaponId == "SunSlayerCrimsonSword" or equippedWeaponId == "Sun-Slayer Crimson Sword")
+	
+	-- Magma Quality Palette: Incandescent Orange-Red Core & Deep Crimson Lava
+	local magmaCoreColor = Color3.fromRGB(255, 70, 0)
+	local magmaDarkColor = Color3.fromRGB(180, 15, 0)
 
-			TweenService:Create(beam, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = Vector3.new(0.1, 0.1, 16),
-				Transparency = 1
-			}):Play()
-			Debris:AddItem(beam, 0.35)
+	if weaponType == "FlyingSword" then
+		if skillKey == "M1" and isSunSlayer then
+			-- M1 Single Sharp Crescent Magma Slash
+			SpawnCrescentMagmaWave(hrp, math.random(-15, 15), 0, 0.8)
+
+		elseif skillKey == "F" then
+			if isSunSlayer then
+				-- F SKILL: CONSECUTIVE 3-WAVE CRESCENT MOON MAGMA CLEAVE
+				SpawnCrescentMagmaWave(hrp, 25, 0.00, 1.0)   -- Wave 1: Right Arc
+				SpawnCrescentMagmaWave(hrp, -25, 0.08, 1.1)  -- Wave 2: Left Arc
+				SpawnCrescentMagmaWave(hrp, 0, 0.16, 1.45)   -- Wave 3: Heavy Central Moon Cleave!
+			else
+				-- Standard Non-Mythic Thrust
+				local beam = Instance.new("Part")
+				beam.Size = Vector3.new(1.2, 1.2, 16)
+				beam.CFrame = hrp.CFrame * CFrame.new(0, 0, -9)
+				beam.Color = Color3.fromRGB(0, 220, 255)
+				beam.Material = Enum.Material.Neon
+				beam.CanCollide = false
+				beam.Anchored = true
+				beam.Parent = Workspace
+
+				TweenService:Create(beam, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Size = Vector3.new(0.1, 0.1, 18),
+					Transparency = 1,
+				}):Play()
+				Debris:AddItem(beam, 0.35)
+			end
 
 		elseif skillKey == "Q" then
-			-- Sword Tempest Ring
+			-- Q SKILL: Volcanic Magma Eruption Tempest
 			local ring = Instance.new("Part")
 			ring.Shape = Enum.PartType.Cylinder
 			ring.Size = Vector3.new(0.4, 4, 4)
 			ring.CFrame = hrp.CFrame * CFrame.Angles(0, 0, math.rad(90))
-			ring.Color = color
+			ring.Color = if isSunSlayer then magmaCoreColor else Color3.fromRGB(0, 220, 255)
 			ring.Material = Enum.Material.Neon
 			ring.Transparency = 0.2
 			ring.CanCollide = false
@@ -184,194 +257,68 @@ function CombatVFXController.RenderSkillParticleEffect(character: Model, weaponT
 			ring.Parent = Workspace
 
 			TweenService:Create(ring, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = Vector3.new(0.4, 18, 18),
-				Transparency = 1
+				Size = Vector3.new(0.4, 22, 22),
+				Transparency = 1,
 			}):Play()
 			Debris:AddItem(ring, 0.45)
 
 		elseif skillKey == "E" then
-			-- Cyclone Spear Guard Vortex
+			-- E SKILL: Obsidian Volcanic Vortex
 			local vortex = Instance.new("Part")
 			vortex.Shape = Enum.PartType.Cylinder
 			vortex.Size = Vector3.new(6, 6, 6)
 			vortex.CFrame = hrp.CFrame * CFrame.Angles(math.rad(90), 0, 0)
-			vortex.Color = color
-			vortex.Material = Enum.Material.ForceField -- Fixed capital 'F'
+			vortex.Color = if isSunSlayer then magmaDarkColor else Color3.fromRGB(0, 140, 255)
+			vortex.Material = Enum.Material.ForceField
 			vortex.CanCollide = false
 			vortex.Anchored = true
 			vortex.Parent = Workspace
 
 			TweenService:Create(vortex, TweenInfo.new(0.5, Enum.EasingStyle.Linear), {
-				Size = Vector3.new(12, 12, 12),
-				Transparency = 1
+				Size = Vector3.new(15, 15, 15),
+				Transparency = 1,
 			}):Play()
 			Debris:AddItem(vortex, 0.55)
 
 		elseif skillKey == "R" then
-			-- Heavenly Sword Beam Blast (ULT)
-			local burst = Instance.new("Part")
-			burst.Size = Vector3.new(8, 28, 8)
-			burst.CFrame = hrp.CFrame * CFrame.new(0, 8, -12)
-			burst.Color = Color3.fromRGB(255, 220, 100)
-			burst.Material = Enum.Material.Neon
-			burst.CanCollide = false
-			burst.Anchored = true
-			burst.Parent = Workspace
+			-- R SKILL: Volcanic Moon Sunfall (ULTIMATE)
+			local moonBlade = Instance.new("Part")
+			moonBlade.Size = Vector3.new(1, 26, 6)
+			moonBlade.CFrame = hrp.CFrame * CFrame.new(0, 14, -12) * CFrame.Angles(math.rad(45), 0, 0)
+			moonBlade.Color = magmaCoreColor
+			moonBlade.Material = Enum.Material.Neon
+			moonBlade.CanCollide = false
+			moonBlade.Anchored = true
+			moonBlade.Parent = Workspace
 
-			TweenService:Create(burst, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = Vector3.new(16, 36, 16),
-				Transparency = 1
-			}):Play()
-			Debris:AddItem(burst, 0.55)
-		end
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Scale = Vector3.new(0.1, 1.4, 0.6)
+			mesh.Parent = moonBlade
 
-	elseif weaponType == "Gauntlet" then
-		local color = Color3.fromRGB(255, 170, 0) -- Imperial Gold
-		if skillKey == "F" then
-			-- Heavy Upper Fist Blast
-			local fistPart = Instance.new("Part")
-			fistPart.Shape = Enum.PartType.Ball
-			fistPart.Size = Vector3.new(4, 4, 4)
-			fistPart.Position = hrp.Position + hrp.CFrame.LookVector * 3 + Vector3.new(0, 1, 0)
-			fistPart.Color = color
-			fistPart.Material = Enum.Material.Neon
-			fistPart.CanCollide = false
-			fistPart.Anchored = true
-			fistPart.Parent = Workspace
+			if isSunSlayer then
+				local groundShockwave = Instance.new("Part")
+				groundShockwave.Shape = Enum.PartType.Cylinder
+				groundShockwave.Size = Vector3.new(0.5, 4, 4)
+				groundShockwave.CFrame = CFrame.new(hrp.Position + hrp.CFrame.LookVector * 12 - Vector3.new(0, 2.5, 0)) * CFrame.Angles(0, 0, math.rad(90))
+				groundShockwave.Color = magmaDarkColor
+				groundShockwave.Material = Enum.Material.Neon
+				groundShockwave.CanCollide = false
+				groundShockwave.Anchored = true
+				groundShockwave.Parent = Workspace
 
-			TweenService:Create(fistPart, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = Vector3.new(9, 9, 9),
-				Transparency = 1
-			}):Play()
-			Debris:AddItem(fistPart, 0.35)
-
-		elseif skillKey == "Q" then
-			-- Earth Rupture Ground Slam
-			local slamRing = Instance.new("Part")
-			slamRing.Shape = Enum.PartType.Cylinder
-			slamRing.Size = Vector3.new(0.5, 2, 2)
-			slamRing.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 2.8, 0)) * CFrame.Angles(0, 0, math.rad(90))
-			slamRing.Color = Color3.fromRGB(180, 100, 30)
-			slamRing.Material = Enum.Material.Slate
-			slamRing.CanCollide = false
-			slamRing.Anchored = true
-			slamRing.Parent = Workspace
-
-			TweenService:Create(slamRing, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = Vector3.new(0.5, 22, 22),
-				Transparency = 1
-			}):Play()
-			Debris:AddItem(slamRing, 0.45)
-
-		elseif skillKey == "E" then
-			-- Hundred Palms Rapid Bursts
-			for i = 1, 4 do
-				task.delay(i * 0.08, function()
-					if not hrp or not hrp.Parent then return end
-					local p = Instance.new("Part")
-					p.Shape = Enum.PartType.Ball
-					p.Size = Vector3.new(2.5, 2.5, 2.5)
-					p.Position = hrp.Position + hrp.CFrame.LookVector * (2 + i * 1.5) + Vector3.new(math.random(-1,1), math.random(-1,1), 0)
-					p.Color = color
-					p.Material = Enum.Material.Neon
-					p.CanCollide = false
-					p.Anchored = true
-					p.Parent = Workspace
-
-					TweenService:Create(p, TweenInfo.new(0.2, Enum.EasingStyle.Quad), { Size = Vector3.new(0,0,0), Transparency = 1 }):Play()
-					Debris:AddItem(p, 0.25)
-				end)
+				TweenService:Create(groundShockwave, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Size = Vector3.new(0.5, 28, 28),
+					Transparency = 1,
+				}):Play()
+				Debris:AddItem(groundShockwave, 0.55)
 			end
 
-		elseif skillKey == "R" then
-			-- Dragon Strikeforce Blast (ULT)
-			local dragonPart = Instance.new("Part")
-			dragonPart.Size = Vector3.new(10, 10, 10)
-			dragonPart.CFrame = hrp.CFrame * CFrame.new(0, 0, -6)
-			dragonPart.Color = Color3.fromRGB(255, 80, 0)
-			dragonPart.Material = Enum.Material.Neon
-			dragonPart.CanCollide = false
-			dragonPart.Anchored = true
-			dragonPart.Parent = Workspace
-
-			TweenService:Create(dragonPart, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = Vector3.new(22, 22, 22),
-				Transparency = 1
+			TweenService:Create(moonBlade, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(0.1, 36, 10),
+				Transparency = 1,
 			}):Play()
-			Debris:AddItem(dragonPart, 0.55)
-		end
-
-	elseif weaponType == "Spear" then
-		local color = Color3.fromRGB(50, 255, 120) -- Emerald Jade
-		if skillKey == "F" then
-			-- Crescent Sweep Ring
-			local sweep = Instance.new("Part")
-			sweep.Shape = Enum.PartType.Cylinder
-			sweep.Size = Vector3.new(0.3, 3, 3)
-			sweep.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 1.5, 0)) * CFrame.Angles(0, 0, math.rad(90))
-			sweep.Color = color
-			sweep.Material = Enum.Material.Neon
-			sweep.CanCollide = false
-			sweep.Anchored = true
-			sweep.Parent = Workspace
-
-			TweenService:Create(sweep, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = Vector3.new(0.3, 16, 16),
-				Transparency = 1
-			}):Play()
-			Debris:AddItem(sweep, 0.4)
-
-		elseif skillKey == "Q" then
-			-- Piercing Dragon Charge Helix
-			local helix = Instance.new("Part")
-			helix.Size = Vector3.new(2, 2, 16)
-			helix.CFrame = hrp.CFrame * CFrame.new(0, 0, -8)
-			helix.Color = color
-			helix.Material = Enum.Material.Neon
-			helix.CanCollide = false
-			helix.Anchored = true
-			helix.Parent = Workspace
-
-			TweenService:Create(helix, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
-				Size = Vector3.new(0.2, 0.2, 18),
-				Transparency = 1
-			}):Play()
-			Debris:AddItem(helix, 0.35)
-
-		elseif skillKey == "E" then
-			-- Cyclone Spear Guard Vortex
-			local vortex = Instance.new("Part")
-			vortex.Shape = Enum.PartType.Cylinder
-			vortex.Size = Vector3.new(6, 6, 6)
-			vortex.CFrame = hrp.CFrame * CFrame.Angles(math.rad(90), 0, 0)
-			vortex.Color = color
-			vortex.Material = Enum.Material.ForceField -- Fixed capital 'F'
-			vortex.CanCollide = false
-			vortex.Anchored = true
-			vortex.Parent = Workspace
-
-			TweenService:Create(vortex, TweenInfo.new(0.5, Enum.EasingStyle.Linear), {
-				Size = Vector3.new(12, 12, 12),
-				Transparency = 1
-			}):Play()
-			Debris:AddItem(vortex, 0.55)
-
-		elseif skillKey == "R" then
-			-- Sky Piercer Meteor Slam (ULT)
-			local meteor = Instance.new("Part")
-			meteor.Size = Vector3.new(6, 120, 6)
-			meteor.Position = hrp.Position + hrp.CFrame.LookVector * 10 + Vector3.new(0, 60, 0)
-			meteor.Color = color
-			meteor.Material = Enum.Material.Neon
-			meteor.CanCollide = false
-			meteor.Anchored = true
-			meteor.Parent = Workspace
-
-			TweenService:Create(meteor, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = Vector3.new(0.2, 120, 0.2),
-				Transparency = 1
-			}):Play()
-			Debris:AddItem(meteor, 0.45)
+			Debris:AddItem(moonBlade, 0.55)
 		end
 	end
 end
@@ -448,7 +395,7 @@ function CombatVFXController.CreateAscensionBurst(character: Model, color: Color
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then return end
 
-	local burstColor = color or Color3.fromRGB(255, 215, 0)
+	local burstColor = color or Color3.fromRGB(255, 70, 0)
 
 	local burstRing = Instance.new("Part")
 	burstRing.Shape = Enum.PartType.Cylinder
@@ -483,7 +430,7 @@ function CombatVFXController.TriggerShiftDashTrail(character: Model, duration: n
 	local trail = Instance.new("Trail")
 	trail.Attachment0 = att0
 	trail.Attachment1 = att1
-	trail.Color = ColorSequence.new(Color3.fromRGB(0, 230, 255), Color3.fromRGB(255, 255, 255))
+	trail.Color = ColorSequence.new(Color3.fromRGB(255, 120, 0), Color3.fromRGB(180, 15, 0))
 	trail.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0.1),
 		NumberSequenceKeypoint.new(0.8, 0.5),
@@ -531,7 +478,7 @@ function CombatVFXController.TriggerWeaponTrail(character: Model, duration: numb
 	local dynamicTrail = Instance.new("Trail")
 	dynamicTrail.Attachment0 = att0
 	dynamicTrail.Attachment1 = att1
-	dynamicTrail.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(150, 220, 255))
+	dynamicTrail.Color = ColorSequence.new(Color3.fromRGB(255, 120, 0), Color3.fromRGB(180, 15, 0))
 	dynamicTrail.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0.1),
 		NumberSequenceKeypoint.new(1, 1),
@@ -597,7 +544,7 @@ function CombatVFXController.CreateDamageNumber(worldPosition: Vector3, damageAm
 	textLabel.Text = tostring(math.round(damageAmount))
 	textLabel.Font = Enum.Font.GothamBold
 	textLabel.TextScaled = true
-	textLabel.TextColor3 = if isCrit then Color3.fromRGB(255, 215, 0) else Color3.fromRGB(255, 255, 255)
+	textLabel.TextColor3 = if isCrit then Color3.fromRGB(255, 70, 0) else Color3.fromRGB(255, 255, 255)
 	textLabel.TextStrokeTransparency = 0
 	textLabel.TextStrokeColor3 = Color3.fromRGB(20, 20, 25)
 	textLabel.Parent = billboard
@@ -640,7 +587,7 @@ function CombatVFXController.CreateHitImpactEffect(worldPosition: Vector3)
 		NumberSequenceKeypoint.new(0, 1.2),
 		NumberSequenceKeypoint.new(1, 0)
 	})
-	particles.Color = ColorSequence.new(Color3.fromRGB(120, 230, 255), Color3.fromRGB(255, 255, 255))
+	particles.Color = ColorSequence.new(Color3.fromRGB(255, 120, 0), Color3.fromRGB(180, 15, 0))
 	particles.Parent = attachment
 
 	particles:Emit(16)

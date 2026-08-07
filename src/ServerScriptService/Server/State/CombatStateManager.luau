@@ -13,9 +13,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
-local SpearServer = require(ServerScriptService.Server.Combat.Weapons.SpearServer)
 local FlyingSwordServer = require(ServerScriptService.Server.Combat.Weapons.FlyingSwordServer)
-local GauntletServer = require(ServerScriptService.Server.Combat.Weapons.GauntletServer)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 export type PlayerState = "Idle" | "Casting" | "Cooldown" | "Stunned" | "QiDeviation" | "IFrame"
@@ -155,15 +153,8 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	}
 	syncCooldownRemote:FireClient(player, skillKey, cooldownDuration)
 
-	-- 7. Execute weapon attack mechanics
-	local equippedWeapon = WeaponManager.GetEquippedWeapon(player)
-	if equippedWeapon == "Spear" then
-		payload = SpearServer.ExecuteAttack(player, skillKey, payload)
-	elseif equippedWeapon == "Gauntlet" then
-		payload = GauntletServer.ExecuteAttack(player, skillKey, payload)
-	else
-		payload = FlyingSwordServer.ExecuteAttack(player, skillKey, payload)
-	end
+	-- 7. Execute weapon attack mechanics (Pure Sword Cultivator Paradigm)
+	payload = FlyingSwordServer.ExecuteAttack(player, skillKey, payload)
 
 	combatActionRemote:FireAllClients(player, skillKey, payload)
 	return true

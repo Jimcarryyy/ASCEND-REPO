@@ -3,8 +3,7 @@
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
     Master Client HUD Controller for ASCEND.
-    Restored skill artwork icons & bottom-right keybind badges while maintaining
-    thick meters, pure white realm text, and sharp 90° obsidian panels.
+    Light-Mode Flat 2D UI with 100% type-safe strict Luau signatures.
 ]]
 
 local Players = game:GetService("Players")
@@ -19,46 +18,49 @@ local HUDController = {}
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- BOLD COMPACT FONT (Exact match with Spirit Pouch)
+-- BOLD COMPACT FONT
 local UI_FONT = Enum.Font.FredokaOne
 
--- SPIRIT POUCH SHARP OBSIDIAN PALETTE
-local COLOR_OBSIDIAN_MAIN   = Color3.fromRGB(12, 14, 20)  -- #0C0E14 Main Window Panel
-local COLOR_OBSIDIAN_PANEL  = Color3.fromRGB(18, 21, 32)  -- #121520 Sub-Boxes & Slots
-local COLOR_OBSIDIAN_BORDER = Color3.fromRGB(30, 35, 48)  -- #1E2330 Sharp Edge Border
+-- LIGHT-MODE FLAT 2D PALETTE
+local COLOR_LIGHT_MAIN     = Color3.fromRGB(248, 250, 249) -- #F8FAF9 Crisp Light Panel
+local COLOR_LIGHT_PANEL    = Color3.fromRGB(241, 245, 249) -- #F1F5F9 Soft Slate Card/Slot Background
+local COLOR_LIGHT_BORDER   = Color3.fromRGB(203, 213, 225) -- #CBD5E1 Muted Slate Border
 
-local COLOR_TEXT_MAIN       = Color3.fromRGB(241, 245, 249) -- #F1F5F9 Crisp Pure White
-local COLOR_TEXT_SUB        = Color3.fromRGB(148, 163, 184) -- #94A3B8 Muted Grey
-local COLOR_AZURE           = Color3.fromRGB(56, 189, 248)  -- #38BDF8 Qi Cyan
-local COLOR_HP_GREEN        = Color3.fromRGB(34, 197, 94)   -- #22C55E Health Green
-local COLOR_ACTION_GOLD     = Color3.fromRGB(234, 179, 8)   -- #EAB308 Gold (Prompts Only)
-local COLOR_DANGER_RED      = Color3.fromRGB(239, 68, 68)   -- #EF4444 Danger Red
+local COLOR_TEXT_MAIN      = Color3.fromRGB(15, 23, 42)    -- #0F172A Deep Charcoal Text
+local COLOR_TEXT_SUB       = Color3.fromRGB(100, 116, 139)  -- #64748B Muted Subtext
+local COLOR_AZURE          = Color3.fromRGB(59, 130, 246)   -- #3B82F6 Sapphire Blue Qi Fill
+local COLOR_HP_GREEN       = Color3.fromRGB(16, 185, 129)  -- #10B981 Emerald Green HP Fill
+local COLOR_ACTION_GOLD    = Color3.fromRGB(217, 119, 6)   -- #D97706 Warm Amber Gold
+local COLOR_DANGER_RED     = Color3.fromRGB(225, 29, 72)   -- #E11D48 Carmine Red
 
-local hudGui: ScreenGui?
-local mainHudPanel: Frame?
+local hudGui: ScreenGui? = nil
+local mainHudPanel: Frame? = nil
 
 -- Vitality & Cultivation Meters
-local hpFillBar: Frame?
-local hpTextLabel: TextLabel?
-local cultivationFillBar: Frame?
-local realmTitleLabel: TextLabel?
-local qiProgressLabel: TextLabel?
+local hpFillBar: Frame? = nil
+local hpTextLabel: TextLabel? = nil
+local cultivationFillBar: Frame? = nil
+local realmTitleLabel: TextLabel? = nil
+local qiProgressLabel: TextLabel? = nil
 
 -- Action Prompt
-local actionHotkeyPrompt: TextLabel?
+local actionHotkeyPrompt: TextLabel? = nil
 
 -- Skill Hotbar Slots
 local activeSlots: { [string]: Frame } = {}
 local activeCooldowns: { [string]: thread } = {}
 
 function HUDController.Init()
-	hudGui = playerGui:WaitForChild("HUDGui", 10) :: ScreenGui?
-	if not hudGui then
-		hudGui = Instance.new("ScreenGui")
-		hudGui.Name = "HUDGui"
-		hudGui.ResetOnSpawn = false
-		hudGui.DisplayOrder = 10
-		hudGui.Parent = playerGui
+	local foundGui = playerGui:WaitForChild("HUDGui", 10)
+	if foundGui and foundGui:IsA("ScreenGui") then
+		hudGui = foundGui :: ScreenGui
+	else
+		local newGui = Instance.new("ScreenGui")
+		newGui.Name = "HUDGui"
+		newGui.ResetOnSpawn = false
+		newGui.DisplayOrder = 10
+		newGui.Parent = playerGui
+		hudGui = newGui
 	end
 
 	HUDController.BuildSharpPanelHUD()
@@ -85,88 +87,94 @@ function HUDController.Init()
 		for key, iconAsset in pairs(skillIcons) do
 			local slot = activeSlots[key]
 			if slot then
-				local iconLabel = slot:FindFirstChild("Icon") :: ImageLabel?
-				if iconLabel then
-					iconLabel.Image = iconAsset
+				local iconLabel = slot:FindFirstChild("Icon")
+				if iconLabel and iconLabel:IsA("ImageLabel") then
+					iconLabel.Image = iconAsset or ""
 				end
 			end
 		end
 	end)
 
-	print("[ASCEND] Reverted Skill Hotbar HUD Initialized Successfully.")
+	print("[ASCEND] Light-Mode Flat 2D HUD Controller Initialized.")
 end
 
 function HUDController.HookCharacterEvents(character: Model)
-	local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
-	if not humanoid then return end
+	local humanoid = character:WaitForChild("Humanoid", 5)
+	if not humanoid or not humanoid:IsA("Humanoid") then return end
+	local hum: Humanoid = humanoid :: Humanoid
 
 	local function updateHp()
 		if not hpFillBar or not hpTextLabel then return end
-		local pct = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+		local fill: Frame = hpFillBar :: Frame
+		local textLbl: TextLabel = hpTextLabel :: TextLabel
+
+		local pct = math.clamp(hum.Health / math.max(1, hum.MaxHealth), 0, 1)
 		
-		TweenService:Create(hpFillBar, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		TweenService:Create(fill, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 			Size = UDim2.new(pct, 0, 1, 0),
 		}):Play()
 
-		hpTextLabel.Text = string.format("%s / %s HP", CultivationConfig.FormatNumber(humanoid.Health), CultivationConfig.FormatNumber(humanoid.MaxHealth))
+		textLbl.Text = string.format("%s / %s HP", CultivationConfig.FormatNumber(hum.Health), CultivationConfig.FormatNumber(hum.MaxHealth))
 	end
 
-	humanoid.HealthChanged:Connect(updateHp)
-	humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(updateHp)
+	hum.HealthChanged:Connect(updateHp)
+	hum:GetPropertyChangedSignal("MaxHealth"):Connect(updateHp)
 	updateHp()
 end
 
 function HUDController.BuildSharpPanelHUD()
 	if not hudGui then return end
+	local currentGui: ScreenGui = hudGui :: ScreenGui
 
-	local oldMain = hudGui:FindFirstChild("MainHUDPanel")
+	local oldMain = currentGui:FindFirstChild("MainHUDPanel")
 	if oldMain then oldMain:Destroy() end
 
-	-- Enclosing Main Panel (SHARP 90° CORNERS, NO UICORNER)
-	mainHudPanel = Instance.new("Frame")
-	mainHudPanel.Name = "MainHUDPanel"
-	mainHudPanel.Size = UDim2.new(0, 500, 0, 185)
-	mainHudPanel.Position = UDim2.new(0.5, -250, 1, -200)
-	mainHudPanel.BackgroundColor3 = COLOR_OBSIDIAN_MAIN
-	mainHudPanel.BorderSizePixel = 0
-	mainHudPanel.Parent = hudGui
+	-- Enclosing Main Panel
+	local panel = Instance.new("Frame")
+	panel.Name = "MainHUDPanel"
+	panel.Size = UDim2.new(0, 500, 0, 185)
+	panel.Position = UDim2.new(0.5, -250, 1, -200)
+	panel.BackgroundColor3 = COLOR_LIGHT_MAIN
+	panel.BorderSizePixel = 0
+	panel.Parent = currentGui
+	mainHudPanel = panel
 
 	local pStroke = Instance.new("UIStroke")
-	pStroke.Color = COLOR_OBSIDIAN_BORDER
+	pStroke.Color = COLOR_LIGHT_BORDER
 	pStroke.Thickness = 1.5
-	pStroke.Parent = mainHudPanel
+	pStroke.Parent = panel
 
 	----------------------------------------------------------------------------
-	-- 1. THICK HP BAR BOX (Height: 28px, Sharp Corners)
+	-- 1. THICK HP BAR BOX (Height: 28px)
 	----------------------------------------------------------------------------
 	local hpBox = Instance.new("Frame")
 	hpBox.Name = "HpBox"
 	hpBox.Size = UDim2.new(1, -24, 0, 28)
 	hpBox.Position = UDim2.new(0, 12, 0, 12)
-	hpBox.BackgroundColor3 = COLOR_OBSIDIAN_PANEL
+	hpBox.BackgroundColor3 = COLOR_LIGHT_PANEL
 	hpBox.BorderSizePixel = 0
-	hpBox.Parent = mainHudPanel
+	hpBox.Parent = panel
 
 	local hpBoxStroke = Instance.new("UIStroke")
-	hpBoxStroke.Color = COLOR_OBSIDIAN_BORDER
+	hpBoxStroke.Color = COLOR_LIGHT_BORDER
 	hpBoxStroke.Thickness = 1
 	hpBoxStroke.Parent = hpBox
 
 	local hpBg = Instance.new("Frame")
 	hpBg.Name = "HpBg"
 	hpBg.Size = UDim2.new(1, 0, 1, 0)
-	hpBg.Position = UDim2.new(0, 0, 0, 0)
-	hpBg.BackgroundColor3 = COLOR_OBSIDIAN_PANEL
+	hpBg.BackgroundColor3 = COLOR_LIGHT_PANEL
 	hpBg.BorderSizePixel = 0
 	hpBg.Parent = hpBox
 
-	hpFillBar = Instance.new("Frame")
-	hpFillBar.Name = "HpFill"
-	hpFillBar.Size = UDim2.new(1, 0, 1, 0)
-	hpFillBar.BackgroundColor3 = COLOR_HP_GREEN
-	hpFillBar.BorderSizePixel = 0
-	hpFillBar.ZIndex = 2
-	hpFillBar.Parent = hpBg
+	local newHpFill = Instance.new("Frame")
+	newHpFill.Name = "HpFill"
+	newHpFill.Size = UDim2.new(1, 0, 1, 0)
+	newHpFill.BackgroundColor3 = COLOR_HP_GREEN
+	newHpFill.BorderSizePixel = 0
+	newHpFill.ZIndex = 2
+	newHpFill.Parent = hpBg
+	hpFillBar = newHpFill
 
 	local hpHeader = Instance.new("TextLabel")
 	hpHeader.Name = "HpHeader"
@@ -181,101 +189,104 @@ function HUDController.BuildSharpPanelHUD()
 	hpHeader.ZIndex = 3
 	hpHeader.Parent = hpBox
 
-	hpTextLabel = Instance.new("TextLabel")
-	hpTextLabel.Name = "HpText"
-	hpTextLabel.Size = UDim2.new(0.7, -10, 1, 0)
-	hpTextLabel.Position = UDim2.new(0.3, 0, 0, 0)
-	hpTextLabel.BackgroundTransparency = 1
-	hpTextLabel.Text = "50.0K / 50.0K HP"
-	hpTextLabel.TextColor3 = COLOR_TEXT_MAIN
-	hpTextLabel.Font = UI_FONT
-	hpTextLabel.TextSize = 14
-	hpTextLabel.TextXAlignment = Enum.TextXAlignment.Right
-	hpTextLabel.ZIndex = 3
-	hpTextLabel.Parent = hpBox
+	local newHpText = Instance.new("TextLabel")
+	newHpText.Name = "HpText"
+	newHpText.Size = UDim2.new(0.7, -10, 1, 0)
+	newHpText.Position = UDim2.new(0.3, 0, 0, 0)
+	newHpText.BackgroundTransparency = 1
+	newHpText.Text = "100 / 100 HP"
+	newHpText.TextColor3 = COLOR_TEXT_MAIN
+	newHpText.Font = UI_FONT
+	newHpText.TextSize = 14
+	newHpText.TextXAlignment = Enum.TextXAlignment.Right
+	newHpText.ZIndex = 3
+	newHpText.Parent = hpBox
+	hpTextLabel = newHpText
 
 	----------------------------------------------------------------------------
-	-- 2. THICK CULTIVATION QI BAR BOX (Height: 28px, Sharp Corners)
+	-- 2. THICK CULTIVATION QI BAR BOX (Height: 28px)
 	----------------------------------------------------------------------------
 	local qiBox = Instance.new("Frame")
 	qiBox.Name = "QiBox"
 	qiBox.Size = UDim2.new(1, -24, 0, 28)
 	qiBox.Position = UDim2.new(0, 12, 0, 48)
-	qiBox.BackgroundColor3 = COLOR_OBSIDIAN_PANEL
+	qiBox.BackgroundColor3 = COLOR_LIGHT_PANEL
 	qiBox.BorderSizePixel = 0
-	qiBox.Parent = mainHudPanel
+	qiBox.Parent = panel
 
 	local qiBoxStroke = Instance.new("UIStroke")
-	qiBoxStroke.Color = COLOR_OBSIDIAN_BORDER
+	qiBoxStroke.Color = COLOR_LIGHT_BORDER
 	qiBoxStroke.Thickness = 1
 	qiBoxStroke.Parent = qiBox
 
 	local qiBg = Instance.new("Frame")
 	qiBg.Name = "QiBg"
 	qiBg.Size = UDim2.new(1, 0, 1, 0)
-	qiBg.Position = UDim2.new(0, 0, 0, 0)
-	qiBg.BackgroundColor3 = COLOR_OBSIDIAN_PANEL
+	qiBg.BackgroundColor3 = COLOR_LIGHT_PANEL
 	qiBg.BorderSizePixel = 0
 	qiBg.Parent = qiBox
 
-	cultivationFillBar = Instance.new("Frame")
-	cultivationFillBar.Name = "FillBar"
-	cultivationFillBar.Size = UDim2.new(0, 0, 1, 0)
-	cultivationFillBar.BackgroundColor3 = COLOR_AZURE
-	cultivationFillBar.BorderSizePixel = 0
-	cultivationFillBar.ZIndex = 2
-	cultivationFillBar.Parent = qiBg
+	local newQiFill = Instance.new("Frame")
+	newQiFill.Name = "FillBar"
+	newQiFill.Size = UDim2.new(0, 0, 1, 0)
+	newQiFill.BackgroundColor3 = COLOR_AZURE
+	newQiFill.BorderSizePixel = 0
+	newQiFill.ZIndex = 2
+	newQiFill.Parent = qiBg
+	cultivationFillBar = newQiFill
 
-	-- Realm Title Text ALWAYS Pure Crisp White
-	realmTitleLabel = Instance.new("TextLabel")
-	realmTitleLabel.Name = "RealmTitle"
-	realmTitleLabel.Size = UDim2.new(0.65, 0, 1, 0)
-	realmTitleLabel.Position = UDim2.new(0, 10, 0, 0)
-	realmTitleLabel.BackgroundTransparency = 1
-	realmTitleLabel.Text = "Golden Core — Order 1"
-	realmTitleLabel.TextColor3 = COLOR_TEXT_MAIN -- PURE WHITE ALWAYS
-	realmTitleLabel.Font = UI_FONT
-	realmTitleLabel.TextSize = 14
-	realmTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-	realmTitleLabel.ZIndex = 3
-	realmTitleLabel.Parent = qiBox
+	local newRealmTitle = Instance.new("TextLabel")
+	newRealmTitle.Name = "RealmTitle"
+	newRealmTitle.Size = UDim2.new(0.65, 0, 1, 0)
+	newRealmTitle.Position = UDim2.new(0, 10, 0, 0)
+	newRealmTitle.BackgroundTransparency = 1
+	newRealmTitle.Text = "Golden Core — Order 1"
+	newRealmTitle.TextColor3 = COLOR_TEXT_MAIN
+	newRealmTitle.Font = UI_FONT
+	newRealmTitle.TextSize = 14
+	newRealmTitle.TextXAlignment = Enum.TextXAlignment.Left
+	newRealmTitle.ZIndex = 3
+	newRealmTitle.Parent = qiBox
+	realmTitleLabel = newRealmTitle
 
-	qiProgressLabel = Instance.new("TextLabel")
-	qiProgressLabel.Name = "QiProgress"
-	qiProgressLabel.Size = UDim2.new(0.35, -10, 1, 0)
-	qiProgressLabel.Position = UDim2.new(0.65, 0, 0, 0)
-	qiProgressLabel.BackgroundTransparency = 1
-	qiProgressLabel.Text = "0 / 10.0K (0.0%)"
-	qiProgressLabel.TextColor3 = COLOR_TEXT_MAIN
-	qiProgressLabel.Font = UI_FONT
-	qiProgressLabel.TextSize = 14
-	qiProgressLabel.TextXAlignment = Enum.TextXAlignment.Right
-	qiProgressLabel.ZIndex = 3
-	qiProgressLabel.Parent = qiBox
-
-	----------------------------------------------------------------------------
-	-- 3. ACTION PROMPT LINE (Clean Text, No Emojis)
-	----------------------------------------------------------------------------
-	actionHotkeyPrompt = Instance.new("TextLabel")
-	actionHotkeyPrompt.Name = "HotkeyPrompt"
-	actionHotkeyPrompt.Size = UDim2.new(1, -24, 0, 22)
-	actionHotkeyPrompt.Position = UDim2.new(0, 12, 0, 84)
-	actionHotkeyPrompt.BackgroundTransparency = 1
-	actionHotkeyPrompt.Text = "[G] HOLD TO MEDITATE"
-	actionHotkeyPrompt.TextColor3 = COLOR_TEXT_SUB
-	actionHotkeyPrompt.Font = UI_FONT
-	actionHotkeyPrompt.TextSize = 15
-	actionHotkeyPrompt.Parent = mainHudPanel
+	local newQiProgress = Instance.new("TextLabel")
+	newQiProgress.Name = "QiProgress"
+	newQiProgress.Size = UDim2.new(0.35, -10, 1, 0)
+	newQiProgress.Position = UDim2.new(0.65, 0, 0, 0)
+	newQiProgress.BackgroundTransparency = 1
+	newQiProgress.Text = "0 / 800 (0.0%)"
+	newQiProgress.TextColor3 = COLOR_TEXT_MAIN
+	newQiProgress.Font = UI_FONT
+	newQiProgress.TextSize = 14
+	newQiProgress.TextXAlignment = Enum.TextXAlignment.Right
+	newQiProgress.ZIndex = 3
+	newQiProgress.Parent = qiBox
+	qiProgressLabel = newQiProgress
 
 	----------------------------------------------------------------------------
-	-- 4. RESTORED SKILL HOTBAR SLOTS (With Artwork & Bottom-Right Keybadges)
+	-- 3. ACTION PROMPT LINE
+	----------------------------------------------------------------------------
+	local newPrompt = Instance.new("TextLabel")
+	newPrompt.Name = "HotkeyPrompt"
+	newPrompt.Size = UDim2.new(1, -24, 0, 22)
+	newPrompt.Position = UDim2.new(0, 12, 0, 84)
+	newPrompt.BackgroundTransparency = 1
+	newPrompt.Text = "[G] HOLD TO MEDITATE"
+	newPrompt.TextColor3 = COLOR_TEXT_SUB
+	newPrompt.Font = UI_FONT
+	newPrompt.TextSize = 15
+	newPrompt.Parent = panel
+	actionHotkeyPrompt = newPrompt
+
+	----------------------------------------------------------------------------
+	-- 4. SKILL HOTBAR SLOTS
 	----------------------------------------------------------------------------
 	local actionSkillBar = Instance.new("Frame")
 	actionSkillBar.Name = "ActionSkillBar"
 	actionSkillBar.Size = UDim2.new(1, -24, 0, 58)
 	actionSkillBar.Position = UDim2.new(0, 12, 0, 114)
 	actionSkillBar.BackgroundTransparency = 1
-	actionSkillBar.Parent = mainHudPanel
+	actionSkillBar.Parent = panel
 
 	local slotsConfig = {
 		{ Key = "M1", BindText = "LMB", Icon = UIAssets.Skills.M1_SwordArt },
@@ -291,38 +302,36 @@ function HUDController.BuildSharpPanelHUD()
 		slot.Name = "Slot_" .. config.Key
 		slot.Size = UDim2.new(0, 54, 0, 54)
 		slot.Position = UDim2.new(0, (idx - 1) * 72 + 22, 0, 0)
-		slot.BackgroundColor3 = COLOR_OBSIDIAN_PANEL
+		slot.BackgroundColor3 = COLOR_LIGHT_PANEL
 		slot.BorderSizePixel = 0
 		slot.Parent = actionSkillBar
 
 		local sStroke = Instance.new("UIStroke")
 		sStroke.Name = "Stroke"
-		sStroke.Color = COLOR_OBSIDIAN_BORDER
+		sStroke.Color = COLOR_LIGHT_BORDER
 		sStroke.Thickness = 1.5
 		sStroke.Parent = slot
 
-		-- Skill Artwork Icon
 		local iconLabel = Instance.new("ImageLabel")
 		iconLabel.Name = "Icon"
 		iconLabel.Size = UDim2.new(1, -12, 1, -12)
 		iconLabel.Position = UDim2.new(0, 6, 0, 6)
 		iconLabel.BackgroundTransparency = 1
-		iconLabel.Image = config.Icon
+		iconLabel.Image = config.Icon or ""
 		iconLabel.ScaleType = Enum.ScaleType.Fit
 		iconLabel.Parent = slot
 
-		-- Bottom Right Keybind Badge Box (Prevents overlap with center cooldown text)
 		local keyBadge = Instance.new("Frame")
 		keyBadge.Name = "KeyBadge"
 		keyBadge.Size = UDim2.new(0, 24, 0, 14)
 		keyBadge.Position = UDim2.new(1, -26, 1, -16)
-		keyBadge.BackgroundColor3 = COLOR_OBSIDIAN_MAIN
+		keyBadge.BackgroundColor3 = COLOR_LIGHT_MAIN
 		keyBadge.BorderSizePixel = 0
 		keyBadge.ZIndex = 3
 		keyBadge.Parent = slot
 
 		local kbStroke = Instance.new("UIStroke")
-		kbStroke.Color = COLOR_OBSIDIAN_BORDER
+		kbStroke.Color = COLOR_LIGHT_BORDER
 		kbStroke.Thickness = 1
 		kbStroke.Parent = keyBadge
 
@@ -336,7 +345,6 @@ function HUDController.BuildSharpPanelHUD()
 		keyText.TextSize = 10
 		keyText.Parent = keyBadge
 
-		-- Cooldown Mask (Centered text)
 		local mask = Instance.new("Frame")
 		mask.Name = "CooldownMask"
 		mask.Size = UDim2.new(1, 0, 0, 0)
@@ -364,40 +372,45 @@ end
 
 function HUDController.UpdateCultivationHUD(data: any)
 	if not cultivationFillBar or not realmTitleLabel or not qiProgressLabel or not actionHotkeyPrompt then return end
+	local fill: Frame = cultivationFillBar :: Frame
+	local realmLabel: TextLabel = realmTitleLabel :: TextLabel
+	local qiLabel: TextLabel = qiProgressLabel :: TextLabel
+	local promptLabel: TextLabel = actionHotkeyPrompt :: TextLabel
 
 	local realmName = data.RealmName or "Qi Condensation"
 	local order = data.Order or 1
-	local currentQi = data.CurrentQi or 0
-	local maxQi = data.MaxQi or 100000
+	local maxQi = data.MaxQi or 800
+	local rawQi = data.CurrentQi or 0
+	local currentQi = math.min(rawQi, maxQi)
 	local isMeditating = data.IsMeditating or false
 
-	realmTitleLabel.Text = string.format("%s — Order %d", realmName, order)
-	realmTitleLabel.TextColor3 = COLOR_TEXT_MAIN -- PURE WHITE ALWAYS
+	realmLabel.Text = string.format("%s — Order %d", realmName, order)
+	realmLabel.TextColor3 = COLOR_TEXT_MAIN
 
 	local pct = math.clamp(currentQi / maxQi, 0, 1)
 	local formattedCurrent = CultivationConfig.FormatNumber(currentQi)
 	local formattedMax = CultivationConfig.FormatNumber(maxQi)
 
-	qiProgressLabel.Text = string.format("%s / %s (%.1f%%)", formattedCurrent, formattedMax, pct * 100)
+	qiLabel.Text = string.format("%s / %s (%.1f%%)", formattedCurrent, formattedMax, pct * 100)
 
-	TweenService:Create(cultivationFillBar, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+	TweenService:Create(fill, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Size = UDim2.new(pct, 0, 1, 0),
 	}):Play()
 
 	if pct >= 1.0 then
 		if order == 9 then
-			actionHotkeyPrompt.Text = "PRESS 'B' FOR MAJOR HEAVENLY TRIBULATION!"
-			actionHotkeyPrompt.TextColor3 = COLOR_DANGER_RED
+			promptLabel.Text = "PRESS 'B' FOR MAJOR HEAVENLY TRIBULATION!"
+			promptLabel.TextColor3 = COLOR_DANGER_RED
 		else
-			actionHotkeyPrompt.Text = "PRESS 'B' FOR MINOR BREAKTHROUGH"
-			actionHotkeyPrompt.TextColor3 = COLOR_ACTION_GOLD
+			promptLabel.Text = "PRESS 'B' FOR MINOR BREAKTHROUGH"
+			promptLabel.TextColor3 = COLOR_ACTION_GOLD
 		end
 	elseif isMeditating then
-		actionHotkeyPrompt.Text = "MEDITATING... PRESS [G] TO STOP"
-		actionHotkeyPrompt.TextColor3 = COLOR_HP_GREEN
+		promptLabel.Text = "MEDITATING... PRESS [G] TO STOP"
+		promptLabel.TextColor3 = COLOR_HP_GREEN
 	else
-		actionHotkeyPrompt.Text = "[G] HOLD TO MEDITATE"
-		actionHotkeyPrompt.TextColor3 = COLOR_TEXT_SUB
+		promptLabel.Text = "[G] HOLD TO MEDITATE"
+		promptLabel.TextColor3 = COLOR_TEXT_SUB
 	end
 end
 
@@ -405,9 +418,10 @@ function HUDController.TriggerCooldown(slotKey: string, duration: number)
 	local slot = activeSlots[slotKey]
 	if not slot then return end
 
-	local mask = slot:FindFirstChild("CooldownMask") :: Frame?
-	local cdText = slot:FindFirstChild("CooldownText") :: TextLabel?
-	if not mask then return end
+	local maskNode = slot:FindFirstChild("CooldownMask")
+	local cdTextNode = slot:FindFirstChild("CooldownText")
+	if not maskNode or not maskNode:IsA("Frame") then return end
+	local mask: Frame = maskNode :: Frame
 
 	if activeCooldowns[slotKey] then
 		task.cancel(activeCooldowns[slotKey])
@@ -417,9 +431,9 @@ function HUDController.TriggerCooldown(slotKey: string, duration: number)
 	mask.Visible = true
 	mask.Size = UDim2.new(1, 0, 1, 0)
 
-	if cdText then
-		cdText.Visible = true
-		cdText.Text = string.format("%.1f", duration)
+	if cdTextNode and cdTextNode:IsA("TextLabel") then
+		cdTextNode.Visible = true
+		cdTextNode.Text = string.format("%.1f", duration)
 	end
 
 	TweenService:Create(mask, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
@@ -432,11 +446,11 @@ function HUDController.TriggerCooldown(slotKey: string, duration: number)
 			local elapsed = os.clock() - startTime
 			local remaining = math.max(0, duration - elapsed)
 
-			if cdText then
+			if cdTextNode and cdTextNode:IsA("TextLabel") then
 				if remaining > 0 then
-					cdText.Text = string.format("%.1f", remaining)
+					cdTextNode.Text = string.format("%.1f", remaining)
 				else
-					cdText.Text = ""
+					cdTextNode.Text = ""
 				end
 			end
 
@@ -445,9 +459,9 @@ function HUDController.TriggerCooldown(slotKey: string, duration: number)
 		end
 
 		mask.Visible = false
-		if cdText then
-			cdText.Visible = false
-			cdText.Text = ""
+		if cdTextNode and cdTextNode:IsA("TextLabel") then
+			cdTextNode.Visible = false
+			cdTextNode.Text = ""
 		end
 		activeCooldowns[slotKey] = nil
 	end)

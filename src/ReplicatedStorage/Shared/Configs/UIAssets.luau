@@ -2,12 +2,21 @@
 --[[
     UIAssets.luau
     Central asset registry mapping all UI visual elements to Roblox Asset IDs.
-    Populated with live project asset IDs.
+    Includes Light-Mode Flat 2D UI color palette.
 ]]
 
 export type AssetCategory = "HUD" | "Panels" | "Weapons" | "Skills" | "Currencies" | "StatusEffects"
 
 local UIAssets = {
+	Colors = {
+		MainPanel = Color3.fromRGB(248, 250, 249),      -- #F8FAF9 Crisp Light Panel
+		CardBackground = Color3.fromRGB(241, 245, 249), -- #F1F5F9 Soft Slate Card
+		BorderStroke = Color3.fromRGB(203, 213, 225),   -- #CBD5E1 Muted Slate Border
+		TextPrimary = Color3.fromRGB(15, 23, 42),       -- #0F172A Deep Charcoal Text
+		TextMuted = Color3.fromRGB(100, 116, 139),      -- #64748B Muted Subtext
+		HealthFill = Color3.fromRGB(16, 185, 129),      -- #10B981 Jade Emerald Green
+		QiFill = Color3.fromRGB(59, 130, 246),          -- #3B82F6 Sapphire Blue
+	},
 	HUD = {
 		ReticleDot = "rbxassetid://91967824711199",
 		SlotBase = "rbxassetid://130801066203315",
@@ -25,11 +34,9 @@ local UIAssets = {
 		GridSlot = "rbxassetid://102206331438130",
 	},
 	Weapons = {
-		Spear = "rbxassetid://137933099173294",
+		FlyingSword = "rbxassetid://91700918054626",
 		Robes = "rbxassetid://89364653325641",
 		TalismanBanner = "rbxassetid://80831618004196",
-		FlyingSword = "rbxassetid://91700918054626",
-		Gauntlet = "rbxassetid://139039770600421",
 		Pendant = "rbxassetid://82725794143925",
 		Ring = "rbxassetid://91941666846046",
 	},
