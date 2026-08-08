@@ -1,58 +1,64 @@
-# 🧹 CODEBASE CLEANUP & REFACTORING GUIDE (ASCEND V1)
+# ASCEND-V1 — CODEBASE PRUNING & CLEANUP GUIDE
 
-## 📌 OVERVIEW
-Following our strategic pivot to a **Pure Sword Cultivator (100% Flying Swords + Floating Back Armors)** paradigm, normalized RPG stat curves, and a Unified Open World, legacy weapon implementations and inflated configuration scales MUST be pruned and refactored to maintain a clean architecture.
-
-## Purpose
-This guide defines the safe cleanup path, the files targeted for pruning, and the architectural changes required to keep ASCEND aligned with the current game plan.
-
-## Document Connectivity
-- Use this guide when implementing Phase 6.2 Codebase Pruning.
-- Pair with `docs/ARCHITECTURE_SPEC.md` to validate structural cleanup decisions.
-- Pair with `.ai/CURRENT_TASK.md` to ensure cleanup work matches active task scope.
+> **Technical Specification Document**  
+> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
+> **Scope:** Codebase Pruning, Dead Code Removal, Legacy File Purging, & Architecture Normalization.
 
 ---
 
-## ❌ 1. FILES TO BE REMOVED (REDUNDANCY PRUNING)
+# 1. Overview & Pruning Strategy
 
-The following 4 legacy weapon files conflict with the Pure Sword Cultivator paradigm and must be deleted from the repository:
-
-1. `src/ServerScriptService/Server/Combat/Weapons/GauntletServer.luau`
-2. `src/ServerScriptService/Server/Combat/Weapons/SpearServer.luau`
-3. `src/ReplicatedStorage/Shared/Configs/Weapons/GauntletConfig.luau`
-4. `src/ReplicatedStorage/Shared/Configs/Weapons/SpearConfig.luau`
+To maintain a zero-bug, high-performance, mobile-friendly codebase, **ASCEND** enforces strict codebase pruning rules. Unused scripts, legacy weapon logic, astronomical stat scaling, and dark-mode UI constants must be systematically purged.
 
 ---
 
-## ⚠️ 2. REFACTORING INSTRUCTIONS BY SCRIPT
+# 2. Complete Codebase Pruning Audit
 
-### 1️⃣ `CultivationConfig.luau`
-* **Change**: Replace astronomical 50B Qi / 5M HP scale with the **Normalized RPG Scale**:
-  * Qi Condensation: Max HP 100 – 300 | Max Qi 100 – 300
-  * Foundation Establishment: Max HP 300 – 800 | Max Qi 300 – 800
-  * Golden Core: Max HP 800 – 2,000 | Max Qi 800 – 2,000
-  * Nascent Soul: Max HP 2,000 – 5,000 | Max Qi 2,000 – 5,000
-  * Spirit Severing: Max HP 5,000 – 10,000 | Max Qi 5,000 – 10,000
+### 🗑️ 2.1 Deleted Legacy Files
+The following 4 non-sword legacy files were permanently deleted from the repository during Subtask 6.2C:
+* `src/ServerScriptService/Server/Combat/Weapons/GauntletServer.luau`
+* `src/ServerScriptService/Server/Combat/Weapons/SpearServer.luau`
+* `src/ReplicatedStorage/Shared/Configs/Weapons/GauntletConfig.luau`
+* `src/ReplicatedStorage/Shared/Configs/Weapons/SpearConfig.luau`
 
-### 2️⃣ `WeaponManager.luau`
-* **Change**: Remove all `Spear` and `Gauntlet` logic. Expand weapon binding to handle:
-  1. Hand Weapon attachment (`RightGripAttachment`) for Flying Swords.
-  2. Floating Back Armor attachment (`BodyBackAttachment`) for 3D Back-Crest Arrays.
-  3. Stat application for Equipped Back Armors (+HP, +DEF %, +Qi Regen/sec).
+---
 
-### 3️⃣ `CombatStateManager.luau`
-* **Change**: Remove requires for `SpearServer` and `GauntletServer`. Route all attack skill triggers exclusively through `FlyingSwordServer.ExecuteAttack()`.
+### 🧹 2.2 Purged Legacy Logic & Code Branches
 
-### 4️⃣ `ItemConfig.luau`
-* **Change**: Remove `GauntletItem` and `SpearItem`. Register all 13 Flying Swords & 13 Floating Back Armors (Mythic to Common), herbs, beast cores, and potions.
+1. **`CombatStateManager.luau`**:
+   * **Removed:** `require(SpearServer)` and `require(GauntletServer)`.
+   * **Removed:** Conditional `if equippedWeapon == "Spear"` and `elseif equippedWeapon == "Gauntlet"` branches.
+   * **Added:** 100% of attack requests are routed directly to `FlyingSwordServer.ExecuteAttack()`.
 
-### 5️⃣ `UIAssets.luau` & Client HUD Controllers
-* **Change**: Replace Dark Obsidian palette (`#0C0E14`) with **Light-Mode Flat 2D Palette**:
-  * Main Panel: `#F8FAF9` / `#FFFFFF`
-  * Card Background: `#F1F5F9`
-  * 1px Border Stroke: `#CBD5E1`
-  * Text Color: `#0F172A` Deep Charcoal
-  * Meters: `#10B981` Emerald Jade & `#3B82F6` Sapphire Blue
+2. **`WeaponManager.luau`**:
+   * **Removed:** Left-hand gauntlet model cloning, dual-glove welds (`Equipped3DGauntlet_Left`), and procedural spear scaling.
+   * **Removed:** Complex per-item particle generation code (replaced by direct model cloning & `EnableModelEffects()`).
+   * **Added:** Studio-Authoritative `RightGripAttachment` and `BodyBackAttachment` direct Motor6D binding with bounds scale normalization ($4.5$-stud sword bounds).
 
-### 6️⃣ `QiZoneManager.luau`
-* **Change**: Update environmental Qi multipliers from $150\times$ down to normalized **$1.0\times \rightarrow 3.0\times$** multiplier scaling across the single continent map.
+3. **`CultivationConfig.luau`**:
+   * **Removed:** Legacy $50\text{ Billion Qi}$ and $5\text{ Million HP}$ astronomical stat tables.
+   * **Added:** Normalized $100 \rightarrow 10,000$ HP / Qi progression curve across 5 Major Realms and 45 Orders.
+
+4. **`ItemConfig.luau`**:
+   * **Removed:** Legacy `GauntletItem` and `SpearItem` item table definitions.
+   * **Standardized:** All 16 floating back armors renamed to end strictly with **`Crest Array`**.
+   * **Added:** Registered all 16 Cultivation Equipment Sets (32 Items) with `Archetype` and `PrimaryColor` attributes.
+
+5. **`UIAssets.luau` & HUD Controllers**:
+   * **Removed:** Obsolete `#0C0E14` dark mode obsidian UI constants.
+   * **Added:** Traditional Xianxia Palette (`#1D4533` Jade, `#F7EAE0` Cream, `#F9D2BA` Peach, `#5E3122` Mahogany) with rarity-tinted slot backgrounds and non-overlapping title headers.
+
+6. **`InventoryManager.luau` & `InventoryController.luau`**:
+   * **Removed:** 30-slot storage cap cutting off equipment items.
+   * **Added:** Expanded 60-slot Spirit Pouch inventory grid with client `RequestSync` and server `EnsureTestItems` testing hooks.
+
+---
+
+# 3. Ongoing Codebase Clean-Up Rules
+
+To prevent code clutter in future updates:
+
+1. **Zero Dead Require Statements:** Never leave a `require()` statement referencing a file or folder that does not exist in `src/`.
+2. **Zero Unused If-Else Weapon Branches:** Never branch on non-sword weapon types (`Spear`, `Gauntlet`, `Hammer`). All weapons in ASCEND are Flying Swords (`FlyingSword`).
+3. **Data-Driven Configuration First:** Never hardcode item stats, colors, or offsets inside manager scripts. Store all item attributes inside `ItemConfig.luau`.
+4. **Single Universal Animation Pack:** Do not create separate animation tracks for individual swords. All swords share 1 universal R15 animation set (`M1`, `Shift` Windstep, `G` Meditation, `B` Breakthrough).

@@ -3,7 +3,7 @@
     WeaponManager.luau
     Location: src/ServerScriptService/Server/Combat/WeaponManager.luau
     Master 3D Weapon & Back Armor Attachment Engine.
-    Studio-Authoritative Grip Engine: Reads RightGripAttachment positioned in Studio.
+    Standardizes imported FBX bounds scale for consistent weapon sizing.
 ]]
 
 local Players = game:GetService("Players")
@@ -30,13 +30,13 @@ function WeaponManager.Init()
 	updateSkillStateRemote = RemoteEvents.GetRemote("UpdateSkillState")
 
 	Players.PlayerAdded:Connect(function(player)
-		equippedWeapons[player] = "SunSlayerCrimsonSword"
-		equippedBackArmors[player] = "SunSlayerCrimsonCrestArray"
+		equippedWeapons[player] = "MYTHIC_SUN_SLAYER_SWORD"
+		equippedBackArmors[player] = "MYTHIC_SUN_SLAYER_CREST"
 
 		player.CharacterAdded:Connect(function(character)
 			task.wait(0.3)
-			WeaponManager.AttachWeaponModel(player, equippedWeapons[player] or "SunSlayerCrimsonSword")
-			WeaponManager.AttachBackArmor(player, equippedBackArmors[player] or "SunSlayerCrimsonCrestArray")
+			WeaponManager.AttachWeaponModel(player, equippedWeapons[player] or "MYTHIC_SUN_SLAYER_SWORD")
+			WeaponManager.AttachBackArmor(player, equippedBackArmors[player] or "MYTHIC_SUN_SLAYER_CREST")
 		end)
 	end)
 
@@ -56,15 +56,15 @@ function WeaponManager.Init()
 		end
 	end)
 
-	print("[ASCEND] WeaponManager Studio-Authoritative Grip Engine Initialized.")
+	print("[ASCEND] WeaponManager Engine Initialized with Bounds Scale Normalization.")
 end
 
 function WeaponManager.GetEquippedWeapon(player: Player): string
-	return equippedWeapons[player] or "SunSlayerCrimsonSword"
+	return equippedWeapons[player] or "MYTHIC_SUN_SLAYER_SWORD"
 end
 
 function WeaponManager.GetEquippedBackArmor(player: Player): string
-	return equippedBackArmors[player] or "SunSlayerCrimsonCrestArray"
+	return equippedBackArmors[player] or "MYTHIC_SUN_SLAYER_CREST"
 end
 
 function WeaponManager.GetBackArmorStats(player: Player): BackArmorStats
@@ -111,8 +111,22 @@ local function EnableModelEffects(modelInst: Instance)
 	end
 end
 
+-- Normalize 3D Mesh Part size bounds for consistent scale
+local function NormalizeModelScale(modelInst: Instance, maxDimension: number)
+	for _, desc in ipairs(modelInst:GetDescendants()) do
+		if desc:IsA("MeshPart") then
+			local currentSize = desc.Size
+			local maxSide = math.max(currentSize.X, math.max(currentSize.Y, currentSize.Z))
+			if maxSide > 12 or maxSide < 1 then
+				local scaleFactor = maxDimension / math.max(0.1, maxSide)
+				desc.Size = currentSize * scaleFactor
+			end
+		end
+	end
+end
+
 -- ============================================================================
--- 1. HAND FLYING SWORD ATTACHMENT (STUDIO AUTHORITATIVE GRIP)
+-- 1. HAND FLYING SWORD ATTACHMENT
 -- ============================================================================
 function WeaponManager.AttachWeaponModel(player: Player, weaponItemId: string)
 	local character = player.Character
@@ -132,17 +146,10 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponItemId: string)
 	local itemData = ItemConfig[weaponItemId]
 	local modelName = if itemData and itemData.ModelName then itemData.ModelName else "Sun-Slayer Crimson Sword"
 
-	-- Search model template in ReplicatedStorage
-	local weaponTemplate: Instance? = ReplicatedStorage:FindFirstChild(modelName)
-		or ReplicatedStorage:FindFirstChild("Sun-Slayer Crimson Sword")
-		or ReplicatedStorage:FindFirstChild("FlyingSword")
-
-	if not weaponTemplate then
-		local weaponsFolder = ReplicatedStorage:FindFirstChild("Weapons")
-		if weaponsFolder then
-			weaponTemplate = weaponsFolder:FindFirstChild(modelName)
-		end
-	end
+	-- Search model template RECURSIVELY in ReplicatedStorage
+	local weaponTemplate: Instance? = ReplicatedStorage:FindFirstChild(modelName, true)
+		or ReplicatedStorage:FindFirstChild("Sun-Slayer Crimson Sword", true)
+		or ReplicatedStorage:FindFirstChild("FlyingSword", true)
 
 	local weaponInstance: Instance? = nil
 	local handle: BasePart? = nil
@@ -156,6 +163,9 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponItemId: string)
 				scriptInst:Destroy()
 			end
 		end
+
+		-- Normalize sword scale to 4.5 studs max blade length
+		NormalizeModelScale(cloned, 4.5)
 
 		if cloned:IsA("Model") then
 			local modelInst = cloned :: Model
@@ -184,7 +194,6 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponItemId: string)
 	activeHandle.CanCollide = false
 	activeHandle.Massless = true
 
-	-- Enable embedded particles & lights
 	EnableModelEffects(activeWeapon)
 
 	-- 1. Read Arm Palm Attachment
@@ -193,7 +202,7 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponItemId: string)
 		then (armGrip :: Attachment).CFrame 
 		else (CFrame.new(0, -0.25, 0) * CFrame.Angles(-math.pi/2, 0, 0))
 
-	-- 2. Read Studio-placed RightGripAttachment directly from the sword model
+	-- 2. Read Studio-placed RightGripAttachment
 	local customGripAtt = activeHandle:FindFirstChild("RightGripAttachment")
 		or activeHandle:FindFirstChild("Grip")
 		or activeWeapon:FindFirstChild("RightGripAttachment", true)
@@ -202,10 +211,8 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponItemId: string)
 	local gripCFrame: CFrame
 	if customGripAtt and customGripAtt:IsA("Attachment") then
 		gripCFrame = (customGripAtt :: Attachment).CFrame
-		print(string.format("[WeaponManager] Using Studio-placed RightGripAttachment on '%s'.", activeWeapon.Name))
 	else
-		-- Fallback offset if model lacks RightGripAttachment
-		gripCFrame = if itemData and itemData.GripOffset then itemData.GripOffset else CFrame.new(0, 0, 0)
+		gripCFrame = if itemData and itemData.GripOffset then itemData.GripOffset else CFrame.new(-2.4, 0.7, 0) * CFrame.Angles(math.rad(90), math.rad(-110), math.rad(90))
 	end
 
 	-- Connect Motor6D Joint
@@ -218,7 +225,7 @@ function WeaponManager.AttachWeaponModel(player: Player, weaponItemId: string)
 	motor.Parent = rightHand
 
 	activeWeapon.Parent = character
-	print(string.format("[WeaponManager] Equipped '%s' to %s using Studio Grip Attachment.", activeWeapon.Name, player.Name))
+	print(string.format("[WeaponManager] Equipped '%s' to %s with bounds scale normalization.", activeWeapon.Name, player.Name))
 end
 
 -- ============================================================================
@@ -239,17 +246,10 @@ function WeaponManager.AttachBackArmor(player: Player, armorItemId: string)
 	local itemData = ItemConfig[armorItemId]
 	local modelName = if itemData and itemData.ModelName then itemData.ModelName else "Sun-Slayer Crimson Crest Array"
 
-	-- Search ReplicatedStorage for actual custom 3D Back Armor Model
-	local armorTemplate: Instance? = ReplicatedStorage:FindFirstChild(modelName)
-		or ReplicatedStorage:FindFirstChild("Sun-Slayer Crimson Crest Array")
-		or ReplicatedStorage:FindFirstChild("BasicBackCrest")
-
-	if not armorTemplate then
-		local armorsFolder = ReplicatedStorage:FindFirstChild("Armors")
-		if armorsFolder then
-			armorTemplate = armorsFolder:FindFirstChild(modelName)
-		end
-	end
+	-- Search ReplicatedStorage RECURSIVELY for actual custom 3D Back Armor Model
+	local armorTemplate: Instance? = ReplicatedStorage:FindFirstChild(modelName, true)
+		or ReplicatedStorage:FindFirstChild("Sun-Slayer Crimson Crest Array", true)
+		or ReplicatedStorage:FindFirstChild("BasicBackCrest", true)
 
 	if armorTemplate then
 		local cloned = armorTemplate:Clone()
@@ -260,6 +260,9 @@ function WeaponManager.AttachBackArmor(player: Player, armorItemId: string)
 				scriptInst:Destroy()
 			end
 		end
+
+		-- Normalize crest scale to 4.0 studs max dimension
+		NormalizeModelScale(cloned, 4.0)
 
 		local primaryPart: BasePart? = nil
 		if cloned:IsA("Model") then
@@ -283,7 +286,6 @@ function WeaponManager.AttachBackArmor(player: Player, armorItemId: string)
 
 			EnableModelEffects(cloned)
 
-			-- Read Studio-placed BodyBackAttachment or BackAttachment if present
 			local customBackAtt = primaryPart:FindFirstChild("BodyBackAttachment")
 				or primaryPart:FindFirstChild("BackAttachment")
 				or cloned:FindFirstChild("BodyBackAttachment", true)
@@ -292,7 +294,7 @@ function WeaponManager.AttachBackArmor(player: Player, armorItemId: string)
 			if customBackAtt and customBackAtt:IsA("Attachment") then
 				backOffset = (customBackAtt :: Attachment).CFrame
 			else
-				backOffset = if itemData and itemData.GripOffset then itemData.GripOffset else CFrame.new(0, 2.0, 1.2)
+				backOffset = if itemData and itemData.GripOffset then itemData.GripOffset else (CFrame.new(0, 2.0, 1.2) * CFrame.Angles(0.1, 0, 0))
 			end
 
 			local motor = Instance.new("Motor6D")

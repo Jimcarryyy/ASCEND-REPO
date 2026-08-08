@@ -1,42 +1,33 @@
 # Next Steps & Project Roadmap — ASCEND
 
 ## Purpose
-This file lays out the next planned development milestones and future roadmap. Use it after completing the current task or when planning the next phase.
+This file lays out the next planned development milestones and future roadmap. Use it after completing current objectives or when planning upcoming phases.
 
 ## Connectivity
 - Follows `.ai/CURRENT_TASK.md` and `.ai/PROJECT_STATUS.md`.
-- Points to future Phase 6, Phase 7, and Phase 8 work.
-- Does not replace the active task approval sequence.
-
-## 🚀 Immediate Next Steps (Phase 6)
-
-### 1. World Zone & Qi Multiplier Binding (Task 6.2A)
-- [ ] Place physical `Workspace.QiZones` parts (*MortalGrounds*, *SpiritSpring*, *AzurePeak*, *DragonCavern*, *CelestialVoid*) with attributes (`ZoneId`, `Multiplier`).
-- [ ] Connect `QiZoneManager.luau` to `CultivationManager.luau` to apply spatial meditation multipliers ($1\times \rightarrow 150\times$).
-
-### 2. Sect Affiliation & Master NPC System (Task 6.2B)
-- [ ] Create `SectConfig.luau` defining Xianxia Sects (*Azure Cloud Sect*, *Crimson Flame Sect*, *Shadow Void Sect*) and passive faction perks.
-- [ ] Place 3 Master NPCs in world pavilions with ProximityPrompts for dialogue, sect joining, and breakthrough guidance.
-- [ ] Save player Sect choice in `PlayerDataManager.luau`.
-
-### 3. Studio Import of 3D Mythic Paired Sets (Task 6.3)
-- [ ] Download `.FBX` files for **Sun-Slayer Crimson Set**, **Nine-Dragon Sovereign Set**, and **Frost-Dragon Flared Set**.
-- [ ] Set up `SurfaceAppearance` PBR maps (`ColorMap`, `EmissiveMap`, `NormalMap`) and `EmissiveStrength = 10`.
-- [ ] Register all 4 Paired Sets in `ItemConfig.luau` and `WeaponManager.luau`.
-
-### 4. Dynamic Sword Art Jade Scroll System (Task 6.4)
-- [ ] Register Sword Art Skill Scrolls in `ItemConfig.luau` (`VoidSlashScroll`, `FlameCleaveScroll`, `DragonParryScroll`).
-- [ ] Update `CombatStateManager.luau` to execute active skills based on player's equipped Jade Scrolls in `Q`, `E`, `R` slots.
-- [ ] Implement Sword Art Mastery XP tracking (Rank 1 $\rightarrow$ Rank 10).
+- Points to active Phase 7 and future Phase 8 work.
 
 ---
 
-## 🔮 Future Roadmap (Phase 7 & Beyond)
+## 🚀 Immediate Next Steps (Phase 7: Core Loop & World Gathering)
 
-### Phase 7: Open World & Beast AI
-- [ ] **Wilderness Spirit Beasts**: Server-authoritative monster AI with aggro radius, attack combos, loot drops (*Demon Cores*), and respawn timers.
-- [ ] **Herb Gathering Nodes**: Interactive 3D harvest nodes (*Spirit Grass*, *Flaming Lotus*) spawning in world zones.
+### 1. Zone 1 Herb Gathering Node System (Task 7.1A)
+- [ ] Place physical 3D harvestable herb nodes in Zone 1 (`Nine-Leaf Spirit Grass` and `Crimson Dragon Lotus`).
+- [ ] Add `ProximityPrompt` `[E]` interaction to harvest herbs directly into the player's Spirit Pouch (`K`).
+- [ ] Implement node respawn timers (30-second cooldown) and harvest sound/particle effects.
 
-### Phase 8: Xianxia Visual Polish
-- [ ] Add post-processing bloom and depth-of-field atmospheric effects in `Lighting`.
-- [ ] Add dynamic camera impulse shake on heavy Sword Art hits.
+### 2. Sect Sword Altar Gacha Engine (Task 7.1B)
+- [ ] Create `SwordGachaManager.luau` allowing players to spend Spirit Stones at the Sect Altar to roll Flying Swords (Common $\rightarrow$ Mythic).
+- [ ] Add gacha reveal camera animation and 3D item popup.
+
+### 3. Sector Teleportation Portal & Zone Boundaries (Task 7.1C)
+- [ ] Place a **Dimensional Boundary Portal** at the edge of the Zone 1 Master Island.
+- [ ] Add rank-locked teleportation logic (e.g. requires *Foundation Establishment Order 1* to warp to Zone 2).
+
+---
+
+## 🔮 Future Roadmap (Phase 8 & Beyond)
+
+### Phase 8: Xianxia World Expansion & Monetization
+- [ ] Add Gamepass Store (Auto-Meditate, $2\times$ Qi Speed, Tribulation Protection Pills).
+- [ ] Add Leaderboards (Highest Realm Rank, Top Sword Mastery).

@@ -1,79 +1,30 @@
----
-
-# 8. `docs/ASSET_MANIFEST.md`
-
-```markdown
 # ASCEND-V1 — CULTIVATION 2D/3D ASSET MANIFEST & DESIGN PHILOSOPHY
 
 > **Technical Specification Document**  
 > **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
-> **Scope:** 3D Sword Models, 3D Floating Back-Crests, 2D Skill Icons, UI Textures, & Audio SFX.
-
-## Purpose
-This document catalogs approved visual assets, model names, and UI/audio asset mappings for ASCEND.
-
-## Document Connectivity
-- Use this manifest to validate asset names, tiers, and visual style before importing into Studio.
-- Pair it with `docs/AI_PROMPT_GUIDE.md` for prompt generation and `docs/ARCHITECTURE_SPEC.md` for asset placement guidance.
-- This file does not define combat rules or mechanics.
+> **Scope:** 3D Sword Models, 3D Back-Crests, 2D Skill Icons, UI Textures, & Audio SFX.
 
 ---
 
-## 1. 3D Mythic Paired Assets Manifest
+## 1. 3D Master Equipment Manifest (16 Sets / 32 Total Items)
 
-All 3D models are generated in Meshy AI (Standard Mode), reduced to ~3,000 triangles, and imported as `.FBX` packages into Roblox Studio:
+All 16 Equipment Sets are registered in `ItemConfig.luau` and powered by 5 Master Base Models in `ReplicatedStorage`:
 
-| Set Name | Element / Path | 3D Sword Model | 3D Floating Back-Crest Model | Studio Location |
-| :--- | :--- | :--- | :--- | :--- |
-| **`Heavenly Void Set`** | Cosmic / Space | `HeavenlyVoidBlade.fbx` | `HeavenlyVoidBackCrest.fbx` | `ReplicatedStorage` ✅ |
-| **`Sun-Slayer Crimson Set`** | Magma / Fire | `SunSlayerCrimsonBlade.fbx` | `CrimsonFlameBackCrest.fbx` | `ReplicatedStorage` 🚀 |
-| **`Nine-Dragon Sovereign Set`** | Jade / Wind | `NineDragonSovereignBlade.fbx` | `AzureDragonBackCrest.fbx` | `ReplicatedStorage` 🚀 |
-| **`Frost-Dragon Flared Set`** | Ice / Frost | `FrostDragonFlaredBlade.fbx` | `FrostDragonBackCrest.fbx` | `ReplicatedStorage` 🚀 |
-
----
-
-## 2. Cultivation Rarity Tiering Pipeline
-
-Items, Jade Scrolls, and Sword Skins scale across standardized **Cultivation Rarity Grades**:
-
-| Rarity Grade | Hex Color Code | Spiritual Identity | Visual Attributes |
+| Set Name | Rarity Tier | 3D Sword Model Name | 3D Back Armor Model Name |
 | :--- | :--- | :--- | :--- |
-| **Common Grade** | `#FFFFFF` (White) | Base mortal steel / bamboo | Plain metal/wood, zero Qi glow |
-| **Uncommon Grade** | `#38E54D` (Jade Green) | Refined spirit-steel | Smooth metallic sheen, faint green border |
-| **Rare Grade** | `#2192FF` (Sapphire Blue) | Infused with Spirit Qi | Translucent jade blade, glowing edge line |
-| **Epic Grade** | `#9C2C77` (Deep Purple) | Formed from Ancient Spirit Veins | Sculpted elemental guard, bright energy channels |
-| **Legendary Grade** | `#FFD700` (Gold) | Ancient magma / dragon artifact | Flared wide blade throat, 3D creature guard |
-| **Mythic Grade** | `#FF1E1E` (Crimson / Cosmic) | Born from Heavenly Tribulation | Engraved glowing Dao runes + 3D floating crystal shards |
-
----
-
-## 3. UI Asset & Roblox Decal Mapping (`UIAssets.luau`)
-
-### HUD & Panel UI Textures
-* **Reticle Dot**: `rbxassetid://91967824711199`
-* **Slot Base**: `rbxassetid://130801066203315`
-* **Key Badge**: `rbxassetid://100047016230704`
-* **Boss Frame**: `rbxassetid://135743022798866`
-* **Slot Active**: `rbxassetid://101243757444363`
-* **Tribulation Bar**: `rbxassetid://116053311300978`
-* **Cooldown Mask**: `rbxassetid://122590929808037`
-* **Modal Background**: `rbxassetid://107541216755976`
-* **Header Banner**: `rbxassetid://98859547252438`
-* **Divider Line**: `rbxassetid://84097505475730`
-* **Button Primary**: `rbxassetid://85491533300951`
-
-### Sword Art Skill Icons
-* **M1 Sword Art**: `rbxassetid://105049604836680`
-* **Heavy Slam / Parry**: `rbxassetid://112434505017874`
-* **Sword Tempest**: `rbxassetid://78370022706412`
-* **Dragon Roar / Thrust**: `rbxassetid://125652382062875`
-* **Tribulation Bolt / Barrage**: `rbxassetid://128833809862475`
-* **Dodge Windstep**: `rbxassetid://112980465072041`
-
----
-
-## 4. Audio SFX Registry (`CombatVFXController.luau`)
-
-* **Weapon Swing SFX**: `rbxassetid://1222216`
-* **Impact Hit SFX**: `rbxassetid://5633903110`
-* **Thunder Impact SFX**: `rbxassetid://13837931480`
+| **Mortal Iron** | Common | `Mortal Iron Sword` | `Mortal Iron Crest Array` |
+| **Refined Spirit-Steel** | Uncommon | `Refined Spirit-Steel Sword` | `Refined Spirit-Steel Crest Array` |
+| **Azure Spirit-Jade** | Rare | `Azure Spirit-Jade Sword` | `Azure Spirit-Jade Crest Array` |
+| **Crimson Flame Spirit** | Rare | `Crimson Flame Spirit Sword` | `Crimson Flame Spirit Crest Array` |
+| **Glacial Frost Spirit** | Rare | `Glacial Frost Spirit Sword` | `Glacial Frost Spirit Crest Array` |
+| **Golden Thunder Spirit** | Rare | `Golden Thunder Spirit Sword` | `Golden Thunder Spirit Crest Array` |
+| **Shadow Slate Spirit** | Rare | `Shadow Slate Spirit Sword` | `Shadow Slate Spirit Crest Array` |
+| **Sakura Blossom** | Epic | `Sakura Blossom Blade` | `Sakura Blossom Crest Array` |
+| **Radiant Light** | Epic | `Radiant Light Blade` | `Radiant Light Crest Array` |
+| **Shadow Void** | Epic | `Shadow Void Blade` | `Shadow Void Crest Array` |
+| **Sovereign Gold Dragon** | Legendary | `Sovereign Gold Dragon Sword` | `Sovereign Gold Dragon Crest Array` |
+| **Celestial Thunder** | Legendary | `Celestial Thunder Sovereign Sword` | `Celestial Thunder Sovereign Crest Array` |
+| **Heavenly Void** | Mythic | `Heavenly Void Sword` | `Heavenly Void Crest Array` |
+| **Sun-Slayer Crimson** | Mythic | `Sun-Slayer Crimson Sword` | `Sun-Slayer Crimson Crest Array` |
+| **Nine-Dragon Sovereign** | Mythic | `Nine-Dragon Sovereign Sword` | `Nine-Dragon Sovereign Crest Array` |
+| **Frost-Dragon Flared** | Mythic | `Frost-Dragon Flared Sword` | `Frost-Dragon Flared Crest Array` |
