@@ -6,7 +6,7 @@ This file defines the active milestone, current progress summary, and the exact 
 ## Connectivity
 - Read this file first when starting a new session.
 - Use `.ai/PROJECT_STATUS.md` for subsystem health and completion context.
-- Use `.ai/DECISIONS.md` for architectural decision records (ADR-001 to ADR-016).
+- Use `.ai/DECISIONS.md` for architectural decision records (ADR-001 to ADR-019).
 
 ---
 
@@ -20,21 +20,24 @@ This file defines the active milestone, current progress summary, and the exact 
 | **Subtask 6.2D** | Stat Normalization — Scale Qi/HP ($100 \rightarrow 10,000$) in `CultivationConfig.luau` | **Completed** | Verified in Studio |
 | **Subtask 6.2E** | 3D Attachment Engine — Studio-Authoritative `RightGripAttachment` & `BodyBackAttachment` | **Completed** | Verified in Studio |
 | **Subtask 6.2F** | UI/UX Overhaul — Light-Mode Flat 2D Xianxia Palette (`#1D4533`, `#F7EAE0`) | **Completed** | Verified in Studio |
-| **Task 7.1A** | Zone 1 Herb Gathering Node Engine (`Nine-Leaf Grass` & `Dragon Lotus`) | **Pending** | Active Next Task |
-| **Task 7.1B** | Sect Sword Altar Gacha Engine (Spirit Stone rolling for Flying Swords) | **Pending** | Planned |
-| **Task 7.1C** | Sector Teleportation Portal & Zone Boundary Anchors | **Pending** | Planned |
+| **Task 1** | Master Codebase Cleanup, DataStore V2 Reset & UI Refactor | **Completed** | Verified in Studio |
+| **Task 7.1A** | World Resource Gathering System (Randomized Herb Ages: 1-Yr to 1,000-Yr) | **Completed** | Verified in Studio |
+| **Task 7.1B** | Upgraded Manual 3-Slot Spirit Cauldron Alchemy Engine & Buff Pills | **Completed** | Verified in Studio |
+| **Task 7.1C** | Environmental Qi Meditation Pads & Realm Breakthrough System | **Pending** | Active Next Task |
+| **Task 7.1D** | Spirit Beast AI Spawning & Flying Sword Combat Testing | **Pending** | Planned |
+| **Task 7.1E** | Sect Market Vendors & Monetization Integration | **Pending** | Planned |
 
 ---
 
-# 🎯 CURRENT TASK: Phase 7 — Core Gameplay Loop & World Gathering
+# 🎯 CURRENT TASK: Task 7.1C — Qi Meditation & Realm Breakthrough System
 
 ## 📌 Active Objective
-Execute the master implementation of the **Zone 1 Herb Gathering System**, **Sect Sword Altar Gacha Engine**, and **Sector Teleportation Portal**.
+Execute the master implementation of the **Environmental Qi Meditation Pads** and **Realm Breakthrough Engine** across Zone 4 and Zone 2 streams.
 
 ---
 
 ## 📋 Task Checklist
 
-- [ ] **Task 7.1A**: Zone 1 Herb Gathering Node System (`Nine-Leaf Spirit Grass` & `Crimson Dragon Lotus` harvestable nodes with `ProximityPrompt` `[E]` interaction).
-- [ ] **Task 7.1B**: Sect Sword Altar Gacha Engine (Spirit Stone rolling for Flying Swords from Common $\rightarrow$ Mythic).
-- [ ] **Task 7.1C**: Zone Boundary Teleportation Portal & Boat System.
+- [ ] **Task 7.1C-1**: Place interactive **Meditation Stone Pads** in `workspace.MeditationPads` with `ProximityPrompt` `[F]` interaction.
+- [ ] **Task 7.1C-2**: Implement server-authoritative Qi channeling in `CultivationManager.luau` using character sit/float animations, filling the `800 / 800` Qi bar $3.5\times$ faster than passive absorption.
+- [ ] **Task 7.1C-3**: Implement **Realm Breakthrough Trials**: consuming a *Foundation Gathering Dan* when Qi is full triggers celestial golden aura particles via `CombatVFXController`, advances cultivator tiers (*Qi Condensation* $\rightarrow$ *Foundation Establishment*), increases permanent stats, and updates HUD titles.

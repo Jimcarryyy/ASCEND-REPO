@@ -114,60 +114,52 @@ The ASCEND codebase follows a layered architecture:
 
 ---
 
+---
+
+### **`docs/CODE_DEPENDENCY_GUIDE.md`**
+
+```markdown
+# ASCEND Code Dependency Guide
+
+## Purpose
+This document maps cross-module require dependencies and RemoteEvent communication chains.
+
+---\n
 ## Visual Dependency Tree
 
-```
+```text
 ServerMain.server.luau
 ├─ RemoteEvents.luau
 ├─ CombatStateManager.luau
-│  ├─ CultivationConfig.luau
-│  ├─ WeaponManager.luau
-│  ├─ SpearServer.luau
-│  ├─ FlyingSwordServer.luau
-│  ├─ GauntletServer.luau
-│  ├─ RemoteEvents.luau
-│  └─ CultivationManager.luau
 ├─ WeaponManager.luau
-│  ├─ RemoteEvents.luau
-│  └─ UIAssets.luau
 ├─ CultivationManager.luau
-│  ├─ CultivationConfig.luau
-│  ├─ RemoteEvents.luau
-│  └─ WeaponManager.luau
 ├─ InventoryManager.luau
+├─ GatheringManager.luau
+│  ├─ GatheringConfig.luau
+│  ├─ InventoryManager.luau
+│  └─ RemoteEvents.luau
+├─ AlchemyManager.luau
+│  ├─ AlchemyConfig.luau
 │  ├─ ItemConfig.luau
-│  ├─ RemoteEvents.luau
+│  ├─ InventoryManager.luau
 │  ├─ CultivationManager.luau
-│  └─ WeaponManager.luau
+│  └─ RemoteEvents.luau
 └─ PlayerDataManager.luau
-   ├─ CultivationConfig.luau
-   ├─ WeaponManager.luau
-   ├─ CultivationManager.luau
-   └─ InventoryManager.luau
 
 ClientMain.client.luau
 ├─ HUDController.luau
-│  ├─ UIAssets.luau
-│  ├─ CultivationConfig.luau
-│  └─ RemoteEvents.luau
 ├─ InputController.luau
-│  └─ RemoteEvents.luau
 ├─ CombatVFXController.luau
-│  └─ RemoteEvents.luau
 ├─ AnimationController.luau
-│  ├─ RemoteEvents.luau
-│  ├─ AnimationConfig.luau
-│  └─ InputController.luau
 ├─ InventoryController.luau
-│  ├─ ItemConfig.luau
-│  └─ RemoteEvents.luau
 ├─ AlchemyController.luau
 │  ├─ AlchemyConfig.luau
 │  ├─ ItemConfig.luau
 │  └─ RemoteEvents.luau
-└─ CultivationController.luau
-   └─ RemoteEvents.luau
-```
+├─ OverheadUIController.luau
+└─ GatheringController.luau
+   ├─ RemoteEvents.luau
+   └─ SoundService.GatherHerbsSound
 
 ---
 

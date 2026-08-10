@@ -11,18 +11,28 @@ This file lays out the next planned development milestones and future roadmap. U
 
 ## 🚀 Immediate Next Steps (Phase 7: Core Loop & World Gathering)
 
-### 1. Zone 1 Herb Gathering Node System (Task 7.1A)
-- [ ] Place physical 3D harvestable herb nodes in Zone 1 (`Nine-Leaf Spirit Grass` and `Crimson Dragon Lotus`).
-- [ ] Add `ProximityPrompt` `[E]` interaction to harvest herbs directly into the player's Spirit Pouch (`K`).
-- [ ] Implement node respawn timers (30-second cooldown) and harvest sound/particle effects.
+### 1. Zone 1 & Zone 2 Herb Gathering Node System (Task 7.1A) — [COMPLETED]
+- [x] Place physical 3D harvestable herb nodes in `workspace.GatheringNodes` (`SpiritGrass`, `DragonBloodVine`, `GaleWindLotus`, `CelestialSpring`, `JadeOre`).
+- [x] Add `ProximityPrompt` `[E]` interaction to harvest herbs directly into the player's Spirit Pouch (`K`).
+- [x] Implement node respawn timers (12-to-30-second cooldown) and weighted random herb age rolls (1-Yr to 1,000-Yr).
+- [x] Connect audio playback for `SoundService.GatherHerbsSound` on harvest.
 
-### 2. Sect Sword Altar Gacha Engine (Task 7.1B)
-- [ ] Create `SwordGachaManager.luau` allowing players to spend Spirit Stones at the Sect Altar to roll Flying Swords (Common $\rightarrow$ Mythic).
-- [ ] Add gacha reveal camera animation and 3D item popup.
+### 2. Upgraded Manual 3-Slot Spirit Cauldron Alchemy Engine (Task 7.1B) — [COMPLETED]
+- [x] Refactor `AlchemyConfig.luau`, `AlchemyManager.luau`, and `AlchemyController.luau` for manual 3-slot herb selection.
+- [x] Add dynamic age-based success calculations (higher herb ages boost success rate up to 100% and potency up to 3.0x).
+- [x] Add craftable buff pills: *Spirit Healing Dan*, *Qi Gathering Dan* (2x Meditation Speed), *Physique Tempering Dan* (+35% Damage), *Gale Wind Dan* (+40% Flight Speed), and *Foundation Gathering Dan*.
 
-### 3. Sector Teleportation Portal & Zone Boundaries (Task 7.1C)
-- [ ] Place a **Dimensional Boundary Portal** at the edge of the Zone 1 Master Island.
-- [ ] Add rank-locked teleportation logic (e.g. requires *Foundation Establishment Order 1* to warp to Zone 2).
+### 3. Environmental Qi Meditation Pads & Realm Breakthroughs (Task 7.1C) — [ACTIVE NEXT TASK]
+- [ ] Place interactive **Meditation Stone Pads** (`workspace.MeditationPads`) in Zone 4 / Zone 2 streams.
+- [ ] Implement meditation channeling (**[F]** key / ProximityPrompt) with `Celestial Float System` pose to fill the `800 / 800` Qi bar $3.5\times$ faster than passive absorption.
+- [ ] Implement **Realm Breakthrough Trials**: consuming a *Foundation Gathering Dan* when Qi is full triggers celestial golden aura particles, advances cultivator tiers (*Qi Condensation* $\rightarrow$ *Foundation Establishment*), increases permanent stats, and updates HUD titles.
+
+### 4. Spirit Beast AI Spawning & Flying Sword Combat (Task 7.1D)
+- [ ] Spawn wild spirit beasts in Zone 2 to fight with Flying Swords.
+- [ ] Implement beast loot drops (`DemonBeastCore`) on death.
+
+### 5. Sect Market Vendors & Monetization Integration (Task 7.1E)
+- [ ] Set up shop vendor NPCs in Zone 1 (Azure Sect Hub) to trade Spirit Stones and process Roblox Developer Products / GamePasses.
 
 ---
 

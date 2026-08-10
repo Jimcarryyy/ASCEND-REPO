@@ -1,3 +1,8 @@
+---
+
+### **`.ai/CHANGELOG.md`**
+
+```markdown
 # CHANGELOG
 
 ## Purpose
@@ -6,6 +11,28 @@ This document tracks released and unreleased changes, feature additions, and arc
 ## Connectivity
 - Use this file to audit historical development and ensure documentation aligns with actual progress.
 - Pair it with `.ai/PROJECT_STATUS.md` to confirm which milestones are reflected in the current release state.
+
+---
+
+## [Unreleased] - 2026-08-10 — Phase 7 World Gathering & Manual Cauldron Alchemy Engine
+
+### Added
+- **Task 1: Master Codebase Cleanup & DataStore V2 Reset**:
+  - Deleted redundant legacy config files (`InventoryConfig.luau`, `RarityConfig.luau`, `SWORD_MASTERY_SPEC.md`, `ECONOMY_AND_MARKET_SPEC.md`).
+  - Bumped DataStore persistence key to `"ASCEND_PlayerData_V2"` in `PlayerDataManager.luau`.
+  - Upgraded `UIAssets.luau`, `HUDController.luau`, `InventoryController.luau`, and `AlchemyController.luau` to unified Light-Mode 2D palette with `Enum.Font.FredokaOne` typography.
+- **Task 7.1A: World Resource Gathering System**:
+  - Created `GatheringConfig.luau`, `GatheringManager.luau`, and `GatheringController.luau`.
+  - Implemented support for `workspace.GatheringNodes` folder and `CollectionService` tags (`GatheringNode`).
+  - Implemented weighted random herb age rolls (`1-Year`, `10-Year`, `100-Year`, `1,000-Year`) upon harvesting single world models.
+  - Integrated audio feedback: plays `SoundService.GatherHerbsSound` on harvest completion.
+- **Task 7.1B: Upgraded Manual 3-Slot Spirit Cauldron Alchemy Engine**:
+  - Refactored `AlchemyConfig.luau`, `AlchemyManager.luau`, and `AlchemyController.luau` for manual herb selection.
+  - Implemented 3 Cauldron Ingredient Slots allowing players to pick herbs from their Spirit Pouch.
+  - Implemented dynamic age-based success calculations (higher herb ages boost success rate up to 100% and potency up to 3.0x).
+  - Added new craftable buff pills: *Spirit Healing Dan*, *Qi Gathering Dan* (2x Meditation Speed), *Physique Tempering Dan* (+35% Damage), *Gale Wind Dan* (+40% Flight Speed), and *Foundation Gathering Dan*.
+- **Zone 2 Map Construction**:
+  - Constructed Zone 2 (*Verdant Bamboo & Spirit Herb Valley*) in Studio using a "stylish realism" aesthetic with PBR water, dense bamboo, timber cottage, and circular stone meditation pad.
 
 ---
 
@@ -23,11 +50,7 @@ This document tracks released and unreleased changes, feature additions, and arc
   - Implemented 3D bounds scale normalization ensuring consistent $4.5$-stud sword lengths and $3.5$-stud crest bounds across all imported FBX models.
   - Added recursive searching (`ReplicatedStorage:FindFirstChild(modelName, true)`) to locate models nested inside tier folders (`Mythic tier`, `Rare tier`, etc.).
 - **Subtask 6.2F: Traditional Xianxia Light-Mode UI/UX Palette Overhaul**:
-  - Updated `UIAssets.luau`, `HUDController.luau`, `InventoryController.luau`, and `AlchemyController.luau` to the **Traditional Xianxia Palette**:
-    - `#1D4533` (Deep Jade Green — Headers, Text, Borders, HP)
-    - `#F7EAE0` (Warm Cream White — Main Modal Panel)
-    - `#F9D2BA` (Soft Peach Accent — Cards & Grid Slots)
-    - `#5E3122` (Rich Mahogany Wood — Buttons, Subtext, Qi)
+  - Updated `UIAssets.luau`, `HUDController.luau`, `InventoryController.luau`, and `AlchemyController.luau` to the **Traditional Xianxia Palette**.
   - Applied soft tinted rarity background colors to all Spirit Pouch grid slots.
   - Fixed inspection header text wrapping so long names like *Azure Spirit-Jade Crest Array (碧蓝灵铠)* fit without overlapping modal borders.
 - **Master Item Database Registration (32 Equipment Items / 16 Sets)**:

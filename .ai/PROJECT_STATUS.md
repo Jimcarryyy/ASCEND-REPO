@@ -15,11 +15,15 @@ This file reports the current phase status, subsystem readiness, and repository 
   * **Subtask 6.2D: Stat Scale Normalization ($100 \rightarrow 10,000$ HP/Qi)** — `100% Completed`
   * **Subtask 6.2E: Studio 3D Attachment Engine** — `100% Completed`
   * **Subtask 6.2F: Xianxia Light-Mode Flat 2D UI/UX Overhaul** — `100% Completed`
-* **Phase 7: Core Loop, World Gathering & Monetization** — `In Progress (15%)`
+* **Phase 7: Core Loop, World Gathering & Monetization** — `In Progress (35%)`
+  * **Task 1: Master Codebase Cleanup & DataStore V2 Reset** — `100% Completed`
+  * **Task 7.1A: World Resource Gathering Engine (Randomized Ages)** — `100% Completed`
+  * **Task 7.1B: Upgraded Manual 3-Slot Spirit Cauldron Alchemy Engine** — `100% Completed`
+  * **Task 7.1C: Qi Meditation Pads & Realm Breakthrough System** — `Active Next Task`
 
 ---
 
-## Overall Completion: ~90%
+## Overall Completion: ~92%
 
 ---
 
@@ -30,11 +34,12 @@ This file reports the current phase status, subsystem readiness, and repository 
 | **Sword Combat Engine** | 🟢 Operational | `CombatStateManager`, `HitboxManager`, `WeaponManager`, `FlyingSwordServer` |
 | **Cultivation Engine** | 🟢 Operational | `CultivationManager`, `CultivationConfig` (Normalized $100 \rightarrow 10,000$ HP/Qi Scale) |
 | **Tribulation Boss Event** | 🟢 Operational | `CultivationManager`, `CombatVFXController` |
-| **Data Persistence** | 🟢 Operational | `PlayerDataManager` (`DataStoreService` / 5-min AutoSave) |
-| **Inventory & Items** | 🟢 Operational | `ItemConfig` (32 Items / 16 Sets), `InventoryManager`, `InventoryController` (60 Slots) |
-| **Alchemy System** | 🟢 Operational | `AlchemyConfig`, `AlchemyManager`, `AlchemyController` |
-| **UI/UX Suite** | 🟢 Operational | Xianxia Palette (`#1D4533`, `#F7EAE0`), `HUDController`, `OverheadUIController` |
-| **3D Asset Library** | 🟢 Operational | 5 Master Base Sword Models + 16 Back Crest Arrays in `ReplicatedStorage` |
+| **Data Persistence** | 🟢 Operational (V2) | `PlayerDataManager` (`DataStoreService` / `"ASCEND_PlayerData_V2"` / 5-min AutoSave) |
+| **Inventory & Items** | 🟢 Operational | `ItemConfig` (32 Items / 16 Sets + Vintage Herbs), `InventoryManager`, `InventoryController` (60 Slots) |
+| **World Gathering** | 🟢 Operational | `GatheringConfig`, `GatheringManager`, `GatheringController` (Randomized Herb Ages 1-Yr to 1,000-Yr) |
+| **Spirit Cauldron Alchemy**| 🟢 Operational | `AlchemyConfig`, `AlchemyManager`, `AlchemyController` (3-Slot Manual Combination & Buff Pills) |
+| **UI/UX Suite** | 🟢 Operational | Light-Mode Xianxia Palette (`FredokaOne` Font, `#F8FAF9`, `#F1F5F9`, `#FFFFFF`, `#CBD5E1`), `HUDController`, `OverheadUIController` |
+| **3D Asset Library & Map** | 🟢 Operational | Zone 2 Verdant Bamboo Valley, `workspace.GatheringNodes`, `workspace.AlchemyCauldrons` |
 
 ---
 
@@ -47,15 +52,15 @@ ASCEND-REPO/
 │   ├── ARCHITECTURE_SPEC.md            # Pure Sword Cultivator & Server-Authoritative Architecture
 │   ├── COMBAT_SPEC.md                  # Combat State Machine, Hitboxes & Universal Skill Engine
 │   ├── PROGRESSION_SPEC.md             # Normalized 45-Stage Realm Progression (100 - 10,000 HP/Qi)
-│   ├── ASSET_MANIFEST.md               # Complete 3D Asset Manifest (32 Items / 16 Sets / 5 Master Models)
-│   ├── GAME_DESIGN.md                  # 1 Master Sect Island Map Strategy & 5 Cultivation Zones
-│   ├── UI_UX_SPEC.md                   # Xianxia Palette (#1D4533, #F7EAE0) & Typography
+│   ├── ASSET_MANIFEST.md               # Complete 3D Asset Manifest (32 Items / 16 Sets / Vintage Herbs)
+│   ├── GAME_DESIGN.md                  # Azure Cloud Realm Map Strategy & 5 Cultivation Zones
+│   ├── UI_UX_SPEC.md                   # Light-Mode Xianxia Palette & FredokaOne Typography
 │   ├── CODEBASE_CLEANUP_GUIDE.md       # Pruning Audit & Dead Code Guidelines
 │   └── AI_PROMPT_GUIDE.md              # Stylized Low-Poly 3D Prompts
 └── .ai/
     ├── CURRENT_TASK.md                 # Active Task Tracking (Phase 7)
     ├── PROJECT_STATUS.md              # Subsystem Health & Directory Map
-    ├── DECISIONS.md                    # Architecture Decision Records (ADR-001 to ADR-016)
+    ├── DECISIONS.md                    # Architecture Decision Records (ADR-001 to ADR-019)
     ├── NEXT_STEPS.md                   # Phase Roadmap & Milestones
     ├── CHANGELOG.md                    # Detailed Revision History
     └── AI_REPOSITORY_SCANNING_GUIDE.md# AI Repository Scan Procedure

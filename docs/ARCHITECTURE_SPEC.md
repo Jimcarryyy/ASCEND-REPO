@@ -1,16 +1,10 @@
----
-
-### 8. `docs/ARCHITECTURE_SPEC.md`
-
-```markdown
 # ASCEND-V1 — TECHNICAL ARCHITECTURE SPECIFICATION
 
 > **Technical Specification Document**  
 > **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
 > **Scope:** Directory Hierarchy, Service-Controller Framework, DataStore Schemas, & Lifecycle Hooks.
 
----
-
+---\n
 ## 1. Roblox Studio Project Directory Structure
 
 ```text
@@ -18,10 +12,11 @@ src/
 ├── ReplicatedStorage/
 │   └── Shared/
 │       ├── Configs/
-│       │   ├── AlchemyConfig.luau          (Recipe definitions & spirit pill effects)
+│       │   ├── AlchemyConfig.luau          (Recipe formulas, age success math, pill effects)
 │       │   ├── CultivationConfig.luau      (45 Tiers, normalized 100 - 10,000 HP/Qi scale)
-│       │   ├── ItemConfig.luau             (Master item registry for all 16 Sets / 32 Items)
-│       │   ├── UIAssets.luau               (Xianxia Jade/Cream/Mahogany Palette & Asset IDs)
+│       │   ├── GatheringConfig.luau          (Node harvest times, respawn delays, age drops)
+│       │   ├── ItemConfig.luau             (Master item registry for equipment, herbs, pills)
+│       │   ├── UIAssets.luau               (Light-Mode Palette & FredokaOne typography)
 │       │   └── Weapons/
 │       │       └── FlyingSwordConfig.luau  (Flying Sword M1 combo steps, skill damage, ranges)
 │       └── Network/
@@ -31,10 +26,12 @@ src/
 │       ├── ServerMain.server.luau          (Server initialization entry point)
 │       ├── Combat/
 │       │   ├── HitboxManager.luau          (Spatial box query engine & knockback physics)
-│       │   └── WeaponManager.luau          (Equipped 3D sword model tracker, Studio attachment reader, bounds scaler)
+│       │   └── WeaponManager.luau          (Equipped 3D sword model tracker & bounds scaler)
 │       ├── Cultivation/
-│       │   ├── AlchemyManager.luau         (Furnace crafting validation & ingredient inventories)
-│       │   └── CultivationManager.luau     (Qi meditation G, breakthroughs B, health scaling)
+│       │   ├── AlchemyManager.luau         (Server manual combination alchemy engine)
+│       │   └── CultivationManager.luau     (Qi meditation F, breakthroughs B, health scaling)
+│       ├── World/
+│       │   └── GatheringManager.luau       (Server harvesting engine & workspace node tracker)
 │       └── State/
 │           ├── CombatStateManager.luau     (Server combat state tracker & cooldown validator)
 │           ├── InventoryManager.luau       (60-slot server inventory engine, on-demand RequestSync)
@@ -43,8 +40,9 @@ src/
     └── StarterPlayerScripts/
         ├── ClientMain.client.luau          (Client initialization entry point)
         └── Controllers/
-            ├── AlchemyController.luau      (Spirit Cauldron UI, recipe book, crafting bar)
-            ├── CombatVFXController.luau    (3-wave magma crescent cleaves, sunfalls, camera shake, damage numbers)
-            ├── HUDController.luau           (Light-mode Xianxia HUD dock, HP/Qi meters, hotbar)
-            ├── InputController.luau         (Keybind inputs LMB, F, Q, E, R, Shift, G, B, K, L)
-            └── InventoryController.luau     (Spirit Pouch 60-slot storage, rarity tinted slots, 3D viewport doll)
+            ├── AlchemyController.luau      (Light-Mode manual 3-slot cauldron combination UI)
+            ├── CombatVFXController.luau    (3-wave magma crescent cleaves, sunfalls, camera shake, damage text)
+            ├── GatheringController.luau     (Client prompt interaction & GatherHerbsSound)
+            ├── HUDController.luau           (Light-Mode HUD dock, HP/Qi meters, hotbar)
+            ├── InputController.luau         (Keybind inputs LMB, F, Q, E, R, Shift, G, B, K)
+            └── InventoryController.luau     (Spirit Pouch 60-slot storage, rarity-tinted borders)
