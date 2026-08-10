@@ -2,18 +2,19 @@
 --[[
     AlchemyController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AlchemyController.luau
-    Client UI controller for Manual Herb Combination Alchemy.
-    Unified Light-Mode Aesthetic (Matching Spirit Pouch & Cauldron Panel).
+    Client UI controller for Manual Herb Combination Alchemy and Interactive Flame Precision Minigame.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local AlchemyConfig = require(ReplicatedStorage.Shared.Configs.AlchemyConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
-local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
+local HUDController = require(script.Parent.HUDController)
 
 local AlchemyController = {}
 local player = Players.LocalPlayer
@@ -55,7 +56,17 @@ local qiCostLabel: TextLabel
 local statusMessageLabel: TextLabel
 local refineButton: TextButton
 
+-- Flame Gauge Minigame Elements
+local flameGaugeFrame: Frame
+local flameNeedle: Frame
+local flameStatusText: TextLabel
+
 local isRefining: boolean = false
+local minigameActive: boolean = false
+local needlePosition: number = 0
+local needleDirection: number = 1
+local flamePrecisionScore: number = 0.5
+
 local alchemyActionRemote: RemoteEvent
 local updateInventoryRemote: RemoteEvent
 
@@ -87,24 +98,66 @@ function AlchemyController.Init()
 
 		if payload.Action == "RefineResult" then
 			isRefining = false
+			minigameActive = false
+			flameGaugeFrame.Visible = false
 			refineButton.Text = "REFINE SPIRIT DAN"
 			refineButton.BackgroundColor3 = COLOR_ACTION_GOLD
 
-			-- Clear Cauldron Slots on completion
 			for i = 1, 3 do
 				cauldronSlots[i] = { SlotIdx = nil, ItemId = nil }
 			end
 			AlchemyController.UpdateCauldronSlotDisplay()
 			AlchemyController.UpdateMetrics()
+			AlchemyController.RefreshHerbPicker()
 
 			if statusMessageLabel then
 				statusMessageLabel.Text = payload.Message or ""
 				statusMessageLabel.TextColor3 = if payload.Success then COLOR_HP_GREEN else COLOR_DANGER_RED
 			end
+
+			if payload.Success and payload.ResultItemId then
+				HUDController.ShowItemToast(payload.ResultItemId, 1)
+			end
 		end
 	end)
 
-	print("[ASCEND] Fixed Manual Combination AlchemyController Initialized.")
+	-- Flame Gauge Animation Loop
+	RunService.RenderStepped:Connect(function(deltaTime: number)
+		if minigameActive then
+			needlePosition += deltaTime * 2.2 * needleDirection
+			if needlePosition >= 1 then
+				needlePosition = 1
+				needleDirection = -1
+			elseif needlePosition <= 0 then
+				needlePosition = 0
+				needleDirection = 1
+			end
+
+			flameNeedle.Position = UDim2.new(needlePosition, -2, 0, 0)
+
+			-- Calculate Score (0.4 to 0.6 is Optimal Flame Zone)
+			if needlePosition >= 0.40 and needlePosition <= 0.60 then
+				flameStatusText.Text = "OPTIMAL QI FLAME! (PRESS LOCK)"
+				flameStatusText.TextColor3 = COLOR_HP_GREEN
+			elseif needlePosition < 0.20 or needlePosition > 0.80 then
+				flameStatusText.Text = "FLAME WEAK / OVERHEATING"
+				flameStatusText.TextColor3 = COLOR_DANGER_RED
+			else
+				flameStatusText.Text = "WARM QI HEAT"
+				flameStatusText.TextColor3 = COLOR_ACTION_GOLD
+			end
+		end
+	end)
+
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed or not minigameActive then return end
+
+		if input.KeyCode == Enum.KeyCode.Space or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			AlchemyController.LockFlamePrecision()
+		end
+	end)
+
+	print("[ASCEND] Flame Precision AlchemyController Initialized.")
 end
 
 function AlchemyController.BuildUI()
@@ -159,9 +212,11 @@ function AlchemyController.BuildUI()
 
 	closeBtn.MouseButton1Click:Connect(function()
 		overlayBackdrop.Visible = false
+		minigameActive = false
+		flameGaugeFrame.Visible = false
 	end)
 
-	-- COLUMN 1: SPIRIT POUCH HERB PICKER
+	-- COLUMN 1: HERB PICKER
 	local col1 = Instance.new("Frame")
 	col1.Size = UDim2.new(0, 320, 1, -64)
 	col1.Position = UDim2.new(0, 12, 0, 52)
@@ -192,12 +247,7 @@ function AlchemyController.BuildUI()
 	herbPickerGrid.ScrollBarImageColor3 = COLOR_AZURE_BLUE
 	herbPickerGrid.Parent = col1
 
-	local gridLayout = Instance.new("UIGridLayout")
-	gridLayout.CellSize = UDim2.new(0, 92, 0, 92)
-	gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
-	gridLayout.Parent = herbPickerGrid
-
-	-- COLUMN 2: CAULDRON COMBINATION WORKSPACE (FIXED PARENTING)
+	-- COLUMN 2: WORKSPACE & FLAME MINIGAME
 	local col2 = Instance.new("Frame")
 	col2.Name = "Column2_CauldronWorkspace"
 	col2.Size = UDim2.new(0, 480, 1, -64)
@@ -220,7 +270,6 @@ function AlchemyController.BuildUI()
 	c2Header.TextSize = 16
 	c2Header.Parent = col2
 
-	-- 3 CAULDRON INGREDIENT SLOTS
 	local slotContainer = Instance.new("Frame")
 	slotContainer.Size = UDim2.new(1, -24, 0, 110)
 	slotContainer.Position = UDim2.new(0, 12, 0, 48)
@@ -282,7 +331,6 @@ function AlchemyController.BuildUI()
 		btn.Parent = slotFrame
 
 		btn.MouseButton1Click:Connect(function()
-			-- Click to clear herb from slot
 			cauldronSlots[i] = { SlotIdx = nil, ItemId = nil }
 			AlchemyController.UpdateCauldronSlotDisplay()
 			AlchemyController.UpdateMetrics()
@@ -291,10 +339,10 @@ function AlchemyController.BuildUI()
 		cauldronSlotButtons[i] = slotFrame
 	end
 
-	-- COMBINATION METRICS PANEL
+	-- METRICS BOX
 	local metricsBox = Instance.new("Frame")
-	metricsBox.Size = UDim2.new(1, -24, 0, 200)
-	metricsBox.Position = UDim2.new(0, 12, 0, 172)
+	metricsBox.Size = UDim2.new(1, -24, 0, 160)
+	metricsBox.Position = UDim2.new(0, 12, 0, 168)
 	metricsBox.BackgroundColor3 = COLOR_LIGHT_CARD
 	metricsBox.BorderSizePixel = 0
 	metricsBox.Parent = col2
@@ -305,52 +353,98 @@ function AlchemyController.BuildUI()
 	mbStroke.Parent = metricsBox
 
 	matchedFormulaLabel = Instance.new("TextLabel")
-	matchedFormulaLabel.Size = UDim2.new(1, -20, 0, 32)
-	matchedFormulaLabel.Position = UDim2.new(0, 10, 0, 10)
+	matchedFormulaLabel.Size = UDim2.new(1, -20, 0, 28)
+	matchedFormulaLabel.Position = UDim2.new(0, 10, 0, 8)
 	matchedFormulaLabel.BackgroundTransparency = 1
 	matchedFormulaLabel.Text = "MATCHED FORMULA: NONE"
 	matchedFormulaLabel.TextColor3 = COLOR_TEXT_MAIN
 	matchedFormulaLabel.Font = UI_FONT
-	matchedFormulaLabel.TextSize = 15
+	matchedFormulaLabel.TextSize = 14
 	matchedFormulaLabel.TextXAlignment = Enum.TextXAlignment.Left
 	matchedFormulaLabel.Parent = metricsBox
 
 	successRateLabel = Instance.new("TextLabel")
-	successRateLabel.Size = UDim2.new(1, -20, 0, 28)
-	successRateLabel.Position = UDim2.new(0, 10, 0, 48)
+	successRateLabel.Size = UDim2.new(1, -20, 0, 26)
+	successRateLabel.Position = UDim2.new(0, 10, 0, 40)
 	successRateLabel.BackgroundTransparency = 1
 	successRateLabel.Text = "ESTIMATED SUCCESS: 0%"
 	successRateLabel.TextColor3 = COLOR_HP_GREEN
 	successRateLabel.Font = UI_FONT
-	successRateLabel.TextSize = 14
+	successRateLabel.TextSize = 13
 	successRateLabel.TextXAlignment = Enum.TextXAlignment.Left
 	successRateLabel.Parent = metricsBox
 
 	qualityTextLabel = Instance.new("TextLabel")
-	qualityTextLabel.Size = UDim2.new(1, -20, 0, 28)
-	qualityTextLabel.Position = UDim2.new(0, 10, 0, 80)
+	qualityTextLabel.Size = UDim2.new(1, -20, 0, 26)
+	qualityTextLabel.Position = UDim2.new(0, 10, 0, 70)
 	qualityTextLabel.BackgroundTransparency = 1
 	qualityTextLabel.Text = "EXPECTED QUALITY: STANDARD"
 	qualityTextLabel.TextColor3 = COLOR_ACTION_GOLD
 	qualityTextLabel.Font = UI_FONT
-	qualityTextLabel.TextSize = 14
+	qualityTextLabel.TextSize = 13
 	qualityTextLabel.TextXAlignment = Enum.TextXAlignment.Left
 	qualityTextLabel.Parent = metricsBox
 
 	qiCostLabel = Instance.new("TextLabel")
-	qiCostLabel.Size = UDim2.new(1, -20, 0, 28)
-	qiCostLabel.Position = UDim2.new(0, 10, 0, 112)
+	qiCostLabel.Size = UDim2.new(1, -20, 0, 26)
+	qiCostLabel.Position = UDim2.new(0, 10, 0, 100)
 	qiCostLabel.BackgroundTransparency = 1
 	qiCostLabel.Text = "REQUIRED QI: 0 SPIRIT QI"
 	qiCostLabel.TextColor3 = COLOR_AZURE_BLUE
 	qiCostLabel.Font = UI_FONT
-	qiCostLabel.TextSize = 14
+	qiCostLabel.TextSize = 13
 	qiCostLabel.TextXAlignment = Enum.TextXAlignment.Left
 	qiCostLabel.Parent = metricsBox
 
+	-- FLAME GAUGE MINIGAME CONTAINER
+	flameGaugeFrame = Instance.new("Frame")
+	flameGaugeFrame.Name = "FlameGaugeFrame"
+	flameGaugeFrame.Size = UDim2.new(1, -24, 0, 70)
+	flameGaugeFrame.Position = UDim2.new(0, 12, 0, 336)
+	flameGaugeFrame.BackgroundColor3 = COLOR_LIGHT_CARD
+	flameGaugeFrame.BorderSizePixel = 0
+	flameGaugeFrame.Visible = false
+	flameGaugeFrame.Parent = col2
+
+	local fgStroke = Instance.new("UIStroke")
+	fgStroke.Color = COLOR_LIGHT_BORDER
+	fgStroke.Thickness = 1
+	fgStroke.Parent = flameGaugeFrame
+
+	flameStatusText = Instance.new("TextLabel")
+	flameStatusText.Size = UDim2.new(1, 0, 0, 22)
+	flameStatusText.BackgroundTransparency = 1
+	flameStatusText.Text = "CONTROL QI FLAME TEMP"
+	flameStatusText.TextColor3 = COLOR_ACTION_GOLD
+	flameStatusText.Font = UI_FONT
+	flameStatusText.TextSize = 12
+	flameStatusText.Parent = flameGaugeFrame
+
+	local barBackground = Instance.new("Frame")
+	barBackground.Size = UDim2.new(1, -20, 0, 22)
+	barBackground.Position = UDim2.new(0, 10, 0, 30)
+	barBackground.BackgroundColor3 = COLOR_LIGHT_PANEL
+	barBackground.BorderSizePixel = 0
+	barBackground.Parent = flameGaugeFrame
+
+	local optimalZone = Instance.new("Frame")
+	optimalZone.Size = UDim2.new(0.2, 0, 1, 0)
+	optimalZone.Position = UDim2.new(0.4, 0, 0, 0)
+	optimalZone.BackgroundColor3 = COLOR_HP_GREEN
+	optimalZone.BorderSizePixel = 0
+	optimalZone.Parent = barBackground
+
+	flameNeedle = Instance.new("Frame")
+	flameNeedle.Size = UDim2.new(0, 4, 1, 4)
+	flameNeedle.Position = UDim2.new(0, 0, 0, -2)
+	flameNeedle.BackgroundColor3 = COLOR_TEXT_MAIN
+	flameNeedle.BorderSizePixel = 0
+	flameNeedle.ZIndex = 10
+	flameNeedle.Parent = barBackground
+
 	statusMessageLabel = Instance.new("TextLabel")
 	statusMessageLabel.Size = UDim2.new(1, -24, 0, 24)
-	statusMessageLabel.Position = UDim2.new(0, 12, 1, -100)
+	statusMessageLabel.Position = UDim2.new(0, 12, 1, -110)
 	statusMessageLabel.BackgroundTransparency = 1
 	statusMessageLabel.Text = ""
 	statusMessageLabel.TextColor3 = COLOR_HP_GREEN
@@ -384,15 +478,15 @@ function AlchemyController.BuildUI()
 			return
 		end
 
+		-- Activate Flame Minigame
 		isRefining = true
-		refineButton.Text = "REFINING IN PROGRESS..."
-		refineButton.BackgroundColor3 = COLOR_TEXT_SUB
-		statusMessageLabel.Text = ""
-
-		alchemyActionRemote:FireServer({
-			Action = "RefineManualCombination",
-			SelectedSlotIndices = selectedIndices,
-		})
+		minigameActive = true
+		needlePosition = 0
+		needleDirection = 1
+		flameGaugeFrame.Visible = true
+		refineButton.Text = "LOCK QI FLAME [SPACE]"
+		refineButton.BackgroundColor3 = COLOR_AZURE_BLUE
+		statusMessageLabel.Text = "Catch the needle inside the GREEN zone!"
 	end)
 
 	-- COLUMN 3: FORMULA GUIDE REFERENCE
@@ -481,6 +575,29 @@ function AlchemyController.BuildUI()
 	end
 end
 
+function AlchemyController.LockFlamePrecision()
+	if not minigameActive then return end
+
+	minigameActive = false
+	flamePrecisionScore = 1 - math.abs(needlePosition - 0.5) * 2 -- Score 0.0 to 1.0
+
+	refineButton.Text = "REFINING IN PROGRESS..."
+	refineButton.BackgroundColor3 = COLOR_TEXT_SUB
+
+	local selectedIndices: { number } = {}
+	for i = 1, 3 do
+		if cauldronSlots[i].SlotIdx then
+			table.insert(selectedIndices, cauldronSlots[i].SlotIdx :: number)
+		end
+	end
+
+	alchemyActionRemote:FireServer({
+		Action = "RefineManualCombination",
+		SelectedSlotIndices = selectedIndices,
+		FlamePrecision = flamePrecisionScore,
+	})
+end
+
 function AlchemyController.RefreshHerbPicker()
 	herbPickerGrid:ClearAllChildren()
 
@@ -533,7 +650,6 @@ function AlchemyController.RefreshHerbPicker()
 				btn.Parent = slotFrame
 
 				btn.MouseButton1Click:Connect(function()
-					-- Click herb to insert into first empty Cauldron Slot
 					for i = 1, 3 do
 						if not cauldronSlots[i].SlotIdx then
 							cauldronSlots[i] = { SlotIdx = slotIdx, ItemId = slotData.ItemId }

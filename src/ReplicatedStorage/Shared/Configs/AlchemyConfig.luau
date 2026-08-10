@@ -2,8 +2,10 @@
 --[[
     AlchemyConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/AlchemyConfig.luau
-    Strict formula matching and dynamic age-tier calculations for ASCEND.
+    Strict formula matching, dynamic age-tier calculations, and flame precision metrics for ASCEND.
 ]]
+
+export type QualityTier = "TopGrade" | "Normal" | "LowGrade"
 
 export type PillFormula = {
 	FormulaId: string,
@@ -12,7 +14,8 @@ export type PillFormula = {
 	BaseSuccessRate: number,
 	BaseQiCost: number,
 	CraftDuration: number,
-	RequiredArchetypes: { string }, -- Required herb archetypes in cauldron
+	RequiredArchetypes: { string },
+	ExpReward: number,
 }
 
 local AlchemyConfig = {}
@@ -26,6 +29,7 @@ local FORMULAS: { [string]: PillFormula } = {
 		BaseQiCost = 40,
 		CraftDuration = 3.0,
 		RequiredArchetypes = { "DragonBloodVine", "SpiritGrass" },
+		ExpReward = 50,
 	},
 	["GaleWindDan"] = {
 		FormulaId = "GaleWindDan",
@@ -35,6 +39,7 @@ local FORMULAS: { [string]: PillFormula } = {
 		BaseQiCost = 30,
 		CraftDuration = 2.5,
 		RequiredArchetypes = { "GaleWindLotus", "SpiritGrass" },
+		ExpReward = 40,
 	},
 	["QiGatheringDan"] = {
 		FormulaId = "QiGatheringDan",
@@ -44,6 +49,7 @@ local FORMULAS: { [string]: PillFormula } = {
 		BaseQiCost = 25,
 		CraftDuration = 2.5,
 		RequiredArchetypes = { "SpiritGrass", "CelestialDew" },
+		ExpReward = 35,
 	},
 	["FoundationGatheringDan"] = {
 		FormulaId = "FoundationGatheringDan",
@@ -53,6 +59,7 @@ local FORMULAS: { [string]: PillFormula } = {
 		BaseQiCost = 60,
 		CraftDuration = 3.5,
 		RequiredArchetypes = { "SpiritGrass", "DemonBeastCore", "CelestialDew" },
+		ExpReward = 80,
 	},
 	["SpiritHealingDan"] = {
 		FormulaId = "SpiritHealingDan",
@@ -61,11 +68,11 @@ local FORMULAS: { [string]: PillFormula } = {
 		BaseSuccessRate = 0.70,
 		BaseQiCost = 15,
 		CraftDuration = 2.0,
-		RequiredArchetypes = { "SpiritGrass", "SpiritGrass" }, -- Requires 2 Spirit Grass
+		RequiredArchetypes = { "SpiritGrass", "SpiritGrass" },
+		ExpReward = 20,
 	},
 }
 
--- Precise Formula Matching (Strict Archetype Set Checking)
 function AlchemyConfig.CalculateCombinationMetrics(herbItemIds: { string }): (PillFormula?, number, number, string)
 	if #herbItemIds == 0 then
 		return nil, 0, 1.0, "Empty Cauldron"
@@ -73,7 +80,6 @@ function AlchemyConfig.CalculateCombinationMetrics(herbItemIds: { string }): (Pi
 
 	local ItemConfig = require(script.Parent.ItemConfig)
 
-	-- Extract Archetype List from Inserted Herbs
 	local insertedArchetypes: { string } = {}
 	local totalAge = 0
 	local validHerbCount = 0
@@ -84,7 +90,6 @@ function AlchemyConfig.CalculateCombinationMetrics(herbItemIds: { string }): (Pi
 			validHerbCount += 1
 			totalAge += (itemDef.AgeYears or 1)
 
-			-- Determine Archetype base name (e.g. DragonBloodVine_100Yr -> DragonBloodVine)
 			if itemId:find("DragonBloodVine", 1, true) then
 				table.insert(insertedArchetypes, "DragonBloodVine")
 			elseif itemId:find("GaleWindLotus", 1, true) then
@@ -99,14 +104,12 @@ function AlchemyConfig.CalculateCombinationMetrics(herbItemIds: { string }): (Pi
 		end
 	end
 
-	-- Strict Archetype Set Matcher
 	local matchedFormula: PillFormula? = nil
 
 	for _, formula in pairs(FORMULAS) do
 		local matchedAllReqs = true
-
-		-- Check if inserted herbs contain all required archetypes
 		local tempArchetypes = table.clone(insertedArchetypes)
+
 		for _, reqType in ipairs(formula.RequiredArchetypes) do
 			local foundIndex: number? = nil
 			for idx, arch in ipairs(tempArchetypes) do
@@ -134,7 +137,6 @@ function AlchemyConfig.CalculateCombinationMetrics(herbItemIds: { string }): (Pi
 		return nil, 0.15, 0.5, "Unknown Herb Mixture (High Furnace Ash Risk)"
 	end
 
-	-- Age Success Bonus calculation
 	local avgAge = if validHerbCount > 0 then (totalAge / validHerbCount) else 1
 
 	local ageSuccessBonus = 0

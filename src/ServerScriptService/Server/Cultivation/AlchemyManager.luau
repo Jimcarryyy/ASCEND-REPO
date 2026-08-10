@@ -3,6 +3,7 @@
     AlchemyManager.luau
     Location: src/ServerScriptService/Server/Cultivation/AlchemyManager.luau
     Server-authoritative manual cauldron combination alchemy engine.
+    Supports Flame Precision Minigames, Alchemy EXP, and Stacking Inventory Delivery.
 ]]
 
 local Players = game:GetService("Players")
@@ -13,6 +14,7 @@ local CollectionService = game:GetService("CollectionService")
 local AlchemyConfig = require(ReplicatedStorage.Shared.Configs.AlchemyConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
+local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
 local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
@@ -24,7 +26,6 @@ local alchemyActionRemote: RemoteEvent
 function AlchemyManager.Init()
 	alchemyActionRemote = RemoteEvents.GetRemote("AlchemyAction")
 
-	-- Check workspace.AlchemyCauldrons Folder
 	local folder = workspace:FindFirstChild("AlchemyCauldrons")
 	if folder then
 		for _, child in ipairs(folder:GetChildren()) do
@@ -35,7 +36,6 @@ function AlchemyManager.Init()
 		end)
 	end
 
-	-- Check CollectionService Tag "AlchemyCauldron"
 	for _, cauldronModel in ipairs(CollectionService:GetTagged("AlchemyCauldron")) do
 		AlchemyManager.SetupCauldronModel(cauldronModel)
 	end
@@ -48,11 +48,12 @@ function AlchemyManager.Init()
 		if type(payload) ~= "table" or not payload.Action then return end
 
 		if payload.Action == "RefineManualCombination" and type(payload.SelectedSlotIndices) == "table" then
-			AlchemyManager.RefineManualCombination(player, payload.SelectedSlotIndices)
+			local flamePrecision = if type(payload.FlamePrecision) == "number" then payload.FlamePrecision else 0.5
+			AlchemyManager.RefineManualCombination(player, payload.SelectedSlotIndices, flamePrecision)
 		end
 	end)
 
-	print("[ASCEND] Upgraded Manual Combination AlchemyManager Initialized.")
+	print("[ASCEND] Upgraded Flame Precision AlchemyManager Initialized.")
 end
 
 function AlchemyManager.SetupCauldronModel(cauldronInstance: Instance)
@@ -75,13 +76,12 @@ function AlchemyManager.SetupCauldronModel(cauldronInstance: Instance)
 	end
 end
 
-function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndices: { number })
+function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndices: { number }, flamePrecision: number)
 	if activeRefiningMap[player] then return end
 
 	local playerInventory = InventoryManager.GetInventory(player)
 	if not playerInventory then return end
 
-	-- 1. Extract Selected Herbs from Inventory Slots
 	local insertedHerbItemIds: { string } = {}
 	local slotsToDeduct: { number } = {}
 
@@ -102,19 +102,17 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 		return
 	end
 
-	-- 2. Calculate Combination Formula & Age Success Metrics
-	local formula, successRate, potencyMult, qualityText = AlchemyConfig.CalculateCombinationMetrics(insertedHerbItemIds)
+	local formula, baseSuccessRate, potencyMult, qualityText = AlchemyConfig.CalculateCombinationMetrics(insertedHerbItemIds)
 
 	if not formula then
 		alchemyActionRemote:FireClient(player, {
 			Action = "RefineResult",
 			Success = false,
-			Message = "Invalid herb combination! Ingredients burned into ash.",
+			Message = "Invalid herb combination! Ingredients burned into furnace ash.",
 		})
 		return
 	end
 
-	-- 3. Check Player Qi Cost
 	local pData = CultivationManager.GetPlayerData(player)
 	if pData and pData.CurrentQi < formula.BaseQiCost then
 		alchemyActionRemote:FireClient(player, {
@@ -127,7 +125,6 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 
 	activeRefiningMap[player] = true
 
-	-- Deduct Qi Cost
 	if pData then
 		pData.CurrentQi = math.max(0, pData.CurrentQi - formula.BaseQiCost)
 		CultivationManager.SyncClient(player)
@@ -149,22 +146,41 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 	-- Crafting Delay
 	task.wait(formula.CraftDuration)
 
-	-- 4. Roll Success Rate
+	-- Calculate Flame Bonus (Precision 0.8-1.0 yields +15% success bonus)
+	local flameBonus = 0
+	local flameRating = "Standard Flame"
+	if flamePrecision >= 0.80 then
+		flameBonus = 0.15
+		flameRating = "Optimal Qi Flame (+15%)"
+	elseif flamePrecision < 0.30 then
+		flameBonus = -0.10
+		flameRating = "Cold Flame (-10%)"
+	end
+
+	local finalSuccessRate = math.clamp(baseSuccessRate + flameBonus, 0.05, 1.00)
 	local roll = math.random()
-	local success = roll <= successRate
+	local success = roll <= finalSuccessRate
 
 	if success then
+		-- Guaranteed Delivery into Inventory Stacks
 		InventoryManager.AddItem(player, formula.ResultItemId, 1)
-		print(string.format("[AlchemyManager] %s refined %s (%s, Rate: %.2f)!", player.Name, formula.Name, qualityText, successRate))
+
+		-- Grant Alchemy EXP
+		local expGained = formula.ExpReward or 30
+		if flamePrecision >= 0.80 then expGained = math.floor(expGained * 1.25) end
+		local newExp, newLevel = PlayerDataManager.AddAlchemyExp(player, expGained)
+
+		print(string.format("[AlchemyManager] %s refined %s (%s, Flame: %s, Exp: +%d)!", player.Name, formula.Name, qualityText, flameRating, expGained))
 
 		alchemyActionRemote:FireClient(player, {
 			Action = "RefineResult",
 			Success = true,
-			Message = string.format("Refined %s (%s)!", formula.Name, qualityText),
+			Message = string.format("Refined %s (%s)!\n+ %d Alchemy EXP", formula.Name, qualityText, expGained),
 			ResultItemId = formula.ResultItemId,
+			ExpGained = expGained,
 		})
 	else
-		print(string.format("[AlchemyManager] %s failed refining (Roll: %.2f vs Rate: %.2f)", player.Name, roll, successRate))
+		print(string.format("[AlchemyManager] %s failed refining (Roll: %.2f vs Rate: %.2f)", player.Name, roll, finalSuccessRate))
 
 		alchemyActionRemote:FireClient(player, {
 			Action = "RefineResult",

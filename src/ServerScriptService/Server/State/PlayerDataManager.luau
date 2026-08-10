@@ -3,7 +3,7 @@
     PlayerDataManager.luau
     Location: src/ServerScriptService/Server/State/PlayerDataManager.luau
     Server-authoritative DataStore persistence manager for ASCEND.
-    Saves and restores Player Realm, Qi, Inventory items, and Equipped Weapon.
+    Saves and restores Player Realm, Qi, Inventory items, Equipped Weapon, and Alchemy Mastery EXP.
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -29,6 +29,8 @@ export type SavedPlayerData = {
 	EquippedWeapon: WeaponManager.WeaponType,
 	Inventory: { [number]: SavedInventorySlot },
 	Sect: string?,
+	AlchemyExp: number?,
+	AlchemyLevel: number?,
 }
 
 local PlayerDataManager = {}
@@ -39,6 +41,7 @@ local AUTO_SAVE_INTERVAL = 300 -- 5 minutes
 
 local playerDataStore: DataStore? = nil
 local isLoadedMap: { [Player]: boolean } = {}
+local playerAlchemyData: { [Player]: { Exp: number, Level: number } } = {}
 
 local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	Version = 2,
@@ -56,10 +59,11 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 		[6] = { ItemId = "SpearItem", Count = 1 },
 	},
 	Sect = "Azure Cloud Sect",
+	AlchemyExp = 0,
+	AlchemyLevel = 1,
 }
 
 function PlayerDataManager.Init()
-	-- Safely fetch DataStore in pcall
 	local success, result = pcall(function()
 		return DataStoreService:GetDataStore(DATA_STORE_NAME)
 	end)
@@ -71,7 +75,6 @@ function PlayerDataManager.Init()
 		warn("[PlayerDataManager] Could not access DataStoreService. API access may be disabled in Studio settings. Running with local session memory.")
 	end
 
-	-- Connect Player Added / Removing Events
 	Players.PlayerAdded:Connect(PlayerDataManager.OnPlayerAdded)
 	Players.PlayerRemoving:Connect(PlayerDataManager.OnPlayerRemoving)
 
@@ -81,7 +84,6 @@ function PlayerDataManager.Init()
 		end)
 	end
 
-	-- Auto-Save Background Loop
 	task.spawn(function()
 		while true do
 			task.wait(AUTO_SAVE_INTERVAL)
@@ -89,14 +91,13 @@ function PlayerDataManager.Init()
 		end
 	end)
 
-	-- Bind to Close (Server Shutdown Handler)
 	game:BindToClose(function()
 		print("[PlayerDataManager] Server shutting down... Executing final save for all players.")
 		PlayerDataManager.SaveAllPlayers()
 		task.wait(2)
 	end)
 
-	print("[PlayerDataManager] Engine Initialized.")
+	print("[PlayerDataManager] Engine Initialized with Alchemy Mastery Tracking.")
 end
 
 function PlayerDataManager.OnPlayerAdded(player: Player)
@@ -121,7 +122,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end
 	end
 
-	-- If no saved data exists or loading failed, construct clean default data
 	if not loadedData then
 		print(string.format("[PlayerDataManager] No saved data found for %s. Applying default starter profile.", player.Name))
 		loadedData = {
@@ -133,15 +133,19 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			EquippedWeapon = DEFAULT_PLAYER_DATA.EquippedWeapon,
 			Inventory = table.clone(DEFAULT_PLAYER_DATA.Inventory),
 			Sect = DEFAULT_PLAYER_DATA.Sect,
+			AlchemyExp = 0,
+			AlchemyLevel = 1,
 		}
 	else
 		print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Weapon: %s).", player.Name, loadedData.Cultivation.Realm, loadedData.EquippedWeapon))
 	end
 
-	-- Mark as safely loaded so we can write back on save
 	isLoadedMap[player] = true
+	playerAlchemyData[player] = {
+		Exp = loadedData.AlchemyExp or 0,
+		Level = loadedData.AlchemyLevel or 1,
+	}
 
-	-- Populate Systems with Loaded Data
 	CultivationManager.SetPlayerData(player, loadedData.Cultivation.Realm, loadedData.Cultivation.CurrentQi)
 	InventoryManager.SetInventory(player, loadedData.Inventory)
 	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "FlyingSwordItem")
@@ -150,28 +154,47 @@ end
 function PlayerDataManager.OnPlayerRemoving(player: Player)
 	PlayerDataManager.SaveData(player)
 	isLoadedMap[player] = nil
+	playerAlchemyData[player] = nil
+end
+
+function PlayerDataManager.AddAlchemyExp(player: Player, expGained: number): (number, number)
+	local data = playerAlchemyData[player]
+	if not data then
+		data = { Exp = 0, Level = 1 }
+		playerAlchemyData[player] = data
+	end
+
+	data.Exp += expGained
+	local requiredExp = data.Level * 100
+
+	while data.Exp >= requiredExp do
+		data.Exp -= requiredExp
+		data.Level += 1
+		requiredExp = data.Level * 100
+		print(string.format("[PlayerDataManager] %s leveled up Alchemy to Rank %d!", player.Name, data.Level))
+	end
+
+	return data.Exp, data.Level
+end
+
+function PlayerDataManager.GetAlchemyData(player: Player): (number, number)
+	local data = playerAlchemyData[player]
+	if not data then return 0, 1 end
+	return data.Exp, data.Level
 end
 
 function PlayerDataManager.SaveData(player: Player): boolean
-	-- Data Integrity Safety Check: Do not save if data never finished loading initially
-	if not isLoadedMap[player] then
-		warn(string.format("[PlayerDataManager] Skipped saving %s because data was not initialized properly on join.", player.Name))
-		return false
-	end
-
-	if not playerDataStore then
+	if not isLoadedMap[player] or not playerDataStore then
 		return false
 	end
 
 	local cultivation = CultivationManager.GetPlayerData(player)
 	local inventory = InventoryManager.GetInventory(player)
 	local equippedWeapon = WeaponManager.GetEquippedWeapon(player)
+	local alchemy = playerAlchemyData[player] or { Exp = 0, Level = 1 }
 
-	if not cultivation then
-		return false
-	end
+	if not cultivation then return false end
 
-	-- Serialize Inventory Slots
 	local serializedInventory: { [number]: SavedInventorySlot } = {}
 	for slotIdx, slot in pairs(inventory) do
 		if slot then
@@ -191,6 +214,8 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		EquippedWeapon = equippedWeapon,
 		Inventory = serializedInventory,
 		Sect = (player.Character and player.Character:GetAttribute("Sect") :: string?) or "Azure Cloud Sect",
+		AlchemyExp = alchemy.Exp,
+		AlchemyLevel = alchemy.Level,
 	}
 
 	local dataKey = "Player_" .. player.UserId
