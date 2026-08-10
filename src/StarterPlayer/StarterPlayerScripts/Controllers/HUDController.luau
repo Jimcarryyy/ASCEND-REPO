@@ -3,12 +3,13 @@
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
     Client HUD engine for ASCEND.
-    Unified Light-Mode Aesthetic (FredokaOne Font, Emerald HP, Azure Qi, Clean Panel Styling).
+    Unified Light-Mode Aesthetic (FredokaOne Font, Emerald HP, Azure Qi, Clean Panel Styling, Animated Toast Notifications).
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
@@ -20,7 +21,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local UI_FONT = Enum.Font.FredokaOne
 
--- LIGHT-MODE PALETTE (Matching Alchemy)
+-- LIGHT-MODE PALETTE (Matching Xianxia Theme)
 local COLOR_LIGHT_PANEL  = Color3.fromRGB(241, 245, 249) -- #F1F5F9
 local COLOR_LIGHT_CARD   = Color3.fromRGB(255, 255, 255) -- #FFFFFF
 local COLOR_LIGHT_BORDER = Color3.fromRGB(203, 213, 225) -- #CBD5E1
@@ -39,6 +40,7 @@ local qiBarText: TextLabel
 local realmBadgeText: TextLabel
 
 local hotbarFrame: Frame
+local toastContainer: Frame
 local hotbarSlots: { [number]: Frame } = {}
 local hotbarKeybinds = { "1", "2", "3", "4", "5", "K" }
 
@@ -75,7 +77,7 @@ function HUDController.Init()
 		end
 	end)
 
-	print("[ASCEND] Light-Mode HUDController Initialized.")
+	print("[ASCEND] Light-Mode HUDController Initialized with Item Toast Support.")
 end
 
 function HUDController.BuildHUD()
@@ -268,6 +270,21 @@ function HUDController.BuildHUD()
 
 		hotbarSlots[i] = slot
 	end
+
+	-- TOAST NOTIFICATION CONTAINER (Stacked Above Hotbar)
+	toastContainer = Instance.new("Frame")
+	toastContainer.Name = "ToastContainer"
+	toastContainer.Size = UDim2.new(0, 320, 0, 160)
+	toastContainer.Position = UDim2.new(0.5, -160, 1, -260)
+	toastContainer.BackgroundTransparency = 1
+	toastContainer.Parent = hudScreenGui
+
+	local toastLayout = Instance.new("UIListLayout")
+	toastLayout.FillDirection = Enum.FillDirection.Vertical
+	toastLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	toastLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	toastLayout.Padding = UDim.new(0, 6)
+	toastLayout.Parent = toastContainer
 end
 
 function HUDController.HookCharacter(character: Model)
@@ -327,6 +344,82 @@ function HUDController.UpdateHotbar()
 		local countLbl = slot6:FindFirstChild("CountLabel") :: TextLabel?
 		if countLbl then countLbl.Text = "POUCH" end
 	end
+end
+
+-- ANIMATED LIGHT-MODE XIANXIA ITEM TOAST POP-UP
+function HUDController.ShowItemToast(itemId: string, count: number)
+	if not toastContainer then return end
+
+	local itemDef = ItemConfig.GetItem(itemId)
+	local itemName = if itemDef then itemDef.Name else itemId
+	local rarityColor = COLOR_HP_GREEN
+
+	if itemDef then
+		if itemDef.Rarity == "Mythic" or itemDef.Rarity == "Legendary" then
+			rarityColor = Color3.fromRGB(225, 29, 72) -- Red/Crimson
+		elseif itemDef.Rarity == "Rare" or itemDef.Rarity == "Epic" then
+			rarityColor = COLOR_AZURE_BLUE -- Azure Blue
+		elseif itemDef.Rarity == "Uncommon" then
+			rarityColor = COLOR_ACTION_GOLD -- Gold
+		end
+	end
+
+	local toastFrame = Instance.new("Frame")
+	toastFrame.Name = "ItemToast"
+	toastFrame.Size = UDim2.new(1, 0, 0, 36)
+	toastFrame.BackgroundColor3 = COLOR_LIGHT_PANEL
+	toastFrame.BackgroundTransparency = 1
+	toastFrame.BorderSizePixel = 0
+	toastFrame.Parent = toastContainer
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = COLOR_LIGHT_BORDER
+	stroke.Thickness = 1.5
+	stroke.Transparency = 1
+	stroke.Parent = toastFrame
+
+	local accentBar = Instance.new("Frame")
+	accentBar.Name = "AccentBar"
+	accentBar.Size = UDim2.new(0, 4, 1, 0)
+	accentBar.BackgroundColor3 = rarityColor
+	accentBar.BorderSizePixel = 0
+	accentBar.BackgroundTransparency = 1
+	accentBar.Parent = toastFrame
+
+	local textLbl = Instance.new("TextLabel")
+	textLbl.Name = "ToastText"
+	textLbl.Size = UDim2.new(1, -16, 1, 0)
+	textLbl.Position = UDim2.new(0, 12, 0, 0)
+	textLbl.BackgroundTransparency = 1
+	textLbl.Text = string.format("+%d  %s", count, itemName)
+	textLbl.TextColor3 = COLOR_TEXT_MAIN
+	textLbl.TextTransparency = 1
+	textLbl.Font = UI_FONT
+	textLbl.TextSize = 14
+	textLbl.TextXAlignment = Enum.TextXAlignment.Left
+	textLbl.Parent = toastFrame
+
+	-- Fade-In Animation
+	local tweenInfoIn = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(toastFrame, tweenInfoIn, { BackgroundTransparency = 0 }):Play()
+	TweenService:Create(stroke, tweenInfoIn, { Transparency = 0 }):Play()
+	TweenService:Create(accentBar, tweenInfoIn, { BackgroundTransparency = 0 }):Play()
+	TweenService:Create(textLbl, tweenInfoIn, { TextTransparency = 0 }):Play()
+
+	-- Fade-Out Animation after 2.5 seconds
+	task.delay(2.5, function()
+		if not toastFrame.Parent then return end
+		local tweenInfoOut = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		local fadeOut = TweenService:Create(toastFrame, tweenInfoOut, { BackgroundTransparency = 1 })
+		TweenService:Create(stroke, tweenInfoOut, { Transparency = 1 }):Play()
+		TweenService:Create(accentBar, tweenInfoOut, { BackgroundTransparency = 1 }):Play()
+		TweenService:Create(textLbl, tweenInfoOut, { TextTransparency = 1 }):Play()
+
+		fadeOut:Play()
+		fadeOut.Completed:Connect(function()
+			toastFrame:Destroy()
+		end)
+	end)
 end
 
 return HUDController

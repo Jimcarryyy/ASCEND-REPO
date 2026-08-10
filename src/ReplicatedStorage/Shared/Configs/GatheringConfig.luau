@@ -19,6 +19,7 @@ export type NodeConfig = {
 	AgeDrops: { YearDropChance },
 	PromptText: string,
 	ActionText: string,
+	KeepModelVisible: boolean?, -- If true, node mesh will not fade/disappear during cooldown
 }
 
 local GatheringConfig = {}
@@ -72,6 +73,7 @@ local NODES: { [string]: NodeConfig } = {
 		},
 		PromptText = "Collect Dew Water",
 		ActionText = "Gathering Pure Water...",
+		KeepModelVisible = true, -- Natural water spring stays visible during cooldown
 	},
 	["JadeOre"] = {
 		NodeName = "Spirit Jade Ore",

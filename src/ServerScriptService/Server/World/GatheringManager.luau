@@ -3,7 +3,7 @@
     GatheringManager.luau
     Location: src/ServerScriptService/Server/World/GatheringManager.luau
     Server-authoritative manager for world resource harvesting nodes.
-    Grants randomized herb ages and triggers harvest audio on client.
+    Grants randomized herb ages and triggers harvest audio/toasts on client.
 ]]
 
 local Players = game:GetService("Players")
@@ -105,12 +105,14 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	local prompt = nodeInstance:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then prompt.Enabled = false end
 
-	-- Fade model out on harvest
-	for _, descendant in ipairs(nodeInstance:GetDescendants()) do
-		if descendant:IsA("BasePart") then
-			descendant.Transparency = 0.8
-		elseif descendant:IsA("ParticleEmitter") then
-			descendant.Enabled = false
+	-- Fade model out on harvest ONLY if KeepModelVisible is false
+	if not config.KeepModelVisible then
+		for _, descendant in ipairs(nodeInstance:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.Transparency = 0.8
+			elseif descendant:IsA("ParticleEmitter") then
+				descendant.Enabled = false
+			end
 		end
 	end
 
@@ -131,9 +133,11 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	InventoryManager.AddItem(player, selectedItemId, 1)
 	print(string.format("[GatheringManager] %s harvested %s from %s (Random Roll: %.2f)", player.Name, selectedItemId, config.NodeName, roll))
 
-	-- Notify Client to Play Harvest Sound
+	-- Notify Client to Play Harvest Sound and Show Toast Notification
 	gatheringActionRemote:FireClient(player, {
-		Action = "HarvestSuccessSound",
+		Action = "HarvestSuccess",
+		ItemId = selectedItemId,
+		Count = 1,
 	})
 
 	activeHarvests[player] = nil
@@ -143,11 +147,13 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 		depletedNodes[nodeInstance] = nil
 		if prompt then prompt.Enabled = true end
 
-		for _, descendant in ipairs(nodeInstance:GetDescendants()) do
-			if descendant:IsA("BasePart") then
-				descendant.Transparency = 0
-			elseif descendant:IsA("ParticleEmitter") then
-				descendant.Enabled = true
+		if not config.KeepModelVisible then
+			for _, descendant in ipairs(nodeInstance:GetDescendants()) do
+				if descendant:IsA("BasePart") then
+					descendant.Transparency = 0
+				elseif descendant:IsA("ParticleEmitter") then
+					descendant.Enabled = true
+				end
 			end
 		end
 	end)
