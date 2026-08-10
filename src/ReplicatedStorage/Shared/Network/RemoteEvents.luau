@@ -3,7 +3,6 @@
     RemoteEvents.luau
     Location: src/ReplicatedStorage/Shared/Network/RemoteEvents.luau
     Centralized network remote management for ASCEND.
-    Safely creates and exposes typed RemoteEvents and RemoteFunctions.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,6 +17,8 @@ export type RemoteName =
 	| "BossStateUpdate"
 	| "UpdateCultivation"
 	| "AlchemyAction"
+	| "CombatVFX"
+	| "GatheringAction"
 
 local ALL_REMOTES: { RemoteName } = {
 	"CombatAction",
@@ -28,6 +29,8 @@ local ALL_REMOTES: { RemoteName } = {
 	"BossStateUpdate",
 	"UpdateCultivation",
 	"AlchemyAction",
+	"CombatVFX",
+	"GatheringAction",
 }
 
 local RemoteEvents = {}
@@ -50,7 +53,6 @@ function RemoteEvents.Init(): Folder
 		newFolder.Parent = ReplicatedStorage
 		remotesFolder = newFolder
 
-		-- Pre-create all registered remote events on server start
 		for _, name in ipairs(ALL_REMOTES) do
 			if not newFolder:FindFirstChild(name) then
 				local newRemote = Instance.new("RemoteEvent")
@@ -94,7 +96,6 @@ function RemoteEvents.GetRemote(name: RemoteName): RemoteEvent
 	return remote
 end
 
--- Auto-initialize remote folder on load
 RemoteEvents.Init()
 
 return RemoteEvents

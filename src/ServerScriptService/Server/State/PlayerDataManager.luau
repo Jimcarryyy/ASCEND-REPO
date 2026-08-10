@@ -1,5 +1,5 @@
 --!strict
---[[\
+--[[
     PlayerDataManager.luau
     Location: src/ServerScriptService/Server/State/PlayerDataManager.luau
     Server-authoritative DataStore persistence manager for ASCEND.
@@ -33,7 +33,7 @@ export type SavedPlayerData = {
 
 local PlayerDataManager = {}
 
-local DATA_STORE_NAME = "ASCEND_PlayerData_v1"
+local DATA_STORE_NAME = "ASCEND_PlayerData_V2"
 local MAX_RETRIES = 3
 local AUTO_SAVE_INTERVAL = 300 -- 5 minutes
 
@@ -41,12 +41,12 @@ local playerDataStore: DataStore? = nil
 local isLoadedMap: { [Player]: boolean } = {}
 
 local DEFAULT_PLAYER_DATA: SavedPlayerData = {
-	Version = 1,
+	Version = 2,
 	Cultivation = {
 		Realm = "QiCondensation",
 		CurrentQi = 0,
 	},
-	EquippedWeapon = "FlyingSword",
+	EquippedWeapon = "FlyingSwordItem",
 	Inventory = {
 		[1] = { ItemId = "SpiritHealingDan", Count = 5 },
 		[2] = { ItemId = "FoundationGatheringDan", Count = 3 },
@@ -66,7 +66,7 @@ function PlayerDataManager.Init()
 
 	if success and result then
 		playerDataStore = result
-		print("[PlayerDataManager] DataStore initialized successfully.")
+		print("[PlayerDataManager] DataStore V2 initialized successfully.")
 	else
 		warn("[PlayerDataManager] Could not access DataStoreService. API access may be disabled in Studio settings. Running with local session memory.")
 	end
@@ -144,7 +144,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	-- Populate Systems with Loaded Data
 	CultivationManager.SetPlayerData(player, loadedData.Cultivation.Realm, loadedData.Cultivation.CurrentQi)
 	InventoryManager.SetInventory(player, loadedData.Inventory)
-	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "FlyingSword")
+	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "FlyingSwordItem")
 end
 
 function PlayerDataManager.OnPlayerRemoving(player: Player)
@@ -183,7 +183,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 	end
 
 	local dataToSave: SavedPlayerData = {
-		Version = 1,
+		Version = 2,
 		Cultivation = {
 			Realm = cultivation.Realm,
 			CurrentQi = cultivation.CurrentQi,

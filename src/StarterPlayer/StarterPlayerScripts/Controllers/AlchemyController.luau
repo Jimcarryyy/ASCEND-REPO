@@ -2,145 +2,119 @@
 --[[
     AlchemyController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AlchemyController.luau
-    Client UI controller for ASCEND Alchemy & Spirit Pill Crafting Cauldron System.
-    Light-Mode Flat 2D UI with crisp high-contrast charcoal text.
+    Client UI controller for Manual Herb Combination Alchemy.
+    Unified Light-Mode Aesthetic (Matching Spirit Pouch & Cauldron Panel).
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local AlchemyConfig = require(ReplicatedStorage.Shared.Configs.AlchemyConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
+local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local AlchemyController = {}
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- BOLD, COMPACT FONT STYLE
 local UI_FONT = Enum.Font.FredokaOne
 
--- LIGHT-MODE FLAT 2D PALETTE
-local COLOR_LIGHT_MAIN     = Color3.fromRGB(248, 250, 249) -- #F8FAF9 Main Window
-local COLOR_LIGHT_PANEL    = Color3.fromRGB(241, 245, 249) -- #F1F5F9 Sub-Panels
-local COLOR_LIGHT_CARD     = Color3.fromRGB(255, 255, 255) -- #FFFFFF Cards & Slots
-local COLOR_LIGHT_BORDER   = Color3.fromRGB(203, 213, 225) -- #CBD5E1 Edge Borders
+-- LIGHT-MODE PALETTE
+local COLOR_LIGHT_MAIN   = Color3.fromRGB(248, 250, 249)
+local COLOR_LIGHT_PANEL  = Color3.fromRGB(241, 245, 249)
+local COLOR_LIGHT_CARD   = Color3.fromRGB(255, 255, 255)
+local COLOR_LIGHT_BORDER = Color3.fromRGB(203, 213, 225)
 
-local COLOR_TEXT_MAIN      = Color3.fromRGB(15, 23, 42)    -- #0F172A Deep Charcoal
-local COLOR_TEXT_SUB       = Color3.fromRGB(100, 116, 139)  -- #64748B Muted Subtext
-local COLOR_AZURE          = Color3.fromRGB(59, 130, 246)   -- #3B82F6 Sapphire Blue
-local COLOR_HP_GREEN       = Color3.fromRGB(16, 185, 129)  -- #10B981 Emerald Green
-local COLOR_ACTION_GOLD    = Color3.fromRGB(217, 119, 6)   -- #D97706 Warm Amber Gold
-local COLOR_DANGER_RED     = Color3.fromRGB(225, 29, 72)   -- #E11D48 Carmine Red
-
-local RARITY_COLORS = {
-	Immortal  = Color3.fromRGB(225, 29, 72),
-	Legendary = Color3.fromRGB(217, 119, 6),
-	Epic      = Color3.fromRGB(147, 51, 234),
-	Rare      = Color3.fromRGB(59, 130, 246),
-	Uncommon  = Color3.fromRGB(16, 185, 129),
-	Common    = Color3.fromRGB(100, 116, 139),
-}
+local COLOR_TEXT_MAIN    = Color3.fromRGB(15, 23, 42)
+local COLOR_TEXT_SUB     = Color3.fromRGB(100, 116, 139)
+local COLOR_AZURE_BLUE   = Color3.fromRGB(59, 130, 246)
+local COLOR_HP_GREEN     = Color3.fromRGB(16, 185, 129)
+local COLOR_ACTION_GOLD  = Color3.fromRGB(217, 119, 6)
+local COLOR_DANGER_RED   = Color3.fromRGB(225, 29, 72)
 
 local alchemyGui: ScreenGui
 local overlayBackdrop: Frame
 local mainModal: Frame
+local herbPickerGrid: ScrollingFrame
 
--- 1. Recipe Book Elements
-local recipeListFrame: ScrollingFrame
-local recipeButtons: { [string]: Frame } = {}
+local cauldronSlots: { [number]: { SlotIdx: number?, ItemId: string? } } = {
+	[1] = { SlotIdx = nil, ItemId = nil },
+	[2] = { SlotIdx = nil, ItemId = nil },
+	[3] = { SlotIdx = nil, ItemId = nil },
+}
 
--- 2. Cauldron Workspace Elements
-local cauldronViewport: ViewportFrame
-local successChanceText: TextLabel
-local qiCostText: TextLabel
-local durationText: TextLabel
-local ingredientSlotContainer: Frame
-local progressBarFill: Frame
-local refineBtn: TextButton
+local cauldronSlotButtons: { [number]: Frame } = {}
+local currentInventoryData: { [number]: any } = {}
 
--- 3. Outcome Inspection Elements
-local outcomeCard: Frame
-local outcomeTitle: TextLabel
-local outcomeRarityBadge: TextLabel
-local outcomeIcon: ImageLabel
-local outcomeStatsText: TextLabel
-local outcomeDescText: TextLabel
+local matchedFormulaLabel: TextLabel
+local successRateLabel: TextLabel
+local qualityTextLabel: TextLabel
+local qiCostLabel: TextLabel
+local statusMessageLabel: TextLabel
+local refineButton: TextButton
 
-local selectedRecipeId: string = "SpiritHealingDan"
-local isCrafting: boolean = false
-local currentInventory: { [number]: any } = {}
-
-local updateInventoryRemote: RemoteEvent
+local isRefining: boolean = false
 local alchemyActionRemote: RemoteEvent
+local updateInventoryRemote: RemoteEvent
 
 function AlchemyController.Init()
-	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
 	alchemyActionRemote = RemoteEvents.GetRemote("AlchemyAction")
+	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
 
 	AlchemyController.BuildUI()
 
 	updateInventoryRemote.OnClientEvent:Connect(function(inventoryData: { [number]: any })
-		currentInventory = inventoryData
-		AlchemyController.RefreshWorkspace()
+		currentInventoryData = inventoryData or {}
+		AlchemyController.RefreshHerbPicker()
+	end)
+
+	ProximityPromptService.PromptTriggered:Connect(function(prompt, playerWhoTriggered)
+		if playerWhoTriggered ~= player then return end
+
+		if prompt.Name == "CauldronPrompt" or (prompt.Parent and (prompt.Parent.Name == "SpiritCauldron" or prompt.Parent:GetAttribute("Cauldron"))) then
+			overlayBackdrop.Visible = true
+			local inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
+			inventoryActionRemote:FireServer({ Action = "RequestSync" })
+			AlchemyController.RefreshHerbPicker()
+			AlchemyController.UpdateMetrics()
+		end
 	end)
 
 	alchemyActionRemote.OnClientEvent:Connect(function(payload: any)
-		if type(payload) == "table" and payload.CraftResult then
-			isCrafting = false
-			progressBarFill.Size = UDim2.new(0, 0, 1, 0)
-			refineBtn.Text = "REFINE SPIRIT DAN"
-			refineBtn.BackgroundColor3 = COLOR_ACTION_GOLD
+		if type(payload) ~= "table" or not payload.Action then return end
 
-			if payload.CraftResult.Success then
-				print("[AlchemyController] 🔥 Refinement Success! Crafted:", payload.CraftResult.PillName)
-			else
-				warn("[AlchemyController] 💥 Refinement Failed! Herbs ruined into ash.")
+		if payload.Action == "RefineResult" then
+			isRefining = false
+			refineButton.Text = "REFINE SPIRIT DAN"
+			refineButton.BackgroundColor3 = COLOR_ACTION_GOLD
+
+			-- Clear Cauldron Slots on completion
+			for i = 1, 3 do
+				cauldronSlots[i] = { SlotIdx = nil, ItemId = nil }
+			end
+			AlchemyController.UpdateCauldronSlotDisplay()
+			AlchemyController.UpdateMetrics()
+
+			if statusMessageLabel then
+				statusMessageLabel.Text = payload.Message or ""
+				statusMessageLabel.TextColor3 = if payload.Success then COLOR_HP_GREEN else COLOR_DANGER_RED
 			end
 		end
 	end)
 
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then return end
-
-		if input.KeyCode == Enum.KeyCode.L then
-			overlayBackdrop.Visible = not overlayBackdrop.Visible
-			if overlayBackdrop.Visible then
-				AlchemyController.RefreshWorkspace()
-			end
-		end
-	end)
-
-	print("[ASCEND] Light-Mode AlchemyController Initialized.")
-end
-
-function AlchemyController.GetRecipeTable(): { [string]: any }
-	local raw = AlchemyConfig :: any
-	local recipeMap: { [string]: any } = {}
-
-	local targetTable = if (raw.Recipes and type(raw.Recipes) == "table") then raw.Recipes else raw
-	if type(targetTable) == "table" then
-		for key, val in pairs(targetTable) do
-			if type(val) == "table" and val.OutputItemId then
-				recipeMap[key] = val
-			end
-		end
-	end
-
-	return recipeMap
+	print("[ASCEND] Fixed Manual Combination AlchemyController Initialized.")
 end
 
 function AlchemyController.BuildUI()
-	local oldGui = playerGui:FindFirstChild("AlchemyGui")
+	local oldGui = playerGui:FindFirstChild("SpiritCauldronAlchemyGui")
 	if oldGui then oldGui:Destroy() end
 
 	alchemyGui = Instance.new("ScreenGui")
-	alchemyGui.Name = "AlchemyGui"
+	alchemyGui.Name = "SpiritCauldronAlchemyGui"
 	alchemyGui.ResetOnSpawn = false
-	alchemyGui.DisplayOrder = 25
-	alchemyGui.Enabled = true
+	alchemyGui.DisplayOrder = 20
 	alchemyGui.Parent = playerGui
 
 	overlayBackdrop = Instance.new("Frame")
@@ -153,8 +127,8 @@ function AlchemyController.BuildUI()
 
 	mainModal = Instance.new("Frame")
 	mainModal.Name = "MainModal"
-	mainModal.Size = UDim2.new(0, 1260, 0, 680)
-	mainModal.Position = UDim2.new(0.5, -630, 0.5, -340)
+	mainModal.Size = UDim2.new(0, 1150, 0, 640)
+	mainModal.Position = UDim2.new(0.5, -575, 0.5, -320)
 	mainModal.BackgroundColor3 = COLOR_LIGHT_MAIN
 	mainModal.BorderSizePixel = 0
 	mainModal.Parent = overlayBackdrop
@@ -170,15 +144,15 @@ function AlchemyController.BuildUI()
 	headerTitle.Text = "SPIRIT CAULDRON ALCHEMY"
 	headerTitle.TextColor3 = COLOR_TEXT_MAIN
 	headerTitle.Font = UI_FONT
-	headerTitle.TextSize = 36
+	headerTitle.TextSize = 32
 	headerTitle.Parent = mainModal
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Size = UDim2.new(0, 36, 0, 36)
 	closeBtn.Position = UDim2.new(1, -44, 0, 8)
-	closeBtn.BackgroundColor3 = RARITY_COLORS.Immortal
+	closeBtn.BackgroundColor3 = COLOR_DANGER_RED
 	closeBtn.Text = "X"
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.TextColor3 = COLOR_LIGHT_CARD
 	closeBtn.Font = UI_FONT
 	closeBtn.TextSize = 20
 	closeBtn.Parent = mainModal
@@ -187,9 +161,9 @@ function AlchemyController.BuildUI()
 		overlayBackdrop.Visible = false
 	end)
 
+	-- COLUMN 1: SPIRIT POUCH HERB PICKER
 	local col1 = Instance.new("Frame")
-	col1.Name = "Column1_RecipeBook"
-	col1.Size = UDim2.new(0, 350, 1, -64)
+	col1.Size = UDim2.new(0, 320, 1, -64)
 	col1.Position = UDim2.new(0, 12, 0, 52)
 	col1.BackgroundColor3 = COLOR_LIGHT_PANEL
 	col1.BorderSizePixel = 0
@@ -201,38 +175,33 @@ function AlchemyController.BuildUI()
 	col1Stroke.Parent = col1
 
 	local c1Header = Instance.new("TextLabel")
-	c1Header.Size = UDim2.new(1, 0, 0, 40)
+	c1Header.Size = UDim2.new(1, 0, 0, 38)
 	c1Header.BackgroundColor3 = COLOR_LIGHT_CARD
-	c1Header.Text = "RECIPE BOOK"
+	c1Header.Text = "SELECT HERBS FROM POUCH"
 	c1Header.TextColor3 = COLOR_TEXT_MAIN
 	c1Header.Font = UI_FONT
-	c1Header.TextSize = 20
+	c1Header.TextSize = 15
 	c1Header.Parent = col1
 
-	local c1HeaderStroke = Instance.new("UIStroke")
-	c1HeaderStroke.Color = COLOR_LIGHT_BORDER
-	c1HeaderStroke.Thickness = 1
-	c1HeaderStroke.Parent = c1Header
+	herbPickerGrid = Instance.new("ScrollingFrame")
+	herbPickerGrid.Size = UDim2.new(1, -16, 1, -52)
+	herbPickerGrid.Position = UDim2.new(0, 8, 0, 44)
+	herbPickerGrid.BackgroundTransparency = 1
+	herbPickerGrid.BorderSizePixel = 0
+	herbPickerGrid.ScrollBarThickness = 4
+	herbPickerGrid.ScrollBarImageColor3 = COLOR_AZURE_BLUE
+	herbPickerGrid.Parent = col1
 
-	recipeListFrame = Instance.new("ScrollingFrame")
-	recipeListFrame.Name = "RecipeListFrame"
-	recipeListFrame.Size = UDim2.new(1, -16, 1, -52)
-	recipeListFrame.Position = UDim2.new(0, 8, 0, 46)
-	recipeListFrame.BackgroundTransparency = 1
-	recipeListFrame.BorderSizePixel = 0
-	recipeListFrame.ScrollBarThickness = 4
-	recipeListFrame.ScrollBarImageColor3 = COLOR_AZURE
-	recipeListFrame.Parent = col1
+	local gridLayout = Instance.new("UIGridLayout")
+	gridLayout.CellSize = UDim2.new(0, 92, 0, 92)
+	gridLayout.CellPadding = UDim2.new(0, 8, 0, 8)
+	gridLayout.Parent = herbPickerGrid
 
-	local rListLayout = Instance.new("UIListLayout")
-	rListLayout.FillDirection = Enum.FillDirection.Vertical
-	rListLayout.Padding = UDim.new(0, 8)
-	rListLayout.Parent = recipeListFrame
-
+	-- COLUMN 2: CAULDRON COMBINATION WORKSPACE (FIXED PARENTING)
 	local col2 = Instance.new("Frame")
-	col2.Name = "Column2_CraftingWorkspace"
-	col2.Size = UDim2.new(0, 580, 1, -64)
-	col2.Position = UDim2.new(0, 372, 0, 52)
+	col2.Name = "Column2_CauldronWorkspace"
+	col2.Size = UDim2.new(0, 480, 1, -64)
+	col2.Position = UDim2.new(0, 344, 0, 52)
 	col2.BackgroundColor3 = COLOR_LIGHT_PANEL
 	col2.BorderSizePixel = 0
 	col2.Parent = mainModal
@@ -243,465 +212,392 @@ function AlchemyController.BuildUI()
 	col2Stroke.Parent = col2
 
 	local c2Header = Instance.new("TextLabel")
-	c2Header.Size = UDim2.new(1, 0, 0, 40)
+	c2Header.Size = UDim2.new(1, 0, 0, 38)
 	c2Header.BackgroundColor3 = COLOR_LIGHT_CARD
-	c2Header.Text = "CAULDRON CRAFTING WORKSPACE"
+	c2Header.Text = "CAULDRON COMBINATION SLOTS"
 	c2Header.TextColor3 = COLOR_TEXT_MAIN
 	c2Header.Font = UI_FONT
-	c2Header.TextSize = 20
+	c2Header.TextSize = 16
 	c2Header.Parent = col2
 
-	local c2HeaderStroke = Instance.new("UIStroke")
-	c2HeaderStroke.Color = COLOR_LIGHT_BORDER
-	c2HeaderStroke.Thickness = 1
-	c2HeaderStroke.Parent = c2Header
+	-- 3 CAULDRON INGREDIENT SLOTS
+	local slotContainer = Instance.new("Frame")
+	slotContainer.Size = UDim2.new(1, -24, 0, 110)
+	slotContainer.Position = UDim2.new(0, 12, 0, 48)
+	slotContainer.BackgroundColor3 = COLOR_LIGHT_CARD
+	slotContainer.BorderSizePixel = 0
+	slotContainer.Parent = col2
 
-	cauldronViewport = Instance.new("ViewportFrame")
-	cauldronViewport.Name = "CauldronViewport"
-	cauldronViewport.Size = UDim2.new(0, 260, 0, 280)
-	cauldronViewport.Position = UDim2.new(0, 15, 0, 50)
-	cauldronViewport.BackgroundColor3 = COLOR_LIGHT_CARD
-	cauldronViewport.BorderSizePixel = 0
-	cauldronViewport.Parent = col2
+	local scStroke = Instance.new("UIStroke")
+	scStroke.Color = COLOR_LIGHT_BORDER
+	scStroke.Thickness = 1
+	scStroke.Parent = slotContainer
 
-	local cvStroke = Instance.new("UIStroke")
-	cvStroke.Color = COLOR_LIGHT_BORDER
-	cvStroke.Thickness = 1.5
-	cvStroke.Parent = cauldronViewport
+	local slotLayout = Instance.new("UIListLayout")
+	slotLayout.FillDirection = Enum.FillDirection.Horizontal
+	slotLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	slotLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	slotLayout.Padding = UDim.new(0, 18)
+	slotLayout.Parent = slotContainer
 
-	local paramsBox = Instance.new("Frame")
-	paramsBox.Name = "BrewingParametersBox"
-	paramsBox.Size = UDim2.new(0, 275, 0, 280)
-	paramsBox.Position = UDim2.new(0, 288, 0, 50)
-	paramsBox.BackgroundColor3 = COLOR_LIGHT_CARD
-	paramsBox.BorderSizePixel = 0
-	paramsBox.Parent = col2
+	for i = 1, 3 do
+		local slotFrame = Instance.new("Frame")
+		slotFrame.Name = "CauldronSlot_" .. i
+		slotFrame.Size = UDim2.new(0, 120, 0, 90)
+		slotFrame.BackgroundColor3 = COLOR_LIGHT_PANEL
+		slotFrame.BorderSizePixel = 0
+		slotFrame.Parent = slotContainer
 
-	local pbStroke = Instance.new("UIStroke")
-	pbStroke.Color = COLOR_LIGHT_BORDER
-	pbStroke.Thickness = 1.5
-	pbStroke.Parent = paramsBox
+		local sStroke = Instance.new("UIStroke")
+		sStroke.Color = COLOR_LIGHT_BORDER
+		sStroke.Thickness = 1.5
+		sStroke.Parent = slotFrame
 
-	local pbTitle = Instance.new("TextLabel")
-	pbTitle.Size = UDim2.new(1, -20, 0, 32)
-	pbTitle.Position = UDim2.new(0, 10, 0, 8)
-	pbTitle.BackgroundTransparency = 1
-	pbTitle.Text = "BREWING PARAMETERS"
-	pbTitle.TextColor3 = COLOR_ACTION_GOLD
-	pbTitle.Font = UI_FONT
-	pbTitle.TextSize = 16
-	pbTitle.TextXAlignment = Enum.TextXAlignment.Left
-	pbTitle.Parent = paramsBox
+		local slotTitle = Instance.new("TextLabel")
+		slotTitle.Name = "SlotTitle"
+		slotTitle.Size = UDim2.new(1, 0, 0, 20)
+		slotTitle.BackgroundTransparency = 1
+		slotTitle.Text = "HERB SLOT " .. i
+		slotTitle.TextColor3 = COLOR_TEXT_SUB
+		slotTitle.Font = UI_FONT
+		slotTitle.TextSize = 11
+		slotTitle.Parent = slotFrame
 
-	successChanceText = Instance.new("TextLabel")
-	successChanceText.Size = UDim2.new(1, -20, 0, 28)
-	successChanceText.Position = UDim2.new(0, 10, 0, 48)
-	successChanceText.BackgroundTransparency = 1
-	successChanceText.Text = "SUCCESS RATE: 85% CHANCE"
-	successChanceText.TextColor3 = COLOR_HP_GREEN
-	successChanceText.Font = UI_FONT
-	successChanceText.TextSize = 15
-	successChanceText.TextXAlignment = Enum.TextXAlignment.Left
-	successChanceText.Parent = paramsBox
-
-	qiCostText = Instance.new("TextLabel")
-	qiCostText.Size = UDim2.new(1, -20, 0, 28)
-	qiCostText.Position = UDim2.new(0, 10, 0, 84)
-	qiCostText.BackgroundTransparency = 1
-	qiCostText.Text = "QI COST: 30 SPIRIT QI"
-	qiCostText.TextColor3 = COLOR_AZURE
-	qiCostText.Font = UI_FONT
-	qiCostText.TextSize = 15
-	qiCostText.TextXAlignment = Enum.TextXAlignment.Left
-	qiCostText.Parent = paramsBox
-
-	durationText = Instance.new("TextLabel")
-	durationText.Size = UDim2.new(1, -20, 0, 28)
-	durationText.Position = UDim2.new(0, 10, 0, 120)
-	durationText.BackgroundTransparency = 1
-	durationText.Text = "CRAFTING DURATION: 3.0s"
-	durationText.TextColor3 = COLOR_TEXT_MAIN
-	durationText.Font = UI_FONT
-	durationText.TextSize = 15
-	durationText.TextXAlignment = Enum.TextXAlignment.Left
-	durationText.Parent = paramsBox
-
-	local ingLabel = Instance.new("TextLabel")
-	ingLabel.Size = UDim2.new(1, -30, 0, 24)
-	ingLabel.Position = UDim2.new(0, 15, 0, 342)
-	ingLabel.BackgroundTransparency = 1
-	ingLabel.Text = "INGREDIENT REQUIREMENT SLOTS"
-	ingLabel.TextColor3 = COLOR_TEXT_SUB
-	ingLabel.Font = UI_FONT
-	ingLabel.TextSize = 14
-	ingLabel.TextXAlignment = Enum.TextXAlignment.Left
-	ingLabel.Parent = col2
-
-	ingredientSlotContainer = Instance.new("Frame")
-	ingredientSlotContainer.Name = "IngredientSlotContainer"
-	ingredientSlotContainer.Size = UDim2.new(1, -30, 0, 120)
-	ingredientSlotContainer.Position = UDim2.new(0, 15, 0, 370)
-	ingredientSlotContainer.BackgroundTransparency = 1
-	ingredientSlotContainer.Parent = col2
-
-	local ingLayout = Instance.new("UIListLayout")
-	ingLayout.FillDirection = Enum.FillDirection.Horizontal
-	ingLayout.Padding = UDim.new(0, 12)
-	ingLayout.Parent = ingredientSlotContainer
-
-	local progressBg = Instance.new("Frame")
-	progressBg.Name = "ProgressBarBg"
-	progressBg.Size = UDim2.new(1, -30, 0, 24)
-	progressBg.Position = UDim2.new(0, 15, 0, 505)
-	progressBg.BackgroundColor3 = COLOR_LIGHT_CARD
-	progressBg.BorderSizePixel = 0
-	progressBg.Parent = col2
-
-	local pStroke = Instance.new("UIStroke")
-	pStroke.Color = COLOR_LIGHT_BORDER
-	pStroke.Thickness = 1.5
-	pStroke.Parent = progressBg
-
-	progressBarFill = Instance.new("Frame")
-	progressBarFill.Name = "ProgressBarFill"
-	progressBarFill.Size = UDim2.new(0, 0, 1, 0)
-	progressBarFill.BackgroundColor3 = COLOR_HP_GREEN
-	progressBarFill.BorderSizePixel = 0
-	progressBarFill.Parent = progressBg
-
-	refineBtn = Instance.new("TextButton")
-	refineBtn.Name = "RefineButton"
-	refineBtn.Size = UDim2.new(1, -30, 0, 52)
-	refineBtn.Position = UDim2.new(0, 15, 0, 542)
-	refineBtn.BackgroundColor3 = COLOR_ACTION_GOLD
-	refineBtn.Text = "REFINE SPIRIT DAN"
-	refineBtn.TextColor3 = COLOR_LIGHT_MAIN
-	refineBtn.Font = UI_FONT
-	refineBtn.TextSize = 22
-	refineBtn.Parent = col2
-
-	refineBtn.MouseButton1Click:Connect(function()
-		AlchemyController.StartCrafting()
-	end)
-
-	outcomeCard = Instance.new("Frame")
-	outcomeCard.Name = "Column3_OutcomeInspection"
-	outcomeCard.Size = UDim2.new(0, 290, 1, -64)
-	outcomeCard.Position = UDim2.new(0, 958, 0, 52)
-	outcomeCard.BackgroundColor3 = COLOR_LIGHT_PANEL
-	outcomeCard.BorderSizePixel = 0
-	outcomeCard.Parent = mainModal
-
-	local col3Stroke = Instance.new("UIStroke")
-	col3Stroke.Color = COLOR_LIGHT_BORDER
-	col3Stroke.Thickness = 1.5
-	col3Stroke.Parent = outcomeCard
-
-	local c3Header = Instance.new("TextLabel")
-	c3Header.Size = UDim2.new(1, 0, 0, 40)
-	c3Header.BackgroundColor3 = COLOR_LIGHT_CARD
-	c3Header.Text = "OUTCOME PILL INSPECTION"
-	c3Header.TextColor3 = COLOR_TEXT_MAIN
-	c3Header.Font = UI_FONT
-	c3Header.TextSize = 18
-	c3Header.Parent = outcomeCard
-
-	local c3HeaderStroke = Instance.new("UIStroke")
-	c3HeaderStroke.Color = COLOR_LIGHT_BORDER
-	c3HeaderStroke.Thickness = 1
-	c3HeaderStroke.Parent = c3Header
-
-	outcomeTitle = Instance.new("TextLabel")
-	outcomeTitle.Size = UDim2.new(1, -20, 0, 32)
-	outcomeTitle.Position = UDim2.new(0, 10, 0, 48)
-	outcomeTitle.BackgroundTransparency = 1
-	outcomeTitle.Font = UI_FONT
-	outcomeTitle.TextSize = 22
-	outcomeTitle.TextColor3 = COLOR_TEXT_MAIN
-	outcomeTitle.TextXAlignment = Enum.TextXAlignment.Center
-	outcomeTitle.Parent = outcomeCard
-
-	outcomeRarityBadge = Instance.new("TextLabel")
-	outcomeRarityBadge.Size = UDim2.new(1, -20, 0, 22)
-	outcomeRarityBadge.Position = UDim2.new(0, 10, 0, 80)
-	outcomeRarityBadge.BackgroundTransparency = 1
-	outcomeRarityBadge.Font = UI_FONT
-	outcomeRarityBadge.TextSize = 15
-	outcomeRarityBadge.TextColor3 = RARITY_COLORS.Uncommon
-	outcomeRarityBadge.Text = "UNCOMMON SPIRIT DAN"
-	outcomeRarityBadge.TextXAlignment = Enum.TextXAlignment.Center
-	outcomeRarityBadge.Parent = outcomeCard
-
-	local iconBox = Instance.new("Frame")
-	iconBox.Size = UDim2.new(0, 110, 0, 110)
-	iconBox.Position = UDim2.new(0.5, -55, 0, 110)
-	iconBox.BackgroundColor3 = COLOR_LIGHT_CARD
-	iconBox.BorderSizePixel = 0
-	iconBox.Parent = outcomeCard
-
-	local ibStroke = Instance.new("UIStroke")
-	ibStroke.Color = COLOR_LIGHT_BORDER
-	ibStroke.Thickness = 1.5
-	ibStroke.Parent = iconBox
-
-	outcomeIcon = Instance.new("ImageLabel")
-	outcomeIcon.Size = UDim2.new(1, -12, 1, -12)
-	outcomeIcon.Position = UDim2.new(0, 6, 0, 6)
-	outcomeIcon.BackgroundTransparency = 1
-	outcomeIcon.ScaleType = Enum.ScaleType.Fit
-	outcomeIcon.Parent = iconBox
-
-	local statBox = Instance.new("Frame")
-	statBox.Size = UDim2.new(1, -24, 0, 75)
-	statBox.Position = UDim2.new(0, 12, 0, 230)
-	statBox.BackgroundColor3 = COLOR_LIGHT_CARD
-	statBox.BorderSizePixel = 0
-	statBox.Parent = outcomeCard
-
-	local sbBoxStroke = Instance.new("UIStroke")
-	sbBoxStroke.Color = COLOR_LIGHT_BORDER
-	sbBoxStroke.Thickness = 1
-	sbBoxStroke.Parent = statBox
-
-	outcomeStatsText = Instance.new("TextLabel")
-	outcomeStatsText.Size = UDim2.new(1, -16, 1, -8)
-	outcomeStatsText.Position = UDim2.new(0, 8, 0, 4)
-	outcomeStatsText.BackgroundTransparency = 1
-	outcomeStatsText.Font = UI_FONT
-	outcomeStatsText.TextSize = 16
-	outcomeStatsText.TextColor3 = COLOR_HP_GREEN
-	outcomeStatsText.TextWrapped = true
-	outcomeStatsText.TextXAlignment = Enum.TextXAlignment.Left
-	outcomeStatsText.Parent = statBox
-
-	local descBox = Instance.new("Frame")
-	descBox.Size = UDim2.new(1, -24, 0, 280)
-	descBox.Position = UDim2.new(0, 12, 0, 315)
-	descBox.BackgroundColor3 = COLOR_LIGHT_CARD
-	descBox.BorderSizePixel = 0
-	descBox.Parent = outcomeCard
-
-	local dbStroke = Instance.new("UIStroke")
-	dbStroke.Color = COLOR_LIGHT_BORDER
-	dbStroke.Thickness = 1
-	dbStroke.Parent = descBox
-
-	local dbPadding = Instance.new("UIPadding")
-	dbPadding.PaddingTop = UDim.new(0, 8)
-	dbPadding.PaddingBottom = UDim.new(0, 8)
-	dbPadding.PaddingLeft = UDim.new(0, 8)
-	dbPadding.PaddingRight = UDim.new(0, 8)
-	dbPadding.Parent = descBox
-
-	outcomeDescText = Instance.new("TextLabel")
-	outcomeDescText.Size = UDim2.new(1, 0, 1, 0)
-	outcomeDescText.BackgroundTransparency = 1
-	outcomeDescText.Font = UI_FONT
-	outcomeDescText.TextSize = 15
-	outcomeDescText.TextColor3 = COLOR_TEXT_SUB
-	outcomeDescText.TextWrapped = true
-	outcomeDescText.TextXAlignment = Enum.TextXAlignment.Left
-	outcomeDescText.TextYAlignment = Enum.TextYAlignment.Top
-	outcomeDescText.Parent = descBox
-
-	AlchemyController.SetupRecipeList()
-	AlchemyController.RefreshWorkspace()
-end
-
-function AlchemyController.SetupRecipeList()
-	local recipes = AlchemyController.GetRecipeTable()
-
-	for recipeId, recipeDef in pairs(recipes) do
-		if type(recipeDef) ~= "table" or not recipeDef.OutputItemId then continue end
-
-		local pillDef = ItemConfig[recipeDef.OutputItemId]
-		if not pillDef then continue end
-
-		local card = Instance.new("Frame")
-		card.Name = "RecipeCard_" .. recipeId
-		card.Size = UDim2.new(1, 0, 0, 72)
-		card.BackgroundColor3 = COLOR_LIGHT_CARD
-		card.BorderSizePixel = 0
-		card.Parent = recipeListFrame
-
-		local stroke = Instance.new("UIStroke")
-		stroke.Name = "Stroke"
-		stroke.Color = COLOR_LIGHT_BORDER
-		stroke.Thickness = 1.5
-		stroke.Parent = card
-
-		local icon = Instance.new("ImageLabel")
-		icon.Size = UDim2.new(0, 48, 0, 48)
-		icon.Position = UDim2.new(0, 8, 0.5, -24)
-		icon.BackgroundTransparency = 1
-        icon.Image = pillDef.Icon or ""
-		icon.ScaleType = Enum.ScaleType.Fit
-		icon.Parent = card
-
-		local nameLabel = Instance.new("TextLabel")
-		nameLabel.Size = UDim2.new(1, -64, 0, 24)
-		nameLabel.Position = UDim2.new(0, 64, 0, 8)
-		nameLabel.BackgroundTransparency = 1
-		nameLabel.Text = pillDef.Name
-		nameLabel.TextColor3 = COLOR_TEXT_MAIN
-		nameLabel.Font = UI_FONT
-		nameLabel.TextSize = 16
-		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-		nameLabel.Parent = card
-
-		local realmBadge = Instance.new("TextLabel")
-		realmBadge.Size = UDim2.new(1, -64, 0, 20)
-		realmBadge.Position = UDim2.new(0, 64, 0, 34)
-		realmBadge.BackgroundTransparency = 1
-		realmBadge.Text = tostring(recipeDef.RequiredRealm or "QiCondensation"):upper()
-		realmBadge.TextColor3 = COLOR_ACTION_GOLD
-		realmBadge.Font = UI_FONT
-		realmBadge.TextSize = 12
-		realmBadge.TextXAlignment = Enum.TextXAlignment.Left
-		realmBadge.Parent = card
+		local herbNameLbl = Instance.new("TextLabel")
+		herbNameLbl.Name = "HerbNameLabel"
+		herbNameLbl.Size = UDim2.new(1, -8, 1, -24)
+		herbNameLbl.Position = UDim2.new(0, 4, 0, 20)
+		herbNameLbl.BackgroundTransparency = 1
+		herbNameLbl.Text = "+ Add Herb"
+		herbNameLbl.TextColor3 = COLOR_TEXT_SUB
+		herbNameLbl.Font = UI_FONT
+		herbNameLbl.TextSize = 12
+		herbNameLbl.TextWrapped = true
+		herbNameLbl.Parent = slotFrame
 
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(1, 0, 1, 0)
 		btn.BackgroundTransparency = 1
 		btn.Text = ""
-		btn.Parent = card
+		btn.Parent = slotFrame
 
 		btn.MouseButton1Click:Connect(function()
-			selectedRecipeId = recipeId
-			AlchemyController.RefreshWorkspace()
+			-- Click to clear herb from slot
+			cauldronSlots[i] = { SlotIdx = nil, ItemId = nil }
+			AlchemyController.UpdateCauldronSlotDisplay()
+			AlchemyController.UpdateMetrics()
 		end)
 
-		recipeButtons[recipeId] = card
+		cauldronSlotButtons[i] = slotFrame
+	end
+
+	-- COMBINATION METRICS PANEL
+	local metricsBox = Instance.new("Frame")
+	metricsBox.Size = UDim2.new(1, -24, 0, 200)
+	metricsBox.Position = UDim2.new(0, 12, 0, 172)
+	metricsBox.BackgroundColor3 = COLOR_LIGHT_CARD
+	metricsBox.BorderSizePixel = 0
+	metricsBox.Parent = col2
+
+	local mbStroke = Instance.new("UIStroke")
+	mbStroke.Color = COLOR_LIGHT_BORDER
+	mbStroke.Thickness = 1
+	mbStroke.Parent = metricsBox
+
+	matchedFormulaLabel = Instance.new("TextLabel")
+	matchedFormulaLabel.Size = UDim2.new(1, -20, 0, 32)
+	matchedFormulaLabel.Position = UDim2.new(0, 10, 0, 10)
+	matchedFormulaLabel.BackgroundTransparency = 1
+	matchedFormulaLabel.Text = "MATCHED FORMULA: NONE"
+	matchedFormulaLabel.TextColor3 = COLOR_TEXT_MAIN
+	matchedFormulaLabel.Font = UI_FONT
+	matchedFormulaLabel.TextSize = 15
+	matchedFormulaLabel.TextXAlignment = Enum.TextXAlignment.Left
+	matchedFormulaLabel.Parent = metricsBox
+
+	successRateLabel = Instance.new("TextLabel")
+	successRateLabel.Size = UDim2.new(1, -20, 0, 28)
+	successRateLabel.Position = UDim2.new(0, 10, 0, 48)
+	successRateLabel.BackgroundTransparency = 1
+	successRateLabel.Text = "ESTIMATED SUCCESS: 0%"
+	successRateLabel.TextColor3 = COLOR_HP_GREEN
+	successRateLabel.Font = UI_FONT
+	successRateLabel.TextSize = 14
+	successRateLabel.TextXAlignment = Enum.TextXAlignment.Left
+	successRateLabel.Parent = metricsBox
+
+	qualityTextLabel = Instance.new("TextLabel")
+	qualityTextLabel.Size = UDim2.new(1, -20, 0, 28)
+	qualityTextLabel.Position = UDim2.new(0, 10, 0, 80)
+	qualityTextLabel.BackgroundTransparency = 1
+	qualityTextLabel.Text = "EXPECTED QUALITY: STANDARD"
+	qualityTextLabel.TextColor3 = COLOR_ACTION_GOLD
+	qualityTextLabel.Font = UI_FONT
+	qualityTextLabel.TextSize = 14
+	qualityTextLabel.TextXAlignment = Enum.TextXAlignment.Left
+	qualityTextLabel.Parent = metricsBox
+
+	qiCostLabel = Instance.new("TextLabel")
+	qiCostLabel.Size = UDim2.new(1, -20, 0, 28)
+	qiCostLabel.Position = UDim2.new(0, 10, 0, 112)
+	qiCostLabel.BackgroundTransparency = 1
+	qiCostLabel.Text = "REQUIRED QI: 0 SPIRIT QI"
+	qiCostLabel.TextColor3 = COLOR_AZURE_BLUE
+	qiCostLabel.Font = UI_FONT
+	qiCostLabel.TextSize = 14
+	qiCostLabel.TextXAlignment = Enum.TextXAlignment.Left
+	qiCostLabel.Parent = metricsBox
+
+	statusMessageLabel = Instance.new("TextLabel")
+	statusMessageLabel.Size = UDim2.new(1, -24, 0, 24)
+	statusMessageLabel.Position = UDim2.new(0, 12, 1, -100)
+	statusMessageLabel.BackgroundTransparency = 1
+	statusMessageLabel.Text = ""
+	statusMessageLabel.TextColor3 = COLOR_HP_GREEN
+	statusMessageLabel.Font = UI_FONT
+	statusMessageLabel.TextSize = 14
+	statusMessageLabel.Parent = col2
+
+	refineButton = Instance.new("TextButton")
+	refineButton.Size = UDim2.new(1, -24, 0, 52)
+	refineButton.Position = UDim2.new(0, 12, 1, -64)
+	refineButton.BackgroundColor3 = COLOR_ACTION_GOLD
+	refineButton.Text = "REFINE SPIRIT DAN"
+	refineButton.TextColor3 = COLOR_LIGHT_CARD
+	refineButton.Font = UI_FONT
+	refineButton.TextSize = 20
+	refineButton.Parent = col2
+
+	refineButton.MouseButton1Click:Connect(function()
+		if isRefining then return end
+
+		local selectedIndices: { number } = {}
+		for i = 1, 3 do
+			if cauldronSlots[i].SlotIdx then
+				table.insert(selectedIndices, cauldronSlots[i].SlotIdx :: number)
+			end
+		end
+
+		if #selectedIndices == 0 then
+			statusMessageLabel.Text = "Cauldron is empty! Click herbs on the left."
+			statusMessageLabel.TextColor3 = COLOR_DANGER_RED
+			return
+		end
+
+		isRefining = true
+		refineButton.Text = "REFINING IN PROGRESS..."
+		refineButton.BackgroundColor3 = COLOR_TEXT_SUB
+		statusMessageLabel.Text = ""
+
+		alchemyActionRemote:FireServer({
+			Action = "RefineManualCombination",
+			SelectedSlotIndices = selectedIndices,
+		})
+	end)
+
+	-- COLUMN 3: FORMULA GUIDE REFERENCE
+	local col3 = Instance.new("Frame")
+	col3.Size = UDim2.new(0, 310, 1, -64)
+	col3.Position = UDim2.new(0, 828, 0, 52)
+	col3.BackgroundColor3 = COLOR_LIGHT_PANEL
+	col3.BorderSizePixel = 0
+	col3.Parent = mainModal
+
+	local col3Stroke = Instance.new("UIStroke")
+	col3Stroke.Color = COLOR_LIGHT_BORDER
+	col3Stroke.Thickness = 1.5
+	col3Stroke.Parent = col3
+
+	local c3Header = Instance.new("TextLabel")
+	c3Header.Size = UDim2.new(1, 0, 0, 38)
+	c3Header.BackgroundColor3 = COLOR_LIGHT_CARD
+	c3Header.Text = "FORMULA COMBINATION GUIDE"
+	c3Header.TextColor3 = COLOR_TEXT_MAIN
+	c3Header.Font = UI_FONT
+	c3Header.TextSize = 15
+	c3Header.Parent = col3
+
+	local guideList = Instance.new("ScrollingFrame")
+	guideList.Size = UDim2.new(1, -16, 1, -52)
+	guideList.Position = UDim2.new(0, 8, 0, 44)
+	guideList.BackgroundTransparency = 1
+	guideList.BorderSizePixel = 0
+	guideList.ScrollBarThickness = 4
+	guideList.ScrollBarImageColor3 = COLOR_AZURE_BLUE
+	guideList.Parent = col3
+
+	local glLayout = Instance.new("UIListLayout")
+	glLayout.FillDirection = Enum.FillDirection.Vertical
+	glLayout.Padding = UDim.new(0, 8)
+	glLayout.Parent = guideList
+
+	for formulaId, formula in pairs(AlchemyConfig.GetAllFormulas()) do
+		local card = Instance.new("Frame")
+		card.Size = UDim2.new(1, 0, 0, 95)
+		card.BackgroundColor3 = COLOR_LIGHT_CARD
+		card.BorderSizePixel = 0
+		card.Parent = guideList
+
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Color = COLOR_LIGHT_BORDER
+		cardStroke.Thickness = 1
+		cardStroke.Parent = card
+
+		local title = Instance.new("TextLabel")
+		title.Size = UDim2.new(1, -12, 0, 24)
+		title.Position = UDim2.new(0, 6, 0, 4)
+		title.BackgroundTransparency = 1
+		title.Text = formula.Name
+		title.TextColor3 = COLOR_TEXT_MAIN
+		title.Font = UI_FONT
+		title.TextSize = 14
+		title.TextXAlignment = Enum.TextXAlignment.Left
+		title.Parent = card
+
+		local reqs = "Reqs: " .. table.concat(formula.RequiredArchetypes, " + ")
+		local reqLabel = Instance.new("TextLabel")
+		reqLabel.Size = UDim2.new(1, -12, 0, 36)
+		reqLabel.Position = UDim2.new(0, 6, 0, 28)
+		reqLabel.BackgroundTransparency = 1
+		reqLabel.Text = reqs
+		reqLabel.TextColor3 = COLOR_AZURE_BLUE
+		reqLabel.Font = UI_FONT
+		reqLabel.TextSize = 12
+		reqLabel.TextWrapped = true
+		reqLabel.TextXAlignment = Enum.TextXAlignment.Left
+		reqLabel.Parent = card
+
+		local info = string.format("Base Rate: %d%% | Qi: %d", math.floor(formula.BaseSuccessRate * 100), formula.BaseQiCost)
+		local infoLabel = Instance.new("TextLabel")
+		infoLabel.Size = UDim2.new(1, -12, 0, 20)
+		infoLabel.Position = UDim2.new(0, 6, 0, 68)
+		infoLabel.BackgroundTransparency = 1
+		infoLabel.Text = info
+		infoLabel.TextColor3 = COLOR_TEXT_SUB
+		infoLabel.Font = UI_FONT
+		infoLabel.TextSize = 11
+		infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+		infoLabel.Parent = card
 	end
 end
 
-function AlchemyController.RefreshWorkspace()
-	for rId, card in pairs(recipeButtons) do
-		local stroke = card:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			if rId == selectedRecipeId then
-				stroke.Color = COLOR_AZURE
-				stroke.Thickness = 2.5
-				card.BackgroundColor3 = COLOR_LIGHT_PANEL
-			else
+function AlchemyController.RefreshHerbPicker()
+	herbPickerGrid:ClearAllChildren()
+
+	local layout = Instance.new("UIGridLayout")
+	layout.CellSize = UDim2.new(0, 92, 0, 92)
+	layout.CellPadding = UDim2.new(0, 8, 0, 8)
+	layout.Parent = herbPickerGrid
+
+	for slotIdx, slotData in pairs(currentInventoryData) do
+		if slotData then
+			local itemDef = ItemConfig.GetItem(slotData.ItemId)
+			if itemDef and itemDef.Type == "Material" then
+				local slotFrame = Instance.new("Frame")
+				slotFrame.Name = "HerbSlot_" .. slotIdx
+				slotFrame.BackgroundColor3 = COLOR_LIGHT_CARD
+				slotFrame.BorderSizePixel = 0
+				slotFrame.Parent = herbPickerGrid
+
+				local stroke = Instance.new("UIStroke")
 				stroke.Color = COLOR_LIGHT_BORDER
 				stroke.Thickness = 1.5
-				card.BackgroundColor3 = COLOR_LIGHT_CARD
+				stroke.Parent = slotFrame
+
+				local nameLbl = Instance.new("TextLabel")
+				nameLbl.Size = UDim2.new(1, -6, 1, -22)
+				nameLbl.Position = UDim2.new(0, 3, 0, 4)
+				nameLbl.BackgroundTransparency = 1
+				nameLbl.Text = itemDef.Name
+				nameLbl.TextColor3 = COLOR_TEXT_MAIN
+				nameLbl.Font = UI_FONT
+				nameLbl.TextSize = 11
+				nameLbl.TextWrapped = true
+				nameLbl.Parent = slotFrame
+
+				local countLbl = Instance.new("TextLabel")
+				countLbl.Size = UDim2.new(1, -4, 0, 16)
+				countLbl.Position = UDim2.new(0, 0, 1, -16)
+				countLbl.BackgroundTransparency = 1
+				countLbl.Text = "x" .. slotData.Count
+				countLbl.TextColor3 = COLOR_TEXT_SUB
+				countLbl.Font = UI_FONT
+				countLbl.TextSize = 11
+				countLbl.TextXAlignment = Enum.TextXAlignment.Right
+				countLbl.Parent = slotFrame
+
+				local btn = Instance.new("TextButton")
+				btn.Size = UDim2.new(1, 0, 1, 0)
+				btn.BackgroundTransparency = 1
+				btn.Text = ""
+				btn.Parent = slotFrame
+
+				btn.MouseButton1Click:Connect(function()
+					-- Click herb to insert into first empty Cauldron Slot
+					for i = 1, 3 do
+						if not cauldronSlots[i].SlotIdx then
+							cauldronSlots[i] = { SlotIdx = slotIdx, ItemId = slotData.ItemId }
+							break
+						end
+					end
+					AlchemyController.UpdateCauldronSlotDisplay()
+					AlchemyController.UpdateMetrics()
+				end)
 			end
 		end
 	end
+end
 
-	local recipes = AlchemyController.GetRecipeTable()
-	local recipeDef = recipes[selectedRecipeId]
-	if not recipeDef or type(recipeDef) ~= "table" then return end
-
-	local pillDef = ItemConfig[recipeDef.OutputItemId]
-	if not pillDef then return end
-
-	successChanceText.Text = string.format("SUCCESS RATE: %d%% CHANCE", math.round((recipeDef.SuccessRate or 0.85) * 100))
-	qiCostText.Text = string.format("QI COST: %d SPIRIT QI", recipeDef.QiCost or 30)
-	durationText.Text = string.format("CRAFTING DURATION: %.1fs", recipeDef.CraftingTime or 3.0)
-
-	outcomeTitle.Text = pillDef.Name
-	outcomeRarityBadge.Text = string.format("%s %s", pillDef.Rarity:upper(), pillDef.Category:upper())
-	outcomeRarityBadge.TextColor3 = RARITY_COLORS[pillDef.Rarity] or COLOR_TEXT_MAIN
-	outcomeIcon.Image = pillDef.Icon or ""
-	outcomeDescText.Text = pillDef.Description
-
-	local statText = ""
-	if pillDef.HealAmount and pillDef.HealAmount > 0 then
-		statText ..= string.format("HEALTH RESTORED: +%d\n", pillDef.HealAmount)
-	end
-	if pillDef.QiAmount and pillDef.QiAmount > 0 then
-		statText ..= string.format("SPIRIT QI RESTORED: +%d\n", pillDef.QiAmount)
-	end
-	outcomeStatsText.Text = statText
-
-	for _, child in ipairs(ingredientSlotContainer:GetChildren()) do
-		if not child:IsA("UIListLayout") then child:Destroy() end
-	end
-
-	local ingredients = recipeDef.Ingredients or {}
-	for _, ing in ipairs(ingredients) do
-		local herbDef = ItemConfig[ing.ItemId]
-		if not herbDef then continue end
-
-		local ownedCount = AlchemyController.GetInventoryItemCount(ing.ItemId)
-
-		local slot = Instance.new("Frame")
-		slot.Size = UDim2.new(0, 110, 0, 110)
-		slot.BackgroundColor3 = COLOR_LIGHT_CARD
-		slot.BorderSizePixel = 0
-		slot.Parent = ingredientSlotContainer
-
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = if ownedCount >= ing.Count then COLOR_HP_GREEN else COLOR_DANGER_RED
-		stroke.Thickness = 1.5
-		stroke.Parent = slot
-
-		local icon = Instance.new("ImageLabel")
-		icon.Size = UDim2.new(0, 56, 0, 56)
-		icon.Position = UDim2.new(0.5, -28, 0, 10)
-		icon.BackgroundTransparency = 1
-		icon.Image = herbDef.Icon or ""
-		icon.ScaleType = Enum.ScaleType.Fit
-		icon.Parent = slot
-
-		local countLabel = Instance.new("TextLabel")
-		countLabel.Size = UDim2.new(1, -4, 0, 32)
-		countLabel.Position = UDim2.new(0, 2, 0, 72)
-		countLabel.BackgroundTransparency = 1
-		countLabel.Text = string.format("%d / %d Owned", ownedCount, ing.Count)
-		countLabel.TextColor3 = if ownedCount >= ing.Count then COLOR_TEXT_MAIN else COLOR_DANGER_RED
-		countLabel.Font = UI_FONT
-		countLabel.TextSize = 12
-		countLabel.TextWrapped = true
-		countLabel.Parent = slot
+function AlchemyController.UpdateCauldronSlotDisplay()
+	for i = 1, 3 do
+		local slotFrame = cauldronSlotButtons[i]
+		if slotFrame then
+			local nameLbl = slotFrame:FindFirstChild("HerbNameLabel") :: TextLabel?
+			local data = cauldronSlots[i]
+			if data and data.ItemId then
+				local itemDef = ItemConfig.GetItem(data.ItemId)
+				if nameLbl then
+					nameLbl.Text = if itemDef then itemDef.Name else data.ItemId
+					nameLbl.TextColor3 = COLOR_AZURE_BLUE
+				end
+			else
+				if nameLbl then
+					nameLbl.Text = "+ Add Herb"
+					nameLbl.TextColor3 = COLOR_TEXT_SUB
+				end
+			end
+		end
 	end
 end
 
-function AlchemyController.GetInventoryItemCount(itemId: string): number
-	local total = 0
-	for _, slotData in pairs(currentInventory) do
-		if slotData and slotData.ItemId == itemId then
-			total += slotData.Count
-		end
-	end
-	return total
-end
-
-function AlchemyController.StartCrafting()
-	if isCrafting then return end
-
-	local recipes = AlchemyController.GetRecipeTable()
-	local recipeDef = recipes[selectedRecipeId]
-	if not recipeDef or type(recipeDef) ~= "table" then return end
-
-	local ingredients = recipeDef.Ingredients or {}
-	for _, ing in ipairs(ingredients) do
-		local owned = AlchemyController.GetInventoryItemCount(ing.ItemId)
-		if owned < ing.Count then
-			warn("[AlchemyController] Cannot craft! Insufficient ingredient:", ing.ItemId)
-			return
+function AlchemyController.UpdateMetrics()
+	local insertedItemIds: { string } = {}
+	for i = 1, 3 do
+		if cauldronSlots[i].ItemId then
+			table.insert(insertedItemIds, cauldronSlots[i].ItemId :: string)
 		end
 	end
 
-	isCrafting = true
-	refineBtn.Text = "BREWING SPIRIT DAN..."
-	refineBtn.BackgroundColor3 = COLOR_AZURE
+	if #insertedItemIds == 0 then
+		matchedFormulaLabel.Text = "MATCHED FORMULA: NONE"
+		successRateLabel.Text = "ESTIMATED SUCCESS: 0%"
+		qualityTextLabel.Text = "EXPECTED QUALITY: STANDARD"
+		qiCostLabel.Text = "REQUIRED QI: 0 SPIRIT QI"
+		return
+	end
 
-	progressBarFill.Size = UDim2.new(0, 0, 1, 0)
-	local tween = TweenService:Create(progressBarFill, TweenInfo.new(recipeDef.CraftingTime or 3.0, Enum.EasingStyle.Linear), {
-		Size = UDim2.new(1, 0, 1, 0)
-	})
-	tween:Play()
+	local formula, successRate, potencyMult, qualityText = AlchemyConfig.CalculateCombinationMetrics(insertedItemIds)
 
-	tween.Completed:Connect(function()
-		alchemyActionRemote:FireServer({
-			Action = "CraftPill",
-			RecipeId = selectedRecipeId,
-		})
-	end)
+	if formula then
+		matchedFormulaLabel.Text = "FORMULA: " .. formula.Name:upper()
+		qiCostLabel.Text = string.format("REQUIRED QI: %d SPIRIT QI", formula.BaseQiCost)
+	else
+		matchedFormulaLabel.Text = "FORMULA: UNKNOWN MIXTURE"
+		qiCostLabel.Text = "REQUIRED QI: 20 SPIRIT QI"
+	end
+
+	successRateLabel.Text = string.format("ESTIMATED SUCCESS: %d%% CHANCE", math.floor(successRate * 100))
+	qualityTextLabel.Text = string.format("QUALITY: %s (%.1fx)", qualityText:upper(), potencyMult)
 end
 
 return AlchemyController

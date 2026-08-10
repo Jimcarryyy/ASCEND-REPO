@@ -1,72 +1,85 @@
 --!strict
 --[[
     UIAssets.luau
-    Central asset registry mapping all UI visual elements to Roblox Asset IDs.
-    Updated with Traditional Xianxia Jade, Cream, Peach & Mahogany Palette.
+    Location: src/ReplicatedStorage/Shared/Configs/UIAssets.luau
+    Central UI asset and aesthetic style configuration for ASCEND.
+    Unified Light-Mode Flat 2D Palette (Matching Alchemy Cauldron Aesthetic).
 ]]
 
-export type AssetCategory = "HUD" | "Panels" | "Weapons" | "Skills" | "Currencies" | "StatusEffects"
-
-local UIAssets = {
-	Colors = {
-		MainPanel = Color3.fromRGB(247, 234, 224),      -- #F7EAE0 Warm Cream White
-		CardBackground = Color3.fromRGB(249, 210, 186), -- #F9D2BA Soft Peach Accent Card
-		BorderStroke = Color3.fromRGB(29, 69, 51),      -- #1D4533 Deep Jade Green
-		HeaderBackground = Color3.fromRGB(29, 69, 51),  -- #1D4533 Deep Jade Green
-		TextPrimary = Color3.fromRGB(29, 69, 51),       -- #1D4533 Deep Jade Text
-		TextHeader = Color3.fromRGB(247, 234, 224),     -- #F7EAE0 Cream Text
-		TextMuted = Color3.fromRGB(94, 49, 34),         -- #5E3122 Rich Mahogany Wood
-		ButtonPrimary = Color3.fromRGB(94, 49, 34),     -- #5E3122 Mahogany Button
-		HealthFill = Color3.fromRGB(29, 69, 51),        -- #1D4533 Deep Jade Green
-		QiFill = Color3.fromRGB(94, 49, 34),            -- #5E3122 Rich Mahogany Qi
-	},
-	HUD = {
-		ReticleDot = "rbxassetid://91967824711199",
-		SlotBase = "rbxassetid://130801066203315",
-		KeyBadge = "rbxassetid://100047016230704",
-		BossFrame = "rbxassetid://135743022798866",
-		SlotActive = "rbxassetid://101243757444363",
-		TribulationBar = "rbxassetid://116053311300978",
-		CooldownMask = "rbxassetid://122590929808037",
-	},
-	Panels = {
-		HeaderBanner = "rbxassetid://98859547252438",
-		ModalBG = "rbxassetid://107541216755976",
-		DividerLine = "rbxassetid://84097505475730",
-		ButtonPrimary = "rbxassetid://85491533300951",
-		GridSlot = "rbxassetid://102206331438130",
-	},
-	Weapons = {
-		FlyingSword = "rbxassetid://91700918054626",
-		Robes = "rbxassetid://89364653325641",
-		TalismanBanner = "rbxassetid://80831618004196",
-		Pendant = "rbxassetid://82725794143925",
-		Ring = "rbxassetid://91941666846046",
-	},
-	Skills = {
-		M1_SwordArt = "rbxassetid://105049604836680",
-		M2_HeavySlam = "rbxassetid://112434505017874",
-		DragonRoar = "rbxassetid://125652382062875",
-		ParryQiShield = "rbxassetid://102896450348273",
-		DodgeWindstep = "rbxassetid://112980465072041",
-		TribulationBolt = "rbxassetid://128833809862475",
-		HundredPalms = "rbxassetid://99885781952768",
-		SwordTempest = "rbxassetid://78370022706412",
-	},
-	Currencies = {
-		SpiritStoneLow = "rbxassetid://86714482204043",
-		SpiritStoneHigh = "rbxassetid://103503361995261",
-		PillBreakthrough = "rbxassetid://126575322817243",
-		PillQiGathering = "rbxassetid://88019278886655",
-		HerbGinseng = "rbxassetid://109989287833700",
-		DemonCore = "rbxassetid://99733786523930",
-	},
-	StatusEffects = {
-		BodyTempered = "rbxassetid://132857904784003",
-		QiDeviation = "rbxassetid://75594204304893",
-		TribulationBurn = "rbxassetid://84311417281254",
-		Poison = "rbxassetid://105584493403425",
-	},
+export type ColorPalette = {
+	LightMain: Color3,     -- #F8FAF9 Window Main
+	LightPanel: Color3,    -- #F1F5F9 Sub-Panels
+	LightCard: Color3,     -- #FFFFFF Cards & Slots
+	LightBorder: Color3,   -- #CBD5E1 Edge Borders
+	TextMain: Color3,      -- #0F172A Deep Charcoal Text
+	TextSub: Color3,       -- #64748B Muted Subtext
+	AzureBlue: Color3,     -- #3B82F6 Sapphire Blue (Qi)
+	EmeraldGreen: Color3,  -- #10B981 Emerald Green (HP)
+	ActionGold: Color3,    -- #D97706 Warm Amber Gold
+	DangerRed: Color3,     -- #E11D48 Carmine Red
 }
+
+export type RarityColorMap = {
+	Common: Color3,
+	Uncommon: Color3,
+	Rare: Color3,
+	Epic: Color3,
+	Legendary: Color3,
+	Mythic: Color3,
+}
+
+local UIAssets = {}
+
+-- Unified Light-Mode Aesthetic Color Palette
+UIAssets.Palette = {
+	LightMain    = Color3.fromRGB(248, 250, 249), -- #F8FAF9
+	LightPanel   = Color3.fromRGB(241, 245, 249), -- #F1F5F9
+	LightCard    = Color3.fromRGB(255, 255, 255), -- #FFFFFF
+	LightBorder  = Color3.fromRGB(203, 213, 225), -- #CBD5E1
+	TextMain     = Color3.fromRGB(15, 23, 42),    -- #0F172A
+	TextSub      = Color3.fromRGB(100, 116, 139), -- #64748B
+	AzureBlue    = Color3.fromRGB(59, 130, 246),  -- #3B82F6
+	EmeraldGreen = Color3.fromRGB(16, 185, 129), -- #10B981
+	ActionGold   = Color3.fromRGB(217, 119, 6),   -- #D97706
+	DangerRed    = Color3.fromRGB(225, 29, 72),   -- #E11D48
+}
+
+-- Rarity Colors matching Alchemy Cauldron theme
+UIAssets.RarityColors = {
+	Common    = Color3.fromRGB(100, 116, 139), -- Slate Muted
+	Uncommon  = Color3.fromRGB(16, 185, 129),  -- Emerald Green
+	Rare      = Color3.fromRGB(59, 130, 246),  -- Sapphire Blue
+	Epic      = Color3.fromRGB(147, 51, 234),  -- Spiritual Purple
+	Legendary = Color3.fromRGB(217, 119, 6),   -- Flame Gold
+	Mythic    = Color3.fromRGB(225, 29, 72),   -- Crimson Immortal
+}
+
+-- Typography Configuration (FredokaOne Bold Sans-Serif)
+UIAssets.Fonts = {
+	Header    = Enum.Font.FredokaOne,
+	SubHeader = Enum.Font.FredokaOne,
+	Body      = Enum.Font.SourceSans,
+	BodyBold  = Enum.Font.SourceSansBold,
+}
+
+-- Image Assets
+UIAssets.Images = {
+	ParchmentBackground = "",
+	JadeFrameBorder     = "",
+	QiBarFill           = "",
+	CrestSlotFrame      = "",
+	SwordIcon           = "",
+	PillIcon            = "",
+}
+
+function UIAssets.GetColor(colorName: string): Color3
+	local color = (UIAssets.Palette :: { [string]: Color3 })[colorName]
+	return color or UIAssets.Palette.LightMain
+end
+
+function UIAssets.GetRarityColor(rarity: string): Color3
+	local color = (UIAssets.RarityColors :: { [string]: Color3 })[rarity]
+	return color or UIAssets.RarityColors.Common
+end
 
 return UIAssets

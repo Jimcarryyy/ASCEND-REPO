@@ -2,7 +2,8 @@
 --[[
     InventoryManager.luau
     Location: src/ServerScriptService/Server/State/InventoryManager.luau
-    Server-authoritative inventory engine. Capped at 60 slots for testing all assets.
+    Server-authoritative inventory engine for ASCEND.
+    Capped at 60 slots for storing consumables, weapons, materials, and crest arrays.
 ]]
 
 local Players = game:GetService("Players")
@@ -18,7 +19,7 @@ export type InventorySlot = {
 }
 
 local InventoryManager = {}
-local MAX_SLOTS = 60 -- Temporarily increased from 30 to 60 for testing all 37+ items!
+local MAX_SLOTS = 60 -- Expanded from 30 to 60 slots for comprehensive testing
 
 local playerInventories: { [Player]: { [number]: InventorySlot? } } = {}
 
@@ -70,21 +71,21 @@ function InventoryManager.EnsureTestItems(player: Player)
 
 	local hasTestWeapons = false
 	for _, slot in pairs(inv) do
-		if slot and slot.ItemId == "MYTHIC_SUN_SLAYER_SWORD" then
+		if slot and (slot.ItemId == "AzureCloudSword" or slot.ItemId == "FlyingSwordItem") then
 			hasTestWeapons = true
 			break
 		end
 	end
 
 	if not hasTestWeapons then
-		-- Consumables & Herbs
+		-- Add Starter Consumables & Herbs
 		InventoryManager.AddItem(player, "SpiritHealingDan", 5)
 		InventoryManager.AddItem(player, "FoundationGatheringDan", 3)
 		InventoryManager.AddItem(player, "SpiritGrass", 12)
 
-		-- All 32 Weapons & Back Armors
-		for itemId, itemDef in pairs(ItemConfig) do
-			if itemDef.Category == "Weapon" then
+		-- Add Weapons & Crest Arrays from ItemConfig
+		for itemId, itemDef in pairs(ItemConfig.GetAllItems()) do
+			if itemDef.Type == "Weapon" or itemDef.Type == "Crest" then
 				InventoryManager.AddItem(player, itemId, 1)
 			end
 		end
@@ -100,7 +101,7 @@ function InventoryManager.GetInventory(player: Player): { [number]: InventorySlo
 end
 
 function InventoryManager.AddItem(player: Player, itemId: string, count: number): boolean
-	local itemDef = ItemConfig[itemId]
+	local itemDef = ItemConfig.GetItem(itemId)
 	if not itemDef then return false end
 
 	local inv = playerInventories[player]
@@ -109,7 +110,7 @@ function InventoryManager.AddItem(player: Player, itemId: string, count: number)
 	local maxStack = itemDef.MaxStack or 1
 	local remaining = count
 
-	-- 1. Stacking
+	-- 1. Stack into existing slots with space
 	for slotIdx = 1, MAX_SLOTS do
 		local slot = inv[slotIdx]
 		if slot and slot.ItemId == itemId and slot.Count < maxStack then
@@ -121,7 +122,7 @@ function InventoryManager.AddItem(player: Player, itemId: string, count: number)
 		end
 	end
 
-	-- 2. New Slots
+	-- 2. Populate empty slots
 	if remaining > 0 then
 		for slotIdx = 1, MAX_SLOTS do
 			if not inv[slotIdx] then
@@ -142,7 +143,7 @@ end
 
 function InventoryManager.SetInventory(player: Player, inventoryData: { [number]: InventorySlot? })
 	playerInventories[player] = {}
-	
+
 	if inventoryData then
 		for slotIdx, slot in pairs(inventoryData) do
 			if slot and type(slot.ItemId) == "string" and type(slot.Count) == "number" then
@@ -166,7 +167,7 @@ function InventoryManager.UseItem(player: Player, slotIndex: number)
 	local slot = inv[slotIndex]
 	if not slot then return end
 
-	local itemDef = ItemConfig[slot.ItemId]
+	local itemDef = ItemConfig.GetItem(slot.ItemId)
 	if not itemDef then return end
 
 	local character = player.Character
@@ -175,19 +176,19 @@ function InventoryManager.UseItem(player: Player, slotIndex: number)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return end
 
-	if itemDef.Category == "Consumable" then
+	if itemDef.Type == "Consumable" then
 		local used = false
 
-		if itemDef.HealAmount and itemDef.HealAmount > 0 then
-			humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + itemDef.HealAmount)
+		if itemDef.Stats and itemDef.Stats.HealAmount and itemDef.Stats.HealAmount > 0 then
+			humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + itemDef.Stats.HealAmount)
 			used = true
 		end
 
-		if itemDef.QiAmount and itemDef.QiAmount > 0 then
+		if itemDef.Stats and itemDef.Stats.QiGrant and itemDef.Stats.QiGrant > 0 then
 			local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 			local pData = CultivationManager.GetPlayerData(player)
 			if pData then
-				pData.CurrentQi = math.min(800, pData.CurrentQi + itemDef.QiAmount)
+				pData.CurrentQi = math.min(800, pData.CurrentQi + itemDef.Stats.QiGrant)
 				CultivationManager.SyncClient(player)
 				used = true
 			end
@@ -200,13 +201,9 @@ function InventoryManager.UseItem(player: Player, slotIndex: number)
 			end
 		end
 
-	elseif itemDef.Category == "Weapon" then
+	elseif itemDef.Type == "Weapon" or itemDef.Type == "Crest" then
 		local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
-		if itemDef.WeaponType == "FlyingSword" then
-			WeaponManager.EquipWeapon(player, itemDef.Id)
-		elseif itemDef.WeaponType == "BackArmor" then
-			WeaponManager.EquipBackArmor(player, itemDef.Id)
-		end
+		WeaponManager.EquipWeapon(player, itemDef.Id)
 	end
 
 	InventoryManager.SyncClient(player)

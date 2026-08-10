@@ -2,24 +2,28 @@
 --[[
     ServerMain.server.luau
     Location: src/ServerScriptService/Server/ServerMain.server.luau
-    Server entry point for ASCEND Roblox project.
+    Master server-side initialization script for ASCEND.
 ]]
 
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local RemoteEvents = require(game:GetService("ReplicatedStorage").Shared.Network.RemoteEvents)
-RemoteEvents.Init()
-
-local CombatStateManager = require(ServerScriptService.Server.State.CombatStateManager)
-local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
-local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
-local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
 local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
+local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
+local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
+local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+local CombatStateManager = require(ServerScriptService.Server.State.CombatStateManager)
+local AlchemyManager = require(ServerScriptService.Server.Cultivation.AlchemyManager)
 
+-- World Systems
+local GatheringManager = require(ServerScriptService.Server.World.GatheringManager)
+
+-- Initialize Server Core Subsystems
 CombatStateManager.Init()
 WeaponManager.Init()
 CultivationManager.Init()
 InventoryManager.Init()
 PlayerDataManager.Init()
+GatheringManager.Init()
+AlchemyManager.Init()
 
 print("[ASCEND] Server Main Engine Initialized Successfully!")

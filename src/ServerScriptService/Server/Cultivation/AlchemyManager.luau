@@ -1,206 +1,179 @@
 --!strict
--- AlchemyManager.luau
--- Server-authoritative alchemy crafting, material validation, and spirit pill consumption engine.
+--[[
+    AlchemyManager.luau
+    Location: src/ServerScriptService/Server/Cultivation/AlchemyManager.luau
+    Server-authoritative manual cauldron combination alchemy engine.
+]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+local CollectionService = game:GetService("CollectionService")
 
 local AlchemyConfig = require(ReplicatedStorage.Shared.Configs.AlchemyConfig)
-local CultivationManager = require(script.Parent.CultivationManager)
+local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
+local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
+local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local AlchemyManager = {}
-AlchemyManager.__index = AlchemyManager
+local activeRefiningMap: { [Player]: boolean } = {}
 
-local ActiveCrafting: { [Player]: boolean } = {}
-local ActiveBuffs: { [Player]: { [string]: thread } } = {}
-local PlayerInventories: { [Player]: { [string]: number } } = {}
-local isInitialized = false
-
-local function EnsurePlayerData(player: Player)
-	if not ActiveBuffs[player] then
-		ActiveBuffs[player] = {}
-	end
-	if not PlayerInventories[player] then
-		PlayerInventories[player] = {
-			mat_spirit_herb = 15,
-			mat_demon_core = 5,
-			mat_spirit_water = 10,
-			pill_qi_gathering = 2,
-			pill_healing_dan = 2,
-		}
-	end
-end
+local alchemyActionRemote: RemoteEvent
 
 function AlchemyManager.Init()
-	if isInitialized then return end
-	isInitialized = true
+	alchemyActionRemote = RemoteEvents.GetRemote("AlchemyAction")
 
-	-- Pre-create remote event on server start
-	local alchemyRemote = RemoteEvents.GetRemote("AlchemyAction")
-
-	-- Wire players already in server
-	for _, player in ipairs(Players:GetPlayers()) do
-		EnsurePlayerData(player)
+	-- Check workspace.AlchemyCauldrons Folder
+	local folder = workspace:FindFirstChild("AlchemyCauldrons")
+	if folder then
+		for _, child in ipairs(folder:GetChildren()) do
+			AlchemyManager.SetupCauldronModel(child)
+		end
+		folder.ChildAdded:Connect(function(child)
+			AlchemyManager.SetupCauldronModel(child)
+		end)
 	end
 
-	-- Connect join/leave handlers
-	Players.PlayerAdded:Connect(EnsurePlayerData)
+	-- Check CollectionService Tag "AlchemyCauldron"
+	for _, cauldronModel in ipairs(CollectionService:GetTagged("AlchemyCauldron")) do
+		AlchemyManager.SetupCauldronModel(cauldronModel)
+	end
 
-	Players.PlayerRemoving:Connect(function(player)
-		ActiveCrafting[player] = nil
-		if ActiveBuffs[player] then
-			for _, threadTask in pairs(ActiveBuffs[player]) do
-				task.cancel(threadTask)
+	CollectionService:GetInstanceAddedSignal("AlchemyCauldron"):Connect(function(instance)
+		AlchemyManager.SetupCauldronModel(instance)
+	end)
+
+	alchemyActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
+		if type(payload) ~= "table" or not payload.Action then return end
+
+		if payload.Action == "RefineManualCombination" and type(payload.SelectedSlotIndices) == "table" then
+			AlchemyManager.RefineManualCombination(player, payload.SelectedSlotIndices)
+		end
+	end)
+
+	print("[ASCEND] Upgraded Manual Combination AlchemyManager Initialized.")
+end
+
+function AlchemyManager.SetupCauldronModel(cauldronInstance: Instance)
+	if not cauldronInstance:IsA("Model") and not cauldronInstance:IsA("BasePart") then return end
+
+	if cauldronInstance:IsA("Model") and not cauldronInstance.PrimaryPart then
+		cauldronInstance.PrimaryPart = cauldronInstance:FindFirstChildWhichIsA("BasePart")
+	end
+
+	local existingPrompt = cauldronInstance:FindFirstChildOfClass("ProximityPrompt")
+	if not existingPrompt then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "CauldronPrompt"
+		prompt.ObjectText = "Spirit Cauldron Furnace"
+		prompt.ActionText = "Combine & Refine Herbs"
+		prompt.HoldDuration = 0.5
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = cauldronInstance
+	end
+end
+
+function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndices: { number })
+	if activeRefiningMap[player] then return end
+
+	local playerInventory = InventoryManager.GetInventory(player)
+	if not playerInventory then return end
+
+	-- 1. Extract Selected Herbs from Inventory Slots
+	local insertedHerbItemIds: { string } = {}
+	local slotsToDeduct: { number } = {}
+
+	for _, slotIdx in ipairs(selectedSlotIndices) do
+		local slot = playerInventory[slotIdx]
+		if slot and slot.Count >= 1 then
+			table.insert(insertedHerbItemIds, slot.ItemId)
+			table.insert(slotsToDeduct, slotIdx)
+		end
+	end
+
+	if #insertedHerbItemIds == 0 then
+		alchemyActionRemote:FireClient(player, {
+			Action = "RefineResult",
+			Success = false,
+			Message = "Cauldron is empty! Insert at least 1 herb.",
+		})
+		return
+	end
+
+	-- 2. Calculate Combination Formula & Age Success Metrics
+	local formula, successRate, potencyMult, qualityText = AlchemyConfig.CalculateCombinationMetrics(insertedHerbItemIds)
+
+	if not formula then
+		alchemyActionRemote:FireClient(player, {
+			Action = "RefineResult",
+			Success = false,
+			Message = "Invalid herb combination! Ingredients burned into ash.",
+		})
+		return
+	end
+
+	-- 3. Check Player Qi Cost
+	local pData = CultivationManager.GetPlayerData(player)
+	if pData and pData.CurrentQi < formula.BaseQiCost then
+		alchemyActionRemote:FireClient(player, {
+			Action = "RefineResult",
+			Success = false,
+			Message = string.format("Insufficient Qi! Requires %d Spirit Qi.", formula.BaseQiCost),
+		})
+		return
+	end
+
+	activeRefiningMap[player] = true
+
+	-- Deduct Qi Cost
+	if pData then
+		pData.CurrentQi = math.max(0, pData.CurrentQi - formula.BaseQiCost)
+		CultivationManager.SyncClient(player)
+	end
+
+	-- Deduct Inserted Herbs from Inventory
+	for _, slotIdx in ipairs(slotsToDeduct) do
+		local slot = playerInventory[slotIdx]
+		if slot then
+			slot.Count -= 1
+			if slot.Count <= 0 then
+				playerInventory[slotIdx] = nil
 			end
-			ActiveBuffs[player] = nil
-		end
-		PlayerInventories[player] = nil
-	end)
-
-	-- Network Remote Handler
-	alchemyRemote.OnServerEvent:Connect(function(player: Player, actionType: string, payload: string)
-		EnsurePlayerData(player)
-		if actionType == "CraftPill" then
-			local success, message = AlchemyManager.CraftPill(player, payload)
-			print(string.format("[Alchemy Server] %s crafted '%s': %s (%s)", player.Name, payload, tostring(success), message))
-			alchemyRemote:FireClient(player, "CraftResult", { Success = success, Message = message, Inventory = AlchemyManager.GetPlayerInventory(player) })
-
-		elseif actionType == "ConsumePill" then
-			local success, message = AlchemyManager.ConsumePill(player, payload)
-			print(string.format("[Alchemy Server] %s consumed '%s': %s (%s)", player.Name, payload, tostring(success), message))
-			alchemyRemote:FireClient(player, "ConsumeResult", { Success = success, Message = message, Inventory = AlchemyManager.GetPlayerInventory(player) })
-		end
-	end)
-end
-
--- Validate if player has required ingredient counts
-local function HasIngredients(player: Player, recipe: AlchemyConfig.PillRecipe): boolean
-	EnsurePlayerData(player)
-	local inventory = PlayerInventories[player]
-	if not inventory then return false end
-
-	for _, ingredient in ipairs(recipe.Ingredients) do
-		local owned = inventory[ingredient.MaterialId] or 0
-		if owned < ingredient.Amount then
-			return false
 		end
 	end
-	return true
-end
 
--- Deduct ingredients upon crafting attempt
-local function ConsumeIngredients(player: Player, recipe: AlchemyConfig.PillRecipe)
-	EnsurePlayerData(player)
-	local inventory = PlayerInventories[player]
-	if not inventory then return end
+	InventoryManager.SyncClient(player)
 
-	for _, ingredient in ipairs(recipe.Ingredients) do
-		inventory[ingredient.MaterialId] = (inventory[ingredient.MaterialId] or 0) - ingredient.Amount
-	end
-end
+	-- Crafting Delay
+	task.wait(formula.CraftDuration)
 
--- Attempt crafting a spirit pill
-function AlchemyManager.CraftPill(player: Player, recipeId: string): (boolean, string)
-	EnsurePlayerData(player)
-	if ActiveCrafting[player] then
-		return false, "Alchemy furnace is currently active."
-	end
-
-	local recipe = AlchemyConfig.GetRecipe(recipeId)
-	if not recipe then
-		return false, "Invalid alchemy recipe."
-	end
-
-	if not HasIngredients(player, recipe) then
-		return false, "Insufficient spiritual materials."
-	end
-
-	ActiveCrafting[player] = true
-	ConsumeIngredients(player, recipe)
-
-	-- Wait for crafting duration delay on server
-	task.wait(recipe.CraftTime)
-	ActiveCrafting[player] = nil
-
-	-- Roll for success rate
+	-- 4. Roll Success Rate
 	local roll = math.random()
-	if roll <= recipe.SuccessRate then
-		local inventory = PlayerInventories[player]
-		if inventory then
-			inventory[recipe.RecipeId] = (inventory[recipe.RecipeId] or 0) + 1
-		end
-		return true, "Successfully refined " .. recipe.DisplayName .. "!"
+	local success = roll <= successRate
+
+	if success then
+		InventoryManager.AddItem(player, formula.ResultItemId, 1)
+		print(string.format("[AlchemyManager] %s refined %s (%s, Rate: %.2f)!", player.Name, formula.Name, qualityText, successRate))
+
+		alchemyActionRemote:FireClient(player, {
+			Action = "RefineResult",
+			Success = true,
+			Message = string.format("Refined %s (%s)!", formula.Name, qualityText),
+			ResultItemId = formula.ResultItemId,
+		})
 	else
-		return false, "Furnace fire flickered! Alchemy attempt failed."
+		print(string.format("[AlchemyManager] %s failed refining (Roll: %.2f vs Rate: %.2f)", player.Name, roll, successRate))
+
+		alchemyActionRemote:FireClient(player, {
+			Action = "RefineResult",
+			Success = false,
+			Message = "Refinement Failed! Herbs burned into furnace ash.",
+		})
 	end
+
+	activeRefiningMap[player] = nil
 end
-
--- Consume a spirit pill and apply high-dopamine effects
-function AlchemyManager.ConsumePill(player: Player, pillId: string): (boolean, string)
-	EnsurePlayerData(player)
-	local inventory = PlayerInventories[player]
-	if not inventory or (inventory[pillId] or 0) <= 0 then
-		return false, "Pill not available in inventory."
-	end
-
-	local recipe = AlchemyConfig.GetRecipe(pillId)
-	if not recipe then
-		return false, "Unknown spirit pill."
-	end
-
-	-- Deduct 1 pill
-	inventory[pillId] = inventory[pillId] - 1
-
-	-- Apply Pill Effects
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-
-	for _, effect in ipairs(recipe.Effects) do
-		if effect.Type == "InstantQi" then
-			CultivationManager.AddQi(player, effect.Value)
-
-		elseif effect.Type == "HealOverTime" and humanoid then
-			local duration = effect.Duration or 5
-			local healPerSec = (humanoid.MaxHealth * effect.Value) / duration
-			
-			task.spawn(function()
-				local elapsed = 0
-				while elapsed < duration and humanoid and humanoid.Health > 0 do
-					humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + (healPerSec * 0.5))
-					task.wait(0.5)
-					elapsed += 0.5
-				end
-			end)
-
-		elseif effect.Type == "QiGatherBoost" then
-			CultivationManager.ApplyQiBoost(player, effect.Value, effect.Duration or 30)
-
-		elseif effect.Type == "StatBuff" then
-			if ActiveBuffs[player] and effect.StatName then
-				if ActiveBuffs[player][effect.StatName] then
-					task.cancel(ActiveBuffs[player][effect.StatName])
-				end
-				
-				ActiveBuffs[player][effect.StatName] = task.spawn(function()
-					task.wait(effect.Duration or 60)
-					if ActiveBuffs[player] then
-						ActiveBuffs[player][effect.StatName] = nil
-					end
-				end)
-			end
-		end
-	end
-
-	return true, "Consumed " .. recipe.DisplayName
-end
-
-function AlchemyManager.GetPlayerInventory(player: Player)
-	EnsurePlayerData(player)
-	return PlayerInventories[player] or {}
-end
-
--- Auto-initialize on server load
-AlchemyManager.Init()
 
 return AlchemyManager

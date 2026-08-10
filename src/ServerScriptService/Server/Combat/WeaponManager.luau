@@ -2,341 +2,163 @@
 --[[
     WeaponManager.luau
     Location: src/ServerScriptService/Server/Combat/WeaponManager.luau
-    Master 3D Weapon & Back Armor Attachment Engine.
-    Standardizes imported FBX bounds scale for consistent weapon sizing.
+    Server-authoritative manager for equipping, welding, scaling, and activating weapon models.
 ]]
 
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+local Players = game:GetService("Players")
 
-local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
-local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 
-export type WeaponType = "FlyingSword" | "BackArmor"
-
-export type BackArmorStats = {
-	MaxHPBonus: number,
-	DefPercentBonus: number,
-	QiRegenBonus: number,
-}
+export type WeaponType = string
 
 local WeaponManager = {}
-local equippedWeapons: { [Player]: string } = {}
-local equippedBackArmors: { [Player]: string } = {}
-local updateSkillStateRemote: RemoteEvent
 
-function WeaponManager.Init()
-	updateSkillStateRemote = RemoteEvents.GetRemote("UpdateSkillState")
+local equippedWeaponsMap: { [Player]: string } = {}
+local spawnedWeaponModels: { [Player]: Model } = {}
 
-	Players.PlayerAdded:Connect(function(player)
-		equippedWeapons[player] = "MYTHIC_SUN_SLAYER_SWORD"
-		equippedBackArmors[player] = "MYTHIC_SUN_SLAYER_CREST"
+-- Standardized maximum bounding box dimensions for character hand weapons
+local TARGET_MAX_WEAPON_SIZE = Vector3.new(1.5, 6.0, 1.5)
 
-		player.CharacterAdded:Connect(function(character)
-			task.wait(0.3)
-			WeaponManager.AttachWeaponModel(player, equippedWeapons[player] or "MYTHIC_SUN_SLAYER_SWORD")
-			WeaponManager.AttachBackArmor(player, equippedBackArmors[player] or "MYTHIC_SUN_SLAYER_CREST")
-		end)
-	end)
+-- Helper: Recursive model lookup across ReplicatedStorage & ServerStorage
+local function FindWeaponModelTemplate(modelName: string): Model?
+	local found = ReplicatedStorage:FindFirstChild(modelName, true)
+	if not found then
+		found = ServerStorage:FindFirstChild(modelName, true)
+	end
 
-	Players.PlayerRemoving:Connect(function(player)
-		equippedWeapons[player] = nil
-		equippedBackArmors[player] = nil
-	end)
+	if found and found:IsA("Model") then
+		return found :: Model
+	end
+	return nil
+end
 
-	local combatActionRemote = RemoteEvents.GetRemote("CombatAction")
-	combatActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
-		if type(payload) == "table" then
-			if payload.RequestWeaponSwap then
-				WeaponManager.EquipWeapon(player, payload.RequestWeaponSwap)
-			elseif payload.RequestBackArmorSwap then
-				WeaponManager.EquipBackArmor(player, payload.RequestBackArmorSwap)
-			end
+-- Helper: Automatically enable embedded particle emitters, beams, and trails
+local function EnableWeaponEffects(model: Model)
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("ParticleEmitter") or descendant:IsA("Trail") or descendant:IsA("Beam") then
+			descendant.Enabled = true
 		end
-	end)
+	end
+end
 
-	print("[ASCEND] WeaponManager Engine Initialized with Bounds Scale Normalization.")
+-- Helper: Normalize model size to standard weapon bounds
+local function NormalizeWeaponBounds(model: Model)
+	local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	if not primary then
+		return
+	end
+
+	local _, currentSize = model:GetBoundingBox()
+	if currentSize.X <= 0 or currentSize.Y <= 0 or currentSize.Z <= 0 then
+		return
+	end
+
+	local scaleX = TARGET_MAX_WEAPON_SIZE.X / currentSize.X
+	local scaleY = TARGET_MAX_WEAPON_SIZE.Y / currentSize.Y
+	local scaleZ = TARGET_MAX_WEAPON_SIZE.Z / currentSize.Z
+
+	-- Select conservative scaling factor to avoid distorting proportions
+	local uniformScale = math.min(scaleX, math.min(scaleY, scaleZ))
+
+	if uniformScale > 0 and math.abs(uniformScale - 1) > 0.05 then
+		model:ScaleTo(uniformScale)
+	end
 end
 
 function WeaponManager.GetEquippedWeapon(player: Player): string
-	return equippedWeapons[player] or "MYTHIC_SUN_SLAYER_SWORD"
+	return equippedWeaponsMap[player] or "FlyingSwordItem"
 end
 
-function WeaponManager.GetEquippedBackArmor(player: Player): string
-	return equippedBackArmors[player] or "MYTHIC_SUN_SLAYER_CREST"
-end
-
-function WeaponManager.GetBackArmorStats(player: Player): BackArmorStats
-	local armorId = equippedBackArmors[player]
-	local itemData = if armorId then ItemConfig[armorId] else nil
-
-	if itemData then
-		local rawItem: any = itemData
-		local statBonus = rawItem.StatBonus
-		if type(statBonus) == "table" then
-			return {
-				MaxHPBonus = typeof(statBonus.MaxHP) == "number" and statBonus.MaxHP or 0,
-				DefPercentBonus = typeof(statBonus.DefPercent) == "number" and statBonus.DefPercent or 0,
-				QiRegenBonus = typeof(statBonus.QiRegen) == "number" and statBonus.QiRegen or 0,
-			}
-		end
+function WeaponManager.UnequipWeapon(player: Player)
+	local existingModel = spawnedWeaponModels[player]
+	if existingModel then
+		existingModel:Destroy()
+		spawnedWeaponModels[player] = nil
 	end
+	equippedWeaponsMap[player] = "None"
 
-	return { MaxHPBonus = 0, DefPercentBonus = 0, QiRegenBonus = 0 }
-end
-
-local function WeldModelAssembly(model: Model, primaryPart: BasePart)
-	for _, descendant in ipairs(model:GetDescendants()) do
-		if descendant:IsA("BasePart") and descendant ~= primaryPart then
-			descendant.CanCollide = false
-			descendant.Massless = true
-			
-			local weld = Instance.new("WeldConstraint")
-			weld.Name = "AssemblyWeld_" .. descendant.Name
-			weld.Part0 = primaryPart
-			weld.Part1 = descendant
-			weld.Parent = descendant
-		end
+	if player.Character then
+		player.Character:SetAttribute("EquippedWeapon", "None")
 	end
 end
 
-local function EnableModelEffects(modelInst: Instance)
-	for _, desc in ipairs(modelInst:GetDescendants()) do
-		if desc:IsA("ParticleEmitter") then
-			desc.Enabled = true
-		elseif desc:IsA("Light") then
-			desc.Enabled = true
-		end
+function WeaponManager.EquipWeapon(player: Player, itemId: string): boolean
+	local itemData = ItemConfig.GetItem(itemId)
+	if not itemData then
+		warn(string.format("[WeaponManager] Cannot equip unknown item ID: %s", tostring(itemId)))
+		return false
 	end
-end
 
--- Normalize 3D Mesh Part size bounds for consistent scale
-local function NormalizeModelScale(modelInst: Instance, maxDimension: number)
-	for _, desc in ipairs(modelInst:GetDescendants()) do
-		if desc:IsA("MeshPart") then
-			local currentSize = desc.Size
-			local maxSide = math.max(currentSize.X, math.max(currentSize.Y, currentSize.Z))
-			if maxSide > 12 or maxSide < 1 then
-				local scaleFactor = maxDimension / math.max(0.1, maxSide)
-				desc.Size = currentSize * scaleFactor
-			end
-		end
-	end
-end
-
--- ============================================================================
--- 1. HAND FLYING SWORD ATTACHMENT
--- ============================================================================
-function WeaponManager.AttachWeaponModel(player: Player, weaponItemId: string)
 	local character = player.Character
-	if not character then return end
-
-	local foundHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
-	if not foundHand or not foundHand:IsA("BasePart") then return end
-	local rightHand: BasePart = foundHand :: BasePart
-
-	-- Clean up old weapon & old grip motor
-	local oldWeapon = character:FindFirstChild("Equipped3DWeapon")
-	if oldWeapon then oldWeapon:Destroy() end
-
-	local oldGripRight = rightHand:FindFirstChild("WeaponGrip")
-	if oldGripRight then oldGripRight:Destroy() end
-
-	local itemData = ItemConfig[weaponItemId]
-	local modelName = if itemData and itemData.ModelName then itemData.ModelName else "Sun-Slayer Crimson Sword"
-
-	-- Search model template RECURSIVELY in ReplicatedStorage
-	local weaponTemplate: Instance? = ReplicatedStorage:FindFirstChild(modelName, true)
-		or ReplicatedStorage:FindFirstChild("Sun-Slayer Crimson Sword", true)
-		or ReplicatedStorage:FindFirstChild("FlyingSword", true)
-
-	local weaponInstance: Instance? = nil
-	local handle: BasePart? = nil
-
-	if weaponTemplate then
-		local cloned = weaponTemplate:Clone()
-		cloned.Name = "Equipped3DWeapon"
-
-		for _, scriptInst in ipairs(cloned:GetDescendants()) do
-			if scriptInst:IsA("LuaSourceContainer") then
-				scriptInst:Destroy()
-			end
-		end
-
-		-- Normalize sword scale to 4.5 studs max blade length
-		NormalizeModelScale(cloned, 4.5)
-
-		if cloned:IsA("Model") then
-			local modelInst = cloned :: Model
-			local primary = modelInst.PrimaryPart 
-				or (modelInst:FindFirstChild("Mesh1.0") :: BasePart?)
-				or (modelInst:FindFirstChild("Handle") :: BasePart?)
-				or (modelInst:FindFirstChildOfClass("MeshPart") :: BasePart?)
-				or (modelInst:FindFirstChildOfClass("BasePart") :: BasePart?)
-
-			if primary then
-				handle = primary
-				modelInst.PrimaryPart = primary
-				WeldModelAssembly(modelInst, primary)
-			end
-		elseif cloned:IsA("BasePart") then
-			handle = cloned :: BasePart
-		end
-
-		weaponInstance = cloned
+	if not character or not character:FindFirstChild("Humanoid") then
+		return false
 	end
 
-	if not handle or not weaponInstance then return end
-	local activeHandle: BasePart = handle :: BasePart
-	local activeWeapon: Instance = weaponInstance :: Instance
+	-- Unequip existing active model
+	WeaponManager.UnequipWeapon(player)
 
-	activeHandle.CanCollide = false
-	activeHandle.Massless = true
+	local modelName = itemData.ModelName or itemId
+	local templateModel = FindWeaponModelTemplate(modelName)
 
-	EnableModelEffects(activeWeapon)
-
-	-- 1. Read Arm Palm Attachment
-	local armGrip = rightHand:FindFirstChild("RightGripAttachment")
-	local c0CFrame = if armGrip and armGrip:IsA("Attachment") 
-		then (armGrip :: Attachment).CFrame 
-		else (CFrame.new(0, -0.25, 0) * CFrame.Angles(-math.pi/2, 0, 0))
-
-	-- 2. Read Studio-placed RightGripAttachment
-	local customGripAtt = activeHandle:FindFirstChild("RightGripAttachment")
-		or activeHandle:FindFirstChild("Grip")
-		or activeWeapon:FindFirstChild("RightGripAttachment", true)
-		or activeWeapon:FindFirstChild("Grip", true)
-
-	local gripCFrame: CFrame
-	if customGripAtt and customGripAtt:IsA("Attachment") then
-		gripCFrame = (customGripAtt :: Attachment).CFrame
-	else
-		gripCFrame = if itemData and itemData.GripOffset then itemData.GripOffset else CFrame.new(-2.4, 0.7, 0) * CFrame.Angles(math.rad(90), math.rad(-110), math.rad(90))
+	if not templateModel then
+		-- Fallback search for default FlyingSword if specific item mesh is not loaded in place
+		templateModel = FindWeaponModelTemplate("FlyingSword")
 	end
 
-	-- Connect Motor6D Joint
-	local motor = Instance.new("Motor6D")
-	motor.Name = "WeaponGrip"
-	motor.Part0 = rightHand
-	motor.Part1 = activeHandle
-	motor.C0 = c0CFrame
-	motor.C1 = gripCFrame
-	motor.Parent = rightHand
+	if templateModel then
+		local weaponClone = templateModel:Clone()
+		weaponClone.Name = "Equipped_" .. itemId
 
-	activeWeapon.Parent = character
-	print(string.format("[WeaponManager] Equipped '%s' to %s with bounds scale normalization.", activeWeapon.Name, player.Name))
-end
-
--- ============================================================================
--- 2. 3D BACK ARMOR ATTACHMENT
--- ============================================================================
-function WeaponManager.AttachBackArmor(player: Player, armorItemId: string)
-	local character = player.Character
-	if not character then return end
-
-	local torsoPart = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
-	if not torsoPart or not torsoPart:IsA("BasePart") then return end
-	local torso: BasePart = torsoPart :: BasePart
-
-	-- Clean up previous Back Armor
-	local oldArmor = character:FindFirstChild("EquippedBackArmor")
-	if oldArmor then oldArmor:Destroy() end
-
-	local itemData = ItemConfig[armorItemId]
-	local modelName = if itemData and itemData.ModelName then itemData.ModelName else "Sun-Slayer Crimson Crest Array"
-
-	-- Search ReplicatedStorage RECURSIVELY for actual custom 3D Back Armor Model
-	local armorTemplate: Instance? = ReplicatedStorage:FindFirstChild(modelName, true)
-		or ReplicatedStorage:FindFirstChild("Sun-Slayer Crimson Crest Array", true)
-		or ReplicatedStorage:FindFirstChild("BasicBackCrest", true)
-
-	if armorTemplate then
-		local cloned = armorTemplate:Clone()
-		cloned.Name = "EquippedBackArmor"
-
-		for _, scriptInst in ipairs(cloned:GetDescendants()) do
-			if scriptInst:IsA("LuaSourceContainer") then
-				scriptInst:Destroy()
-			end
+		-- Ensure model has a valid PrimaryPart
+		if not weaponClone.PrimaryPart then
+			weaponClone.PrimaryPart = weaponClone:FindFirstChildWhichIsA("BasePart")
 		end
 
-		-- Normalize crest scale to 4.0 studs max dimension
-		NormalizeModelScale(cloned, 4.0)
+		if weaponClone.PrimaryPart then
+			-- 1. Bounds Scale Normalization
+			NormalizeWeaponBounds(weaponClone)
 
-		local primaryPart: BasePart? = nil
-		if cloned:IsA("Model") then
-			local mInst = cloned :: Model
-			primaryPart = mInst.PrimaryPart 
-				or (mInst:FindFirstChild("Mesh1.0") :: BasePart?)
-				or (mInst:FindFirstChildOfClass("MeshPart") :: BasePart?)
-				or (mInst:FindFirstChildOfClass("BasePart") :: BasePart?)
+			-- 2. Embedded Particle Activation
+			EnableWeaponEffects(weaponClone)
 
-			if primaryPart then
-				mInst.PrimaryPart = primaryPart
-				WeldModelAssembly(mInst, primaryPart)
+			-- 3. Weld to Character Right Hand
+			local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+			if rightHand then
+				weaponClone.PrimaryPart.CFrame = (rightHand :: BasePart).CFrame
+				weaponClone.PrimaryPart.CanCollide = false
+				weaponClone.PrimaryPart.Anchored = false
+
+				local weld = Instance.new("WeldConstraint")
+				weld.Name = "WeaponWeld"
+				weld.Part0 = rightHand :: BasePart
+				weld.Part1 = weaponClone.PrimaryPart
+				weld.Parent = weaponClone.PrimaryPart
+
+				weaponClone.Parent = character
+				spawnedWeaponModels[player] = weaponClone
 			end
-		elseif cloned:IsA("BasePart") then
-			primaryPart = cloned :: BasePart
-		end
-
-		if primaryPart then
-			primaryPart.CanCollide = false
-			primaryPart.Massless = true
-
-			EnableModelEffects(cloned)
-
-			local customBackAtt = primaryPart:FindFirstChild("BodyBackAttachment")
-				or primaryPart:FindFirstChild("BackAttachment")
-				or cloned:FindFirstChild("BodyBackAttachment", true)
-
-			local backOffset: CFrame
-			if customBackAtt and customBackAtt:IsA("Attachment") then
-				backOffset = (customBackAtt :: Attachment).CFrame
-			else
-				backOffset = if itemData and itemData.GripOffset then itemData.GripOffset else (CFrame.new(0, 2.0, 1.2) * CFrame.Angles(0.1, 0, 0))
-			end
-
-			local motor = Instance.new("Motor6D")
-			motor.Name = "BackArmorMotor"
-			motor.Part0 = torso
-			motor.Part1 = primaryPart
-			motor.C0 = CFrame.new(0, 0, 0)
-			motor.C1 = backOffset:Inverse()
-			motor.Parent = torso
-
-			cloned.Parent = character
-			equippedBackArmors[player] = armorItemId
-			print(string.format("[WeaponManager] Attached 3D Back Crest Array '%s' to %s.", cloned.Name, player.Name))
-			return
 		end
 	end
+
+	equippedWeaponsMap[player] = itemId
+	character:SetAttribute("EquippedWeapon", itemId)
+	print(string.format("[WeaponManager] Equipped %s on %s.", itemData.Name, player.Name))
+
+	return true
 end
 
-function WeaponManager.EquipWeapon(player: Player, weaponItemId: string)
-	local character = player.Character
-	if not character then return end
+function WeaponManager.Init()
+	Players.PlayerRemoving:Connect(function(player)
+		equippedWeaponsMap[player] = nil
+		if spawnedWeaponModels[player] then
+			spawnedWeaponModels[player]:Destroy()
+			spawnedWeaponModels[player] = nil
+		end
+	end)
 
-	character:SetAttribute("WeaponType", "FlyingSword")
-	equippedWeapons[player] = weaponItemId
-
-	WeaponManager.AttachWeaponModel(player, weaponItemId)
-
-	local skillIcons = {
-		M1 = UIAssets.Skills.M1_SwordArt,
-		F = UIAssets.Skills.M2_HeavySlam,
-		Q = UIAssets.Skills.SwordTempest,
-		E = UIAssets.Skills.DragonRoar,
-		R = UIAssets.Skills.TribulationBolt,
-		Shift = UIAssets.Skills.DodgeWindstep,
-	}
-
-	updateSkillStateRemote:FireClient(player, "FlyingSword", skillIcons)
-end
-
-function WeaponManager.EquipBackArmor(player: Player, armorItemId: string)
-	equippedBackArmors[player] = armorItemId
-	WeaponManager.AttachBackArmor(player, armorItemId)
+	print("[WeaponManager] Engine Initialized.")
 end
 
 return WeaponManager
