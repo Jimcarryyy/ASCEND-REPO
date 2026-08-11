@@ -3,7 +3,7 @@
     InventoryController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
     Client UI controller for ASCEND Spirit Pouch.
-    Unified Light-Mode Aesthetic with Item Name Labels & Auto-Inspection.
+    Renders 2D PNG Icons and Dynamic Grade/Rarity Background Colors.
 ]]
 
 local Players = game:GetService("Players")
@@ -20,27 +20,18 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local UI_FONT = Enum.Font.FredokaOne
 
--- LIGHT-MODE FLAT 2D PALETTE
-local COLOR_LIGHT_MAIN   = Color3.fromRGB(248, 250, 249) -- #F8FAF9
-local COLOR_LIGHT_PANEL  = Color3.fromRGB(241, 245, 249) -- #F1F5F9
-local COLOR_LIGHT_CARD   = Color3.fromRGB(255, 255, 255) -- #FFFFFF
-local COLOR_LIGHT_BORDER = Color3.fromRGB(203, 213, 225) -- #CBD5E1
+-- LIGHT-MODE PALETTE
+local COLOR_LIGHT_MAIN   = Color3.fromRGB(248, 250, 249)
+local COLOR_LIGHT_PANEL  = Color3.fromRGB(241, 245, 249)
+local COLOR_LIGHT_CARD   = Color3.fromRGB(255, 255, 255)
+local COLOR_LIGHT_BORDER = Color3.fromRGB(203, 213, 225)
 
-local COLOR_TEXT_MAIN    = Color3.fromRGB(15, 23, 42)    -- #0F172A
-local COLOR_TEXT_SUB     = Color3.fromRGB(100, 116, 139)  -- #64748B
-local COLOR_AZURE_BLUE   = Color3.fromRGB(59, 130, 246)   -- #3B82F6
-local COLOR_HP_GREEN     = Color3.fromRGB(16, 185, 129)  -- #10B981
-local COLOR_ACTION_GOLD  = Color3.fromRGB(217, 119, 6)   -- #D97706
-local COLOR_DANGER_RED   = Color3.fromRGB(225, 29, 72)   -- #E11D48
-
-local RARITY_COLORS: { [string]: Color3 } = {
-	Mythic    = Color3.fromRGB(225, 29, 72),   -- Crimson Red
-	Legendary = Color3.fromRGB(217, 119, 6),   -- Flame Gold
-	Epic      = Color3.fromRGB(147, 51, 234),  -- Spiritual Purple
-	Rare      = Color3.fromRGB(59, 130, 246),  -- Sapphire Blue
-	Uncommon  = Color3.fromRGB(16, 185, 129),  -- Emerald Green
-	Common    = Color3.fromRGB(100, 116, 139), -- Slate Gray
-}
+local COLOR_TEXT_MAIN    = Color3.fromRGB(15, 23, 42)
+local COLOR_TEXT_SUB     = Color3.fromRGB(100, 116, 139)
+local COLOR_AZURE_BLUE   = Color3.fromRGB(59, 130, 246)
+local COLOR_HP_GREEN     = Color3.fromRGB(16, 185, 129)
+local COLOR_ACTION_GOLD  = Color3.fromRGB(217, 119, 6)
+local COLOR_DANGER_RED   = Color3.fromRGB(225, 29, 72)
 
 local spiritPouchGui: ScreenGui
 local overlayBackdrop: Frame
@@ -113,7 +104,7 @@ function InventoryController.Init()
 		inventoryActionRemote:FireServer({ Action = "RequestSync" })
 	end)
 
-	print("[ASCEND] Light-Mode InventoryController Initialized with Name Labels & Auto-Inspect.")
+	print("[ASCEND] InventoryController Initialized with Dynamic Card Backgrounds.")
 end
 
 function InventoryController.BuildUI()
@@ -171,7 +162,7 @@ function InventoryController.BuildUI()
 		overlayBackdrop.Visible = false
 	end)
 
-	-- LEFT TAB BAR
+	-- TAB BAR
 	local verticalTabBar = Instance.new("Frame")
 	verticalTabBar.Name = "VerticalTabBar"
 	verticalTabBar.Size = UDim2.new(0, 120, 1, -64)
@@ -257,11 +248,6 @@ function InventoryController.BuildUI()
 	c1Header.TextSize = 20
 	c1Header.Parent = col1
 
-	local c1HeaderStroke = Instance.new("UIStroke")
-	c1HeaderStroke.Color = COLOR_LIGHT_BORDER
-	c1HeaderStroke.Thickness = 1
-	c1HeaderStroke.Parent = c1Header
-
 	characterViewport = Instance.new("ViewportFrame")
 	characterViewport.Name = "CharacterViewport"
 	characterViewport.Size = UDim2.new(0, 220, 0, 300)
@@ -325,18 +311,12 @@ function InventoryController.BuildUI()
 	scStroke.Thickness = 1.5
 	scStroke.Parent = statsCardContainer
 
-	-- HP BAR
 	local hpBg = Instance.new("Frame")
 	hpBg.Size = UDim2.new(1, -65, 0, 28)
 	hpBg.Position = UDim2.new(0, 50, 0, 18)
 	hpBg.BackgroundColor3 = COLOR_LIGHT_PANEL
 	hpBg.BorderSizePixel = 0
 	hpBg.Parent = statsCardContainer
-
-	local hpStroke = Instance.new("UIStroke")
-	hpStroke.Color = COLOR_LIGHT_BORDER
-	hpStroke.Thickness = 1
-	hpStroke.Parent = hpBg
 
 	hpBarFill = Instance.new("Frame")
 	hpBarFill.Size = UDim2.new(1, 0, 1, 0)
@@ -365,18 +345,12 @@ function InventoryController.BuildUI()
 	hpLabel.TextXAlignment = Enum.TextXAlignment.Right
 	hpLabel.Parent = hpBg
 
-	-- QI BAR
 	local qiBg = Instance.new("Frame")
 	qiBg.Size = UDim2.new(1, -65, 0, 28)
 	qiBg.Position = UDim2.new(0, 50, 0, 58)
 	qiBg.BackgroundColor3 = COLOR_LIGHT_PANEL
 	qiBg.BorderSizePixel = 0
 	qiBg.Parent = statsCardContainer
-
-	local qiStroke = Instance.new("UIStroke")
-	qiStroke.Color = COLOR_LIGHT_BORDER
-	qiStroke.Thickness = 1
-	qiStroke.Parent = qiBg
 
 	qiBarFill = Instance.new("Frame")
 	qiBarFill.Size = UDim2.new(1, 0, 1, 0)
@@ -427,7 +401,7 @@ function InventoryController.BuildUI()
 	capacityLabel.TextXAlignment = Enum.TextXAlignment.Left
 	capacityLabel.Parent = statsCardContainer
 
-	-- COLUMN 2: INVENTORY GRID WORKSPACE
+	-- COLUMN 2: INVENTORY GRID
 	local col2 = Instance.new("Frame")
 	col2.Name = "Column2_InventoryGrid"
 	col2.Size = UDim2.new(0, 460, 1, -64)
@@ -482,11 +456,6 @@ function InventoryController.BuildUI()
 	sortDropdownBtn.TextSize = 14
 	sortDropdownBtn.Parent = col2
 
-	local sdStroke = Instance.new("UIStroke")
-	sdStroke.Color = COLOR_LIGHT_BORDER
-	sdStroke.Thickness = 1.5
-	sdStroke.Parent = sortDropdownBtn
-
 	itemGrid = Instance.new("ScrollingFrame")
 	itemGrid.Name = "ItemGrid"
 	itemGrid.Size = UDim2.new(1, -20, 1, -64)
@@ -504,7 +473,7 @@ function InventoryController.BuildUI()
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	gridLayout.Parent = itemGrid
 
-	-- COLUMN 3: ITEM INSPECTION
+	-- COLUMN 3: INSPECTION
 	itemCardContainer = Instance.new("Frame")
 	itemCardContainer.Name = "Column3_ItemInspection"
 	itemCardContainer.Size = UDim2.new(0, 270, 1, -64)
@@ -527,11 +496,6 @@ function InventoryController.BuildUI()
 	c3Header.TextSize = 18
 	c3Header.Parent = itemCardContainer
 
-	local c3HeaderStroke = Instance.new("UIStroke")
-	c3HeaderStroke.Color = COLOR_LIGHT_BORDER
-	c3HeaderStroke.Thickness = 1
-	c3HeaderStroke.Parent = c3Header
-
 	tooltipTitle = Instance.new("TextLabel")
 	tooltipTitle.Size = UDim2.new(1, -20, 0, 36)
 	tooltipTitle.Position = UDim2.new(0, 10, 0, 48)
@@ -549,7 +513,7 @@ function InventoryController.BuildUI()
 	tooltipRarityBadge.BackgroundTransparency = 1
 	tooltipRarityBadge.Font = UI_FONT
 	tooltipRarityBadge.TextSize = 14
-	tooltipRarityBadge.TextColor3 = RARITY_COLORS.Common
+	tooltipRarityBadge.TextColor3 = COLOR_TEXT_MAIN
 	tooltipRarityBadge.Text = "COMMON ITEM"
 	tooltipRarityBadge.TextXAlignment = Enum.TextXAlignment.Center
 	tooltipRarityBadge.Parent = itemCardContainer
@@ -562,6 +526,7 @@ function InventoryController.BuildUI()
 	tooltipIconBox.Parent = itemCardContainer
 
 	local ibStroke = Instance.new("UIStroke")
+	ibStroke.Name = "BoxStroke"
 	ibStroke.Color = COLOR_LIGHT_BORDER
 	ibStroke.Thickness = 1.5
 	ibStroke.Parent = tooltipIconBox
@@ -580,17 +545,12 @@ function InventoryController.BuildUI()
 	tooltipStatsBox.BorderSizePixel = 0
 	tooltipStatsBox.Parent = itemCardContainer
 
-	local sbBoxStroke = Instance.new("UIStroke")
-	sbBoxStroke.Color = COLOR_LIGHT_BORDER
-	sbBoxStroke.Thickness = 1
-	sbBoxStroke.Parent = tooltipStatsBox
-
 	tooltipStats = Instance.new("TextLabel")
 	tooltipStats.Size = UDim2.new(1, -16, 1, -8)
 	tooltipStats.Position = UDim2.new(0, 8, 0, 4)
 	tooltipStats.BackgroundTransparency = 1
 	tooltipStats.Font = UI_FONT
-	tooltipStats.TextSize = 14
+	tooltipStats.TextSize = 13
 	tooltipStats.TextColor3 = COLOR_HP_GREEN
 	tooltipStats.TextWrapped = true
 	tooltipStats.TextXAlignment = Enum.TextXAlignment.Left
@@ -603,17 +563,12 @@ function InventoryController.BuildUI()
 	tooltipDescBox.BorderSizePixel = 0
 	tooltipDescBox.Parent = itemCardContainer
 
-	local dbStroke = Instance.new("UIStroke")
-	dbStroke.Color = COLOR_LIGHT_BORDER
-	dbStroke.Thickness = 1
-	dbStroke.Parent = tooltipDescBox
-
 	tooltipDesc = Instance.new("TextLabel")
 	tooltipDesc.Size = UDim2.new(1, -12, 1, -12)
 	tooltipDesc.Position = UDim2.new(0, 6, 0, 6)
 	tooltipDesc.BackgroundTransparency = 1
 	tooltipDesc.Font = UI_FONT
-	tooltipDesc.TextSize = 14
+	tooltipDesc.TextSize = 13
 	tooltipDesc.TextColor3 = COLOR_TEXT_SUB
 	tooltipDesc.TextWrapped = true
 	tooltipDesc.TextXAlignment = Enum.TextXAlignment.Left
@@ -708,38 +663,38 @@ function InventoryController.SetupGridSlots()
 
 		local rarityHeader = Instance.new("TextLabel")
 		rarityHeader.Name = "RarityHeader"
-		rarityHeader.Size = UDim2.new(1, 0, 0, 18)
+		rarityHeader.Size = UDim2.new(1, 0, 0, 16)
 		rarityHeader.Position = UDim2.new(0, 0, 0, 0)
 		rarityHeader.BackgroundColor3 = COLOR_LIGHT_BORDER
 		rarityHeader.Text = ""
 		rarityHeader.TextColor3 = COLOR_LIGHT_CARD
 		rarityHeader.Font = UI_FONT
-		rarityHeader.TextSize = 10
+		rarityHeader.TextSize = 9
 		rarityHeader.Visible = false
 		rarityHeader.Parent = slot
 
-		local itemNameLabel = Instance.new("TextLabel")
-		itemNameLabel.Name = "ItemNameLabel"
-		itemNameLabel.Size = UDim2.new(1, -8, 1, -34)
-		itemNameLabel.Position = UDim2.new(0, 4, 0, 20)
-		itemNameLabel.BackgroundTransparency = 1
-		itemNameLabel.Text = ""
-		itemNameLabel.TextColor3 = COLOR_TEXT_MAIN
-		itemNameLabel.Font = UI_FONT
-		itemNameLabel.TextSize = 11
-		itemNameLabel.TextWrapped = true
-		itemNameLabel.TextYAlignment = Enum.TextYAlignment.Center
-		itemNameLabel.Visible = false
-		itemNameLabel.Parent = slot
-
 		local icon = Instance.new("ImageLabel")
 		icon.Name = "Icon"
-		icon.Size = UDim2.new(1, -12, 1, -34)
-		icon.Position = UDim2.new(0, 6, 0, 20)
+		icon.Size = UDim2.new(1, -12, 1, -28)
+		icon.Position = UDim2.new(0, 6, 0, 18)
 		icon.BackgroundTransparency = 1
 		icon.ScaleType = Enum.ScaleType.Fit
 		icon.Visible = false
 		icon.Parent = slot
+
+		local itemNameLabel = Instance.new("TextLabel")
+		itemNameLabel.Name = "ItemNameLabel"
+		itemNameLabel.Size = UDim2.new(1, -8, 1, -28)
+		itemNameLabel.Position = UDim2.new(0, 4, 0, 18)
+		itemNameLabel.BackgroundTransparency = 1
+		itemNameLabel.Text = ""
+		itemNameLabel.TextColor3 = COLOR_TEXT_MAIN
+		itemNameLabel.Font = UI_FONT
+		itemNameLabel.TextSize = 10
+		itemNameLabel.TextWrapped = true
+		itemNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+		itemNameLabel.Visible = false
+		itemNameLabel.Parent = slot
 
 		local quantity = Instance.new("TextLabel")
 		quantity.Name = "Quantity"
@@ -808,12 +763,28 @@ function InventoryController.RefreshGrid()
 				end
 
 				if isVisible then
-					local rarityColor = RARITY_COLORS[itemDef.Rarity] or COLOR_TEXT_SUB
-					slotFrame.BackgroundColor3 = COLOR_LIGHT_CARD
+					local colorData = UIAssets.RarityCardColors[itemDef.Rarity]
+					if slotData.Quality and UIAssets.GradeCardColors[slotData.Quality] then
+						colorData = UIAssets.GradeCardColors[slotData.Quality]
+					end
 
-					if itemNameLabel then
-						itemNameLabel.Text = itemDef.Name
-						itemNameLabel.Visible = true
+					local bgCol = if colorData then colorData.Background else COLOR_LIGHT_CARD
+					local borderCol = if colorData then colorData.Border else COLOR_LIGHT_BORDER
+
+					slotFrame.BackgroundColor3 = bgCol
+
+					if itemDef.Icon and itemDef.Icon ~= "" then
+						if icon then
+							icon.Image = itemDef.Icon
+							icon.Visible = true
+						end
+						if itemNameLabel then itemNameLabel.Visible = false end
+					else
+						if icon then icon.Visible = false end
+						if itemNameLabel then
+							itemNameLabel.Text = itemDef.Name
+							itemNameLabel.Visible = true
+						end
 					end
 
 					if quantity then
@@ -821,13 +792,17 @@ function InventoryController.RefreshGrid()
 					end
 
 					if rarityHeader then
-						rarityHeader.Text = itemDef.Rarity:upper()
-						rarityHeader.BackgroundColor3 = rarityColor
+						local badgeText = itemDef.Rarity:upper()
+						if slotData.Quality then
+							badgeText = slotData.Quality:gsub(" Quality", ""):upper()
+						end
+						rarityHeader.Text = badgeText
+						rarityHeader.BackgroundColor3 = borderCol
 						rarityHeader.Visible = true
 					end
 
 					if stroke then
-						stroke.Color = if i == selectedSlotIndex then COLOR_AZURE_BLUE else rarityColor
+						stroke.Color = if i == selectedSlotIndex then COLOR_AZURE_BLUE else borderCol
 						stroke.Thickness = if i == selectedSlotIndex then 2.5 else 1.5
 					end
 				end
@@ -851,7 +826,6 @@ function InventoryController.RefreshGrid()
 		capacityLabel.Text = string.format("STORAGE  %d / 60 SLOTS", usedCount)
 	end
 
-	-- Auto-Inspect first filled slot if no valid item is currently selected
 	if firstValidSlot then
 		if not selectedSlotIndex or not currentInventory[selectedSlotIndex] then
 			selectedSlotIndex = firstValidSlot
@@ -874,11 +848,34 @@ function InventoryController.InspectSlot(slotIdx: number)
 
 	itemCardContainer.Visible = true
 
-	tooltipTitle.Text = itemDef.Name
+	local titleText = itemDef.Name
+	if slotData.Quality then
+		titleText ..= string.format("\n(%s)", slotData.Quality)
+	end
+	tooltipTitle.Text = titleText
+
+	local colorData = UIAssets.RarityCardColors[itemDef.Rarity]
+	if slotData.Quality and UIAssets.GradeCardColors[slotData.Quality] then
+		colorData = UIAssets.GradeCardColors[slotData.Quality]
+	end
+
+	local cardBg = if colorData then colorData.Background else COLOR_LIGHT_CARD
+	local borderCol = if colorData then colorData.Border else COLOR_AZURE_BLUE
+
 	tooltipRarityBadge.Text = string.format("%s %s", itemDef.Rarity:upper(), itemDef.Type:upper())
-	tooltipRarityBadge.TextColor3 = RARITY_COLORS[itemDef.Rarity] or COLOR_TEXT_MAIN
+	tooltipRarityBadge.TextColor3 = borderCol
 	tooltipDesc.Text = itemDef.Description
-	tooltipIcon.Visible = true
+
+	tooltipIconBox.BackgroundColor3 = cardBg
+	local boxStroke = tooltipIconBox:FindFirstChild("BoxStroke") :: UIStroke?
+	if boxStroke then boxStroke.Color = borderCol end
+
+	if itemDef.Icon and itemDef.Icon ~= "" then
+		tooltipIcon.Image = itemDef.Icon
+		tooltipIcon.Visible = true
+	else
+		tooltipIcon.Visible = false
+	end
 
 	if itemDef.Type == "Consumable" then
 		actionPrimaryBtn.Text = "USE"
@@ -889,6 +886,10 @@ function InventoryController.InspectSlot(slotIdx: number)
 	end
 
 	local statText = ""
+	if slotData.Quality then
+		statText ..= string.format("GRADE: %s\n", slotData.Quality:upper())
+	end
+
 	if itemDef.Stats then
 		if itemDef.Stats.HealAmount then
 			statText ..= string.format("HEALTH RESTORED: +%d\n", itemDef.Stats.HealAmount)

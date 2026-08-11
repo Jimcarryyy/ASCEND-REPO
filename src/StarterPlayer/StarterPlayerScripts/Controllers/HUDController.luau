@@ -3,7 +3,7 @@
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
     Client HUD engine for ASCEND.
-    Unified Light-Mode Aesthetic (FredokaOne Font, Emerald HP, Azure Qi, Clean Panel Styling, Animated Toast Notifications).
+    Supports Monetized HUD Skin Equipping (HUDSkinConfig), FredokaOne titles, Bangers vital text, and 800 Max Qi sync.
 ]]
 
 local Players = game:GetService("Players")
@@ -13,56 +13,92 @@ local TweenService = game:GetService("TweenService")
 
 local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
+local HUDSkinConfig = require(ReplicatedStorage.Shared.Configs.HUDSkinConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local HUDController = {}
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local UI_FONT = Enum.Font.FredokaOne
+local UI_FONT   = Enum.Font.FredokaOne
+local UI_FONT_2 = Enum.Font.LuckiestGuy
 
--- LIGHT-MODE PALETTE (Matching Xianxia Theme)
-local COLOR_LIGHT_PANEL  = Color3.fromRGB(241, 245, 249) -- #F1F5F9
-local COLOR_LIGHT_CARD   = Color3.fromRGB(255, 255, 255) -- #FFFFFF
-local COLOR_LIGHT_BORDER = Color3.fromRGB(203, 213, 225) -- #CBD5E1
-local COLOR_TEXT_MAIN    = Color3.fromRGB(15, 23, 42)    -- #0F172A
-local COLOR_TEXT_SUB     = Color3.fromRGB(100, 116, 139)  -- #64748B
-local COLOR_HP_GREEN     = Color3.fromRGB(16, 185, 129)  -- #10B981
-local COLOR_AZURE_BLUE   = Color3.fromRGB(59, 130, 246)   -- #3B82F6
-local COLOR_ACTION_GOLD  = Color3.fromRGB(217, 119, 6)   -- #D97706
+-- LIGHT-MODE PALETTE & HUD ACCENTS
+local COLOR_LIGHT_PANEL  = Color3.fromRGB(241, 245, 249)
+local COLOR_LIGHT_CARD   = Color3.fromRGB(255, 255, 255)
+local COLOR_LIGHT_BORDER = Color3.fromRGB(203, 213, 225)
+local COLOR_TEXT_MAIN    = Color3.fromRGB(15, 23, 42)
+local COLOR_HP_GREEN     = Color3.fromRGB(16, 185, 129)
 
 local hudScreenGui: ScreenGui
-local vitalFrame: Frame
-local hpBarFill: Frame
-local hpBarText: TextLabel
-local qiBarFill: Frame
-local qiBarText: TextLabel
-local realmBadgeText: TextLabel
+local vitalFrame: ImageLabel
+local portraitMaskFrame: Frame?
+local avatarHeadshot: ImageLabel?
+local levelBadgeText: TextLabel?
+local nameAndRealmText: TextLabel?
 
-local hotbarFrame: Frame
-local toastContainer: Frame
+local hpSlotFrame: Frame?
+local hpBarFill: Frame?
+local hpBarText: TextLabel?
+local hpLeftLabel: TextLabel?
+local hpFillYScale: number = 1
+local hpFillYOffset: number = 0
+
+local qiSlotFrame: Frame?
+local qiBarFill: Frame?
+local qiBarText: TextLabel?
+local qiLeftLabel: TextLabel?
+local qiFillYScale: number = 1
+local qiFillYOffset: number = 0
+
+local hotbarFrame: Frame?
+local toastContainer: Frame?
 local hotbarSlots: { [number]: Frame } = {}
 local hotbarKeybinds = { "1", "2", "3", "4", "5", "K" }
 
 local currentInventoryData: { [number]: any } = {}
+local activeSkinId: string = "DefaultBronze"
+
 local updateInventoryRemote: RemoteEvent
+local updateCultivationRemote: RemoteEvent
+
+local function FindChildCaseInsensitive(parent: Instance, targetName: string): Instance?
+	local targetLower = targetName:lower()
+	for _, child in ipairs(parent:GetChildren()) do
+		if child.Name:lower() == targetLower then
+			return child
+		end
+	end
+	return nil
+end
 
 function HUDController.Init()
 	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
+	updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 
-	HUDController.BuildHUD()
+	HUDController.HookExplorerHUD()
 
 	updateInventoryRemote.OnClientEvent:Connect(function(inventoryData: { [number]: any })
 		currentInventoryData = inventoryData or {}
 		HUDController.UpdateHotbar()
 	end)
 
+	-- Direct Cultivation Qi Sync from Server
+	updateCultivationRemote.OnClientEvent:Connect(function(payload: any)
+		if type(payload) == "table" then
+			local curQi = payload.CurrentQi or 800
+			HUDController.UpdateQiValues(curQi, 800)
+		end
+	end)
+
 	player.CharacterAdded:Connect(function(character)
 		HUDController.HookCharacter(character)
+		HUDController.ListenSkinChanges(character)
 	end)
 
 	if player.Character then
 		HUDController.HookCharacter(player.Character)
+		HUDController.ListenSkinChanges(player.Character)
 	end
 
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -77,214 +113,221 @@ function HUDController.Init()
 		end
 	end)
 
-	print("[ASCEND] Light-Mode HUDController Initialized with Item Toast Support.")
+	print("[ASCEND] HUDController Initialized with Monetized HUD Skin Support.")
 end
 
-function HUDController.BuildHUD()
-	local oldHud = playerGui:FindFirstChild("AscendMainHUD")
-	if oldHud then oldHud:Destroy() end
+function HUDController.HookExplorerHUD()
+	hudScreenGui = playerGui:WaitForChild("AscendMainHUD") :: ScreenGui
+	vitalFrame = hudScreenGui:WaitForChild("VitalHUDFrame") :: ImageLabel
 
-	hudScreenGui = Instance.new("ScreenGui")
-	hudScreenGui.Name = "AscendMainHUD"
-	hudScreenGui.ResetOnSpawn = false
-	hudScreenGui.DisplayOrder = 10
-	hudScreenGui.Parent = playerGui
-
-	-- TOP-LEFT VITAL FRAME (Matching Alchemy Sub-Panel Style)
-	vitalFrame = Instance.new("Frame")
-	vitalFrame.Name = "VitalFrame"
-	vitalFrame.Size = UDim2.new(0, 360, 0, 110)
-	vitalFrame.Position = UDim2.new(0, 20, 0, 20)
-	vitalFrame.BackgroundColor3 = COLOR_LIGHT_PANEL
-	vitalFrame.BorderSizePixel = 0
-	vitalFrame.Parent = hudScreenGui
-
-	local vfStroke = Instance.new("UIStroke")
-	vfStroke.Color = COLOR_LIGHT_BORDER
-	vfStroke.Thickness = 1.5
-	vfStroke.Parent = vitalFrame
-
-	realmBadgeText = Instance.new("TextLabel")
-	realmBadgeText.Name = "RealmBadgeText"
-	realmBadgeText.Size = UDim2.new(1, -20, 0, 26)
-	realmBadgeText.Position = UDim2.new(0, 10, 0, 6)
-	realmBadgeText.BackgroundTransparency = 1
-	realmBadgeText.Text = "Qi Condensation — Tier 1"
-	realmBadgeText.TextColor3 = COLOR_TEXT_MAIN
-	realmBadgeText.Font = UI_FONT
-	realmBadgeText.TextSize = 18
-	realmBadgeText.TextXAlignment = Enum.TextXAlignment.Left
-	realmBadgeText.Parent = vitalFrame
-
-	-- HEALTH BAR
-	local hpBg = Instance.new("Frame")
-	hpBg.Size = UDim2.new(1, -60, 0, 24)
-	hpBg.Position = UDim2.new(0, 48, 0, 38)
-	hpBg.BackgroundColor3 = COLOR_LIGHT_CARD
-	hpBg.BorderSizePixel = 0
-	hpBg.Parent = vitalFrame
-
-	local hpStroke = Instance.new("UIStroke")
-	hpStroke.Color = COLOR_LIGHT_BORDER
-	hpStroke.Thickness = 1
-	hpStroke.Parent = hpBg
-
-	hpBarFill = Instance.new("Frame")
-	hpBarFill.Size = UDim2.new(1, 0, 1, 0)
-	hpBarFill.BackgroundColor3 = COLOR_HP_GREEN
-	hpBarFill.BorderSizePixel = 0
-	hpBarFill.Parent = hpBg
-
-	hpBarText = Instance.new("TextLabel")
-	hpBarText.Size = UDim2.new(1, 0, 1, 0)
-	hpBarText.BackgroundTransparency = 1
-	hpBarText.Text = "100 / 100"
-	hpBarText.TextColor3 = COLOR_TEXT_MAIN
-	hpBarText.Font = UI_FONT
-	hpBarText.TextSize = 13
-	hpBarText.ZIndex = 5
-	hpBarText.Parent = hpBg
-
-	local hpLbl = Instance.new("TextLabel")
-	hpLbl.Size = UDim2.new(0, 36, 0, 24)
-	hpLbl.Position = UDim2.new(0, -40, 0, 0)
-	hpLbl.BackgroundTransparency = 1
-	hpLbl.Text = "HP"
-	hpLbl.TextColor3 = COLOR_TEXT_SUB
-	hpLbl.Font = UI_FONT
-	hpLbl.TextSize = 13
-	hpLbl.TextXAlignment = Enum.TextXAlignment.Right
-	hpLbl.Parent = hpBg
-
-	-- CLAMPED QI BAR
-	local qiBg = Instance.new("Frame")
-	qiBg.Size = UDim2.new(1, -60, 0, 24)
-	qiBg.Position = UDim2.new(0, 48, 0, 68)
-	qiBg.BackgroundColor3 = COLOR_LIGHT_CARD
-	qiBg.BorderSizePixel = 0
-	qiBg.Parent = vitalFrame
-
-	local qiStroke = Instance.new("UIStroke")
-	qiStroke.Color = COLOR_LIGHT_BORDER
-	qiStroke.Thickness = 1
-	qiStroke.Parent = qiBg
-
-	qiBarFill = Instance.new("Frame")
-	qiBarFill.Size = UDim2.new(1, 0, 1, 0)
-	qiBarFill.BackgroundColor3 = COLOR_AZURE_BLUE
-	qiBarFill.BorderSizePixel = 0
-	qiBarFill.Parent = qiBg
-
-	qiBarText = Instance.new("TextLabel")
-	qiBarText.Size = UDim2.new(1, 0, 1, 0)
-	qiBarText.BackgroundTransparency = 1
-	qiBarText.Text = "800 / 800"
-	qiBarText.TextColor3 = COLOR_TEXT_MAIN
-	qiBarText.Font = UI_FONT
-	qiBarText.TextSize = 13
-	qiBarText.ZIndex = 5
-	qiBarText.Parent = qiBg
-
-	local qiLbl = Instance.new("TextLabel")
-	qiLbl.Size = UDim2.new(0, 36, 0, 24)
-	qiLbl.Position = UDim2.new(0, -40, 0, 0)
-	qiLbl.BackgroundTransparency = 1
-	qiLbl.Text = "QI"
-	qiLbl.TextColor3 = COLOR_TEXT_SUB
-	qiLbl.Font = UI_FONT
-	qiLbl.TextSize = 13
-	qiLbl.TextXAlignment = Enum.TextXAlignment.Right
-	qiLbl.Parent = qiBg
-
-	-- BOTTOM CENTER KEYBIND BADGE HOTBAR
-	hotbarFrame = Instance.new("Frame")
-	hotbarFrame.Name = "HotbarFrame"
-	hotbarFrame.Size = UDim2.new(0, 430, 0, 66)
-	hotbarFrame.Position = UDim2.new(0.5, -215, 1, -85)
-	hotbarFrame.BackgroundColor3 = COLOR_LIGHT_PANEL
-	hotbarFrame.BorderSizePixel = 0
-	hotbarFrame.Parent = hudScreenGui
-
-	local hbStroke = Instance.new("UIStroke")
-	hbStroke.Color = COLOR_LIGHT_BORDER
-	hbStroke.Thickness = 1.5
-	hbStroke.Parent = hotbarFrame
-
-	local hbLayout = Instance.new("UIListLayout")
-	hbLayout.FillDirection = Enum.FillDirection.Horizontal
-	hbLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	hbLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	hbLayout.Padding = UDim.new(0, 10)
-	hbLayout.Parent = hotbarFrame
-
-	for i = 1, 6 do
-		local slot = Instance.new("Frame")
-		slot.Name = "HotbarSlot_" .. i
-		slot.Size = UDim2.new(0, 56, 0, 52)
-		slot.BackgroundColor3 = COLOR_LIGHT_CARD
-		slot.BorderSizePixel = 0
-		slot.Parent = hotbarFrame
-
-		local sStroke = Instance.new("UIStroke")
-		sStroke.Color = COLOR_LIGHT_BORDER
-		sStroke.Thickness = 1.5
-		sStroke.Parent = slot
-
-		-- Keybind Indicator Badge
-		local badge = Instance.new("TextLabel")
-		badge.Name = "KeybindBadge"
-		badge.Size = UDim2.new(0, 20, 0, 18)
-		badge.Position = UDim2.new(0, 2, 0, 2)
-		badge.BackgroundColor3 = COLOR_TEXT_MAIN
-		badge.Text = hotbarKeybinds[i] or tostring(i)
-		badge.TextColor3 = COLOR_LIGHT_CARD
-		badge.Font = UI_FONT
-		badge.TextSize = 12
-		badge.ZIndex = 10
-		badge.Parent = slot
-
-		local bCorner = Instance.new("UICorner")
-		bCorner.CornerRadius = UDim.new(0, 4)
-		bCorner.Parent = badge
-
-		local icon = Instance.new("ImageLabel")
-		icon.Name = "Icon"
-		icon.Size = UDim2.new(1, -12, 1, -12)
-		icon.Position = UDim2.new(0, 6, 0, 6)
-		icon.BackgroundTransparency = 1
-		icon.ScaleType = Enum.ScaleType.Fit
-		icon.Visible = false
-		icon.Parent = slot
-
-		local countLbl = Instance.new("TextLabel")
-		countLbl.Name = "CountLabel"
-		countLbl.Size = UDim2.new(1, -4, 0, 14)
-		countLbl.Position = UDim2.new(0, 0, 1, -14)
-		countLbl.BackgroundTransparency = 1
-		countLbl.TextColor3 = COLOR_TEXT_SUB
-		countLbl.Font = UI_FONT
-		countLbl.TextSize = 11
-		countLbl.TextXAlignment = Enum.TextXAlignment.Right
-		countLbl.Text = ""
-		countLbl.Parent = slot
-
-		hotbarSlots[i] = slot
+	-- 1. Headshot Image
+	portraitMaskFrame = FindChildCaseInsensitive(vitalFrame, "PortraitMask") :: Frame?
+	if portraitMaskFrame then
+		portraitMaskFrame.BackgroundTransparency = 1
+		avatarHeadshot = FindChildCaseInsensitive(portraitMaskFrame, "AvatarHeadshot") :: ImageLabel?
+		if avatarHeadshot then
+			avatarHeadshot.BackgroundTransparency = 1
+			avatarHeadshot.Image = string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", player.UserId)
+		end
 	end
 
-	-- TOAST NOTIFICATION CONTAINER (Stacked Above Hotbar)
-	toastContainer = Instance.new("Frame")
-	toastContainer.Name = "ToastContainer"
-	toastContainer.Size = UDim2.new(0, 320, 0, 160)
-	toastContainer.Position = UDim2.new(0.5, -160, 1, -260)
-	toastContainer.BackgroundTransparency = 1
-	toastContainer.Parent = hudScreenGui
+	-- 2. Level Badge & Player Name
+	levelBadgeText = FindChildCaseInsensitive(vitalFrame, "LevelBadgeText") :: TextLabel?
+	if levelBadgeText then
+		levelBadgeText.BackgroundTransparency = 1
+		levelBadgeText.Font = UI_FONT
+		levelBadgeText.RichText = true
+		levelBadgeText.TextYAlignment = Enum.TextYAlignment.Center
+		levelBadgeText.Text = "<b>100</b>"
+	end
 
-	local toastLayout = Instance.new("UIListLayout")
-	toastLayout.FillDirection = Enum.FillDirection.Vertical
-	toastLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-	toastLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	toastLayout.Padding = UDim.new(0, 6)
-	toastLayout.Parent = toastContainer
+	nameAndRealmText = FindChildCaseInsensitive(vitalFrame, "NameAndRealmText") :: TextLabel?
+	if nameAndRealmText then
+		nameAndRealmText.BackgroundTransparency = 1
+		nameAndRealmText.Font = UI_FONT
+		nameAndRealmText.RichText = true
+		nameAndRealmText.TextYAlignment = Enum.TextYAlignment.Center
+		nameAndRealmText.Text = string.format("<b>%s</b>", player.DisplayName)
+	end
+
+	-- 3. Bind HP Slot
+	hpSlotFrame = FindChildCaseInsensitive(vitalFrame, "HPSlotFrame") :: Frame?
+	if hpSlotFrame then
+		hpSlotFrame.BackgroundTransparency = 1
+		hpSlotFrame.ClipsDescendants = true
+
+		hpBarFill = FindChildCaseInsensitive(hpSlotFrame, "HPBarFill") :: Frame?
+		if hpBarFill then
+			hpFillYScale = hpBarFill.Size.Y.Scale
+			hpFillYOffset = hpBarFill.Size.Y.Offset
+		end
+
+		hpBarText = FindChildCaseInsensitive(hpSlotFrame, "HPBarText") :: TextLabel?
+		if hpBarText then
+			hpBarText.BackgroundTransparency = 1
+			hpBarText.Font = UI_FONT_2
+			hpBarText.TextSize = 13
+			hpBarText.Position = UDim2.new(0, 0, 0, 0)
+			hpBarText.Size = UDim2.new(1, -18, 1, 0)
+			hpBarText.TextXAlignment = Enum.TextXAlignment.Right
+			hpBarText.TextYAlignment = Enum.TextYAlignment.Center
+			hpBarText.ZIndex = 8
+		end
+
+		hpLeftLabel = FindChildCaseInsensitive(hpSlotFrame, "HPLabel") :: TextLabel?
+		if not hpLeftLabel then
+			hpLeftLabel = Instance.new("TextLabel")
+			hpLeftLabel.Name = "HPLabel"
+			hpLeftLabel.Size = UDim2.new(0, 40, 1, 0)
+			hpLeftLabel.Position = UDim2.new(0, 14, 0, 0)
+			hpLeftLabel.BackgroundTransparency = 1
+			hpLeftLabel.Text = "HP"
+			hpLeftLabel.TextColor3 = COLOR_LIGHT_CARD
+			hpLeftLabel.Font = UI_FONT_2
+			hpLeftLabel.TextSize = 13
+			hpLeftLabel.TextXAlignment = Enum.TextXAlignment.Left
+			hpLeftLabel.TextYAlignment = Enum.TextYAlignment.Center
+			hpLeftLabel.ZIndex = 10
+			hpLeftLabel.Parent = hpSlotFrame
+		else
+			hpLeftLabel.BackgroundTransparency = 1
+			hpLeftLabel.Text = "HP"
+			hpLeftLabel.Font = UI_FONT_2
+			hpLeftLabel.TextSize = 13
+			hpLeftLabel.Position = UDim2.new(0, 14, 0, 0)
+			hpLeftLabel.Size = UDim2.new(0, 40, 1, 0)
+			hpLeftLabel.TextColor3 = COLOR_LIGHT_CARD
+			hpLeftLabel.TextXAlignment = Enum.TextXAlignment.Left
+			hpLeftLabel.TextYAlignment = Enum.TextYAlignment.Center
+			hpLeftLabel.ZIndex = 10
+			hpLeftLabel.Visible = true
+		end
+	end
+
+	-- 4. Bind QI Slot
+	qiSlotFrame = FindChildCaseInsensitive(vitalFrame, "QiSlotFrame") :: Frame?
+	if qiSlotFrame then
+		qiSlotFrame.BackgroundTransparency = 1
+		qiSlotFrame.ClipsDescendants = true
+
+		qiBarFill = FindChildCaseInsensitive(qiSlotFrame, "QiBarFill") :: Frame?
+		if qiBarFill then
+			qiFillYScale = qiBarFill.Size.Y.Scale
+			qiFillYOffset = qiBarFill.Size.Y.Offset
+		end
+
+		qiBarText = FindChildCaseInsensitive(qiSlotFrame, "QiBarText") :: TextLabel?
+		if qiBarText then
+			qiBarText.BackgroundTransparency = 1
+			qiBarText.Font = UI_FONT_2
+			qiBarText.TextSize = 13
+			qiBarText.Position = UDim2.new(0, 0, 0, 0)
+			qiBarText.Size = UDim2.new(1, -18, 1, 0)
+			qiBarText.TextXAlignment = Enum.TextXAlignment.Right
+			qiBarText.TextYAlignment = Enum.TextYAlignment.Center
+			qiBarText.ZIndex = 8
+		end
+
+		qiLeftLabel = FindChildCaseInsensitive(qiSlotFrame, "QILabel") :: TextLabel?
+		if not qiLeftLabel then
+			qiLeftLabel = Instance.new("TextLabel")
+			qiLeftLabel.Name = "QILabel"
+			qiLeftLabel.Size = UDim2.new(0, 40, 1, 0)
+			qiLeftLabel.Position = UDim2.new(0, 14, 0, 0)
+			qiLeftLabel.BackgroundTransparency = 1
+			qiLeftLabel.Text = "QI"
+			qiLeftLabel.TextColor3 = COLOR_LIGHT_CARD
+			qiLeftLabel.Font = UI_FONT_2
+			qiLeftLabel.TextSize = 13
+			qiLeftLabel.TextXAlignment = Enum.TextXAlignment.Left
+			qiLeftLabel.TextYAlignment = Enum.TextYAlignment.Center
+			qiLeftLabel.ZIndex = 10
+			qiLeftLabel.Parent = qiSlotFrame
+		else
+			qiLeftLabel.BackgroundTransparency = 1
+			qiLeftLabel.Text = "QI"
+			qiLeftLabel.Font = UI_FONT_2
+			qiLeftLabel.TextSize = 13
+			qiLeftLabel.Position = UDim2.new(0, 14, 0, 0)
+			qiLeftLabel.Size = UDim2.new(0, 40, 1, 0)
+			qiLeftLabel.TextColor3 = COLOR_LIGHT_CARD
+			qiLeftLabel.TextXAlignment = Enum.TextXAlignment.Left
+			qiLeftLabel.TextYAlignment = Enum.TextYAlignment.Center
+			qiLeftLabel.ZIndex = 10
+			qiLeftLabel.Visible = true
+		end
+	end
+
+	-- 5. Bind Hotbar Frame
+	hotbarFrame = FindChildCaseInsensitive(hudScreenGui, "HotbarFrame") :: Frame?
+	if hotbarFrame then
+		for i = 1, 6 do
+			local slot = FindChildCaseInsensitive(hotbarFrame, "HotbarSlot_" .. i) :: Frame?
+			if slot then
+				hotbarSlots[i] = slot
+			end
+		end
+	end
+
+	-- 6. Bind Toast Container
+	toastContainer = FindChildCaseInsensitive(hudScreenGui, "ToastContainer") :: Frame?
+end
+
+function HUDController.ListenSkinChanges(character: Model)
+	local equippedSkin = character:GetAttribute("EquippedHUDSkin") :: string?
+	if equippedSkin then
+		HUDController.ApplySkin(equippedSkin)
+	end
+
+	character:GetAttributeChangedSignal("EquippedHUDSkin"):Connect(function()
+		local newSkin = character:GetAttribute("EquippedHUDSkin") :: string?
+		if newSkin then
+			HUDController.ApplySkin(newSkin)
+		end
+	end)
+end
+
+function HUDController.ApplySkin(skinId: string)
+	local skin = HUDSkinConfig.GetSkin(skinId)
+	if not skin or not vitalFrame then return end
+
+	activeSkinId = skin.SkinId
+	vitalFrame.Image = skin.AssetId
+
+	-- Apply Skin Slot Coordinate Offsets
+	local offsets = skin.SlotOffsets
+	if offsets then
+		if hpSlotFrame and offsets.HPSlotPosition then
+			hpSlotFrame.Position = offsets.HPSlotPosition
+		end
+		if hpSlotFrame and offsets.HPSlotSize then
+			hpSlotFrame.Size = offsets.HPSlotSize
+		end
+
+		if qiSlotFrame and offsets.QISlotPosition then
+			qiSlotFrame.Position = offsets.QISlotPosition
+		end
+		if qiSlotFrame and offsets.QISlotSize then
+			qiSlotFrame.Size = offsets.QISlotSize
+		end
+
+		if portraitMaskFrame and offsets.PortraitPosition then
+			portraitMaskFrame.Position = offsets.PortraitPosition
+		end
+		if portraitMaskFrame and offsets.PortraitSize then
+			portraitMaskFrame.Size = offsets.PortraitSize
+		end
+
+		if levelBadgeText and offsets.LevelBadgePosition then
+			levelBadgeText.Position = offsets.LevelBadgePosition
+		end
+
+		if nameAndRealmText and offsets.NameAndRealmPosition then
+			nameAndRealmText.Position = offsets.NameAndRealmPosition
+		end
+	end
+
+	print(string.format("[ASCEND] Equipped HUD Skin '%s' (%s).", skin.Name, skin.SkinId))
 end
 
 function HUDController.HookCharacter(character: Model)
@@ -294,20 +337,18 @@ function HUDController.HookCharacter(character: Model)
 		local hp = humanoid.Health
 		local maxHp = math.max(1, humanoid.MaxHealth)
 		local ratio = math.clamp(hp / maxHp, 0, 1)
-		hpBarFill.Size = UDim2.new(ratio, 0, 1, 0)
-		hpBarText.Text = string.format("%d / %d", math.floor(hp), math.floor(maxHp))
+
+		if hpBarFill then
+			hpBarFill.Size = UDim2.new(ratio, 0, hpFillYScale, hpFillYOffset)
+		end
+		if hpBarText then
+			hpBarText.Text = string.format("%d / %d", math.floor(hp), math.floor(maxHp))
+		end
 	end
 
 	local function updateQi()
 		local rawQi = character:GetAttribute("Qi") or 800
-		local rawMaxQi = character:GetAttribute("MaxQi") or 800
-
-		local clampedQi = math.clamp(rawQi, 0, 800)
-		local clampedMaxQi = math.clamp(rawMaxQi, 1, 800)
-		local ratio = math.clamp(clampedQi / clampedMaxQi, 0, 1)
-
-		qiBarFill.Size = UDim2.new(ratio, 0, 1, 0)
-		qiBarText.Text = string.format("%d / %d", math.floor(clampedQi), clampedMaxQi)
+		HUDController.UpdateQiValues(rawQi, 800)
 	end
 
 	humanoid.HealthChanged:Connect(updateHP)
@@ -318,22 +359,53 @@ function HUDController.HookCharacter(character: Model)
 	updateQi()
 end
 
+function HUDController.UpdateQiValues(currentQi: number, maxQi: number)
+	local targetMax = 800 -- Enforced 800 Max Qi
+	local clampedQi = math.clamp(currentQi or 0, 0, targetMax)
+	local clampedMax = math.clamp(maxQi or 800, 1, targetMax)
+	local ratio = math.clamp(clampedQi / clampedMax, 0, 1)
+
+	if qiBarFill then
+		qiBarFill.Size = UDim2.new(ratio, 0, qiFillYScale, qiFillYOffset)
+	end
+	if qiBarText then
+		qiBarText.Text = string.format("%d / %d", math.floor(clampedQi), clampedMax)
+	end
+end
+
 function HUDController.UpdateHotbar()
 	for i = 1, 5 do
 		local slotFrame = hotbarSlots[i]
 		if not slotFrame then continue end
 
-		local icon = slotFrame:FindFirstChild("Icon") :: ImageLabel?
-		local countLbl = slotFrame:FindFirstChild("CountLabel") :: TextLabel?
+		local icon = FindChildCaseInsensitive(slotFrame, "Icon") :: ImageLabel?
+		local countLbl = FindChildCaseInsensitive(slotFrame, "CountLabel") :: TextLabel?
+		local stroke = slotFrame:FindFirstChildOfClass("UIStroke")
 
 		local slotData = currentInventoryData[i]
 		if slotData then
 			local itemDef = ItemConfig.GetItem(slotData.ItemId)
 			if itemDef then
-				if icon then icon.Visible = true end
+				if icon then
+					icon.Image = itemDef.Icon or ""
+					icon.Visible = (itemDef.Icon ~= nil)
+				end
+
+				local colorData = UIAssets.RarityCardColors[itemDef.Rarity]
+				if slotData.Quality and UIAssets.GradeCardColors[slotData.Quality] then
+					colorData = UIAssets.GradeCardColors[slotData.Quality]
+				end
+
+				if colorData then
+					slotFrame.BackgroundColor3 = colorData.Background
+					if stroke then stroke.Color = colorData.Border end
+				end
+
 				if countLbl then countLbl.Text = if slotData.Count > 1 then "x" .. slotData.Count else "" end
 			end
 		else
+			slotFrame.BackgroundColor3 = COLOR_LIGHT_CARD
+			if stroke then stroke.Color = COLOR_LIGHT_BORDER end
 			if icon then icon.Visible = false end
 			if countLbl then countLbl.Text = "" end
 		end
@@ -341,79 +413,83 @@ function HUDController.UpdateHotbar()
 
 	local slot6 = hotbarSlots[6]
 	if slot6 then
-		local countLbl = slot6:FindFirstChild("CountLabel") :: TextLabel?
+		local countLbl = FindChildCaseInsensitive(slot6, "CountLabel") :: TextLabel?
 		if countLbl then countLbl.Text = "POUCH" end
 	end
 end
 
--- ANIMATED LIGHT-MODE XIANXIA ITEM TOAST POP-UP
-function HUDController.ShowItemToast(itemId: string, count: number)
+-- ANIMATED ITEM TOAST WITH 2D ICON & DYNAMIC GRADE COLOR
+function HUDController.ShowItemToast(itemId: string, count: number, qualityText: string?)
 	if not toastContainer then return end
 
 	local itemDef = ItemConfig.GetItem(itemId)
 	local itemName = if itemDef then itemDef.Name else itemId
-	local rarityColor = COLOR_HP_GREEN
+	local iconAsset = if itemDef then itemDef.Icon else nil
 
-	if itemDef then
-		if itemDef.Rarity == "Mythic" or itemDef.Rarity == "Legendary" then
-			rarityColor = Color3.fromRGB(225, 29, 72) -- Red/Crimson
-		elseif itemDef.Rarity == "Rare" or itemDef.Rarity == "Epic" then
-			rarityColor = COLOR_AZURE_BLUE -- Azure Blue
-		elseif itemDef.Rarity == "Uncommon" then
-			rarityColor = COLOR_ACTION_GOLD -- Gold
-		end
+	local colorData = UIAssets.RarityCardColors[if itemDef then itemDef.Rarity else "Common"]
+	if qualityText and UIAssets.GradeCardColors[qualityText] then
+		colorData = UIAssets.GradeCardColors[qualityText]
+	end
+
+	local cardBg = if colorData then colorData.Background else COLOR_LIGHT_PANEL
+	local borderCol = if colorData then colorData.Border else COLOR_HP_GREEN
+
+	local toastText = string.format("+%d  %s", count, itemName)
+	if qualityText then
+		toastText = string.format("+%d  [%s] %s", count, qualityText:gsub(" Quality", ""), itemName)
 	end
 
 	local toastFrame = Instance.new("Frame")
 	toastFrame.Name = "ItemToast"
-	toastFrame.Size = UDim2.new(1, 0, 0, 36)
-	toastFrame.BackgroundColor3 = COLOR_LIGHT_PANEL
+	toastFrame.Size = UDim2.new(1, 0, 0, 42)
+	toastFrame.BackgroundColor3 = cardBg
 	toastFrame.BackgroundTransparency = 1
 	toastFrame.BorderSizePixel = 0
 	toastFrame.Parent = toastContainer
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = COLOR_LIGHT_BORDER
+	stroke.Color = borderCol
 	stroke.Thickness = 1.5
 	stroke.Transparency = 1
 	stroke.Parent = toastFrame
 
-	local accentBar = Instance.new("Frame")
-	accentBar.Name = "AccentBar"
-	accentBar.Size = UDim2.new(0, 4, 1, 0)
-	accentBar.BackgroundColor3 = rarityColor
-	accentBar.BorderSizePixel = 0
-	accentBar.BackgroundTransparency = 1
-	accentBar.Parent = toastFrame
+	local iconLabel = Instance.new("ImageLabel")
+	iconLabel.Name = "ToastIcon"
+	iconLabel.Size = UDim2.new(0, 30, 0, 30)
+	iconLabel.Position = UDim2.new(0, 6, 0, 6)
+	iconLabel.BackgroundTransparency = 1
+	iconLabel.ScaleType = Enum.ScaleType.Fit
+	iconLabel.Image = iconAsset or ""
+	iconLabel.ImageTransparency = 1
+	iconLabel.Parent = toastFrame
 
 	local textLbl = Instance.new("TextLabel")
 	textLbl.Name = "ToastText"
-	textLbl.Size = UDim2.new(1, -16, 1, 0)
-	textLbl.Position = UDim2.new(0, 12, 0, 0)
+	textLbl.Size = UDim2.new(1, -48, 1, 0)
+	textLbl.Position = UDim2.new(0, 42, 0, 0)
 	textLbl.BackgroundTransparency = 1
-	textLbl.Text = string.format("+%d  %s", count, itemName)
+	textLbl.Text = toastText
 	textLbl.TextColor3 = COLOR_TEXT_MAIN
 	textLbl.TextTransparency = 1
 	textLbl.Font = UI_FONT
-	textLbl.TextSize = 14
+	textLbl.TextSize = 13
 	textLbl.TextXAlignment = Enum.TextXAlignment.Left
+	textLbl.TextYAlignment = Enum.TextYAlignment.Center
 	textLbl.Parent = toastFrame
 
-	-- Fade-In Animation
 	local tweenInfoIn = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	TweenService:Create(toastFrame, tweenInfoIn, { BackgroundTransparency = 0 }):Play()
 	TweenService:Create(stroke, tweenInfoIn, { Transparency = 0 }):Play()
-	TweenService:Create(accentBar, tweenInfoIn, { BackgroundTransparency = 0 }):Play()
 	TweenService:Create(textLbl, tweenInfoIn, { TextTransparency = 0 }):Play()
+	TweenService:Create(iconLabel, tweenInfoIn, { ImageTransparency = 0 }):Play()
 
-	-- Fade-Out Animation after 2.5 seconds
-	task.delay(2.5, function()
+	task.delay(2.8, function()
 		if not toastFrame.Parent then return end
 		local tweenInfoOut = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		local fadeOut = TweenService:Create(toastFrame, tweenInfoOut, { BackgroundTransparency = 1 })
 		TweenService:Create(stroke, tweenInfoOut, { Transparency = 1 }):Play()
-		TweenService:Create(accentBar, tweenInfoOut, { BackgroundTransparency = 1 }):Play()
 		TweenService:Create(textLbl, tweenInfoOut, { TextTransparency = 1 }):Play()
+		TweenService:Create(iconLabel, tweenInfoOut, { ImageTransparency = 1 }):Play()
 
 		fadeOut:Play()
 		fadeOut.Completed:Connect(function()

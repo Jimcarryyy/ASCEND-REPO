@@ -3,7 +3,7 @@
     AlchemyManager.luau
     Location: src/ServerScriptService/Server/Cultivation/AlchemyManager.luau
     Server-authoritative manual cauldron combination alchemy engine.
-    Supports Flame Precision Minigames, Alchemy EXP, and Stacking Inventory Delivery.
+    Delivers pills with distinct Quality Metadata to InventoryManager.
 ]]
 
 local Players = game:GetService("Players")
@@ -50,10 +50,17 @@ function AlchemyManager.Init()
 		if payload.Action == "RefineManualCombination" and type(payload.SelectedSlotIndices) == "table" then
 			local flamePrecision = if type(payload.FlamePrecision) == "number" then payload.FlamePrecision else 0.5
 			AlchemyManager.RefineManualCombination(player, payload.SelectedSlotIndices, flamePrecision)
+		elseif payload.Action == "RequestMasterySync" then
+			local exp, level = PlayerDataManager.GetAlchemyData(player)
+			alchemyActionRemote:FireClient(player, {
+				Action = "SyncMastery",
+				Exp = exp,
+				Level = level,
+			})
 		end
 	end)
 
-	print("[ASCEND] Upgraded Flame Precision AlchemyManager Initialized.")
+	print("[ASCEND] Upgraded Quality-Metadata AlchemyManager Initialized.")
 end
 
 function AlchemyManager.SetupCauldronModel(cauldronInstance: Instance)
@@ -130,7 +137,7 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 		CultivationManager.SyncClient(player)
 	end
 
-	-- Deduct Inserted Herbs from Inventory
+	-- Deduct Inserted Herbs
 	for _, slotIdx in ipairs(slotsToDeduct) do
 		local slot = playerInventory[slotIdx]
 		if slot then
@@ -146,7 +153,7 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 	-- Crafting Delay
 	task.wait(formula.CraftDuration)
 
-	-- Calculate Flame Bonus (Precision 0.8-1.0 yields +15% success bonus)
+	-- Flame Bonus
 	local flameBonus = 0
 	local flameRating = "Standard Flame"
 	if flamePrecision >= 0.80 then
@@ -162,8 +169,8 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 	local success = roll <= finalSuccessRate
 
 	if success then
-		-- Guaranteed Delivery into Inventory Stacks
-		InventoryManager.AddItem(player, formula.ResultItemId, 1)
+		-- Deliver Pill with Quality Grade Metadata
+		InventoryManager.AddItem(player, formula.ResultItemId, 1, qualityText)
 
 		-- Grant Alchemy EXP
 		local expGained = formula.ExpReward or 30
@@ -177,7 +184,10 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 			Success = true,
 			Message = string.format("Refined %s (%s)!\n+ %d Alchemy EXP", formula.Name, qualityText, expGained),
 			ResultItemId = formula.ResultItemId,
+			QualityText = qualityText,
 			ExpGained = expGained,
+			TotalExp = newExp,
+			Level = newLevel,
 		})
 	else
 		print(string.format("[AlchemyManager] %s failed refining (Roll: %.2f vs Rate: %.2f)", player.Name, roll, finalSuccessRate))

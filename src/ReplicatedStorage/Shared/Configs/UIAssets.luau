@@ -2,84 +2,53 @@
 --[[
     UIAssets.luau
     Location: src/ReplicatedStorage/Shared/Configs/UIAssets.luau
-    Central UI asset and aesthetic style configuration for ASCEND.
-    Unified Light-Mode Flat 2D Palette (Matching Alchemy Cauldron Aesthetic).
+    Centralized UI Asset Registry & Color Palette definitions for ASCEND.
 ]]
-
-export type ColorPalette = {
-	LightMain: Color3,     -- #F8FAF9 Window Main
-	LightPanel: Color3,    -- #F1F5F9 Sub-Panels
-	LightCard: Color3,     -- #FFFFFF Cards & Slots
-	LightBorder: Color3,   -- #CBD5E1 Edge Borders
-	TextMain: Color3,      -- #0F172A Deep Charcoal Text
-	TextSub: Color3,       -- #64748B Muted Subtext
-	AzureBlue: Color3,     -- #3B82F6 Sapphire Blue (Qi)
-	EmeraldGreen: Color3,  -- #10B981 Emerald Green (HP)
-	ActionGold: Color3,    -- #D97706 Warm Amber Gold
-	DangerRed: Color3,     -- #E11D48 Carmine Red
-}
-
-export type RarityColorMap = {
-	Common: Color3,
-	Uncommon: Color3,
-	Rare: Color3,
-	Epic: Color3,
-	Legendary: Color3,
-	Mythic: Color3,
-}
 
 local UIAssets = {}
 
--- Unified Light-Mode Aesthetic Color Palette
-UIAssets.Palette = {
-	LightMain    = Color3.fromRGB(248, 250, 249), -- #F8FAF9
-	LightPanel   = Color3.fromRGB(241, 245, 249), -- #F1F5F9
-	LightCard    = Color3.fromRGB(255, 255, 255), -- #FFFFFF
-	LightBorder  = Color3.fromRGB(203, 213, 225), -- #CBD5E1
-	TextMain     = Color3.fromRGB(15, 23, 42),    -- #0F172A
-	TextSub      = Color3.fromRGB(100, 116, 139), -- #64748B
-	AzureBlue    = Color3.fromRGB(59, 130, 246),  -- #3B82F6
-	EmeraldGreen = Color3.fromRGB(16, 185, 129), -- #10B981
-	ActionGold   = Color3.fromRGB(217, 119, 6),   -- #D97706
-	DangerRed    = Color3.fromRGB(225, 29, 72),   -- #E11D48
+UIAssets.Icons = {
+	HealthbarHUD            = "rbxassetid://107254331482831",
+	FlameIcon               = "rbxassetid://98860036623590",
+	GaleWindLotus           = "rbxassetid://97399822723211",
+	GaleWindDan             = "rbxassetid://108842260002164",
+	QiGatheringDan          = "rbxassetid://136942657595135",
+	PhysiqueTemperingDan    = "rbxassetid://127548831742229",
+	DemonBeastCore          = "rbxassetid://127840279619766",
+	CelestialDew            = "rbxassetid://131403489720983",
+	FoundationGatheringDan = "rbxassetid://135779673578731",
+	SpiritAsh               = "rbxassetid://128820714120893",
+	DragonBloodVine         = "rbxassetid://87215598829275",
+	SpiritGrass             = "rbxassetid://112390155425328",
+	SpiritHealingDan        = "rbxassetid://72471225624084",
 }
 
--- Rarity Colors matching Alchemy Cauldron theme
-UIAssets.RarityColors = {
-	Common    = Color3.fromRGB(100, 116, 139), -- Slate Muted
-	Uncommon  = Color3.fromRGB(16, 185, 129),  -- Emerald Green
-	Rare      = Color3.fromRGB(59, 130, 246),  -- Sapphire Blue
-	Epic      = Color3.fromRGB(147, 51, 234),  -- Spiritual Purple
-	Legendary = Color3.fromRGB(217, 119, 6),   -- Flame Gold
-	Mythic    = Color3.fromRGB(225, 29, 72),   -- Crimson Immortal
+UIAssets.GradeCardColors = {
+	["Sovereign Immortal Quality"] = {
+		Background = Color3.fromRGB(254, 226, 226), -- Soft Crimson
+		Border     = Color3.fromRGB(225, 29, 72),   -- Ruby Red
+	},
+	["Century Superior Quality"]   = {
+		Background = Color3.fromRGB(243, 232, 255), -- Soft Purple
+		Border     = Color3.fromRGB(147, 51, 234),   -- Epic Purple
+	},
+	["Refined Medium Quality"]    = {
+		Background = Color3.fromRGB(224, 242, 254), -- Soft Azure
+		Border     = Color3.fromRGB(59, 130, 246),   -- Rare Blue
+	},
+	["Standard Quality"]          = {
+		Background = Color3.fromRGB(209, 250, 229), -- Soft Emerald
+		Border     = Color3.fromRGB(16, 185, 129),   -- Emerald Green
+	},
 }
 
--- Typography Configuration (FredokaOne Bold Sans-Serif)
-UIAssets.Fonts = {
-	Header    = Enum.Font.FredokaOne,
-	SubHeader = Enum.Font.FredokaOne,
-	Body      = Enum.Font.SourceSans,
-	BodyBold  = Enum.Font.SourceSansBold,
+UIAssets.RarityCardColors = {
+	Mythic    = { Background = Color3.fromRGB(254, 226, 226), Border = Color3.fromRGB(225, 29, 72) },
+	Legendary = { Background = Color3.fromRGB(254, 243, 199), Border = Color3.fromRGB(217, 119, 6) },
+	Epic      = { Background = Color3.fromRGB(243, 232, 255), Border = Color3.fromRGB(147, 51, 234) },
+	Rare      = { Background = Color3.fromRGB(224, 242, 254), Border = Color3.fromRGB(59, 130, 246) },
+	Uncommon  = { Background = Color3.fromRGB(209, 250, 229), Border = Color3.fromRGB(16, 185, 129) },
+	Common    = { Background = Color3.fromRGB(255, 255, 255), Border = Color3.fromRGB(203, 213, 225) },
 }
-
--- Image Assets
-UIAssets.Images = {
-	ParchmentBackground = "",
-	JadeFrameBorder     = "",
-	QiBarFill           = "",
-	CrestSlotFrame      = "",
-	SwordIcon           = "",
-	PillIcon            = "",
-}
-
-function UIAssets.GetColor(colorName: string): Color3
-	local color = (UIAssets.Palette :: { [string]: Color3 })[colorName]
-	return color or UIAssets.Palette.LightMain
-end
-
-function UIAssets.GetRarityColor(rarity: string): Color3
-	local color = (UIAssets.RarityColors :: { [string]: Color3 })[rarity]
-	return color or UIAssets.RarityColors.Common
-end
 
 return UIAssets

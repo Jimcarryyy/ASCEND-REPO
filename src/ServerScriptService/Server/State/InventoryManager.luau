@@ -3,7 +3,7 @@
     InventoryManager.luau
     Location: src/ServerScriptService/Server/State/InventoryManager.luau
     Server-authoritative inventory engine for ASCEND.
-    Capped at 60 slots for storing consumables, weapons, materials, and crest arrays.
+    Capped at 60 slots with quality grade metadata stacking support.
 ]]
 
 local Players = game:GetService("Players")
@@ -16,10 +16,11 @@ local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 export type InventorySlot = {
 	ItemId: string,
 	Count: number,
+	Quality: string?, -- Optional quality metadata (e.g. "Century Superior Quality")
 }
 
 local InventoryManager = {}
-local MAX_SLOTS = 60 -- Expanded from 30 to 60 slots for comprehensive testing
+local MAX_SLOTS = 60
 
 local playerInventories: { [Player]: { [number]: InventorySlot? } } = {}
 
@@ -52,7 +53,7 @@ function InventoryManager.Init()
 		end
 	end)
 
-	print("[ASCEND] InventoryManager Engine Initialized with 60 Storage Slots.")
+	print("[ASCEND] InventoryManager Engine Initialized with 60 Slots & Quality Grade Support.")
 end
 
 function InventoryManager.OnPlayerAdded(player: Player)
@@ -78,12 +79,10 @@ function InventoryManager.EnsureTestItems(player: Player)
 	end
 
 	if not hasTestWeapons then
-		-- Add Starter Consumables & Herbs
-		InventoryManager.AddItem(player, "SpiritHealingDan", 5)
-		InventoryManager.AddItem(player, "FoundationGatheringDan", 3)
+		InventoryManager.AddItem(player, "SpiritHealingDan", 5, "Standard Quality")
+		InventoryManager.AddItem(player, "FoundationGatheringDan", 3, "Standard Quality")
 		InventoryManager.AddItem(player, "SpiritGrass", 12)
 
-		-- Add Weapons & Crest Arrays from ItemConfig
 		for itemId, itemDef in pairs(ItemConfig.GetAllItems()) do
 			if itemDef.Type == "Weapon" or itemDef.Type == "Crest" then
 				InventoryManager.AddItem(player, itemId, 1)
@@ -100,7 +99,7 @@ function InventoryManager.GetInventory(player: Player): { [number]: InventorySlo
 	return playerInventories[player] or {}
 end
 
-function InventoryManager.AddItem(player: Player, itemId: string, count: number): boolean
+function InventoryManager.AddItem(player: Player, itemId: string, count: number, quality: string?): boolean
 	local itemDef = ItemConfig.GetItem(itemId)
 	if not itemDef then return false end
 
@@ -110,10 +109,10 @@ function InventoryManager.AddItem(player: Player, itemId: string, count: number)
 	local maxStack = itemDef.MaxStack or 1
 	local remaining = count
 
-	-- 1. Stack into existing slots with space
+	-- 1. Stack into existing slots with space ONLY if ItemId AND Quality match
 	for slotIdx = 1, MAX_SLOTS do
 		local slot = inv[slotIdx]
-		if slot and slot.ItemId == itemId and slot.Count < maxStack then
+		if slot and slot.ItemId == itemId and slot.Quality == quality and slot.Count < maxStack then
 			local space = maxStack - slot.Count
 			local toAdd = math.min(space, remaining)
 			slot.Count += toAdd
@@ -130,6 +129,7 @@ function InventoryManager.AddItem(player: Player, itemId: string, count: number)
 				inv[slotIdx] = {
 					ItemId = itemId,
 					Count = toAdd,
+					Quality = quality,
 				}
 				remaining -= toAdd
 				if remaining <= 0 then break end
@@ -150,6 +150,7 @@ function InventoryManager.SetInventory(player: Player, inventoryData: { [number]
 				playerInventories[player][slotIdx] = {
 					ItemId = slot.ItemId,
 					Count = slot.Count,
+					Quality = slot.Quality,
 				}
 			end
 		end

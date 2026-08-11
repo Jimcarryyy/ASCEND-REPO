@@ -2,7 +2,7 @@
 --[[
     AlchemyController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AlchemyController.luau
-    Client UI controller for Manual Herb Combination Alchemy and Interactive Flame Precision Minigame.
+    Client UI controller for Manual Herb Combination Alchemy with 2D PNG Icon Cards.
 ]]
 
 local Players = game:GetService("Players")
@@ -13,6 +13,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local AlchemyConfig = require(ReplicatedStorage.Shared.Configs.AlchemyConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
+local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local HUDController = require(script.Parent.HUDController)
 
@@ -40,6 +41,10 @@ local overlayBackdrop: Frame
 local mainModal: Frame
 local herbPickerGrid: ScrollingFrame
 
+local masteryRankLabel: TextLabel
+local masteryExpFill: Frame
+local masteryExpText: TextLabel
+
 local cauldronSlots: { [number]: { SlotIdx: number?, ItemId: string? } } = {
 	[1] = { SlotIdx = nil, ItemId = nil },
 	[2] = { SlotIdx = nil, ItemId = nil },
@@ -56,7 +61,6 @@ local qiCostLabel: TextLabel
 local statusMessageLabel: TextLabel
 local refineButton: TextButton
 
--- Flame Gauge Minigame Elements
 local flameGaugeFrame: Frame
 local flameNeedle: Frame
 local flameStatusText: TextLabel
@@ -88,6 +92,7 @@ function AlchemyController.Init()
 			overlayBackdrop.Visible = true
 			local inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
 			inventoryActionRemote:FireServer({ Action = "RequestSync" })
+			alchemyActionRemote:FireServer({ Action = "RequestMasterySync" })
 			AlchemyController.RefreshHerbPicker()
 			AlchemyController.UpdateMetrics()
 		end
@@ -96,7 +101,9 @@ function AlchemyController.Init()
 	alchemyActionRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" or not payload.Action then return end
 
-		if payload.Action == "RefineResult" then
+		if payload.Action == "SyncMastery" then
+			AlchemyController.UpdateMasteryBar(payload.Exp or 0, payload.Level or 1)
+		elseif payload.Action == "RefineResult" then
 			isRefining = false
 			minigameActive = false
 			flameGaugeFrame.Visible = false
@@ -110,18 +117,21 @@ function AlchemyController.Init()
 			AlchemyController.UpdateMetrics()
 			AlchemyController.RefreshHerbPicker()
 
+			if payload.TotalExp and payload.Level then
+				AlchemyController.UpdateMasteryBar(payload.TotalExp, payload.Level)
+			end
+
 			if statusMessageLabel then
 				statusMessageLabel.Text = payload.Message or ""
 				statusMessageLabel.TextColor3 = if payload.Success then COLOR_HP_GREEN else COLOR_DANGER_RED
 			end
 
 			if payload.Success and payload.ResultItemId then
-				HUDController.ShowItemToast(payload.ResultItemId, 1)
+				HUDController.ShowItemToast(payload.ResultItemId, 1, payload.QualityText)
 			end
 		end
 	end)
 
-	-- Flame Gauge Animation Loop
 	RunService.RenderStepped:Connect(function(deltaTime: number)
 		if minigameActive then
 			needlePosition += deltaTime * 2.2 * needleDirection
@@ -135,7 +145,6 @@ function AlchemyController.Init()
 
 			flameNeedle.Position = UDim2.new(needlePosition, -2, 0, 0)
 
-			-- Calculate Score (0.4 to 0.6 is Optimal Flame Zone)
 			if needlePosition >= 0.40 and needlePosition <= 0.60 then
 				flameStatusText.Text = "OPTIMAL QI FLAME! (PRESS LOCK)"
 				flameStatusText.TextColor3 = COLOR_HP_GREEN
@@ -157,7 +166,7 @@ function AlchemyController.Init()
 		end
 	end)
 
-	print("[ASCEND] Flame Precision AlchemyController Initialized.")
+	print("[ASCEND] AlchemyController Initialized with 2D PNG Icon Cards.")
 end
 
 function AlchemyController.BuildUI()
@@ -180,8 +189,8 @@ function AlchemyController.BuildUI()
 
 	mainModal = Instance.new("Frame")
 	mainModal.Name = "MainModal"
-	mainModal.Size = UDim2.new(0, 1150, 0, 640)
-	mainModal.Position = UDim2.new(0.5, -575, 0.5, -320)
+	mainModal.Size = UDim2.new(0, 1150, 0, 660)
+	mainModal.Position = UDim2.new(0.5, -575, 0.5, -330)
 	mainModal.BackgroundColor3 = COLOR_LIGHT_MAIN
 	mainModal.BorderSizePixel = 0
 	mainModal.Parent = overlayBackdrop
@@ -192,12 +201,12 @@ function AlchemyController.BuildUI()
 	mStroke.Parent = mainModal
 
 	local headerTitle = Instance.new("TextLabel")
-	headerTitle.Size = UDim2.new(1, 0, 0, 52)
+	headerTitle.Size = UDim2.new(1, 0, 0, 42)
 	headerTitle.BackgroundTransparency = 1
 	headerTitle.Text = "SPIRIT CAULDRON ALCHEMY"
 	headerTitle.TextColor3 = COLOR_TEXT_MAIN
 	headerTitle.Font = UI_FONT
-	headerTitle.TextSize = 32
+	headerTitle.TextSize = 28
 	headerTitle.Parent = mainModal
 
 	local closeBtn = Instance.new("TextButton")
@@ -216,10 +225,62 @@ function AlchemyController.BuildUI()
 		flameGaugeFrame.Visible = false
 	end)
 
+	-- MASTERY BAR
+	local masteryBarFrame = Instance.new("Frame")
+	masteryBarFrame.Size = UDim2.new(1, -88, 0, 28)
+	masteryBarFrame.Position = UDim2.new(0, 12, 0, 44)
+	masteryBarFrame.BackgroundColor3 = COLOR_LIGHT_PANEL
+	masteryBarFrame.BorderSizePixel = 0
+	masteryBarFrame.Parent = mainModal
+
+	local mbStroke = Instance.new("UIStroke")
+	mbStroke.Color = COLOR_LIGHT_BORDER
+	mbStroke.Thickness = 1
+	mbStroke.Parent = masteryBarFrame
+
+	masteryRankLabel = Instance.new("TextLabel")
+	masteryRankLabel.Size = UDim2.new(0, 240, 1, 0)
+	masteryRankLabel.Position = UDim2.new(0, 10, 0, 0)
+	masteryRankLabel.BackgroundTransparency = 1
+	masteryRankLabel.Text = "RANK 1 — APPRENTICE ALCHEMIST"
+	masteryRankLabel.TextColor3 = COLOR_TEXT_MAIN
+	masteryRankLabel.Font = UI_FONT
+	masteryRankLabel.TextSize = 12
+	masteryRankLabel.TextXAlignment = Enum.TextXAlignment.Left
+	masteryRankLabel.Parent = masteryBarFrame
+
+	local expBg = Instance.new("Frame")
+	expBg.Size = UDim2.new(1, -260, 0, 18)
+	expBg.Position = UDim2.new(0, 250, 0, 5)
+	expBg.BackgroundColor3 = COLOR_LIGHT_CARD
+	expBg.BorderSizePixel = 0
+	expBg.Parent = masteryBarFrame
+
+	local expStroke = Instance.new("UIStroke")
+	expStroke.Color = COLOR_LIGHT_BORDER
+	expStroke.Thickness = 1
+	expStroke.Parent = expBg
+
+	masteryExpFill = Instance.new("Frame")
+	masteryExpFill.Size = UDim2.new(0, 0, 1, 0)
+	masteryExpFill.BackgroundColor3 = COLOR_ACTION_GOLD
+	masteryExpFill.BorderSizePixel = 0
+	masteryExpFill.Parent = expBg
+
+	masteryExpText = Instance.new("TextLabel")
+	masteryExpText.Size = UDim2.new(1, 0, 1, 0)
+	masteryExpText.BackgroundTransparency = 1
+	masteryExpText.Text = "0 / 100 EXP"
+	masteryExpText.TextColor3 = COLOR_TEXT_MAIN
+	masteryExpText.Font = UI_FONT
+	masteryExpText.TextSize = 11
+	masteryExpText.ZIndex = 5
+	masteryExpText.Parent = expBg
+
 	-- COLUMN 1: HERB PICKER
 	local col1 = Instance.new("Frame")
-	col1.Size = UDim2.new(0, 320, 1, -64)
-	col1.Position = UDim2.new(0, 12, 0, 52)
+	col1.Size = UDim2.new(0, 320, 1, -84)
+	col1.Position = UDim2.new(0, 12, 0, 76)
 	col1.BackgroundColor3 = COLOR_LIGHT_PANEL
 	col1.BorderSizePixel = 0
 	col1.Parent = mainModal
@@ -247,11 +308,11 @@ function AlchemyController.BuildUI()
 	herbPickerGrid.ScrollBarImageColor3 = COLOR_AZURE_BLUE
 	herbPickerGrid.Parent = col1
 
-	-- COLUMN 2: WORKSPACE & FLAME MINIGAME
+	-- COLUMN 2: WORKSPACE
 	local col2 = Instance.new("Frame")
 	col2.Name = "Column2_CauldronWorkspace"
-	col2.Size = UDim2.new(0, 480, 1, -64)
-	col2.Position = UDim2.new(0, 344, 0, 52)
+	col2.Size = UDim2.new(0, 480, 1, -84)
+	col2.Position = UDim2.new(0, 344, 0, 76)
 	col2.BackgroundColor3 = COLOR_LIGHT_PANEL
 	col2.BorderSizePixel = 0
 	col2.Parent = mainModal
@@ -298,29 +359,39 @@ function AlchemyController.BuildUI()
 		slotFrame.Parent = slotContainer
 
 		local sStroke = Instance.new("UIStroke")
+		sStroke.Name = "SlotStroke"
 		sStroke.Color = COLOR_LIGHT_BORDER
 		sStroke.Thickness = 1.5
 		sStroke.Parent = slotFrame
 
 		local slotTitle = Instance.new("TextLabel")
 		slotTitle.Name = "SlotTitle"
-		slotTitle.Size = UDim2.new(1, 0, 0, 20)
+		slotTitle.Size = UDim2.new(1, 0, 0, 18)
 		slotTitle.BackgroundTransparency = 1
 		slotTitle.Text = "HERB SLOT " .. i
 		slotTitle.TextColor3 = COLOR_TEXT_SUB
 		slotTitle.Font = UI_FONT
-		slotTitle.TextSize = 11
+		slotTitle.TextSize = 10
 		slotTitle.Parent = slotFrame
+
+		local slotIcon = Instance.new("ImageLabel")
+		slotIcon.Name = "SlotIcon"
+		slotIcon.Size = UDim2.new(0, 48, 0, 48)
+		slotIcon.Position = UDim2.new(0.5, -24, 0, 20)
+		slotIcon.BackgroundTransparency = 1
+		slotIcon.ScaleType = Enum.ScaleType.Fit
+		slotIcon.Visible = false
+		slotIcon.Parent = slotFrame
 
 		local herbNameLbl = Instance.new("TextLabel")
 		herbNameLbl.Name = "HerbNameLabel"
-		herbNameLbl.Size = UDim2.new(1, -8, 1, -24)
-		herbNameLbl.Position = UDim2.new(0, 4, 0, 20)
+		herbNameLbl.Size = UDim2.new(1, -8, 0, 18)
+		herbNameLbl.Position = UDim2.new(0, 4, 1, -20)
 		herbNameLbl.BackgroundTransparency = 1
 		herbNameLbl.Text = "+ Add Herb"
 		herbNameLbl.TextColor3 = COLOR_TEXT_SUB
 		herbNameLbl.Font = UI_FONT
-		herbNameLbl.TextSize = 12
+		herbNameLbl.TextSize = 10
 		herbNameLbl.TextWrapped = true
 		herbNameLbl.Parent = slotFrame
 
@@ -347,10 +418,10 @@ function AlchemyController.BuildUI()
 	metricsBox.BorderSizePixel = 0
 	metricsBox.Parent = col2
 
-	local mbStroke = Instance.new("UIStroke")
-	mbStroke.Color = COLOR_LIGHT_BORDER
-	mbStroke.Thickness = 1
-	mbStroke.Parent = metricsBox
+	local mbBoxStroke = Instance.new("UIStroke")
+	mbBoxStroke.Color = COLOR_LIGHT_BORDER
+	mbBoxStroke.Thickness = 1
+	mbBoxStroke.Parent = metricsBox
 
 	matchedFormulaLabel = Instance.new("TextLabel")
 	matchedFormulaLabel.Size = UDim2.new(1, -20, 0, 28)
@@ -396,7 +467,7 @@ function AlchemyController.BuildUI()
 	qiCostLabel.TextXAlignment = Enum.TextXAlignment.Left
 	qiCostLabel.Parent = metricsBox
 
-	-- FLAME GAUGE MINIGAME CONTAINER
+	-- FLAME GAUGE MINIGAME
 	flameGaugeFrame = Instance.new("Frame")
 	flameGaugeFrame.Name = "FlameGaugeFrame"
 	flameGaugeFrame.Size = UDim2.new(1, -24, 0, 70)
@@ -411,13 +482,22 @@ function AlchemyController.BuildUI()
 	fgStroke.Thickness = 1
 	fgStroke.Parent = flameGaugeFrame
 
+	local flameImg = Instance.new("ImageLabel")
+	flameImg.Size = UDim2.new(0, 20, 0, 20)
+	flameImg.Position = UDim2.new(0, 8, 0, 4)
+	flameImg.BackgroundTransparency = 1
+	flameImg.Image = UIAssets.Icons.FlameIcon or ""
+	flameImg.Parent = flameGaugeFrame
+
 	flameStatusText = Instance.new("TextLabel")
-	flameStatusText.Size = UDim2.new(1, 0, 0, 22)
+	flameStatusText.Size = UDim2.new(1, -36, 0, 22)
+	flameStatusText.Position = UDim2.new(0, 32, 0, 2)
 	flameStatusText.BackgroundTransparency = 1
 	flameStatusText.Text = "CONTROL QI FLAME TEMP"
 	flameStatusText.TextColor3 = COLOR_ACTION_GOLD
 	flameStatusText.Font = UI_FONT
 	flameStatusText.TextSize = 12
+	flameStatusText.TextXAlignment = Enum.TextXAlignment.Left
 	flameStatusText.Parent = flameGaugeFrame
 
 	local barBackground = Instance.new("Frame")
@@ -478,7 +558,6 @@ function AlchemyController.BuildUI()
 			return
 		end
 
-		-- Activate Flame Minigame
 		isRefining = true
 		minigameActive = true
 		needlePosition = 0
@@ -489,10 +568,10 @@ function AlchemyController.BuildUI()
 		statusMessageLabel.Text = "Catch the needle inside the GREEN zone!"
 	end)
 
-	-- COLUMN 3: FORMULA GUIDE REFERENCE
+	-- COLUMN 3: FORMULA GUIDE
 	local col3 = Instance.new("Frame")
-	col3.Size = UDim2.new(0, 310, 1, -64)
-	col3.Position = UDim2.new(0, 828, 0, 52)
+	col3.Size = UDim2.new(0, 310, 1, -84)
+	col3.Position = UDim2.new(0, 828, 0, 76)
 	col3.BackgroundColor3 = COLOR_LIGHT_PANEL
 	col3.BorderSizePixel = 0
 	col3.Parent = mainModal
@@ -575,11 +654,36 @@ function AlchemyController.BuildUI()
 	end
 end
 
+function AlchemyController.UpdateMasteryBar(exp: number, level: number)
+	local rankTitles = {
+		[1] = "APPRENTICE ALCHEMIST",
+		[2] = "SPIRIT HERB MASTER",
+		[3] = "GRAND CAULDRON SCHOLAR",
+		[4] = "PILL EMPEROR",
+	}
+
+	local title = rankTitles[level] or ("ALCHEMY RANK " .. level)
+	if masteryRankLabel then
+		masteryRankLabel.Text = string.format("RANK %d — %s", level, title)
+	end
+
+	local reqExp = level * 100
+	local ratio = math.clamp(exp / reqExp, 0, 1)
+
+	if masteryExpFill then
+		masteryExpFill.Size = UDim2.new(ratio, 0, 1, 0)
+	end
+
+	if masteryExpText then
+		masteryExpText.Text = string.format("%d / %d EXP", exp, reqExp)
+	end
+end
+
 function AlchemyController.LockFlamePrecision()
 	if not minigameActive then return end
 
 	minigameActive = false
-	flamePrecisionScore = 1 - math.abs(needlePosition - 0.5) * 2 -- Score 0.0 to 1.0
+	flamePrecisionScore = 1 - math.abs(needlePosition - 0.5) * 2
 
 	refineButton.Text = "REFINING IN PROGRESS..."
 	refineButton.BackgroundColor3 = COLOR_TEXT_SUB
@@ -610,34 +714,52 @@ function AlchemyController.RefreshHerbPicker()
 		if slotData then
 			local itemDef = ItemConfig.GetItem(slotData.ItemId)
 			if itemDef and itemDef.Type == "Material" then
+				local colorData = UIAssets.RarityCardColors[itemDef.Rarity]
+				if slotData.Quality and UIAssets.GradeCardColors[slotData.Quality] then
+					colorData = UIAssets.GradeCardColors[slotData.Quality]
+				end
+
+				local cardBg = if colorData then colorData.Background else COLOR_LIGHT_CARD
+				local borderCol = if colorData then colorData.Border else COLOR_LIGHT_BORDER
+
 				local slotFrame = Instance.new("Frame")
 				slotFrame.Name = "HerbSlot_" .. slotIdx
-				slotFrame.BackgroundColor3 = COLOR_LIGHT_CARD
+				slotFrame.BackgroundColor3 = cardBg
 				slotFrame.BorderSizePixel = 0
 				slotFrame.Parent = herbPickerGrid
 
 				local stroke = Instance.new("UIStroke")
-				stroke.Color = COLOR_LIGHT_BORDER
+				stroke.Color = borderCol
 				stroke.Thickness = 1.5
 				stroke.Parent = slotFrame
 
-				local nameLbl = Instance.new("TextLabel")
-				nameLbl.Size = UDim2.new(1, -6, 1, -22)
-				nameLbl.Position = UDim2.new(0, 3, 0, 4)
-				nameLbl.BackgroundTransparency = 1
-				nameLbl.Text = itemDef.Name
-				nameLbl.TextColor3 = COLOR_TEXT_MAIN
-				nameLbl.Font = UI_FONT
-				nameLbl.TextSize = 11
-				nameLbl.TextWrapped = true
-				nameLbl.Parent = slotFrame
+				if itemDef.Icon and itemDef.Icon ~= "" then
+					local icon = Instance.new("ImageLabel")
+					icon.Size = UDim2.new(1, -12, 1, -20)
+					icon.Position = UDim2.new(0, 6, 0, 4)
+					icon.BackgroundTransparency = 1
+					icon.ScaleType = Enum.ScaleType.Fit
+					icon.Image = itemDef.Icon
+					icon.Parent = slotFrame
+				else
+					local nameLbl = Instance.new("TextLabel")
+					nameLbl.Size = UDim2.new(1, -6, 1, -22)
+					nameLbl.Position = UDim2.new(0, 3, 0, 4)
+					nameLbl.BackgroundTransparency = 1
+					nameLbl.Text = itemDef.Name
+					nameLbl.TextColor3 = COLOR_TEXT_MAIN
+					nameLbl.Font = UI_FONT
+					nameLbl.TextSize = 11
+					nameLbl.TextWrapped = true
+					nameLbl.Parent = slotFrame
+				end
 
 				local countLbl = Instance.new("TextLabel")
 				countLbl.Size = UDim2.new(1, -4, 0, 16)
 				countLbl.Position = UDim2.new(0, 0, 1, -16)
 				countLbl.BackgroundTransparency = 1
 				countLbl.Text = "x" .. slotData.Count
-				countLbl.TextColor3 = COLOR_TEXT_SUB
+				countLbl.TextColor3 = COLOR_TEXT_MAIN
 				countLbl.Font = UI_FONT
 				countLbl.TextSize = 11
 				countLbl.TextXAlignment = Enum.TextXAlignment.Right
@@ -669,18 +791,35 @@ function AlchemyController.UpdateCauldronSlotDisplay()
 		local slotFrame = cauldronSlotButtons[i]
 		if slotFrame then
 			local nameLbl = slotFrame:FindFirstChild("HerbNameLabel") :: TextLabel?
+			local slotIcon = slotFrame:FindFirstChild("SlotIcon") :: ImageLabel?
+			local stroke = slotFrame:FindFirstChild("SlotStroke") :: UIStroke?
+
 			local data = cauldronSlots[i]
 			if data and data.ItemId then
 				local itemDef = ItemConfig.GetItem(data.ItemId)
-				if nameLbl then
-					nameLbl.Text = if itemDef then itemDef.Name else data.ItemId
-					nameLbl.TextColor3 = COLOR_AZURE_BLUE
+				if itemDef and itemDef.Icon and itemDef.Icon ~= "" then
+					if slotIcon then
+						slotIcon.Image = itemDef.Icon
+						slotIcon.Visible = true
+					end
+					if nameLbl then nameLbl.Visible = false end
+				else
+					if slotIcon then slotIcon.Visible = false end
+					if nameLbl then
+						nameLbl.Text = if itemDef then itemDef.Name else data.ItemId
+						nameLbl.TextColor3 = COLOR_AZURE_BLUE
+						nameLbl.Visible = true
+					end
 				end
+				if stroke then stroke.Color = COLOR_AZURE_BLUE end
 			else
+				if slotIcon then slotIcon.Visible = false end
 				if nameLbl then
 					nameLbl.Text = "+ Add Herb"
 					nameLbl.TextColor3 = COLOR_TEXT_SUB
+					nameLbl.Visible = true
 				end
+				if stroke then stroke.Color = COLOR_LIGHT_BORDER end
 			end
 		end
 	end

@@ -2,273 +2,227 @@
 --[[
     ItemConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/ItemConfig.luau
-    Central configuration registry for all items, weapons, herbs, and buff pills in ASCEND.
+    Central configuration repository for all items in ASCEND.
 ]]
 
-export type ItemRarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic"
-export type ItemType = "Weapon" | "Consumable" | "Material" | "Crest"
-export type ItemArchetype = "FlyingSword" | "Gauntlet" | "Spear" | "Pill" | "Material" | "Crest"
+local UIAssets = require(script.Parent.UIAssets)
 
-export type ItemData = {
+export type ItemRarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic"
+export type ItemType = "Weapon" | "Consumable" | "Material" | "Currency" | "Crest"
+
+export type ItemDefinition = {
 	Id: string,
 	Name: string,
-	Type: ItemType,
-	Archetype: ItemArchetype,
-	Rarity: ItemRarity,
 	Description: string,
+	Rarity: ItemRarity,
+	Type: ItemType,
 	MaxStack: number,
-	ModelName: string?,
-	PrimaryColor: Color3,
-	AgeYears: number?, -- Vintage Age (1, 10, 100, 1000)
+	AgeYears: number?,
 	Stats: { [string]: number }?,
+	Icon: string?,
 }
 
 local ItemConfig = {}
 
-local ITEMS: { [string]: ItemData } = {
-	-- =========================================================================
-	-- VINTAGE ALCHEMY HERBS (1-YEAR TO 1,000-YEAR TIERS)
-	-- =========================================================================
-	["SpiritGrass_1Yr"] = {
-		Id = "SpiritGrass_1Yr",
-		Name = "1-Year Spirit Grass",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Common",
-		Description = "Young spirit herb containing basic Qi. Standard solvent for elementary pills.",
-		MaxStack = 999,
-		AgeYears = 1,
-		PrimaryColor = Color3.fromRGB(120, 200, 120),
-	},
-	["SpiritGrass_10Yr"] = {
-		Id = "SpiritGrass_10Yr",
-		Name = "10-Year Spirit Grass",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Uncommon",
-		Description = "A matured herb harvested from high mountain ridges with concentrated Qi veins.",
-		MaxStack = 999,
-		AgeYears = 10,
-		PrimaryColor = Color3.fromRGB(76, 175, 80),
-	},
-	["SpiritGrass_100Yr"] = {
-		Id = "SpiritGrass_100Yr",
-		Name = "100-Year Spirit Grass",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Rare",
-		Description = "A rare century herb glowing with radiant spirit light. Significantly boosts pill success.",
-		MaxStack = 999,
-		AgeYears = 100,
-		PrimaryColor = Color3.fromRGB(33, 150, 243),
-	},
-	["SpiritGrass_1000Yr"] = {
-		Id = "SpiritGrass_1000Yr",
-		Name = "1,000-Year Sovereign Spirit Grass",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Mythic",
-		Description = "An immortal thousand-year herb. Guarantees supreme pill quality and maximum buff duration.",
-		MaxStack = 999,
-		AgeYears = 1000,
-		PrimaryColor = Color3.fromRGB(225, 29, 72),
-	},
-
-	["DragonBloodVine_1Yr"] = {
-		Id = "DragonBloodVine_1Yr",
-		Name = "1-Year Dragon Blood Vine",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Uncommon",
-		Description = "A crimson vine imbued with volcanic heat. Primary ingredient for Physique Tempering Dan.",
-		MaxStack = 999,
-		AgeYears = 1,
-		PrimaryColor = Color3.fromRGB(230, 90, 50),
-	},
-	["DragonBloodVine_100Yr"] = {
-		Id = "DragonBloodVine_100Yr",
-		Name = "100-Year Dragon Blood Vine",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Epic",
-		Description = "Century dragon vine pulsing with fierce crimson energy. Drastically amplifies attack power pills.",
-		MaxStack = 999,
-		AgeYears = 100,
-		PrimaryColor = Color3.fromRGB(156, 39, 176),
-	},
-
-	["GaleWindLotus_1Yr"] = {
-		Id = "GaleWindLotus_1Yr",
-		Name = "1-Year Gale Wind Lotus",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Uncommon",
-		Description = "A light cyan lotus flower that floats on wind currents. Essential for Gale Wind Dan.",
-		MaxStack = 999,
-		AgeYears = 1,
-		PrimaryColor = Color3.fromRGB(100, 220, 180),
-	},
-	["GaleWindLotus_100Yr"] = {
-		Id = "GaleWindLotus_100Yr",
-		Name = "100-Year Gale Wind Lotus",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Epic",
-		Description = "Century wind lotus creating localized air currents. Grants extreme flight speed buffs.",
-		MaxStack = 999,
-		AgeYears = 100,
-		PrimaryColor = Color3.fromRGB(59, 130, 246),
-	},
-
-	["CelestialDew"] = {
-		Id = "CelestialDew",
-		Name = "Celestial Dew Water",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Common",
-		Description = "Pure mountain water collected under lunar light. Solves furnace instability.",
-		MaxStack = 999,
-		PrimaryColor = Color3.fromRGB(180, 220, 255),
-	},
-	["DemonBeastCore"] = {
-		Id = "DemonBeastCore",
-		Name = "Demon Beast Core",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Rare",
-		Description = "Crystallized monster core harvested from beasts. Catalyst for high-tier pills.",
-		MaxStack = 999,
-		PrimaryColor = Color3.fromRGB(217, 119, 6),
-	},
-
-	-- Legacy aliases for backwards compatibility
-	["SpiritGrass"] = {
-		Id = "SpiritGrass",
-		Name = "1-Year Spirit Grass",
-		Type = "Material",
-		Archetype = "Material",
-		Rarity = "Common",
-		Description = "Young spirit herb containing basic Qi. Standard solvent for elementary pills.",
-		MaxStack = 999,
-		AgeYears = 1,
-		PrimaryColor = Color3.fromRGB(120, 200, 120),
-	},
-
-	-- =========================================================================
-	-- REFINED BUFF PILLS (CRAFTABLE)
-	-- =========================================================================
-	["SpiritHealingDan"] = {
-		Id = "SpiritHealingDan",
-		Name = "Spirit Healing Dan",
-		Type = "Consumable",
-		Archetype = "Pill",
-		Rarity = "Common",
-		Description = "Restores physical vitality over time.",
-		MaxStack = 99,
-		PrimaryColor = Color3.fromRGB(16, 185, 129),
-		Stats = { HealAmount = 80 },
-	},
-	["QiGatheringDan"] = {
-		Id = "QiGatheringDan",
-		Name = "Qi Gathering Dan",
-		Type = "Consumable",
-		Archetype = "Pill",
-		Rarity = "Uncommon",
-		Description = "Grants +100 Qi instantly and 2x Meditation Qi Speed for 300s.",
-		MaxStack = 99,
-		PrimaryColor = Color3.fromRGB(59, 130, 246),
-		Stats = { QiGrant = 100, CultivationSpeedMult = 2.0, BuffDuration = 300 },
-	},
+local ITEMS: { [string]: ItemDefinition } = {
+	-- REFINED PILLS & DANS
 	["PhysiqueTemperingDan"] = {
 		Id = "PhysiqueTemperingDan",
 		Name = "Physique Tempering Dan",
+		Description = "An elixir infused with Dragon Blood Vine and Spirit Grass. Permanently tempers physical muscle and bone density.",
+		Rarity = "Uncommon",
 		Type = "Consumable",
-		Archetype = "Pill",
-		Rarity = "Rare",
-		Description = "Tempering pill granting +35% Attack Power for 300s.",
-		MaxStack = 99,
-		PrimaryColor = Color3.fromRGB(217, 119, 6),
-		Stats = { AttackDamageMult = 1.35, BuffDuration = 300 },
+		MaxStack = 10,
+		Stats = { HealAmount = 150, QiGrant = 50 },
+		Icon = UIAssets.Icons.PhysiqueTemperingDan,
 	},
 	["GaleWindDan"] = {
 		Id = "GaleWindDan",
 		Name = "Gale Wind Dan",
-		Type = "Consumable",
-		Archetype = "Pill",
+		Description = "A swift pill refined from Gale Wind Lotus. Grants lightning-fast movement speed and agile dash recovery.",
 		Rarity = "Rare",
-		Description = "Lightness pill granting +40% Movement & Flight Speed for 300s.",
-		MaxStack = 99,
-		PrimaryColor = Color3.fromRGB(100, 220, 180),
-		Stats = { MovementSpeedMult = 1.40, BuffDuration = 300 },
+		Type = "Consumable",
+		MaxStack = 10,
+		Stats = { HealAmount = 100, QiGrant = 100 },
+		Icon = UIAssets.Icons.GaleWindDan,
+	},
+	["QiGatheringDan"] = {
+		Id = "QiGatheringDan",
+		Name = "Qi Gathering Dan",
+		Description = "Pure cultivation pill refined from Celestial Dew and Spirit Grass. Replenishes internal Spirit Qi reserves.",
+		Rarity = "Rare",
+		Type = "Consumable",
+		MaxStack = 10,
+		Stats = { QiGrant = 300 },
+		Icon = UIAssets.Icons.QiGatheringDan,
 	},
 	["FoundationGatheringDan"] = {
 		Id = "FoundationGatheringDan",
 		Name = "Foundation Gathering Dan",
-		Type = "Consumable",
-		Archetype = "Pill",
+		Description = "A supreme breakthrough elixir distilled from Demon Beast Core and Spirit Dew. Crucial for realm ascensions.",
 		Rarity = "Epic",
-		Description = "High-tier pill containing condensed spirit power required for Realm Breakthroughs.",
-		MaxStack = 99,
-		PrimaryColor = Color3.fromRGB(147, 51, 234),
-		Stats = { QiGrant = 300 },
+		Type = "Consumable",
+		MaxStack = 5,
+		Stats = { HealAmount = 400, QiGrant = 500 },
+		Icon = UIAssets.Icons.FoundationGatheringDan,
+	},
+	["SpiritHealingDan"] = {
+		Id = "SpiritHealingDan",
+		Name = "Spirit Healing Dan",
+		Description = "Gentle herbal pill that rapidly knits severe wounds and restores physical vitality.",
+		Rarity = "Uncommon",
+		Type = "Consumable",
+		MaxStack = 20,
+		Stats = { HealAmount = 250 },
+		Icon = UIAssets.Icons.SpiritHealingDan,
 	},
 
-	-- STARTER WEAPONS
-	["FlyingSword"] = {
-		Id = "FlyingSword",
-		Name = "Azure Cloud Flying Sword",
-		Type = "Weapon",
-		Archetype = "FlyingSword",
+	-- HERBS & MATERIALS
+	["SpiritGrass_1Yr"] = {
+		Id = "SpiritGrass_1Yr",
+		Name = "1-Yr Spirit Grass",
+		Description = "Basic immortal grass blade freshly sprouted in spirit terrain.",
 		Rarity = "Common",
-		Description = "Standard steel-forged flying sword handed to novice cultivators of Azure Cloud Sect.",
-		MaxStack = 1,
-		ModelName = "FlyingSword",
-		PrimaryColor = Color3.fromRGB(120, 180, 220),
-		Stats = { Damage = 25, Speed = 1.0 },
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 1,
+		Icon = UIAssets.Icons.SpiritGrass,
 	},
+	["SpiritGrass_10Yr"] = {
+		Id = "SpiritGrass_10Yr",
+		Name = "10-Yr Spirit Grass",
+		Description = "Decade-matured spirit herb blade with visible Qi veins.",
+		Rarity = "Uncommon",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 10,
+		Icon = UIAssets.Icons.SpiritGrass,
+	},
+	["SpiritGrass_100Yr"] = {
+		Id = "SpiritGrass_100Yr",
+		Name = "100-Yr Spirit Grass",
+		Description = "Century-aged glowing blue herb with high spirit purity.",
+		Rarity = "Rare",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 100,
+		Icon = UIAssets.Icons.SpiritGrass,
+	},
+	["SpiritGrass_1000Yr"] = {
+		Id = "SpiritGrass_1000Yr",
+		Name = "1,000-Yr Sovereign Spirit Grass",
+		Description = "Mythic millennium herb pulsing with ancient immortal essence.",
+		Rarity = "Mythic",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 1000,
+		Icon = UIAssets.Icons.SpiritGrass,
+	},
+	["DragonBloodVine_1Yr"] = {
+		Id = "DragonBloodVine_1Yr",
+		Name = "1-Yr Dragon Blood Vine",
+		Description = "Crimson vine with fiery thorned sap.",
+		Rarity = "Common",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 1,
+		Icon = UIAssets.Icons.DragonBloodVine,
+	},
+	["DragonBloodVine_100Yr"] = {
+		Id = "DragonBloodVine_100Yr",
+		Name = "100-Yr Dragon Blood Vine",
+		Description = "Thick century dragon-scale vine with intense incendiary energy.",
+		Rarity = "Epic",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 100,
+		Icon = UIAssets.Icons.DragonBloodVine,
+	},
+	["GaleWindLotus_1Yr"] = {
+		Id = "GaleWindLotus_1Yr",
+		Name = "1-Yr Gale Wind Lotus",
+		Description = "Pale teal floating lotus petal with soft wind currents.",
+		Rarity = "Common",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 1,
+		Icon = UIAssets.Icons.GaleWindLotus,
+	},
+	["GaleWindLotus_100Yr"] = {
+		Id = "GaleWindLotus_100Yr",
+		Name = "100-Yr Gale Wind Lotus",
+		Description = "Deep blue century lotus blooming with ethereal wind energy.",
+		Rarity = "Rare",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 100,
+		Icon = UIAssets.Icons.GaleWindLotus,
+	},
+	["CelestialDew"] = {
+		Id = "CelestialDew",
+		Name = "Celestial Dew Water",
+		Description = "Pure luminescent spirit water gathered from celestial mountain springs.",
+		Rarity = "Uncommon",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 1,
+		Icon = UIAssets.Icons.CelestialDew,
+	},
+	["DemonBeastCore"] = {
+		Id = "DemonBeastCore",
+		Name = "Demon Beast Core",
+		Description = "A crystallized amber core containing distilled monster energy.",
+		Rarity = "Rare",
+		Type = "Material",
+		MaxStack = 50,
+		AgeYears = 10,
+		Icon = UIAssets.Icons.DemonBeastCore,
+	},
+	["SpiritAsh"] = {
+		Id = "SpiritAsh",
+		Name = "Furnace Ash",
+		Description = "Charcoal residue from a failed alchemy refinement.",
+		Rarity = "Common",
+		Type = "Material",
+		MaxStack = 99,
+		Icon = UIAssets.Icons.SpiritAsh,
+	},
+
+	-- WEAPONS & EQUIPMENT
 	["FlyingSwordItem"] = {
 		Id = "FlyingSwordItem",
 		Name = "Azure Cloud Flying Sword",
+		Description = "An elegant flying sword capable of rapid Qi slashes and aerial dash strikes.",
+		Rarity = "Uncommon",
 		Type = "Weapon",
-		Archetype = "FlyingSword",
-		Rarity = "Common",
-		Description = "Standard steel-forged flying sword handed to novice cultivators of Azure Cloud Sect.",
 		MaxStack = 1,
-		ModelName = "FlyingSword",
-		PrimaryColor = Color3.fromRGB(120, 180, 220),
-		Stats = { Damage = 25, Speed = 1.0 },
+		Stats = { Damage = 15, Speed = 1.0 },
 	},
 	["GauntletItem"] = {
 		Id = "GauntletItem",
 		Name = "Ironclad Spirit Gauntlets",
-		Type = "Weapon",
-		Archetype = "Gauntlet",
+		Description = "Heavy martial gauntlets that channel earth-shattering Qi punches.",
 		Rarity = "Common",
-		Description = "Heavy brass gauntlets reinforced with Qi channels for close-quarters strikes.",
+		Type = "Weapon",
 		MaxStack = 1,
-		ModelName = "Gauntlet",
-		PrimaryColor = Color3.fromRGB(180, 140, 100),
-		Stats = { Damage = 30, Speed = 0.8 },
+		Stats = { Damage = 18, Speed = 0.8 },
 	},
 	["SpearItem"] = {
 		Id = "SpearItem",
-		Name = "Azure Wind Spear",
-		Type = "Weapon",
-		Archetype = "Spear",
+		Name = "Serpent Qi Spear",
+		Description = "A long-reaching spear built for piercing lunges.",
 		Rarity = "Common",
-		Description = "A long thrusting spear capable of channeling long-range Qi pierces.",
+		Type = "Weapon",
 		MaxStack = 1,
-		ModelName = "Spear",
-		PrimaryColor = Color3.fromRGB(100, 170, 200),
-		Stats = { Damage = 35, Speed = 0.9 },
+		Stats = { Damage = 20, Speed = 0.9 },
 	},
 }
 
-function ItemConfig.GetItem(itemId: string): ItemData?
+function ItemConfig.GetItem(itemId: string): ItemDefinition?
 	return ITEMS[itemId]
 end
 
-function ItemConfig.GetAllItems(): { [string]: ItemData }
+function ItemConfig.GetAllItems(): { [string]: ItemDefinition }
 	return ITEMS
 end
 

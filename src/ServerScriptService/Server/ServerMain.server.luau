@@ -16,6 +16,7 @@ local AlchemyManager = require(ServerScriptService.Server.Cultivation.AlchemyMan
 
 -- World Systems
 local GatheringManager = require(ServerScriptService.Server.World.GatheringManager)
+local EnvironmentTimeManager = require(ServerScriptService.Server.World.EnvironmentTimeManager)
 
 -- Initialize Server Core Subsystems
 CombatStateManager.Init()
@@ -25,5 +26,6 @@ InventoryManager.Init()
 PlayerDataManager.Init()
 GatheringManager.Init()
 AlchemyManager.Init()
+EnvironmentTimeManager.Init()
 
 print("[ASCEND] Server Main Engine Initialized Successfully!")
