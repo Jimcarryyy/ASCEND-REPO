@@ -41,3 +41,33 @@ Execute the master implementation of the **Environmental Qi Meditation Pads** an
 - [ ] **Task 7.1C-1**: Place interactive **Meditation Stone Pads** in `workspace.MeditationPads` with `ProximityPrompt` `[F]` interaction.
 - [ ] **Task 7.1C-2**: Implement server-authoritative Qi channeling in `CultivationManager.luau` using character sit/float animations, filling the `800 / 800` Qi bar $3.5\times$ faster than passive absorption.
 - [ ] **Task 7.1C-3**: Implement **Realm Breakthrough Trials**: consuming a *Foundation Gathering Dan* when Qi is full triggers celestial golden aura particles via `CombatVFXController`, advances cultivator tiers (*Qi Condensation* $\rightarrow$ *Foundation Establishment*), increases permanent stats, and updates HUD titles.
+
+# Current Task Specification — ASCEND
+
+## Active Milestone: Phase 7 — Core Gameplay Loop, World Gathering & Monetization Integration
+
+### Task Status Summary
+
+| Task ID | Task Description | Status | Verification |
+| :--- | :--- | :--- | :--- |
+| **Task 1** | Master Codebase Cleanup, DataStore V2 Reset & UI Refactor | **Completed** | Verified in Studio |
+| **Task 7.1A** | World Resource Gathering System (Randomized Herb Ages, Non-Disappearing Springs, Item Toasts) | **Completed** | Verified in Studio |
+| **Task 7.1B** | Upgraded Manual 3-Slot Alchemy Engine (Flame Minigame, Quality Grades, Mastery EXP, 2D Icons) | **Completed** | Verified in Studio |
+| **Task 7.1C** | Environmental Qi Meditation Pads & Realm Breakthrough System | **Pending** | Active Next Task |
+| **Task 7.1D** | Spirit Beast AI Spawning & Flying Sword Combat Testing | **Pending** | Planned |
+| **Task 7.1E** | Sect Market Vendors & Monetization Integration (HUD Skins & Gamepasses) | **Pending** | Planned |
+
+---
+
+# 🎯 CURRENT TASK: Task 7.1C — Qi Meditation & Realm Breakthrough System
+
+## 📌 Active Objective
+Execute the master implementation of the **Environmental Qi Meditation Pads** and **Realm Breakthrough Engine** across Zone 4 and Zone 2 streams.
+
+---
+
+## 📋 Task Checklist
+
+- [ ] **Task 7.1C-1**: Place interactive **Meditation Stone Pads** in `workspace.MeditationPads` with `ProximityPrompt` `[F]` interaction.
+- [ ] **Task 7.1C-2**: Implement server-authoritative Qi channeling in `CultivationManager.luau` using character sit/float animations, filling the `800 / 800` Qi bar $3.5\times$ faster than passive absorption.
+- [ ] **Task 7.1C-3**: Implement **Realm Breakthrough Trials**: consuming a *Foundation Gathering Dan* when Qi is full triggers celestial golden aura particles via `CombatVFXController`, advances cultivator tiers (*Qi Condensation* $\rightarrow$ *Foundation Establishment*), increases permanent stats, and updates HUD titles.

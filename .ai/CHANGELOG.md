@@ -68,3 +68,30 @@ This document tracks released and unreleased changes, feature additions, and arc
 - Pivoted core combat paradigm from multi-weapon archetype switching to **Pure Sword Cultivation**.
 - Designed the **Dynamic Jade Scripture / Sword Art Scroll System**.
 - Implemented DataStore persistence engine in `PlayerDataManager.luau`.
+
+
+---\n
+## [Unreleased] - 2026-08-12 — Expanded Low-Cortisol Alchemy, 2D PNG Assets, 12-Min Day/Night Engine, & Monetized Xianxia HUD
+
+### Added
+- **Non-Disappearing World Nodes & On-Screen Item Toasts (Task 7.1A Update)**:
+  - Added `KeepModelVisible = true` flag in `GatheringConfig.luau` and `GatheringManager.luau` so environmental water features like `CelestialSpring` remain visible during cooldown.
+  - Implemented `HUDController.ShowItemToast` in `HUDController.luau`—a light-mode animated toast banner that glides up on resource collection, displaying the item PNG icon, quantity, name, and rarity color border.
+- **Interactive Qi Flame Temperature Minigame & Quality-Metadata Stacking (Task 7.1B Update)**:
+  - Created an interactive flame temperature control minigame in `AlchemyController.luau` with needle slider precision locking across Cold, Optimal Qi Flame, and Overheat zones.
+  - Implemented Quality-Grade Inventory Metadata (*Standard*, *Refined Medium*, *Century Superior*, *Sovereign Immortal*) in `InventoryManager.luau` and `AlchemyManager.luau`. Stacking checks both `ItemId` and `Quality` so high-grade 1000-Yr pills do not merge with basic pills.
+  - Implemented persistent Alchemy Mastery EXP and Leveling (*Apprentice Alchemist* $\rightarrow$ *Pill Emperor*) in `PlayerDataManager.luau` under DataStore `ASCEND_PlayerData_V2` + Cauldron UI header EXP progress bar.
+- **2D PNG Icon Assets & Dynamic Quality Card Tinting Engine**:
+  - Registered 12 custom transparent 2D PNG asset IDs in `UIAssets.luau` and `ItemConfig.luau` (`FlameIcon`, `GaleWindLotus`, `GaleWindDan`, `QiGatheringDan`, `PhysiqueTemperingDan`, `DemonBeastCore`, `CelestialDew`, `FoundationGatheringDan`, `SpiritAsh`, `DragonBloodVine`, `SpiritGrass`, `SpiritHealingDan`).
+  - Cards in Spirit Pouch (`InventoryController.luau`), Cauldron UI (`AlchemyController.luau`), and Hotbar/Toasts (`HUDController.luau`) adapt background colors and borders dynamically according to item rarity and quality grade.
+- **Standard Roblox 12-Minute Day/Night Lighting Engine**:
+  - Created `EnvironmentTimeManager.luau` running a server-authoritative 12-minute day/night cycle ($1\text{ in-game hour} = 30\text{ real-world seconds}$).
+  - Dynamically interpolates `Atmosphere.Density`, `Atmosphere.Color`, and ambient lighting over static skybox textures (`rbxassetid://6444884337`), preserving high soft night ambients for low-poly model readability.
+- **Custom Xianxia HUD Template & Monetized HUD Skin Engine**:
+  - Integrated custom HUD template `rbxassetid://107254331482831` (`VitalHUDFrame`) featuring a 3D avatar headshot portrait, diamond level badge (`100`), display name, green HP fill, and azure QI fill.
+  - Enforced $800\text{ Max Qi}$ backend sync in `CultivationManager.luau` and `HUDController.luau`.
+  - Configured typography: `FredokaOne` (`UI_FONT`) for main titles/display names and `LuckiestGuy` (`UI_FONT_2`) for HP/QI bar labels and numbers with 14px/18px inner padding and centered vertical text alignment.
+  - Implemented `HUDSkinConfig.luau` and `HUDController.ApplySkin()`, allowing players to equip custom HUD skins (*DefaultBronze*, *SakuraImmortal*, *AzureDragon*) with auto-aligning slot offset mappings.
+  - Connected `ActionSkillBar` slots (`Slot_E`, `Slot_F`, `Slot_M1`, `Slot_Q`, `Slot_R`, `Slot_Shift`) to background `rbxassetid://97080305696865`, keybind badges, and dynamic skill cooldown swipe overlays with countdown timers (`HUDController.TriggerSkillCooldown`).
+- **Azure Cloud Realm Jade & Cloud 2D Panel Design Identity**:
+  - Approved flat 2D AI panel concept featuring pale jade celadon fills (`#E2F1ED`), azure cloud watermarks (`#38BDF8`), gold/jade cloud scroll borders, and an extended top-right circular close button plaque slot.

@@ -59,3 +59,44 @@ This document records key architecture decisions for ASCEND, including accepted 
 * **Status:** Accepted (Updated 2026-08-10)
 * **Context:** Transitioned map environment from flat low-poly to high-contrast semi-realistic PBR style.
 * **Decision:** Constructed Zone 2 with PBR river water reflections, dense bamboo foliage, timber cottage, and stone meditation pads. Kept all node interactions decoupled via `workspace.GatheringNodes` and `workspace.AlchemyCauldrons`.
+
+---\n
+## ADR-020: Non-Disappearing World Nodes & On-Screen Item Toast Architecture
+* **Status:** Accepted (Updated 2026-08-12)
+* **Context:** Permanent world water features like `CelestialSpring` disappeared upon harvest, and herb collection lacked immediate visual feedback.
+* **Decision:** Added `KeepModelVisible = true` flag in `GatheringConfig.luau` so springs remain visible during cooldown. Built `HUDController.ShowItemToast` displaying animated rarity-colored PNG banners on resource collection.
+
+## ADR-021: Interactive Qi Flame Temperature Minigame & Quality-Metadata Stacking Architecture
+* **Status:** Accepted (Updated 2026-08-12)
+* **Context:** Instant alchemy loading bars lacked skill-based gameplay, and pills merged into generic stacks regardless of herb vintage.
+* **Decision:** Added a needle slider flame control minigame in `AlchemyController.luau`. Updated `InventoryManager.luau` and `AlchemyManager.luau` to store quality metadata (*Standard*, *Refined Medium*, *Century Superior*, *Sovereign Immortal*) and prevent high-grade pill stack merging.
+
+## ADR-022: Alchemy Mastery Rank & EXP Progression
+* **Status:** Accepted (Updated 2026-08-12)
+* **Context:** Peaceful crafting playstyles required dedicated profession leveling.
+* **Decision:** Added persistent `AlchemyExp` and `AlchemyLevel` tracking in `PlayerDataManager.luau` under DataStore `ASCEND_PlayerData_V2` + Cauldron UI header progress bar (*Apprentice Alchemist* $\rightarrow$ *Pill Emperor*).
+
+## ADR-023: 2D PNG Asset Registry & Dynamic Quality Card Tinting Engine
+* **Status:** Accepted (Updated 2026-08-12)
+* **Context:** Plain text placeholders in inventory slots looked unpolished and lacked identity.
+* **Decision:** Registered 12 custom transparent 2D PNG asset IDs in `UIAssets.luau` and `ItemConfig.luau`. Cards in Spirit Pouch (`InventoryController.luau`), Cauldron UI (`AlchemyController.luau`), and Hotbar/Toasts (`HUDController.luau`) adapt background colors and borders dynamically based on rarity and quality grade.
+
+## ADR-024: Standard Roblox 12-Minute Day/Night Lighting Engine
+* **Status:** Accepted (Updated 2026-08-12)
+* **Context:** World environment remained static daytime blue without day/night progression.
+* **Decision:** Built `EnvironmentTimeManager.luau` running a server-authoritative 12-minute day/night cycle ($1\text{ in-game hour} = 30\text{ real-world seconds}$) with dynamic `Atmosphere` fog density blending over static skybox textures.
+
+## ADR-025: Custom Xianxia HUD Template & Monetized HUD Skin Engine
+* **Status:** Accepted (Updated 2026-08-12)
+* **Context:** Default HUD box lacked visual identity, and swapping custom HUD templates broke slot alignments.
+* **Decision:** Integrated custom HUD template `rbxassetid://107254331482831` (`VitalHUDFrame`) with $800\text{ Max Qi}$ backend sync. Created `HUDSkinConfig.luau` storing skin asset IDs alongside custom slot coordinate offsets (`DefaultBronze`, `SakuraImmortal`, `AzureDragon`) so equipping skins auto-snaps slot alignments without layout destruction.
+
+## ADR-026: ActionSkillBar Integration & Cooldown Overlays
+* **Status:** Accepted (Updated 2026-08-12)
+* **Context:** Action skill hotbar needed background styling and skill cooldown feedback.
+* **Decision:** Bound `ActionSkillBar` slots (`Slot_E`, `Slot_F`, `Slot_M1`, `Slot_Q`, `Slot_R`, `Slot_Shift`) to background `rbxassetid://97080305696865` in `HUDController.luau`, adding keybind badges and dark radial/vertical swipe cooldown overlays with countdown timers (`HUDController.TriggerSkillCooldown`).
+
+## ADR-027: Azure Cloud Realm Jade & Cloud 2D UI Panel Identity
+* **Status:** Accepted (Updated 2026-08-12)
+* **Context:** Main modal windows required a distinct Xianxia visual identity matching *The Azure Cloud Realm*.
+* **Decision:** Approved flat 2D AI panel concept featuring pale jade celadon fills (`#E2F1ED`), azure cloud watermarks (`#38BDF8`), gold/jade cloud scroll borders, and an extended top-right circular close button plaque slot.

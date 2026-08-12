@@ -40,3 +40,17 @@ To prevent developer burnout and ensure 60 FPS mobile performance, V1 launches o
                                   |
                    [ 🌀 Dimensional Boundary Portal ]
                    (Locked for Future Zone 2 Updates!)
+
+
+---\n
+# 6. Low-Cortisol Profession Mechanics & Monetization Strategy
+
+### Low-Cortisol Crafting & Gathering Loop
+To serve players who prefer peaceful gathering and crafting over combat:
+1. **World Harvesting**: Gathering spirit herbs, dew springs, and beast cores yields randomized herb ages ($1\text{-Yr}$ to $1,000\text{-Yr}$). Water springs remain visible during cooldown.
+2. **Qi Flame Temperature Minigame**: Refinement features an interactive needle slider. Locking the needle in the Optimal Qi Flame zone grants a $+15\%$ success rate bonus and $+25\%$ Alchemy EXP!
+3. **Pill Quality Grades**: Herb ages determine pill quality (*Standard*, *Refined Medium*, *Century Superior*, *Sovereign Immortal*), increasing buff duration up to $+50\%$. High-grade pills store in separate inventory stacks.
+4. **Alchemy Mastery Progression**: Crafting grants Alchemy EXP across 4 Alchemist Ranks (*Apprentice Alchemist* $\rightarrow$ *Spirit Herb Master* $\rightarrow$ *Grand Cauldron Scholar* $\rightarrow$ *Pill Emperor*).
+
+### Monetized HUD Cosmetics
+* **HUD Skin Customization**: Players can purchase or unlock custom vital HUD skins (*Sakura Immortal*, *Azure Dragon*) via Robux or Realm milestones.
