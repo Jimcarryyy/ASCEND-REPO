@@ -2,9 +2,6 @@
   "name": "ASCEND-REPO",
   "tree": {
     "$className": "DataModel",
-    "Workspace": {
-      "$path": "src/Workspace"
-    },
     "ReplicatedFirst": {
       "$path": "src/ReplicatedFirst"
     },
@@ -30,6 +27,9 @@
       "StarterPlayerScripts": {
         "$path": "src/StarterPlayer/StarterPlayerScripts"
       }
+    },
+    "Workspace": {
+      "$path": "src/Workspace"
     }
   }
 }

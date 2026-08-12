@@ -9,6 +9,7 @@ local UIAssets = {}
 
 UIAssets.Icons = {
 	HealthbarHUD            = "rbxassetid://107254331482831",
+	SkillBoxHUD             = "rbxassetid://97080305696865",
 	FlameIcon               = "rbxassetid://98860036623590",
 	GaleWindLotus           = "rbxassetid://97399822723211",
 	GaleWindDan             = "rbxassetid://108842260002164",

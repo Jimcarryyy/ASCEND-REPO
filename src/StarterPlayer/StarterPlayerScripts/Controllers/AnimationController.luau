@@ -3,7 +3,7 @@
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
     Client controller for ASCEND animation state, smooth camera framing,
-    and official R15 levitating sit pose.
+    custom movement animation overrides, and official R15 levitating sit pose.
 ]]
 
 local Players = game:GetService("Players")
@@ -32,6 +32,15 @@ function AnimationController.Init()
 	local updateSkillStateRemote = RemoteEvents.GetRemote("UpdateSkillState")
 	local updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 	local camera = Workspace.CurrentCamera
+
+	-- Apply Custom Movement Animations on Character Spawn
+	player.CharacterAdded:Connect(function(character)
+		AnimationController.ApplyCustomMovementAnimations(character)
+	end)
+
+	if player.Character then
+		AnimationController.ApplyCustomMovementAnimations(player.Character)
+	end
 
 	updateCultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		local character = player.Character
@@ -83,7 +92,7 @@ function AnimationController.Init()
 				camTween:Play()
 			else
 				InputController.SetEnabled(true)
-				if camera.CameraType == Enum.CameraType.Scriptable then
+				if camera.CameraType == Enum.CameraType.Custom then
 					if camTween then camTween:Cancel() end
 					camTween = TweenService:Create(camera, TweenInfo.new(0.8, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
 						CFrame = hrp.CFrame * CFrame.new(0, 2, 12)
@@ -110,7 +119,35 @@ function AnimationController.Init()
 		end
 	end)
 
-	print("[ASCEND] AnimationController Initialized with Official R15 Sit Pose.")
+	print("[ASCEND] AnimationController Initialized with Custom Run Animation Support.")
+end
+
+function AnimationController.ApplyCustomMovementAnimations(character: Model)
+	local runAnimId = AnimationConfig.Movement.RunAnimationId
+	if runAnimId == "" then return end
+
+	task.spawn(function()
+		local animateScript = character:WaitForChild("Animate", 5)
+		if not animateScript then return end
+
+		-- Override Run Animation
+		local runAnimFolder = animateScript:FindFirstChild("run")
+		if runAnimFolder then
+			local runAnimObj = runAnimFolder:FindFirstChildOfClass("Animation")
+			if runAnimObj then
+				runAnimObj.AnimationId = runAnimId
+			end
+		end
+
+		-- Override Walk Animation
+		local walkAnimFolder = animateScript:FindFirstChild("walk")
+		if walkAnimFolder then
+			local walkAnimObj = walkAnimFolder:FindFirstChildOfClass("Animation")
+			if walkAnimObj then
+				walkAnimObj.AnimationId = runAnimId
+			end
+		end
+	end)
 end
 
 function AnimationController.ClearLoadedTracks()
