@@ -5,8 +5,15 @@
     Master client-side initialization script for ASCEND.
 ]]
 
+local Players = game:GetService("Players")
 local StarterPlayerScripts = script.Parent
 local Controllers = StarterPlayerScripts:WaitForChild("Controllers")
+
+local localPlayer = Players.LocalPlayer
+
+-- Standard Competitive Open-World Camera Limits
+localPlayer.CameraMinZoomDistance = 0.5
+localPlayer.CameraMaxZoomDistance = 30 -- Max 30 studs to prevent off-screen scouting & vision exploits
 
 -- Standard Controllers
 local HUDController = require(Controllers:WaitForChild("HUDController"))
@@ -32,4 +39,4 @@ AlchemyController.Init()
 OverheadUIController.Init()
 GatheringController.Init()
 
-print("[ASCEND] All Client Controllers Initialized Successfully!")
+print("[ASCEND] All Client Controllers Initialized Successfully with 30-Stud Camera Limit!")

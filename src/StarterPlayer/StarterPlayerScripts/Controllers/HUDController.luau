@@ -3,7 +3,8 @@
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
     Client HUD engine for ASCEND.
-    Supports Monetized HUD Skin Equipping (HUDSkinConfig), FredokaOne titles, Bangers vital text, and 800 Max Qi sync.
+    Supports Unit Number Formatting (1k, 1M, 1B), Clean CurrentQi / CultivatedQi Display (NO GOAL TEXT),
+    and Encouraging Breakthrough Guidance Toasts.
 ]]
 
 local Players = game:GetService("Players")
@@ -14,6 +15,7 @@ local TweenService = game:GetService("TweenService")
 local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local HUDSkinConfig = require(ReplicatedStorage.Shared.Configs.HUDSkinConfig)
+local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local HUDController = {}
@@ -24,10 +26,12 @@ local UI_FONT   = Enum.Font.FredokaOne
 local UI_FONT_2 = Enum.Font.LuckiestGuy
 
 -- LIGHT-MODE PALETTE & HUD ACCENTS
-local COLOR_LIGHT_PANEL  = Color3.fromRGB(241, 245, 249)
+local COLOR_LIGHT_PANEL  = Color3.fromRGB(247, 234, 224)   -- Warm Cream Background
 local COLOR_LIGHT_CARD   = Color3.fromRGB(255, 255, 255)
 local COLOR_LIGHT_BORDER = Color3.fromRGB(203, 213, 225)
 local COLOR_TEXT_MAIN    = Color3.fromRGB(15, 23, 42)
+local COLOR_JADE_DARK    = Color3.fromRGB(29, 69, 51)      -- Dark Jade Text
+local COLOR_GOLD_ACCENT  = Color3.fromRGB(255, 215, 0)   -- Gold Border Accent
 local COLOR_HP_GREEN     = Color3.fromRGB(16, 185, 129)
 
 local hudScreenGui: ScreenGui
@@ -54,10 +58,10 @@ local qiFillYOffset: number = 0
 local hotbarFrame: Frame?
 local toastContainer: Frame?
 local hotbarSlots: { [number]: Frame } = {}
-local hotbarKeybinds = { "1", "2", "3", "4", "5", "K" }
 
 local currentInventoryData: { [number]: any } = {}
 local activeSkinId: string = "DefaultBronze"
+local activeBreakthroughToast: Frame? = nil
 
 local updateInventoryRemote: RemoteEvent
 local updateCultivationRemote: RemoteEvent
@@ -83,11 +87,26 @@ function HUDController.Init()
 		HUDController.UpdateHotbar()
 	end)
 
-	-- Direct Cultivation Qi Sync from Server
+	-- Direct Cultivation Qi Sync & Toast Guidance from Server
 	updateCultivationRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) == "table" then
-			local curQi = payload.CurrentQi or 800
-			HUDController.UpdateQiValues(curQi, 800)
+			if payload.Action == "BreakthroughRejected" and payload.Message then
+				HUDController.ShowEncouragingToast(payload.Message)
+				return
+			end
+
+			local curQi = payload.CurrentQi or 1000
+			local maxQi = payload.MaxQi or 1000 -- CultivatedQi
+			local tier = payload.Tier
+			local order = payload.Order
+
+			HUDController.UpdateQiValues(curQi, maxQi)
+
+			-- Dynamically update Level Badge Diamond ONLY when Tier and Order are valid
+			if tier ~= nil and order ~= nil and levelBadgeText then
+				local totalLevel = ((tier - 1) * 9) + order
+				levelBadgeText.Text = string.format("<b>%d</b>", totalLevel)
+			end
 		end
 	end)
 
@@ -113,7 +132,7 @@ function HUDController.Init()
 		end
 	end)
 
-	print("[ASCEND] HUDController Initialized with Monetized HUD Skin Support.")
+	print("[ASCEND] HUDController Initialized with Clean CurrentQi / CultivatedQi Display.")
 end
 
 function HUDController.HookExplorerHUD()
@@ -138,7 +157,7 @@ function HUDController.HookExplorerHUD()
 		levelBadgeText.Font = UI_FONT
 		levelBadgeText.RichText = true
 		levelBadgeText.TextYAlignment = Enum.TextYAlignment.Center
-		levelBadgeText.Text = "<b>100</b>"
+		levelBadgeText.Text = "<b>1</b>"
 	end
 
 	nameAndRealmText = FindChildCaseInsensitive(vitalFrame, "NameAndRealmText") :: TextLabel?
@@ -294,40 +313,17 @@ function HUDController.ApplySkin(skinId: string)
 	activeSkinId = skin.SkinId
 	vitalFrame.Image = skin.AssetId
 
-	-- Apply Skin Slot Coordinate Offsets
 	local offsets = skin.SlotOffsets
 	if offsets then
-		if hpSlotFrame and offsets.HPSlotPosition then
-			hpSlotFrame.Position = offsets.HPSlotPosition
-		end
-		if hpSlotFrame and offsets.HPSlotSize then
-			hpSlotFrame.Size = offsets.HPSlotSize
-		end
-
-		if qiSlotFrame and offsets.QISlotPosition then
-			qiSlotFrame.Position = offsets.QISlotPosition
-		end
-		if qiSlotFrame and offsets.QISlotSize then
-			qiSlotFrame.Size = offsets.QISlotSize
-		end
-
-		if portraitMaskFrame and offsets.PortraitPosition then
-			portraitMaskFrame.Position = offsets.PortraitPosition
-		end
-		if portraitMaskFrame and offsets.PortraitSize then
-			portraitMaskFrame.Size = offsets.PortraitSize
-		end
-
-		if levelBadgeText and offsets.LevelBadgePosition then
-			levelBadgeText.Position = offsets.LevelBadgePosition
-		end
-
-		if nameAndRealmText and offsets.NameAndRealmPosition then
-			nameAndRealmText.Position = offsets.NameAndRealmPosition
-		end
+		if hpSlotFrame and offsets.HPSlotPosition then hpSlotFrame.Position = offsets.HPSlotPosition end
+		if hpSlotFrame and offsets.HPSlotSize then hpSlotFrame.Size = offsets.HPSlotSize end
+		if qiSlotFrame and offsets.QISlotPosition then qiSlotFrame.Position = offsets.QISlotPosition end
+		if qiSlotFrame and offsets.QISlotSize then qiSlotFrame.Size = offsets.QISlotSize end
+		if portraitMaskFrame and offsets.PortraitPosition then portraitMaskFrame.Position = offsets.PortraitPosition end
+		if portraitMaskFrame and offsets.PortraitSize then portraitMaskFrame.Size = offsets.PortraitSize end
+		if levelBadgeText and offsets.LevelBadgePosition then levelBadgeText.Position = offsets.LevelBadgePosition end
+		if nameAndRealmText and offsets.NameAndRealmPosition then nameAndRealmText.Position = offsets.NameAndRealmPosition end
 	end
-
-	print(string.format("[ASCEND] Equipped HUD Skin '%s' (%s).", skin.Name, skin.SkinId))
 end
 
 function HUDController.HookCharacter(character: Model)
@@ -342,34 +338,46 @@ function HUDController.HookCharacter(character: Model)
 			hpBarFill.Size = UDim2.new(ratio, 0, hpFillYScale, hpFillYOffset)
 		end
 		if hpBarText then
-			hpBarText.Text = string.format("%d / %d", math.floor(hp), math.floor(maxHp))
+			-- Unit Format HP (e.g. 75.0k / 75.0k)
+			hpBarText.Text = string.format("%s / %s", CultivationConfig.FormatNumber(hp), CultivationConfig.FormatNumber(maxHp))
 		end
 	end
 
 	local function updateQi()
-		local rawQi = character:GetAttribute("Qi") or 800
-		HUDController.UpdateQiValues(rawQi, 800)
+		local rawQi = character:GetAttribute("Qi") or 1000
+		local maxQi = character:GetAttribute("MaxQi") or 1000 -- CultivatedQi
+		local level = character:GetAttribute("Level")
+
+		HUDController.UpdateQiValues(rawQi, maxQi)
+		if level ~= nil and levelBadgeText then
+			levelBadgeText.Text = string.format("<b>%d</b>", level)
+		end
 	end
 
 	humanoid.HealthChanged:Connect(updateHP)
+	humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(updateHP)
 	character:GetAttributeChangedSignal("Qi"):Connect(updateQi)
 	character:GetAttributeChangedSignal("MaxQi"):Connect(updateQi)
+	character:GetAttributeChangedSignal("Level"):Connect(updateQi)
 
 	updateHP()
 	updateQi()
 end
 
 function HUDController.UpdateQiValues(currentQi: number, maxQi: number)
-	local targetMax = 800 -- Enforced 800 Max Qi
-	local clampedQi = math.clamp(currentQi or 0, 0, targetMax)
-	local clampedMax = math.clamp(maxQi or 800, 1, targetMax)
-	local ratio = math.clamp(clampedQi / clampedMax, 0, 1)
+	local cultivatedCap = math.max(1, maxQi or 1000)
+	local curEnergy = math.clamp(currentQi or 0, 0, cultivatedCap)
+
+	-- Ratio is strictly relative to current cultivated capacity limit
+	local ratio = math.clamp(curEnergy / cultivatedCap, 0, 1)
 
 	if qiBarFill then
 		qiBarFill.Size = UDim2.new(ratio, 0, qiFillYScale, qiFillYOffset)
 	end
+
 	if qiBarText then
-		qiBarText.Text = string.format("%d / %d", math.floor(clampedQi), clampedMax)
+		-- STRICTLY RENDERS: CurrentQi / CultivatedQi (e.g., 43.3k / 75.0k) — NO GOAL TEXT
+		qiBarText.Text = string.format("%s / %s", CultivationConfig.FormatNumber(curEnergy), CultivationConfig.FormatNumber(cultivatedCap))
 	end
 end
 
@@ -418,39 +426,125 @@ function HUDController.UpdateHotbar()
 	end
 end
 
+-- ENCOURAGING BREAKTHROUGH GUIDANCE TOAST
+function HUDController.ShowEncouragingToast(message: string)
+	if not hudScreenGui then
+		HUDController.HookExplorerHUD()
+	end
+	if not hudScreenGui then return end
+
+	-- Throttled: replace active toast to avoid screen spam if [B] is rapidly pressed
+	if activeBreakthroughToast and activeBreakthroughToast.Parent then
+		activeBreakthroughToast:Destroy()
+	end
+
+	local toastFrame = Instance.new("Frame")
+	toastFrame.Name = "BreakthroughEncouragingToast"
+	toastFrame.Size = UDim2.new(0, 420, 0, 48)
+	toastFrame.Position = UDim2.new(0.5, -210, 0.65, 0)
+	toastFrame.BackgroundColor3 = COLOR_LIGHT_PANEL
+	toastFrame.BackgroundTransparency = 1
+	toastFrame.BorderSizePixel = 0
+	toastFrame.ZIndex = 50
+	toastFrame.Parent = hudScreenGui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = toastFrame
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = COLOR_GOLD_ACCENT
+	stroke.Thickness = 1.5
+	stroke.Transparency = 1
+	stroke.Parent = toastFrame
+
+	local textLbl = Instance.new("TextLabel")
+	textLbl.Name = "ToastMessage"
+	textLbl.Size = UDim2.new(1, -20, 1, 0)
+	textLbl.Position = UDim2.new(0, 10, 0, 0)
+	textLbl.BackgroundTransparency = 1
+	textLbl.Text = message
+	textLbl.TextColor3 = COLOR_JADE_DARK
+	textLbl.TextTransparency = 1
+	textLbl.Font = UI_FONT_2
+	textLbl.TextSize = 15
+	textLbl.TextScaled = false
+	textLbl.TextWrapped = true
+	textLbl.TextXAlignment = Enum.TextXAlignment.Center
+	textLbl.TextYAlignment = Enum.TextYAlignment.Center
+	textLbl.ZIndex = 51
+	textLbl.Parent = toastFrame
+
+	activeBreakthroughToast = toastFrame
+
+	local tweenIn = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(toastFrame, tweenIn, { BackgroundTransparency = 0 }):Play()
+	TweenService:Create(stroke, tweenIn, { Transparency = 0 }):Play()
+	TweenService:Create(textLbl, tweenIn, { TextTransparency = 0 }):Play()
+
+	task.delay(2.5, function()
+		if toastFrame and toastFrame.Parent then
+			local tweenOut = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			TweenService:Create(toastFrame, tweenOut, { BackgroundTransparency = 1 }):Play()
+			TweenService:Create(stroke, tweenOut, { Transparency = 1 }):Play()
+			local fadeText = TweenService:Create(textLbl, tweenOut, { TextTransparency = 1 })
+			fadeText:Play()
+
+			fadeText.Completed:Connect(function()
+				if toastFrame and toastFrame.Parent then
+					toastFrame:Destroy()
+				end
+				if activeBreakthroughToast == toastFrame then
+					activeBreakthroughToast = nil
+				end
+			end)
+		end
+	end)
+end
+
 -- ANIMATED ITEM TOAST WITH 2D ICON & DYNAMIC GRADE COLOR
-function HUDController.ShowItemToast(itemId: string, count: number, qualityText: string?)
+function HUDController.ShowItemToast(itemId: string, count: number, qualityText: any?)
+	if not toastContainer then
+		HUDController.HookExplorerHUD()
+	end
 	if not toastContainer then return end
 
 	local itemDef = ItemConfig.GetItem(itemId)
 	local itemName = if itemDef then itemDef.Name else itemId
 	local iconAsset = if itemDef then itemDef.Icon else nil
 
+	-- Convert qualityText safely to string
+	local qualityStr: string? = nil
+	if qualityText ~= nil then
+		qualityStr = tostring(qualityText)
+	end
+
 	local colorData = UIAssets.RarityCardColors[if itemDef then itemDef.Rarity else "Common"]
-	if qualityText and UIAssets.GradeCardColors[qualityText] then
-		colorData = UIAssets.GradeCardColors[qualityText]
+	if qualityStr and UIAssets.GradeCardColors[qualityStr] then
+		colorData = UIAssets.GradeCardColors[qualityStr]
 	end
 
 	local cardBg = if colorData then colorData.Background else COLOR_LIGHT_PANEL
 	local borderCol = if colorData then colorData.Border else COLOR_HP_GREEN
 
 	local toastText = string.format("+%d  %s", count, itemName)
-	if qualityText then
-		toastText = string.format("+%d  [%s] %s", count, qualityText:gsub(" Quality", ""), itemName)
+	if qualityStr and qualityStr ~= "" then
+		local cleanQuality = string.gsub(qualityStr, " Quality", "")
+		toastText = string.format("+%d  [%s] %s", count, cleanQuality, itemName)
 	end
 
 	local toastFrame = Instance.new("Frame")
 	toastFrame.Name = "ItemToast"
 	toastFrame.Size = UDim2.new(1, 0, 0, 42)
 	toastFrame.BackgroundColor3 = cardBg
-	toastFrame.BackgroundTransparency = 1
+	toastFrame.BackgroundTransparency = 0
 	toastFrame.BorderSizePixel = 0
 	toastFrame.Parent = toastContainer
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = borderCol
 	stroke.Thickness = 1.5
-	stroke.Transparency = 1
+	stroke.Transparency = 0
 	stroke.Parent = toastFrame
 
 	local iconLabel = Instance.new("ImageLabel")
@@ -460,7 +554,7 @@ function HUDController.ShowItemToast(itemId: string, count: number, qualityText:
 	iconLabel.BackgroundTransparency = 1
 	iconLabel.ScaleType = Enum.ScaleType.Fit
 	iconLabel.Image = iconAsset or ""
-	iconLabel.ImageTransparency = 1
+	iconLabel.ImageTransparency = 0
 	iconLabel.Parent = toastFrame
 
 	local textLbl = Instance.new("TextLabel")
@@ -470,31 +564,18 @@ function HUDController.ShowItemToast(itemId: string, count: number, qualityText:
 	textLbl.BackgroundTransparency = 1
 	textLbl.Text = toastText
 	textLbl.TextColor3 = COLOR_TEXT_MAIN
-	textLbl.TextTransparency = 1
+	textLbl.TextTransparency = 0
 	textLbl.Font = UI_FONT
 	textLbl.TextSize = 13
 	textLbl.TextXAlignment = Enum.TextXAlignment.Left
 	textLbl.TextYAlignment = Enum.TextYAlignment.Center
 	textLbl.Parent = toastFrame
 
-	local tweenInfoIn = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	TweenService:Create(toastFrame, tweenInfoIn, { BackgroundTransparency = 0 }):Play()
-	TweenService:Create(stroke, tweenInfoIn, { Transparency = 0 }):Play()
-	TweenService:Create(textLbl, tweenInfoIn, { TextTransparency = 0 }):Play()
-	TweenService:Create(iconLabel, tweenInfoIn, { ImageTransparency = 0 }):Play()
-
-	task.delay(2.8, function()
-		if not toastFrame.Parent then return end
-		local tweenInfoOut = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		local fadeOut = TweenService:Create(toastFrame, tweenInfoOut, { BackgroundTransparency = 1 })
-		TweenService:Create(stroke, tweenInfoOut, { Transparency = 1 }):Play()
-		TweenService:Create(textLbl, tweenInfoOut, { TextTransparency = 1 }):Play()
-		TweenService:Create(iconLabel, tweenInfoOut, { ImageTransparency = 1 }):Play()
-
-		fadeOut:Play()
-		fadeOut.Completed:Connect(function()
+	-- Auto-destroy toast notification after 3 seconds
+	task.delay(3.0, function()
+		if toastFrame and toastFrame.Parent then
 			toastFrame:Destroy()
-		end)
+		end
 	end)
 end
 

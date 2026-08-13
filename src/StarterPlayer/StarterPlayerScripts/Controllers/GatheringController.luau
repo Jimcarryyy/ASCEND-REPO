@@ -36,19 +36,23 @@ function GatheringController.Init()
 
 	-- Listen for Harvest Signals from Server
 	gatheringActionRemote.OnClientEvent:Connect(function(payload: any)
-		if type(payload) ~= "table" or not payload.Action then return end
+		if type(payload) ~= "table" then return end
 
-		if payload.Action == "HarvestSuccess" or payload.Action == "HarvestSuccessSound" then
+		-- Handle harvest events safely
+		local isHarvestEvent = (payload.Action == "HarvestSuccess") 
+			or (payload.Action == "HarvestSuccessSound") 
+			or (payload.ItemId ~= nil)
+
+		if isHarvestEvent then
 			local sound = SoundService:FindFirstChild("GatherHerbsSound") :: Sound?
 			if sound then
 				sound:Play()
-			else
-				warn("[GatheringController] Could not find 'GatherHerbsSound' in SoundService!")
 			end
 
-			-- Trigger On-Screen Toast Notification
-			if payload.ItemId then
-				HUDController.ShowItemToast(payload.ItemId, payload.Count or 1)
+			-- Trigger On-Screen Toast Notification Safely with Sanitized String Quality Metadata
+			if payload.ItemId and HUDController and HUDController.ShowItemToast then
+				local qualityStr = if payload.Quality ~= nil then tostring(payload.Quality) else nil
+				HUDController.ShowItemToast(payload.ItemId, payload.Count or 1, qualityStr)
 			end
 		end
 	end)

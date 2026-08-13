@@ -15,7 +15,7 @@ export type AnimDef = {
 
 local AnimationConfig = {
 	Movement = {
-		RunAnimationId = "rbxassetid://", -- Custom 5-second R15 Run Animation
+		RunAnimationId = "", -- Custom R15 Run Animation ID (leave empty if using default)
 	},
 	FlyingSword = {
 		M1 = { AnimationId = "rbxassetid://93342220169849", Speed = 1.8, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 14 },

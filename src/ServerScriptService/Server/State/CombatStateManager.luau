@@ -4,7 +4,7 @@
     Location: src/ServerScriptService/Server/State/CombatStateManager.luau
     Server-authoritative combat state engine for ASCEND.
     Tracks player combat states, manages server-side cooldowns,
-    and validates skill activation requests to prevent client exploits.
+    and validates dynamic percentage-based skill Qi consumption.
 ]]
 
 local Players = game:GetService("Players")
@@ -40,14 +40,6 @@ local SKILL_COOLDOWNS: { [string]: number } = {
 
 local combatActionRemote: RemoteEvent
 local syncCooldownRemote: RemoteEvent
-local cultivationManagerRef: any = nil
-
-function CombatStateManager.GetCultivationManager(): any
-	if not cultivationManagerRef then
-		cultivationManagerRef = require(ServerScriptService.Server.Cultivation.CultivationManager)
-	end
-	return cultivationManagerRef
-end
 
 function CombatStateManager.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
@@ -68,7 +60,7 @@ function CombatStateManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatStateManager Server Engine Initialized.")
+	print("[ASCEND] CombatStateManager Server Engine Initialized (Dynamic Percentage Qi Consumption Enabled).")
 end
 
 function CombatStateManager.OnPlayerAdded(player: Player)
@@ -107,7 +99,7 @@ function CombatStateManager.GetRemainingCooldown(player: Player, skillKey: strin
 	local data = cooldowns[skillKey]
 	if not data then return 0 end
 
-	local elapsed = os.clock() - data.Timestamp
+	local elapsed = os.clock() - data.Duration
 	return math.max(0, data.Duration - elapsed)
 end
 
@@ -133,14 +125,19 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 		return false
 	end
 
-	-- 5. CHECK & CONSUME QI RESOURCE (Lazy-resolved to prevent circular require lock)
-	local qiCost = CultivationConfig.SkillCosts[skillKey] or 0
-	if qiCost > 0 then
-		local cultMgr = CombatStateManager.GetCultivationManager()
-		if cultMgr and cultMgr.ConsumeQi then
-			local hasQi = cultMgr.ConsumeQi(player, qiCost)
+	-- 5. DYNAMIC PERCENTAGE-BASED QI CONSUMPTION (Runtime require avoids circular lock)
+	local cultMgr = require(ServerScriptService.Server.Cultivation.CultivationManager)
+	local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
+
+	if pData then
+		local cultivatedCap = pData.CultivatedQi or 1000
+		local costPercent = CultivationConfig.SkillCostPercent[skillKey] or 0
+		local dynamicQiCost = math.floor(cultivatedCap * costPercent)
+
+		if dynamicQiCost > 0 and cultMgr and cultMgr.ConsumeQi then
+			local hasQi = cultMgr.ConsumeQi(player, dynamicQiCost)
 			if not hasQi then
-				warn(string.format("[CombatStateManager] Request rejected for %s: Insufficient Qi for skill %s (%d required).", player.Name, skillKey, qiCost))
+				warn(string.format("[CombatStateManager] Request rejected for %s: Insufficient Qi for skill %s (%s required).", player.Name, skillKey, CultivationConfig.FormatNumber(dynamicQiCost)))
 				return false
 			end
 		end

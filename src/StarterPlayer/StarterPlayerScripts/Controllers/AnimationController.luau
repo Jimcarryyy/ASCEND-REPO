@@ -2,14 +2,13 @@
 --[[
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
-    Client controller for ASCEND animation state, smooth camera framing,
-    custom movement animation overrides, and official R15 levitating sit pose.
+    Client controller for ASCEND animation state, custom movement animation overrides,
+    and custom meditation pose.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local Workspace = game:GetService("Workspace")
+local ContentProvider = game:GetService("ContentProvider")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
@@ -21,17 +20,24 @@ local player = Players.LocalPlayer
 local currentWeapon = "FlyingSword"
 local loadedTracks: { [string]: AnimationTrack } = {}
 
--- Official Public Roblox R15 Sitting Animation
-local MEDITATION_ANIM_ID = "rbxassetid://2506281703"
+-- Custom R15 Cultivation / Meditation Pose
+local MEDITATION_ANIM_ID = "rbxassetid://126221127662554"
 local meditationTrack: AnimationTrack? = nil
 local isCurrentlyMeditating = false
-local camTween: Tween? = nil
 
 function AnimationController.Init()
 	local combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	local updateSkillStateRemote = RemoteEvents.GetRemote("UpdateSkillState")
 	local updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
-	local camera = Workspace.CurrentCamera
+
+	-- Preload Meditation Animation Asset into Client Memory
+	task.spawn(function()
+		local animInstance = Instance.new("Animation")
+		animInstance.AnimationId = MEDITATION_ANIM_ID
+		pcall(function()
+			ContentProvider:PreloadAsync({ animInstance })
+		end)
+	end)
 
 	-- Apply Custom Movement Animations on Character Spawn
 	player.CharacterAdded:Connect(function(character)
@@ -47,62 +53,59 @@ function AnimationController.Init()
 		if not character then return end
 
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
-		if not humanoid or not hrp or not animator then return end
+		if not humanoid or not animator then return end
 
-		local InputController = require(script.Parent:WaitForChild("InputController") :: ModuleScript)
 		local newMeditatingState = (data.IsMeditating == true)
 
-		-- Toggle Sitting Pose
-		if newMeditatingState then
-			if not meditationTrack then
-				local animInstance = Instance.new("Animation")
-				animInstance.AnimationId = MEDITATION_ANIM_ID
-				meditationTrack = animator:LoadAnimation(animInstance)
-				if meditationTrack then
-					meditationTrack.Priority = Enum.AnimationPriority.Action4
-					meditationTrack.Looped = true
-				end
-			end
-
-			if meditationTrack and not meditationTrack.IsPlaying then
-				meditationTrack:Play(0.3)
-			end
-		else
-			if meditationTrack and meditationTrack.IsPlaying then
-				meditationTrack:Stop(0.3)
-			end
-		end
-
-		-- Toggle Camera Transition (Only on State Changes)
+		-- Execute Animation ONLY when meditation state actually changes
 		if newMeditatingState ~= isCurrentlyMeditating then
 			isCurrentlyMeditating = newMeditatingState
 
 			if isCurrentlyMeditating then
-				InputController.SetEnabled(false)
-				camera.CameraType = Enum.CameraType.Scriptable
-				local baseCFrame = hrp.CFrame
-				local targetCFrame = (baseCFrame * CFrame.new(0, 1.8, -13.5)) * CFrame.Angles(0, math.rad(180), 0)
+				-- Start Meditation Animation Track
+				if not meditationTrack then
+					local animInstance = Instance.new("Animation")
+					animInstance.AnimationId = MEDITATION_ANIM_ID
+					meditationTrack = animator:LoadAnimation(animInstance)
+					if meditationTrack then
+						meditationTrack.Priority = Enum.AnimationPriority.Action4
+						meditationTrack.Looped = false -- Non-looped to prevent wrap-around snapping
+					end
+				end
 
-				if camTween then camTween:Cancel() end
-				camTween = TweenService:Create(camera, TweenInfo.new(1.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-					CFrame = targetCFrame
-				})
-				camTween:Play()
-			else
-				InputController.SetEnabled(true)
-				if camera.CameraType == Enum.CameraType.Custom then
-					if camTween then camTween:Cancel() end
-					camTween = TweenService:Create(camera, TweenInfo.new(0.8, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-						CFrame = hrp.CFrame * CFrame.new(0, 2, 12)
-					})
-					camTween:Play()
-					camTween.Completed:Connect(function()
-						if not isCurrentlyMeditating then
-							camera.CameraType = Enum.CameraType.Custom
+				if meditationTrack then
+					meditationTrack:AdjustSpeed(1)
+					meditationTrack.TimePosition = 0
+					if not meditationTrack.IsPlaying then
+						meditationTrack:Play(0.2)
+					end
+
+					local currentTrack = meditationTrack
+					task.spawn(function()
+						local trackLength = currentTrack.Length
+						if trackLength == 0 then
+							trackLength = 1.0 -- Fallback 1.0s duration
+						end
+
+						-- Pause playback cleanly at 0.92s before 1.0s end so track never auto-stops
+						local holdTime = math.max(0.1, trackLength - 0.08)
+						task.wait(holdTime)
+
+						if meditationTrack == currentTrack and currentTrack.IsPlaying and isCurrentlyMeditating then
+							currentTrack:AdjustSpeed(0) -- Freeze pose seamlessly
 						end
 					end)
+				end
+
+			else
+				-- Stop Meditation Animation Track
+				if meditationTrack then
+					if meditationTrack.IsPlaying then
+						meditationTrack:AdjustSpeed(1)
+						meditationTrack:Stop(0.2)
+					end
+					meditationTrack = nil
 				end
 			end
 		end
@@ -124,7 +127,7 @@ end
 
 function AnimationController.ApplyCustomMovementAnimations(character: Model)
 	local runAnimId = AnimationConfig.Movement.RunAnimationId
-	if runAnimId == "" then return end
+	if not runAnimId or runAnimId == "" or runAnimId == "rbxassetid://" then return end
 
 	task.spawn(function()
 		local animateScript = character:WaitForChild("Animate", 5)

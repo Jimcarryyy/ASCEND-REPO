@@ -3,7 +3,7 @@
     PlayerDataManager.luau
     Location: src/ServerScriptService/Server/State/PlayerDataManager.luau
     Server-authoritative DataStore persistence manager for ASCEND.
-    Saves and restores Player Realm, Qi, Inventory items, Equipped Weapon, and Alchemy Mastery EXP.
+    Saves and restores Player Realm, Order, CurrentQi, CultivatedQi, Inventory items, Equipped Weapon, and Alchemy Mastery.
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -24,7 +24,9 @@ export type SavedPlayerData = {
 	Version: number,
 	Cultivation: {
 		Realm: CultivationConfig.RealmTier,
+		Order: number?,
 		CurrentQi: number,
+		CultivatedQi: number?, -- Exact cultivated progress saved
 	},
 	EquippedWeapon: WeaponManager.WeaponType,
 	Inventory: { [number]: SavedInventorySlot },
@@ -47,7 +49,9 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	Version = 2,
 	Cultivation = {
 		Realm = "QiCondensation",
-		CurrentQi = 0,
+		Order = 1,
+		CurrentQi = 200,
+		CultivatedQi = 200,
 	},
 	EquippedWeapon = "FlyingSwordItem",
 	Inventory = {
@@ -97,7 +101,7 @@ function PlayerDataManager.Init()
 		task.wait(2)
 	end)
 
-	print("[PlayerDataManager] Engine Initialized with Alchemy Mastery Tracking.")
+	print("[PlayerDataManager] Engine Initialized with CultivatedQi Persistence.")
 end
 
 function PlayerDataManager.OnPlayerAdded(player: Player)
@@ -128,7 +132,9 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			Version = DEFAULT_PLAYER_DATA.Version,
 			Cultivation = {
 				Realm = DEFAULT_PLAYER_DATA.Cultivation.Realm,
+				Order = DEFAULT_PLAYER_DATA.Cultivation.Order or 1,
 				CurrentQi = DEFAULT_PLAYER_DATA.Cultivation.CurrentQi,
+				CultivatedQi = DEFAULT_PLAYER_DATA.Cultivation.CultivatedQi or 200,
 			},
 			EquippedWeapon = DEFAULT_PLAYER_DATA.EquippedWeapon,
 			Inventory = table.clone(DEFAULT_PLAYER_DATA.Inventory),
@@ -137,7 +143,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			AlchemyLevel = 1,
 		}
 	else
-		print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Weapon: %s).", player.Name, loadedData.Cultivation.Realm, loadedData.EquippedWeapon))
+		print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, CultivatedQi: %s).", player.Name, loadedData.Cultivation.Realm, loadedData.Cultivation.Order or 1, CultivationConfig.FormatNumber(loadedData.Cultivation.CultivatedQi or 200)))
 	end
 
 	isLoadedMap[player] = true
@@ -146,7 +152,15 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		Level = loadedData.AlchemyLevel or 1,
 	}
 
-	CultivationManager.SetPlayerData(player, loadedData.Cultivation.Realm, loadedData.Cultivation.CurrentQi)
+	-- Restore saved CultivatedQi and Order into CultivationManager
+	CultivationManager.SetPlayerData(
+		player, 
+		loadedData.Cultivation.Realm, 
+		loadedData.Cultivation.CurrentQi, 
+		loadedData.Cultivation.Order or 1, 
+		loadedData.Cultivation.CultivatedQi
+	)
+	
 	InventoryManager.SetInventory(player, loadedData.Inventory)
 	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "FlyingSwordItem")
 end
@@ -209,7 +223,9 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		Version = 2,
 		Cultivation = {
 			Realm = cultivation.Realm,
+			Order = cultivation.Order,
 			CurrentQi = cultivation.CurrentQi,
+			CultivatedQi = cultivation.CultivatedQi, -- Exact cultivated progress saved
 		},
 		EquippedWeapon = equippedWeapon,
 		Inventory = serializedInventory,

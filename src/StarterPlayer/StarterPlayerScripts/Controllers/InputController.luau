@@ -25,10 +25,22 @@ local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 
 local combatActionRemote: RemoteEvent
+local updateCultivationRemote: RemoteEvent
+
 local enabled = true
+local isMeditating = false
+local lastGPress = 0 -- 1.0s spam protection timestamp for G key
 
 function InputController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
+	updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
+
+	-- Listen for meditation state updates to block combat inputs
+	updateCultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
+		if type(data) == "table" and data.IsMeditating ~= nil then
+			isMeditating = (data.IsMeditating == true)
+		end
+	end)
 
 	UserInputService.InputBegan:Connect(InputController.OnInputBegan)
 
@@ -58,13 +70,17 @@ end
 function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then return end
 
-	-- Always allow G key to toggle/exit meditation even when controls are locked
+	-- Always allow G key to toggle/exit meditation with 1.0s spam protection
 	if input.KeyCode == Enum.KeyCode.G then
+		local now = os.clock()
+		if now - lastGPress < 1.0 then return end -- Reject rapid spam within 1 second
+		lastGPress = now
 		combatActionRemote:FireServer({ ToggleMeditation = true })
 		return
 	end
 
-	if not enabled then return end
+	-- Block weapon swaps and combat actions if controls are disabled or character is meditating
+	if not enabled or isMeditating then return end
 
 	-- Weapon swap hotkeys
 	if input.KeyCode == Enum.KeyCode.One then
