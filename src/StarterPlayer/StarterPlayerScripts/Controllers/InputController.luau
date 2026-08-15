@@ -1,9 +1,7 @@
 --!strict
---[[
-    InputController.luau
-    Manages client user inputs, keybind mappings, target positioning,
-    and action payload transmission to the server.
-]]
+-- InputController.luau
+-- Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InputController.luau
+-- Client controller for keybindings, Shift sprint toggles (WalkSpeed = 32), skill activations, and meditation debounces.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,26 +27,57 @@ local updateCultivationRemote: RemoteEvent
 
 local enabled = true
 local isMeditating = false
-local lastGPress = 0 -- 1.0s spam protection timestamp for G key
+local lastGPress = 0
+local isSprinting = false
 
 function InputController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 
-	-- Listen for meditation state updates to block combat inputs
+	-- Listen for meditation state updates
 	updateCultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		if type(data) == "table" and data.IsMeditating ~= nil then
 			isMeditating = (data.IsMeditating == true)
+			if isMeditating then
+				InputController.StopSprint()
+			end
 		end
 	end)
 
 	UserInputService.InputBegan:Connect(InputController.OnInputBegan)
+	UserInputService.InputEnded:Connect(InputController.OnInputEnded)
 
-	print("[ASCEND] InputController Initialized.")
+	print("[ASCEND] InputController Initialized with Fast Shift Sprint Support (32 Speed).")
 end
 
 function InputController.SetEnabled(state: boolean)
 	enabled = state
+	if not enabled then
+		InputController.StopSprint()
+	end
+end
+
+function InputController.IsSprinting(): boolean
+	return isSprinting
+end
+
+function InputController.StartSprint()
+	if isMeditating or not enabled then return end
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	if humanoid then
+		isSprinting = true
+		humanoid.WalkSpeed = 32 -- Swift sprinting speed
+	end
+end
+
+function InputController.StopSprint()
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	if humanoid then
+		isSprinting = false
+		humanoid.WalkSpeed = 14 -- Clean normal walking speed
+	end
 end
 
 function InputController.GetTargetPayload(skillKey: string): ActionPayload
@@ -68,19 +97,22 @@ function InputController.GetTargetPayload(skillKey: string): ActionPayload
 end
 
 function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean)
-	if gameProcessed then return end
-
-	-- Always allow G key to toggle/exit meditation with 1.0s spam protection
+	-- Always allow G key to toggle/exit meditation with 1.0s debounce
 	if input.KeyCode == Enum.KeyCode.G then
 		local now = os.clock()
-		if now - lastGPress < 1.0 then return end -- Reject rapid spam within 1 second
+		if now - lastGPress < 1.0 then return end
 		lastGPress = now
 		combatActionRemote:FireServer({ ToggleMeditation = true })
 		return
 	end
 
-	-- Block weapon swaps and combat actions if controls are disabled or character is meditating
-	if not enabled or isMeditating then return end
+	-- Hold LeftShift to Sprint
+	if input.KeyCode == Enum.KeyCode.LeftShift then
+		InputController.StartSprint()
+		return
+	end
+
+	if gameProcessed or not enabled or isMeditating then return end
 
 	-- Weapon swap hotkeys
 	if input.KeyCode == Enum.KeyCode.One then
@@ -109,13 +141,17 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		requestedSkill = "E"
 	elseif input.KeyCode == Enum.KeyCode.R then
 		requestedSkill = "R"
-	elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
-		requestedSkill = "Shift"
 	end
 
 	if requestedSkill then
 		local payload = InputController.GetTargetPayload(requestedSkill)
 		combatActionRemote:FireServer(payload)
+	end
+end
+
+function InputController.OnInputEnded(input: InputObject, gameProcessed: boolean)
+	if input.KeyCode == Enum.KeyCode.LeftShift then
+		InputController.StopSprint()
 	end
 end
 

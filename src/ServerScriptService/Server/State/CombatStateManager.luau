@@ -29,10 +29,11 @@ CombatStateManager.__index = CombatStateManager
 local playerStates: { [Player]: PlayerState } = {}
 local playerCooldowns: { [Player]: { [string]: SkillCooldownData } } = {}
 
+-- Update SKILL_COOLDOWNS table for Q-Key Dash
 local SKILL_COOLDOWNS: { [string]: number } = {
 	M1 = 0.6,
 	F = 1.5,
-	Q = 3.0,
+	Q = 3.0, 
 	E = 5.0,
 	R = 8.0,
 	Shift = 2.0,

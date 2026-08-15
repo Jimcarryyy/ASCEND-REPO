@@ -2,8 +2,8 @@
 --[[
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
-    Client controller for ASCEND animation state, custom movement animation overrides,
-    and custom meditation pose.
+    Client controller for ASCEND animation state, Q-Key Instant Long Dash (`132236998171530`),
+    combat skills, weapon skill animations, and custom meditation pose.
 ]]
 
 local Players = game:GetService("Players")
@@ -20,8 +20,8 @@ local player = Players.LocalPlayer
 local currentWeapon = "FlyingSword"
 local loadedTracks: { [string]: AnimationTrack } = {}
 
--- Custom R15 Cultivation / Meditation Pose
-local MEDITATION_ANIM_ID = "rbxassetid://126221127662554"
+-- Custom R15/R6 Meditation Pose Asset ID
+local MEDITATION_ANIM_ID = "rbxassetid://124985492575278"
 local meditationTrack: AnimationTrack? = nil
 local isCurrentlyMeditating = false
 
@@ -39,15 +39,6 @@ function AnimationController.Init()
 		end)
 	end)
 
-	-- Apply Custom Movement Animations on Character Spawn
-	player.CharacterAdded:Connect(function(character)
-		AnimationController.ApplyCustomMovementAnimations(character)
-	end)
-
-	if player.Character then
-		AnimationController.ApplyCustomMovementAnimations(player.Character)
-	end
-
 	updateCultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		local character = player.Character
 		if not character then return end
@@ -57,6 +48,7 @@ function AnimationController.Init()
 		if not humanoid or not animator then return end
 
 		local newMeditatingState = (data.IsMeditating == true)
+		character:SetAttribute("IsMeditating", newMeditatingState)
 
 		-- Execute Animation ONLY when meditation state actually changes
 		if newMeditatingState ~= isCurrentlyMeditating then
@@ -70,7 +62,7 @@ function AnimationController.Init()
 					meditationTrack = animator:LoadAnimation(animInstance)
 					if meditationTrack then
 						meditationTrack.Priority = Enum.AnimationPriority.Action4
-						meditationTrack.Looped = false -- Non-looped to prevent wrap-around snapping
+						meditationTrack.Looped = false
 					end
 				end
 
@@ -85,15 +77,14 @@ function AnimationController.Init()
 					task.spawn(function()
 						local trackLength = currentTrack.Length
 						if trackLength == 0 then
-							trackLength = 1.0 -- Fallback 1.0s duration
+							trackLength = 1.0
 						end
 
-						-- Pause playback cleanly at 0.92s before 1.0s end so track never auto-stops
 						local holdTime = math.max(0.1, trackLength - 0.08)
 						task.wait(holdTime)
 
 						if meditationTrack == currentTrack and currentTrack.IsPlaying and isCurrentlyMeditating then
-							currentTrack:AdjustSpeed(0) -- Freeze pose seamlessly
+							currentTrack:AdjustSpeed(0)
 						end
 					end)
 				end
@@ -122,35 +113,7 @@ function AnimationController.Init()
 		end
 	end)
 
-	print("[ASCEND] AnimationController Initialized with Custom Run Animation Support.")
-end
-
-function AnimationController.ApplyCustomMovementAnimations(character: Model)
-	local runAnimId = AnimationConfig.Movement.RunAnimationId
-	if not runAnimId or runAnimId == "" or runAnimId == "rbxassetid://" then return end
-
-	task.spawn(function()
-		local animateScript = character:WaitForChild("Animate", 5)
-		if not animateScript then return end
-
-		-- Override Run Animation
-		local runAnimFolder = animateScript:FindFirstChild("run")
-		if runAnimFolder then
-			local runAnimObj = runAnimFolder:FindFirstChildOfClass("Animation")
-			if runAnimObj then
-				runAnimObj.AnimationId = runAnimId
-			end
-		end
-
-		-- Override Walk Animation
-		local walkAnimFolder = animateScript:FindFirstChild("walk")
-		if walkAnimFolder then
-			local walkAnimObj = walkAnimFolder:FindFirstChildOfClass("Animation")
-			if walkAnimObj then
-				walkAnimObj.AnimationId = runAnimId
-			end
-		end
-	end)
+	print("[ASCEND] AnimationController Initialized with Q-Key Instant Long Dash Support.")
 end
 
 function AnimationController.ClearLoadedTracks()
@@ -169,6 +132,48 @@ function AnimationController.PlayAttackAnimation(skillKey: string)
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not humanoid or not hrp then return end
 
+	-- Q-KEY INSTANT LONG DASH (`132236998171530`)
+	if skillKey == "Q" then
+		local moveDir = humanoid.MoveDirection
+		local dashDir = if moveDir.Magnitude > 0 then moveDir.Unit else hrp.CFrame.LookVector
+
+		-- Exaggerated high-velocity forward impulse (120 speed)
+		local dashImpulse = dashDir * 120 + Vector3.new(0, 10, 0)
+		hrp.AssemblyLinearVelocity = dashImpulse
+
+		local animator = humanoid:FindFirstChildOfClass("Animator")
+		local track = nil
+		if animator then
+			local animObj = Instance.new("Animation")
+			animObj.AnimationId = "rbxassetid://132236998171530"
+			pcall(function()
+				track = animator:LoadAnimation(animObj)
+			end)
+		end
+
+		if track then
+			track.Priority = Enum.AnimationPriority.Action4
+			track.Looped = false
+			track:Play(0.02, 5, 1.0)
+		end
+
+		humanoid.WalkSpeed = 36
+
+		-- Exactly 0.43s duration recovery
+		task.delay(0.43, function()
+			if track and track.IsPlaying then
+				track:Stop(0.1)
+			end
+			if humanoid and humanoid.Parent then
+				local InputController = require(script.Parent:WaitForChild("InputController") :: ModuleScript)
+				local isSprinting = if InputController and InputController.IsSprinting then InputController.IsSprinting() else false
+				humanoid.WalkSpeed = if isSprinting then 32 else 14
+			end
+		end)
+		return
+	end
+
+	-- Shift Dash
 	if skillKey == "Shift" then
 		local moveDir = humanoid.MoveDirection
 		local dashDir = if moveDir.Magnitude > 0 then moveDir.Unit else hrp.CFrame.LookVector
@@ -179,7 +184,7 @@ function AnimationController.PlayAttackAnimation(skillKey: string)
 		humanoid.WalkSpeed = 32
 		task.delay(0.22, function()
 			if humanoid and humanoid.Parent then
-				humanoid.WalkSpeed = 16
+				humanoid.WalkSpeed = 14
 			end
 		end)
 		return
@@ -214,7 +219,7 @@ function AnimationController.PlayAttackAnimation(skillKey: string)
 			track:Stop(0.15)
 		end
 		if humanoid and humanoid.Parent then
-			humanoid.WalkSpeed = 16
+			humanoid.WalkSpeed = 14
 		end
 	end)
 end

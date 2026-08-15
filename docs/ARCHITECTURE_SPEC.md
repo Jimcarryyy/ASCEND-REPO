@@ -46,3 +46,21 @@ src/
             ├── HUDController.luau           (Light-Mode HUD dock, HP/Qi meters, hotbar)
             ├── InputController.luau         (Keybind inputs LMB, F, Q, E, R, Shift, G, B, K)
             └── InventoryController.luau     (Spirit Pouch 60-slot storage, rarity-tinted borders)
+
+## 5. R6 Character Locomotion & Animation Architecture
+
+### A. Dedicated Locomotion Engine (`src/StarterPlayer/StarterCharacterScripts/Animate.client.luau`)
+* **Roblox Standard Overriding:** Placed in `StarterCharacterScripts` as a LocalScript named `Animate`. Roblox's character engine automatically suppresses its default built-in movement script on spawn and executes `Animate.client.luau` for all spawned characters.
+* **On-Demand Dynamic Binding (`GetLocomotionTrack`):** Locomotion tracks are bound dynamically on the live `Animator` instance when state changes occur, preventing orphaned track bugs caused by server-side character loading.
+* **State Machine & Velocity Sync:** Listens to `Humanoid.Running` and `Humanoid.StateChanged`:
+  * **Idle:** Plays `trackIdle`. Includes a 100% Y-axis rotation lock (`rootJoint.Transform = CFrame.Angles(x, 0, z)`) to erase asset-baked Y-rotation drift that previously caused characters to spin 360° like a clock hand.
+  * **Walk V1 vs Run V1:** Moves at `WalkSpeed = 16` (Walk V1) or `WalkSpeed = 28` when holding LeftShift (Run V1). Syncs audio `PlaybackSpeed` 1:1 with movement velocity.
+  * **Jump $\rightarrow$ Land:** On normal jumps, transitions directly **Jump $\rightarrow$ Land $\rightarrow$ Idle/Walk** (skips `Fall`).
+  * **Height-Filtered Fall:** Only triggers `Fall` (`105371732122929`) if in freefall for $>0.35$ seconds (cliff drops).
+  * **0.3s Jump Recovery Debounce:** Prevents robotic jump spamming.
+  * **Tripping Fix:** Disables `FallingDown` and `Ragdoll` humanoid states (`Humanoid:SetStateEnabled(...)`) to prevent characters from flopping on slopes.
+
+### B. Technical Diagnostic Clues & Discoveries
+1. **Experience Asset Ownership Protection:** If an animation asset ID was published under a personal account or group that does not match the experience place owner, Roblox blocks the track on live player avatars while allowing it on Studio local viewport rigs. Granting access via Studio Output (`Click to share access`) resolves the block.
+2. **R15 Mesh Package Conflict on R6 Rigs:** If a player's Roblox.com web avatar wears R15 3D Layered Clothing or mesh packages, forcing R6 inserts MeshPart limbs that Roblox's R6 C++ Animator cannot animate with standard R6 KeyframeSequences.
+3. **`ApplyDescription()` Animator Invalidation:** Executing `humanoid:ApplyDescription()` on the server re-creates the `Animator` instance at runtime, invalidating any animation tracks previously loaded before `ApplyDescription()` completed.

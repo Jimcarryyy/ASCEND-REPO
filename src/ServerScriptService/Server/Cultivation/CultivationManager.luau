@@ -335,8 +335,8 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 	end
 	if humanoid then
 		humanoid.Sit = false
-		humanoid.WalkSpeed = 16
-		humanoid.JumpPower = 50
+		humanoid.WalkSpeed = 14 -- Return to clean walk speed
+		humanoid.JumpPower = 65 -- Return to snappy jump power
 		humanoid.AutoRotate = true
 	end
 end

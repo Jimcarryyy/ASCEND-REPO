@@ -95,3 +95,42 @@ This document tracks released and unreleased changes, feature additions, and arc
   - Connected `ActionSkillBar` slots (`Slot_E`, `Slot_F`, `Slot_M1`, `Slot_Q`, `Slot_R`, `Slot_Shift`) to background `rbxassetid://97080305696865`, keybind badges, and dynamic skill cooldown swipe overlays with countdown timers (`HUDController.TriggerSkillCooldown`).
 - **Azure Cloud Realm Jade & Cloud 2D Panel Design Identity**:
   - Approved flat 2D AI panel concept featuring pale jade celadon fills (`#E2F1ED`), azure cloud watermarks (`#38BDF8`), gold/jade cloud scroll borders, and an extended top-right circular close button plaque slot.
+
+  ## [Phase 7 — Cultivation Overhaul, Custom Loading Screen & Environment Polish] — 2026-08-16
+
+### Added
+- **10 Major Realm Progression (90 Orders):** Expanded cultivation framework from 5 realms to 10 Major Realms with 9 Orders each ($1,000 \rightarrow 150\text{M}$ V1 Cap).
+- **3-Tier Dantian Qi Architecture:** Implemented `CurrentQi` (combat resource), `CultivatedQi` (recoverable capacity limit), and `MaxQiGoal` (internal breakthrough goal).
+- **Safe-Zone Qi Multiplier Nodes:** `workspace.QiNodes` detection giving $2.5\times - 5.0\times$ Dantian capacity expansion boost during meditation.
+- **CultivatedQi DataStore V2 Persistence:** Updated `PlayerDataManager.luau` to save and restore exact `CultivatedQi` progress across rejoins, server shutdowns, and respawns.
+- **Encouraging Breakthrough Guidance Toast:** Triggered when attempting breakthrough before meeting the requirement (`CultivatedQi < MaxQiGoal`), displaying *"Keep cultivating! Your Qi isn't ready for breakthrough yet."* in light-mode Xianxia UI style.
+- **Custom Xianxia Loading Screen (`LoadingScreen.client.luau`):** Created in `ReplicatedFirst` with `RemoveDefaultLoadingScreen()`, fullscreen artwork (`BACKGROUND_IMAGE_ID`), dynamic `ContentProvider` asset scanning, server profile sync check (95%), and optional `"SKIP [SPACE / CLICK]"` button.
+- **R6 Locomotion Engine (`Animate.client.luau`):** Custom R6 movement script in `StarterCharacterScripts` handling Idle, Walk V1, Run V1 (Shift), Jump, Fall (>0.35s height filter), Land, Climb, and Swim.
+- **Velocity-Synced Movement Audio:** Integrated custom looped Walk sound (`4416041299`), Run sound (`79250663775359`), Jump sound, and Land sound from `SoundService["Movement sounds"].Main.Character` with speed-matching and default footstep muting.
+- **Tree & Bamboo Collision Cleaner (`TreeCollisionManager.luau`):** Server module disabling canopy/foliage collision while keeping trunks and bamboo stalks physically collidable.
+- **Organic Gusting Wind Controller (`WindEnvironmentController.luau`):** Single-loop client controller using spatial distance culling (<160 studs) and `math.noise` phase offsets for realistic plant-specific wind sways.
+- **Polished 12-Min Day/Night Lighting (`EnvironmentTimeManager.luau`):** 4 cohesive Xianxia lighting phases (Morning, Noon, Sunset, Night) with moonlit foliage visibility.
+- **Unit Number Formatting (`FormatNumber`):** Universal helper formatting numbers into short units (`1.0k`, `84.0k`, `1.50M`, `2.50B`).
+
+### Changed
+- **Pure Sword Paradigm R6 Dual Compatibility:** Updated `WeaponManager.luau` to dynamically detect `Right Arm` (R6) or `RightHand` (R15) with `Massless = true` and `CanCollide = false` safeguards.
+- **Grounded Meditation Sitting:** Converted meditation pose to natural ground level (`groundY + 1.6` studs) with aura highlight VFX, removing floating levitation and heartbeat bobbing.
+- **Dynamic Skill Qi Costs:** Converted skill Qi costs from static numbers to percentage of `CultivatedQi` (Shift = 3%, F = 8%, E = 12%, Q = 15%, R = 30%).
+- **Percentage-Normalized Combat Damage:** Skill damage now scales with Realm/Order Power Multipliers ($1.0\times \rightarrow 100,000\times$).
+- **Camera Max Zoom Distance:** Hard-capped camera zoom to **30 studs** in `ClientMain.client.luau` to prevent open-world vision exploits.
+- **3D Overhead Badges (`OverheadUIController.luau`):** Cleaned overhead display down to 2 dynamic lines (Line 1: Realm Name & Rank, Line 2: Alchemy Rank) rendered in `LuckiestGuy` font with thick black text stroke.
+- **Main HUD Qi Display (`HUDController.luau`):** Simplified Qi bar text to strictly display `CurrentQi / CultivatedQi` (e.g. `43.3k / 75.0k`), removing all `[Goal: ...]` wording.
+
+### Fixed
+- Fixed 1-second meditation animation looping bug by using non-looped track pausing and `ContentProvider:PreloadAsync()` pre-warming.
+- Fixed sticky camera bug when exiting meditation by correcting `CameraType` restoration checks in `AnimationController.luau`.
+- Fixed console error spam from empty `RunAnimationId = "rbxassetid://"` in `AnimationConfig.luau`.
+- Fixed circular require lock between `CombatStateManager.luau` and `CultivationManager.luau` by using runtime dynamic require.
+- Fixed instant full Qi refill on meditation by removing forced `CurrentQi = MaxQi` assignment in `CultivationManager.luau`.
+- Fixed `ShowItemToast` crash on line 430 by adding `tostring(qualityText)` serialization before `string.gsub()`.
+- Fixed local function scope crash in `HUDController.luau` by calling `HookExplorerHUD()` directly.
+- Fixed level diamond snapping to 1 on resource harvesting by requiring explicit `payload.Tier ~= nil` checks.
+- Fixed 360° idle rotation spin by adding Y-axis rotation lock (`idleLockCFrame`) on `RootPart` in `RenderStepped`.
+- Fixed rigid jump spam by adding a 0.3s landing recovery debounce and skipping `Fall` on short jumps.
+- Fixed R6 character tripping/flop pose bug by disabling `FallingDown` and `Ragdoll` humanoid states.
+- Fixed orphaned `Animator` tracks caused by server `ApplyDescription()` runtime calls.

@@ -5,6 +5,7 @@
     Master server-side initialization script for ASCEND.
 ]]
 
+local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
@@ -17,6 +18,7 @@ local AlchemyManager = require(ServerScriptService.Server.Cultivation.AlchemyMan
 -- World Systems
 local GatheringManager = require(ServerScriptService.Server.World.GatheringManager)
 local EnvironmentTimeManager = require(ServerScriptService.Server.World.EnvironmentTimeManager)
+local TreeCollisionManager = require(ServerScriptService.Server.World.TreeCollisionManager)
 
 -- Initialize Server Core Subsystems
 CombatStateManager.Init()
@@ -27,5 +29,6 @@ PlayerDataManager.Init()
 GatheringManager.Init()
 AlchemyManager.Init()
 EnvironmentTimeManager.Init()
+TreeCollisionManager.Init()
 
 print("[ASCEND] Server Main Engine Initialized Successfully!")

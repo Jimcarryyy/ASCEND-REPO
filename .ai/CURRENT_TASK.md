@@ -71,3 +71,26 @@ Execute the master implementation of the **Environmental Qi Meditation Pads** an
 - [ ] **Task 7.1C-1**: Place interactive **Meditation Stone Pads** in `workspace.MeditationPads` with `ProximityPrompt` `[F]` interaction.
 - [ ] **Task 7.1C-2**: Implement server-authoritative Qi channeling in `CultivationManager.luau` using character sit/float animations, filling the `800 / 800` Qi bar $3.5\times$ faster than passive absorption.
 - [ ] **Task 7.1C-3**: Implement **Realm Breakthrough Trials**: consuming a *Foundation Gathering Dan* when Qi is full triggers celestial golden aura particles via `CombatVFXController`, advances cultivator tiers (*Qi Condensation* $\rightarrow$ *Foundation Establishment*), increases permanent stats, and updates HUD titles.
+
+# ACTIVE TASK: Task 7.1D — Spirit Beast AI & Hunting Engine
+
+## Active Objective
+Implementing server-authoritative wild Spirit Beast AI (e.g., *Ironhide Boar*, *Spirit Deer*, *Demon Wolf*) roaming the Sect outskirts, Verdant Bamboo Valley, and Crystal Caverns.
+
+## Sub-Task Checklist
+- [ ] **Task 7.1D-1: Beast Spawning & Territory Anchoring** — Spawner scripts in `workspace.BeastSpawns` anchoring beasts to regional biomes.
+- [ ] **Task 7.1D-2: Server AI State Machine** — Implementing Patrol, Aggro/Chase, Attack, and Flee states using `PathfindingService` with multi-player spatial distance culling.
+- [ ] **Task 7.1D-3: Health Bars & Drop Tables** — Attaching 3D health bars, hitboxes, death animations, and drop table rewards (*Spirit Beast Cores*, *Monster Hides*) for Alchemy Dan crafting.
+
+---
+
+## Recently Completed Milestone: Task 7.1C (Qi Meditation & Progression Overhaul)
+- [x] 10 Major Realms (90 Orders) with $100\text{M}$ V1 stat scale.
+- [x] 3-Tier Dantian Qi Architecture (`CurrentQi <= CultivatedQi <= MaxQiGoal`).
+- [x] Grounded sitting meditation with golden aura highlights & audio (`103967342049425`).
+- [x] Safe-zone Qi Multiplier Nodes (`workspace.QiNodes`).
+- [x] DataStore V2 `CultivatedQi` persistence across rejoins, server shutdowns, and deaths.
+- [x] Encouraging breakthrough guidance toast (*"Keep cultivating! Your Qi isn't ready for breakthrough yet."*).
+- [x] Custom Xianxia Loading Screen (`LoadingScreen.client.luau`) in `ReplicatedFirst`.
+- [x] R6 Locomotion Engine (`Animate.client.luau`) with LeftShift sprint, velocity-synced audio, 100% idle rotation lock, and 0.3s jump recovery debounce.
+- [x] Environment Polish Pass: tree trunk collision filtering (`TreeCollisionManager.luau`), 12-min 4-phase Xianxia day/night lighting (`EnvironmentTimeManager.luau`), and organic gusting wind controller (`WindEnvironmentController.luau`).

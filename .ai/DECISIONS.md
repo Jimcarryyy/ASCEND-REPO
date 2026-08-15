@@ -100,3 +100,43 @@ This document records key architecture decisions for ASCEND, including accepted 
 * **Status:** Accepted (Updated 2026-08-12)
 * **Context:** Main modal windows required a distinct Xianxia visual identity matching *The Azure Cloud Realm*.
 * **Decision:** Approved flat 2D AI panel concept featuring pale jade celadon fills (`#E2F1ED`), azure cloud watermarks (`#38BDF8`), gold/jade cloud scroll borders, and an extended top-right circular close button plaque slot.
+
+### ADR-028 — 10 Major Realm Cultivation & Dantian Progression Overhaul
+* **Date:** 2026-08-15
+* **Status:** Confirmed & Implemented
+* **Context:** The original 5 Major Realm scale ($100 \rightarrow 10,000$ HP/Qi) felt too short for Version 1 and lacked the "Number Go Up" progression feedback loop characteristic of Xianxia cultivation literature.
+* **Decision:**
+  1. Expanded cultivation hierarchy to **10 Major Realms with 9 Orders each (90 total sub-stage orders)**: Qi Condensation, Foundation Establishment, Golden Core, Nascent Soul, Spirit Severing, Void Refining, Body Integration, Mahayana, Tribulation Transcending, and Immortal Ascension.
+  2. Moderately exaggerated stat scale capping at **$100\text{M} - 150\text{M}$ HP/Qi** for Version 1 Immortal Ascension Order 9, preserving the Billions/Trillions scale for future Upper Realm expansion updates.
+  3. Established three distinct Qi concepts to govern Dantian progression:
+     * `CurrentQi`: Active energy usable for combat skills ($\text{CurrentQi} \le \text{CultivatedQi}$).
+     * `CultivatedQi`: The player's reached Dantian capacity limit. In-combat passive and active recovery strictly caps at `CultivatedQi`.
+     * `MaxQiGoal`: Internal breakthrough goal threshold ($\text{CultivatedQi} \le \text{MaxQiGoal}$).
+  4. Breakthroughs (**[B]** key) require $\text{CultivatedQi} \ge \text{MaxQiGoal}$. Achieving a breakthrough advances the Order/Realm and expands `MaxQiGoal` while **preserving existing `CurrentQi` and `CultivatedQi`** (no reset to 0).
+  5. Implemented dynamic percentage-based skill Qi consumption (Shift = 3%, F = 8%, E = 12%, Q = 15%, R = 30% of `CultivatedQi`).
+  6. Implemented percentage-normalized combat damage multipliers ($\text{Damage} = \text{Base} \times \text{PowerMultiplier}$) ensuring balanced Time-To-Kill between equal-tier cultivators while allowing high-realm cultivators to instant one-shot low-realm cultivators.
+* **Consequences:** Created an addictive, long-term progression loop while keeping combat TTK balanced across all 10 realms.
+
+### ADR-029 — Avatar Rig Paradigm Pivot (R15 to R6) & Locomotion Engine
+* **Date:** 2026-08-15
+* **Status:** Confirmed & Implemented
+* **Context:** R15 15-joint animation keyframing was too complex and time-consuming for solo development, while R6 provides faster keyframing velocity, snappy combat readability, and superior mobile performance.
+* **Decision:**
+  1. Pivoted avatar rig baseline from R15 to **R6** in Roblox Game Settings (`Standard R6`).
+  2. Updated `WeaponManager.luau` with dual R6 (`Right Arm`) and R15 (`RightHand`) limb detection for forward-compatibility with future custom rigs.
+  3. Created `src/StarterPlayer/StarterCharacterScripts/Animate.client.luau` as a dedicated R6 locomotion engine that overrides default Roblox movement scripts on all spawned characters.
+  4. Registered custom R6 movement animation suite in `AnimationConfig.luau`: Idle (`98257310687211`), Walk V1 (`92949542384678`), Run V1 (`106115576089829`), Jump (`115002701112708`), Fall (`105371732122929`), Land (`127232864368618`), Climb (`92318229141460`), and Swim (`232873130`).
+  5. Implemented holding LeftShift to sprint (`WalkSpeed = 28` playing `Run V1`) vs normal walking (`WalkSpeed = 16` playing `Walk V1`).
+  6. Applied dynamic wide R6 body scale (`BodyWidthScale = 1.18`, `BodyDepthScale = 1.08`) on server character spawn in `ServerMain.server.luau` for all players.
+* **Consequences:** Dramatically accelerated animation development velocity and improved combat visual clarity.
+
+### ADR-030 — Environment Polish Pass, Tree Collision Cleanup & Organic Wind Physics
+* **Date:** 2026-08-16
+* **Status:** Confirmed & Implemented
+* **Context:** Tree foliage created invisible bounding box walls that blocked players away from visible trunks, world lighting lacked atmospheric depth, and forest vegetation appeared static.
+* **Decision:**
+  1. Implemented `TreeCollisionManager.luau` server module: automatically scans `Workspace` trees and bamboo, sets foliage/leaves to `CanCollide = false`, and keeps tree trunks and individual bamboo stalks (`CanCollide = true`), eliminating invisible canopy walls.
+  2. Upgraded `EnvironmentTimeManager.luau` with a 12-minute 4-phase Xianxia lighting cycle (Morning, Noon, Sunset, Moonlit Night) featuring soft directional shadows and moonlit ambient depth (`OutdoorAmbient = #415073`) to prevent pitch-black tree silhouettes at night.
+  3. Implemented `WindEnvironmentController.luau` client controller: single-loop organic gusting wind (`REST -> GUST -> SWAY -> SETTLE`) with spatial culling (<160 studs) and `math.noise` position offsets for desynchronized sway across large trees, small trees, flexible bamboo stalks, and grass.
+* **Consequences:** Transformed the world into a living, responsive Xianxia environment without adding PointLight clutter or dropping mobile FPS.
+

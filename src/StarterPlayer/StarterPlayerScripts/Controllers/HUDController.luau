@@ -3,8 +3,7 @@
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
     Client HUD engine for ASCEND.
-    Supports Unit Number Formatting (1k, 1M, 1B), Clean CurrentQi / CultivatedQi Display (NO GOAL TEXT),
-    and Encouraging Breakthrough Guidance Toasts.
+    Supports Unit Number Formatting (1k, 1M, 1B), Strict Cultivated Cap Rendering (Current / MaxQi [Goal]), and Level Diamond.
 ]]
 
 local Players = game:GetService("Players")
@@ -34,8 +33,8 @@ local COLOR_JADE_DARK    = Color3.fromRGB(29, 69, 51)      -- Dark Jade Text
 local COLOR_GOLD_ACCENT  = Color3.fromRGB(255, 215, 0)   -- Gold Border Accent
 local COLOR_HP_GREEN     = Color3.fromRGB(16, 185, 129)
 
-local hudScreenGui: ScreenGui
-local vitalFrame: ImageLabel
+local hudScreenGui: ScreenGui?
+local vitalFrame: ImageLabel?
 local portraitMaskFrame: Frame?
 local avatarHeadshot: ImageLabel?
 local levelBadgeText: TextLabel?
@@ -136,8 +135,14 @@ function HUDController.Init()
 end
 
 function HUDController.HookExplorerHUD()
-	hudScreenGui = playerGui:WaitForChild("AscendMainHUD") :: ScreenGui
-	vitalFrame = hudScreenGui:WaitForChild("VitalHUDFrame") :: ImageLabel
+	hudScreenGui = (playerGui:WaitForChild("VitalHUDGui", 8) or playerGui:WaitForChild("AscendMainHUD", 8)) :: ScreenGui?
+	if not hudScreenGui then
+		hudScreenGui = playerGui:FindFirstChildOfClass("ScreenGui")
+	end
+	if not hudScreenGui then return end
+
+	vitalFrame = (hudScreenGui:WaitForChild("VitalHUDFrame", 5) or hudScreenGui:FindFirstChild("VitalHUDFrame", true)) :: ImageLabel?
+	if not vitalFrame then return end
 
 	-- 1. Headshot Image
 	portraitMaskFrame = FindChildCaseInsensitive(vitalFrame, "PortraitMask") :: Frame?

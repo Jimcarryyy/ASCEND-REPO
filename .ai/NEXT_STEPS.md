@@ -66,3 +66,23 @@ This file lays out the next planned development milestones and future roadmap. U
 - [ ] Place interactive **Meditation Stone Pads** (`workspace.MeditationPads`) in Zone 4 / Zone 2 streams.
 - [ ] Implement meditation channeling (**[F]** key / ProximityPrompt) with `Celestial Float System` pose to fill the `800 / 800` Qi bar $3.5\times$ faster than passive absorption.
 - [ ] Implement **Realm Breakthrough Trials**: consuming a *Foundation Gathering Dan* when Qi is full triggers celestial golden aura particles, advances cultivator tiers (*Qi Condensation* $\rightarrow$ *Foundation Establishment*), increases permanent stats, and updates HUD titles.
+
+
+# NEXT STEPS ROADMAP
+
+## Immediate Focus (Phase 7 Remaining)
+1. **Task 7.1D — Spirit Beast AI & Hunting Engine:**
+   - Server-side Pathfinding AI for wild beasts (*Ironhide Boar*, *Spirit Deer*, *Demon Wolf*) in Bamboo Valley, Ice Crags, and Magma Ridge.
+   - Drop tables for *Beast Cores* and *Monster Hides* used in advanced Alchemy Breakthrough Pills.
+2. **Task 7.1E — Sect Market Vendors & Monetization Engine:**
+   - Interactive Market NPCs in Sect Sanctuary with `ProximityPrompt` interaction.
+   - Equippable HUD Skin GUI (`DefaultBronze`, `SakuraImmortal`, `AzureDragon`).
+   - Spirit Stone currency transactions, item buying/selling, and Roblox Gamepass / Developer Product integration.
+
+## Future Phase Roadmap
+1. **Cultivation Realm Breakthrough Rewards System (Manhwa/Manhua Advancement):**
+   - Physical & spiritual advancements per realm conquered (*Body Tempering*, *Golden Bones*, *Meridian Talent Nodes*, *Divine Spirit Consciousness*).
+2. **World Boss Battles & Sovereign Sword Peak Arena (Zone 5):**
+   - Multi-phase World Boss encounters, flying sword flight showcases, and raid mechanics.
+3. **Upper Realm / Divine Plane Expansion (Post-V1):**
+   - Expanding beyond the 10 Major Realms ($100\text{M}$ V1 Cap) into Trillions/Quintillions Divine Realms in future expansion updates.
