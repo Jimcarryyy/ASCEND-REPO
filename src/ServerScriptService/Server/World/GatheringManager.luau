@@ -3,7 +3,7 @@
     GatheringManager.luau
     Location: src/ServerScriptService/Server/World/GatheringManager.luau
     Server-authoritative manager for world resource harvesting nodes.
-    Grants randomized herb ages and triggers harvest audio/toasts on client.
+    Grants randomized herb ages, updates Sect Quests, and triggers harvest audio/toasts on client.
 ]]
 
 local Players = game:GetService("Players")
@@ -13,6 +13,8 @@ local CollectionService = game:GetService("CollectionService")
 
 local GatheringConfig = require(ReplicatedStorage.Shared.Configs.GatheringConfig)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
+local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
+local SectManager = require(ServerScriptService.Server.Cultivation.SectManager)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local GatheringManager = {}
@@ -52,7 +54,7 @@ function GatheringManager.Init()
 		end
 	end)
 
-	print("[ASCEND] GatheringManager Engine Initialized (Randomized Herb Ages Enabled).")
+	print("[ASCEND] GatheringManager Engine Initialized (Randomized Herb Ages & Quest Sync Enabled).")
 end
 
 function GatheringManager.SetupNodeModel(nodeInstance: Instance)
@@ -131,6 +133,11 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 
 	-- Grant Loot
 	InventoryManager.AddItem(player, selectedItemId, 1)
+
+	-- Sync Sect Quest Progress for Herb Harvesting
+	SectManager.AddQuestProgress(player, "Gather", config.NodeName, 1)
+	SectManager.AddQuestProgress(player, "Gather", nodeType, 1)
+
 	print(string.format("[GatheringManager] %s harvested %s from %s (Random Roll: %.2f)", player.Name, selectedItemId, config.NodeName, roll))
 
 	-- Notify Client to Play Harvest Sound and Show Toast Notification
@@ -151,7 +158,7 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 			for _, descendant in ipairs(nodeInstance:GetDescendants()) do
 				if descendant:IsA("BasePart") then
 					descendant.Transparency = 0
-				elseif descendant:IsA("ParticleEmitter") then
+					elseif descendant:IsA("ParticleEmitter") then
 					descendant.Enabled = true
 				end
 			end

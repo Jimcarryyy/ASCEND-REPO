@@ -1,7 +1,10 @@
 --!strict
--- InputController.luau
--- Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InputController.luau
--- Client controller for keybindings, Shift sprint toggles (WalkSpeed = 32), skill activations, and meditation debounces.
+--[[
+    InputController.luau
+    Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InputController.luau
+    Client controller for keybindings, Shift sprint toggles (WalkSpeed = 32), skill activations, and meditation debounces.
+    Features: Strict UI interaction gating to prevent accidental M1 sword attacks while clicking menus.
+]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -47,7 +50,7 @@ function InputController.Init()
 	UserInputService.InputBegan:Connect(InputController.OnInputBegan)
 	UserInputService.InputEnded:Connect(InputController.OnInputEnded)
 
-	print("[ASCEND] InputController Initialized with Fast Shift Sprint Support (32 Speed).")
+	print("[ASCEND] InputController Initialized with Fast Shift Sprint & UI Gating.")
 end
 
 function InputController.SetEnabled(state: boolean)
@@ -67,7 +70,7 @@ function InputController.StartSprint()
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 	if humanoid then
 		isSprinting = true
-		humanoid.WalkSpeed = 32 -- Swift sprinting speed
+		humanoid.WalkSpeed = 32
 	end
 end
 
@@ -76,7 +79,7 @@ function InputController.StopSprint()
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 	if humanoid then
 		isSprinting = false
-		humanoid.WalkSpeed = 14 -- Clean normal walking speed
+		humanoid.WalkSpeed = 14
 	end
 end
 
@@ -97,6 +100,9 @@ function InputController.GetTargetPayload(skillKey: string): ActionPayload
 end
 
 function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean)
+	-- Strictly ignore input if user is clicking on UI or typing
+	if gameProcessed then return end
+
 	-- Always allow G key to toggle/exit meditation with 1.0s debounce
 	if input.KeyCode == Enum.KeyCode.G then
 		local now = os.clock()
@@ -112,7 +118,7 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	if gameProcessed or not enabled or isMeditating then return end
+	if not enabled or isMeditating then return end
 
 	-- Weapon swap hotkeys
 	if input.KeyCode == Enum.KeyCode.One then

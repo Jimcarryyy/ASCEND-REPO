@@ -3,7 +3,7 @@
     AlchemyManager.luau
     Location: src/ServerScriptService/Server/Cultivation/AlchemyManager.luau
     Server-authoritative manual cauldron combination alchemy engine.
-    Delivers pills with distinct Quality Metadata to InventoryManager.
+    Delivers pills with distinct Quality Metadata to InventoryManager and syncs Sect Quests.
 ]]
 
 local Players = game:GetService("Players")
@@ -16,6 +16,7 @@ local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
 local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
 local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
+local SectManager = require(ServerScriptService.Server.Cultivation.SectManager)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local AlchemyManager = {}
@@ -60,7 +61,7 @@ function AlchemyManager.Init()
 		end
 	end)
 
-	print("[ASCEND] Upgraded Quality-Metadata AlchemyManager Initialized.")
+	print("[ASCEND] Upgraded Quality-Metadata AlchemyManager Initialized with Quest Sync.")
 end
 
 function AlchemyManager.SetupCauldronModel(cauldronInstance: Instance)
@@ -171,6 +172,10 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 	if success then
 		-- Deliver Pill with Quality Grade Metadata
 		InventoryManager.AddItem(player, formula.ResultItemId, 1, qualityText)
+
+		-- Sync Sect Quest Progress for Dan Refinement
+		SectManager.AddQuestProgress(player, "CraftDan", formula.ResultItemId, 1)
+		SectManager.AddQuestProgress(player, "CraftDan", "AnyDan", 1)
 
 		-- Grant Alchemy EXP
 		local expGained = formula.ExpReward or 30

@@ -3,12 +3,14 @@
     MarketController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/MarketController.luau
     Client UI Controller for the Azure Cloud Sect Market and Quest Pavilion.
-    Cleanly separates: Market Vendor Shop (Buy/Sell) vs Quest Elder Pavilion (Duties/Promotions).
+    Features: Dedicated Top-Level ToastGui (DisplayOrder 99), valid UI sound effects, and responsive button tweens.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
 
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -21,8 +23,13 @@ local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 local marketRemote: RemoteEvent
 local sectRemote: RemoteEvent
 
+-- Valid Roblox Audio IDs
+local CLICK_SOUND_ID = "rbxassetid://138567614125924"
+local SUCCESS_SOUND_ID = "rbxassetid://135165335432475"
+
 -- UI Instances
 local screenGui: ScreenGui
+local toastGui: ScreenGui
 local mainModal: Frame
 local titleLabel: TextLabel
 local balanceLabel: TextLabel
@@ -30,6 +37,7 @@ local rankLabel: TextLabel
 local contributionLabel: TextLabel
 local navBar: Frame
 local contentContainer: Frame
+local toastContainer: Frame
 
 -- State
 local isOpen = false
@@ -40,6 +48,89 @@ local currentRank: SectConfig.DiscipleRank = "OuterDisciple"
 local currentContribution = 0
 local playerInventoryList: { [number]: { ItemId: string, Count: number, Quality: string? } } = {}
 local activeQuests: { [string]: any } = {}
+
+local function PlayClickAudio()
+	local sound = Instance.new("Sound")
+	sound.SoundId = CLICK_SOUND_ID
+	sound.Volume = 0.5
+	sound.Parent = SoundService
+	sound:Play()
+	game:GetService("Debris"):AddItem(sound, 1)
+end
+
+local function PlaySuccessAudio()
+	local sound = Instance.new("Sound")
+	sound.SoundId = SUCCESS_SOUND_ID
+	sound.Volume = 0.6
+	sound.Parent = SoundService
+	sound:Play()
+	game:GetService("Debris"):AddItem(sound, 1.5)
+end
+
+local function AnimateButtonPress(button: GuiButton)
+	local originalSize = button.Size
+	local shrinkSize = UDim2.new(originalSize.X.Scale * 0.95, originalSize.X.Offset * 0.95, originalSize.Y.Scale * 0.95, originalSize.Y.Offset * 0.95)
+	
+	TweenService:Create(button, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = shrinkSize }):Play()
+	task.delay(0.06, function()
+		TweenService:Create(button, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = originalSize }):Play()
+	end)
+end
+
+function MarketController.ShowToast(message: string, isError: boolean?)
+	if not toastContainer then return end
+
+	local toast = Instance.new("Frame")
+	toast.Size = UDim2.new(0, 360, 0, 44)
+	toast.Position = UDim2.new(0.5, 0, 0, -60)
+	toast.AnchorPoint = Vector2.new(0.5, 0)
+	toast.BackgroundColor3 = if isError then Color3.fromRGB(190, 40, 40) else Color3.fromRGB(39, 174, 96)
+	toast.BorderSizePixel = 0
+	toast.ZIndex = 100
+	toast.Parent = toastContainer
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = toast
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = if isError then Color3.fromRGB(255, 120, 120) else Color3.fromRGB(120, 255, 180)
+	stroke.Thickness = 2
+	stroke.Parent = toast
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -20, 1, 0)
+	label.Position = UDim2.new(0, 10, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = message
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextScaled = true
+	label.ZIndex = 101
+	label.Parent = toast
+
+	-- Slide Down Animation
+	TweenService:Create(toast, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, 0, 0, 25) }):Play()
+
+	-- Auto Dismiss after 2.8s
+	task.delay(2.8, function()
+		if toast and toast.Parent then
+			local fade = TweenService:Create(toast, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				Position = UDim2.new(0.5, 0, 0, -60),
+				BackgroundTransparency = 1,
+			})
+			fade:Play()
+			fade.Completed:Connect(function()
+				toast:Destroy()
+			end)
+		end
+	end)
+end
+
+function MarketController.IsOpen(): boolean
+	return isOpen
+end
 
 function MarketController.Init()
 	marketRemote = RemoteEvents.GetRemote("MarketAction")
@@ -57,9 +148,24 @@ function MarketController.Init()
 			currentTab = "Buy"
 			currentStones = payload.SpiritStones or currentStones
 			currentRank = payload.SectRank or currentRank
+			MarketController.UpdateHeader()
 			MarketController.Open()
-		elseif action == "SyncBalance" or action == "TransactionSuccess" then
-			currentStones = payload.NewBalance or payload.SpiritStones or currentStones
+		elseif action == "TransactionSuccess" then
+			currentStones = payload.NewBalance or currentStones
+			MarketController.UpdateHeader()
+			PlaySuccessAudio()
+			if payload.Type == "Buy" then
+				MarketController.ShowToast(string.format("Purchased %dx %s (-%d Stones)!", payload.Amount, payload.ItemId, payload.TotalCost))
+			else
+				MarketController.ShowToast(string.format("Sold %dx %s (+%d Stones)!", payload.Amount, payload.ItemId, payload.TotalPayout))
+			end
+			if isOpen then
+				MarketController.RenderCurrentTab()
+			end
+		elseif action == "TransactionFailed" then
+			MarketController.ShowToast(payload.Message or "Transaction Failed!", true)
+		elseif action == "SyncBalance" then
+			currentStones = payload.SpiritStones or currentStones
 			MarketController.UpdateHeader()
 			if isOpen then
 				MarketController.RenderCurrentTab()
@@ -84,11 +190,23 @@ function MarketController.Init()
 			if isOpen and currentTab == "Duties" then
 				MarketController.RenderDutiesTab()
 			end
-		elseif action == "QuestCompleted" or action == "PromotionSuccess" or action == "StipendClaimed" then
+		elseif action == "QuestCompleted" then
+			PlaySuccessAudio()
+			MarketController.ShowToast(string.format("Duty Completed! (+%d CP, +%d Stones, +%d Qi)", payload.RewardContribution, payload.RewardSpiritStones, payload.RewardQi))
 			MarketController.UpdateHeader()
 			if isOpen and currentTab == "Duties" then
 				MarketController.RenderDutiesTab()
 			end
+		elseif action == "PromotionSuccess" then
+			PlaySuccessAudio()
+			MarketController.ShowToast(string.format("Promoted to %s!", payload.DisplayName))
+			MarketController.UpdateHeader()
+		elseif action == "PromotionFailed" or action == "QuestError" or action == "StipendFailed" then
+			MarketController.ShowToast(payload.Message or "Action Failed!", true)
+		elseif action == "StipendClaimed" then
+			PlaySuccessAudio()
+			MarketController.ShowToast(string.format("Claimed Daily Stipend (+%d Stones)!", payload.Amount))
+			MarketController.UpdateHeader()
 		end
 	end)
 
@@ -110,10 +228,11 @@ function MarketController.Init()
 		end
 	end)
 
-	print("[ASCEND] MarketController Initialized (Clean Modal Separation Active).")
+	print("[ASCEND] MarketController Initialized (Dedicated Top-Level ToastGui Active).")
 end
 
 function MarketController.BuildUI()
+	-- 1. Main Modal GUI
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "SectMarketGui"
 	screenGui.ResetOnSpawn = false
@@ -121,6 +240,22 @@ function MarketController.BuildUI()
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.Enabled = false
 	screenGui.Parent = playerGui
+
+	-- 2. Dedicated Top-Level Toast GUI (DisplayOrder = 99 to always sit on top of all modals)
+	toastGui = Instance.new("ScreenGui")
+	toastGui.Name = "AscendToastGui"
+	toastGui.ResetOnSpawn = false
+	toastGui.DisplayOrder = 99
+	toastGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	toastGui.Parent = playerGui
+
+	toastContainer = Instance.new("Frame")
+	toastContainer.Name = "ToastContainer"
+	toastContainer.Size = UDim2.new(0, 400, 0, 100)
+	toastContainer.Position = UDim2.new(0.5, 0, 0, 10)
+	toastContainer.AnchorPoint = Vector2.new(0.5, 0)
+	toastContainer.BackgroundTransparency = 1
+	toastContainer.Parent = toastGui
 
 	local overlay = Instance.new("Frame")
 	overlay.Name = "DarkOverlay"
@@ -186,7 +321,10 @@ function MarketController.BuildUI()
 	closeCorner.CornerRadius = UDim.new(0, 8)
 	closeCorner.Parent = closeBtn
 
-	closeBtn.MouseButton1Click:Connect(MarketController.Close)
+	closeBtn.MouseButton1Click:Connect(function()
+		PlayClickAudio()
+		MarketController.Close()
+	end)
 
 	-- Status Bar
 	local statusBar = Instance.new("Frame")
@@ -249,11 +387,6 @@ function MarketController.BuildUI()
 	navBar.BackgroundTransparency = 1
 	navBar.Parent = mainModal
 
-	local navLayout = Instance.new("UIListLayout")
-	navLayout.FillDirection = Enum.FillDirection.Horizontal
-	navLayout.Padding = UDim.new(0, 10)
-	navLayout.Parent = navBar
-
 	-- Content Container
 	contentContainer = Instance.new("Frame")
 	contentContainer.Name = "ContentContainer"
@@ -306,6 +439,8 @@ function MarketController.RenderNavBar()
 		corner.Parent = btn
 
 		btn.MouseButton1Click:Connect(function()
+			PlayClickAudio()
+			AnimateButtonPress(btn)
 			currentTab = tabKey
 			MarketController.RenderNavBar()
 			MarketController.RenderCurrentTab()
@@ -394,6 +529,8 @@ function MarketController.RenderBuyTab()
 			btnCorner.Parent = buyBtn
 
 			buyBtn.MouseButton1Click:Connect(function()
+				PlayClickAudio()
+				AnimateButtonPress(buyBtn)
 				marketRemote:FireServer({ Action = "BuyItem", ItemId = itemDef.ItemId, Amount = 1 })
 			end)
 		end
@@ -468,6 +605,8 @@ function MarketController.RenderSellTab()
 				btnCorner.Parent = sellBtn
 
 				sellBtn.MouseButton1Click:Connect(function()
+					PlayClickAudio()
+					AnimateButtonPress(sellBtn)
 					marketRemote:FireServer({ Action = "SellItem", ItemId = slot.ItemId, Amount = 1 })
 				end)
 			end
@@ -525,6 +664,8 @@ function MarketController.RenderDutiesTab()
 	sCorner.Parent = stipendBtn
 
 	stipendBtn.MouseButton1Click:Connect(function()
+		PlayClickAudio()
+		AnimateButtonPress(stipendBtn)
 		sectRemote:FireServer({ Action = "ClaimDailyStipend" })
 	end)
 
@@ -544,6 +685,8 @@ function MarketController.RenderDutiesTab()
 	prCorner.Parent = promoteBtn
 
 	promoteBtn.MouseButton1Click:Connect(function()
+		PlayClickAudio()
+		AnimateButtonPress(promoteBtn)
 		sectRemote:FireServer({ Action = "RequestPromotion" })
 	end)
 
@@ -611,10 +754,12 @@ function MarketController.RenderDutiesTab()
 
 		if progress.Completed then
 			submitBtn.MouseButton1Click:Connect(function()
+				PlayClickAudio()
+				AnimateButtonPress(submitBtn)
 				sectRemote:FireServer({ Action = "SubmitQuest", QuestId = questId })
 			end)
 		end
-	end
+	end -- Closed the quest loop cleanly
 end
 
 function MarketController.Open()

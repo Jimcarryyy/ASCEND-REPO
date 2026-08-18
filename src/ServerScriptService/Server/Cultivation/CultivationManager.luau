@@ -168,6 +168,17 @@ function CultivationManager.GetPlayerData(player: Player): PlayerCultivationData
 	return playerData[player]
 end
 
+function CultivationManager.AddInternalQi(player: Player, amount: number)
+	local pData = playerData[player]
+	if not pData then return end
+
+	local maxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
+	pData.CultivatedQi = math.clamp(pData.CultivatedQi + amount, 0, maxQiGoal)
+	pData.CurrentQi = math.clamp(pData.CurrentQi + amount, 0, pData.CultivatedQi)
+
+	CultivationManager.SyncClient(player)
+end
+
 function CultivationManager.SetPlayerData(player: Player, realm: CultivationConfig.RealmTier, currentQi: number, order: number?, cultivatedQi: number?)
 	local orderNum = math.clamp(order or 1, 1, 9)
 	local targetGoal = CultivationConfig.GetOrderTargetQi(realm, orderNum)
@@ -212,7 +223,7 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	if humanoid then
 		local maxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
 		humanoid.MaxHealth = maxHp
-		humanoid.Health = maxHp -- Instantly set health to max on spawn
+		humanoid.Health = maxHp
 	end
 
 	-- Initialize Attributes on Character for Overhead Badges
@@ -242,7 +253,6 @@ function CultivationManager.ToggleMeditation(player: Player)
 	local pData = playerData[player]
 	if not pData or pData.IsTribulationActive then return end
 
-	-- Server-side spam debounce protection (0.8 seconds)
 	local now = os.clock()
 	local lastTime = lastToggleTimestamp[player] or 0
 	if now - lastTime < 0.8 then return end
@@ -255,13 +265,11 @@ function CultivationManager.ToggleMeditation(player: Player)
 	local weaponMgr = getWeaponManager()
 
 	if pData.IsMeditating then
-		-- Hide weapon when entering meditation
 		if weaponMgr and weaponMgr.SetWeaponVisibility then
 			weaponMgr.SetWeaponVisibility(player, false)
 		end
 		CultivationManager.StartGroundedMeditation(player, character, pData.Realm, false)
 	else
-		-- Restore weapon visibility when exiting meditation
 		if weaponMgr and weaponMgr.SetWeaponVisibility then
 			weaponMgr.SetWeaponVisibility(player, true)
 		end
@@ -286,7 +294,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
 
-	-- Color Qi Highlight Aura
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "QiMeditationHighlight"
 	highlight.Adornee = character
@@ -297,7 +304,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.Parent = character
 
-	-- Raycast down to place sitting posture naturally on ground surface
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterDescendantsInstances = { character }
 	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -305,7 +311,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	local rayResult = Workspace:Raycast(hrp.Position, Vector3.new(0, -20, 0), raycastParams)
 	local groundY = if rayResult then rayResult.Position.Y else (hrp.Position.Y - 2.8)
 
-	-- Grounded CFrame position (1.6 studs places sitting posture directly on terrain)
 	hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 1.6, hrp.Position.Z) * hrp.CFrame.Rotation
 
 	local auraPart = Instance.new("Part")
@@ -330,13 +335,11 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	
-	if hrp then
-		hrp.Anchored = false
-	end
+	if hrp then hrp.Anchored = false end
 	if humanoid then
 		humanoid.Sit = false
-		humanoid.WalkSpeed = 14 -- Return to clean walk speed
-		humanoid.JumpPower = 65 -- Return to snappy jump power
+		humanoid.WalkSpeed = 14
+		humanoid.JumpPower = 65
 		humanoid.AutoRotate = true
 	end
 end
@@ -345,11 +348,9 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	local pData = playerData[player]
 	if not pData or pData.IsTribulationActive then return false end
 
-	-- Breakthrough occurs ONLY when CultivatedQi >= MaxQiGoal
 	if pData.CultivatedQi < pData.MaxQiGoal then
 		print(string.format("[CultivationManager] Breakthrough rejected for %s: CultivatedQi insufficient (%s / %s Goal)", player.Name, CultivationConfig.FormatNumber(pData.CultivatedQi), CultivationConfig.FormatNumber(pData.MaxQiGoal)))
 		
-		-- Fire encouraging player-facing guidance toast (No technical terms exposed)
 		updateCultivationRemote:FireClient(player, {
 			Action = "BreakthroughRejected",
 			Message = "Keep cultivating! Your Qi isn't ready for breakthrough yet."
@@ -360,7 +361,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	-- Minor Breakthrough (Order 1-8)
 	if pData.Order < 9 then
 		pData.Order += 1
-		-- PRESERVE CultivatedQi & CurrentQi!
 		CultivationManager.ApplyRealmStats(player)
 		CultivationManager.SyncClient(player)
 		print(string.format("[CultivationManager] ✨ %s achieved Minor Breakthrough to %s — Order %d!", player.Name, CultivationConfig[pData.Realm].Name, pData.Order))
@@ -385,7 +385,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 
 	local tribulationSpec = CultivationConfig[pData.Realm].Tribulation
 
-	-- If next realm has 0 tribulation strikes, grant breakthrough immediately and PRESERVE CultivatedQi/CurrentQi
 	if tribulationSpec.StrikeCount <= 0 then
 		pData.Realm = nextRealm
 		pData.Order = 1
@@ -394,7 +393,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		return true
 	end
 
-	-- Start Heavenly Tribulation Sequence
 	pData.IsTribulationActive = true
 	pData.TotalWaves = tribulationSpec.StrikeCount
 	pData.TribulationWave = 0
@@ -460,7 +458,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			pData.IsTribulationActive = false
 			pData.TribulationWave = 0
 
-			-- PRESERVE CultivatedQi & CurrentQi!
 			CultivationManager.StopGroundedMeditation(player, character)
 			CultivationManager.ApplyRealmStats(player)
 
@@ -513,8 +510,8 @@ function CultivationManager.SyncClient(player: Player)
 	if character then
 		local totalLevel = ((realmInfo.Tier - 1) * 9) + pData.Order
 		character:SetAttribute("Qi", pData.CurrentQi)
-		character:SetAttribute("MaxQi", pData.CultivatedQi) -- CultivatedQi is the displayed MaxQi
-		character:SetAttribute("TargetQi", maxQiGoal)        -- Internal Goal
+		character:SetAttribute("MaxQi", pData.CultivatedQi)
+		character:SetAttribute("TargetQi", maxQiGoal)
 		character:SetAttribute("Realm", string.format("%s — Order %d", realmInfo.Name, pData.Order))
 		character:SetAttribute("Level", totalLevel)
 	end
@@ -524,8 +521,8 @@ function CultivationManager.SyncClient(player: Player)
 		Tier = realmInfo.Tier,
 		Order = pData.Order,
 		CurrentQi = pData.CurrentQi,
-		MaxQi = pData.CultivatedQi, -- Displayed Denominator
-		TargetQi = maxQiGoal,        -- Internal Goal
+		MaxQi = pData.CultivatedQi,
+		TargetQi = maxQiGoal,
 		IsMeditating = pData.IsMeditating,
 		IsTribulationActive = pData.IsTribulationActive,
 		TribulationWave = pData.TribulationWave,

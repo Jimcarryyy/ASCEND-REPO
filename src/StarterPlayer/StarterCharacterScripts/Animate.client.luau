@@ -182,7 +182,6 @@ local function SetLocomotionState(newState: string)
 		else
 			targetTrack:Play(0.12)
 		end
-		print(string.format("[Animate] Playing locomotion state '%s'.", newState))
 	end
 end
 

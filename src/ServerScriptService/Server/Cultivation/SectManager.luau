@@ -42,6 +42,16 @@ local PROMOTION_CHAIN: { SectConfig.DiscipleRank } = {
 	"GrandElder",
 }
 
+local function GetRealmTier(realmTier: CultivationConfig.RealmTier): number
+	local info = CultivationConfig[realmTier]
+	return if info then info.Tier else 1
+end
+
+local function GetRealmDisplayName(realmTier: CultivationConfig.RealmTier): string
+	local info = CultivationConfig[realmTier]
+	return if info then info.Name else tostring(realmTier)
+end
+
 function SectManager.Init()
 	sectRemote = RemoteEvents.GetRemote("SectAction")
 
@@ -81,7 +91,6 @@ end
 function SectManager.OnPlayerAdded(player: Player)
 	playerQuests[player] = {}
 
-	-- Initialize default daily quests for the player
 	for questId, questDef in pairs(SectConfig.GetAllQuests()) do
 		playerQuests[player][questId] = {
 			QuestId = questId,
@@ -151,7 +160,6 @@ function SectManager.SyncSectData(player: Player)
 	})
 end
 
--- Track Progress when player harvests or defeats mobs
 function SectManager.AddQuestProgress(player: Player, questType: "Gather" | "Cultivate" | "DefeatMob" | "CraftDan", targetId: string, amount: number)
 	local quests = playerQuests[player]
 	if not quests then return end
@@ -187,7 +195,6 @@ function SectManager.ProcessSubmitQuest(player: Player, questId: any)
 	-- If it was an herb delivery quest, verify and remove required herbs
 	if questDef.QuestType == "Gather" then
 		if not InventoryManager.HasItem(player, questDef.TargetId, questDef.TargetAmount) then
-			-- Fallback: check 1-Yr variant
 			local variantId = questDef.TargetId .. "_1Yr"
 			if not InventoryManager.HasItem(player, variantId, questDef.TargetAmount) then
 				sectRemote:FireClient(player, { Action = "QuestError", Message = "Missing required herbs in Spirit Pouch!" })
@@ -200,12 +207,20 @@ function SectManager.ProcessSubmitQuest(player: Player, questId: any)
 		end
 	end
 
-	-- Award Rewards
+	-- Award Rewards Safely
 	PlayerDataManager.AddContributionPoints(player, questDef.RewardContribution)
 	PlayerDataManager.AddSpiritStones(player, questDef.RewardSpiritStones)
-	CultivationManager.AddCultivatedQi(player, questDef.RewardQi)
 
-	-- Reset Quest for repeat or mark submitted
+	-- Add Qi directly via PlayerCultivationData
+	local pData = CultivationManager.GetPlayerData(player)
+	if pData then
+		local maxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
+		pData.CultivatedQi = math.clamp(pData.CultivatedQi + questDef.RewardQi, 0, maxQiGoal)
+		pData.CurrentQi = math.clamp(pData.CurrentQi + questDef.RewardQi, 0, pData.CultivatedQi)
+		CultivationManager.SyncClient(player)
+	end
+
+	-- Reset Quest for repeat
 	quest.CurrentAmount = 0
 	quest.Completed = false
 
@@ -228,7 +243,6 @@ function SectManager.ProcessPromotion(player: Player)
 	local cultivation = CultivationManager.GetPlayerData(player)
 	if not cultivation then return end
 
-	-- Find next rank in chain
 	local nextRank: SectConfig.DiscipleRank? = nil
 	for i, rank in ipairs(PROMOTION_CHAIN) do
 		if rank == currentRank and i < #PROMOTION_CHAIN then
@@ -244,7 +258,6 @@ function SectManager.ProcessPromotion(player: Player)
 
 	local nextRankDef = SectConfig.GetRank(nextRank)
 
-	-- Verify Contribution Points
 	if currentContribution < nextRankDef.RequiredContribution then
 		sectRemote:FireClient(player, { 
 			Action = "PromotionFailed", 
@@ -253,12 +266,11 @@ function SectManager.ProcessPromotion(player: Player)
 		return
 	end
 
-	-- Verify Cultivation Realm
-	local playerRealmIndex = CultivationConfig.GetRealmIndex(cultivation.Realm)
-	local reqRealmIndex = CultivationConfig.GetRealmIndex(nextRankDef.RequiredRealm :: CultivationConfig.RealmTier)
+	local playerRealmTier = GetRealmTier(cultivation.Realm)
+	local reqRealmTier = GetRealmTier(nextRankDef.RequiredRealm)
 
-	if playerRealmIndex < reqRealmIndex then
-		local reqName = CultivationConfig.GetRealmName(nextRankDef.RequiredRealm :: CultivationConfig.RealmTier)
+	if playerRealmTier < reqRealmTier then
+		local reqName = GetRealmDisplayName(nextRankDef.RequiredRealm)
 		sectRemote:FireClient(player, { 
 			Action = "PromotionFailed", 
 			Message = string.format("Cultivation realm too low! Must reach %s.", reqName) 
@@ -266,7 +278,6 @@ function SectManager.ProcessPromotion(player: Player)
 		return
 	end
 
-	-- Apply Promotion
 	PlayerDataManager.SetSectRank(player, nextRank)
 
 	sectRemote:FireClient(player, {
