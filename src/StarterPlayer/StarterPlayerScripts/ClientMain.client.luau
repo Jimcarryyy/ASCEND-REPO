@@ -24,6 +24,7 @@ local InventoryController = require(Controllers:WaitForChild("InventoryControlle
 local AlchemyController = require(Controllers:WaitForChild("AlchemyController"))
 local GatheringController = require(Controllers:WaitForChild("GatheringController"))
 local WindEnvironmentController = require(Controllers:WaitForChild("WindEnvironmentController"))
+local MarketController = require(Controllers:WaitForChild("MarketController"))
 
 -- Overhead UI Controller (Located in StarterPlayerScripts.Client.UI)
 local ClientFolder = StarterPlayerScripts:WaitForChild("Client")
@@ -40,5 +41,6 @@ AlchemyController.Init()
 OverheadUIController.Init()
 GatheringController.Init()
 WindEnvironmentController.Init()
+MarketController.Init()
 
-print("[ASCEND] All Client Controllers Initialized Successfully with 30-Stud Camera Limit & Wind Sway!")
+print("[ASCEND] All Client Controllers Initialized Successfully with Sect Market & Dynamic Overhead UI!")

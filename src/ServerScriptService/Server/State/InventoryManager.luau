@@ -222,6 +222,53 @@ function InventoryManager.SwapSlots(player: Player, fromSlot: number, toSlot: nu
 	InventoryManager.SyncClient(player)
 end
 
+function InventoryManager.HasItem(player: Player, itemId: string, requiredCount: number): boolean
+	local inv = playerInventories[player]
+	if not inv then return false end
+
+	local total = 0
+	for _, slot in pairs(inv) do
+		if slot and slot.ItemId == itemId then
+			total += slot.Count
+			if total >= requiredCount then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+function InventoryManager.RemoveItem(player: Player, itemId: string, countToRemove: number): boolean
+	if not InventoryManager.HasItem(player, itemId, countToRemove) then
+		return false
+	end
+
+	local inv = playerInventories[player]
+	if not inv then return false end
+
+	local remaining = countToRemove
+
+	for slotIdx = 1, MAX_SLOTS do
+		local slot = inv[slotIdx]
+		if slot and slot.ItemId == itemId then
+			if slot.Count <= remaining then
+				remaining -= slot.Count
+				inv[slotIdx] = nil
+			else
+				slot.Count -= remaining
+				remaining = 0
+			end
+
+			if remaining <= 0 then
+				break
+			end
+		end
+	end
+
+	InventoryManager.SyncClient(player)
+	return true
+end
+
 function InventoryManager.DropItem(player: Player, slotIndex: number)
 	local inv = playerInventories[player]
 	if not inv or slotIndex < 1 or slotIndex > MAX_SLOTS then return end

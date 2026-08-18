@@ -22,7 +22,7 @@ local AnimationConfig = {
 		Fall = "rbxassetid://105371732122929",
 		Land = "rbxassetid://127232864368618",
 		Climb = "rbxassetid://92318229141460",
-		Swim = "",            -- Default R6 Swimming
+		Swim = "rbxassetid://125750702",
 		CrouchIdle = "rbxassetid://121105579761179",
 		CrouchWalk = "rbxassetid://139963626951619",
 	},

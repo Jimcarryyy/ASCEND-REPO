@@ -3,14 +3,16 @@
     PlayerDataManager.luau
     Location: src/ServerScriptService/Server/State/PlayerDataManager.luau
     Server-authoritative DataStore persistence manager for ASCEND.
-    Saves and restores Player Realm, Order, CurrentQi, CultivatedQi, Inventory items, Equipped Weapon, and Alchemy Mastery.
+    Persists: Cultivation (Realm, Order, Qi), Inventory, Spirit Stones, Sect Rank, Contribution Points, and Gamepasses.
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local CultivationConfig = require(game:GetService("ReplicatedStorage").Shared.Configs.CultivationConfig)
+local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
+local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
@@ -18,6 +20,7 @@ local InventoryManager = require(ServerScriptService.Server.State.InventoryManag
 export type SavedInventorySlot = {
 	ItemId: string,
 	Count: number,
+	Quality: string?,
 }
 
 export type SavedPlayerData = {
@@ -26,13 +29,19 @@ export type SavedPlayerData = {
 		Realm: CultivationConfig.RealmTier,
 		Order: number?,
 		CurrentQi: number,
-		CultivatedQi: number?, -- Exact cultivated progress saved
+		CultivatedQi: number?,
 	},
 	EquippedWeapon: WeaponManager.WeaponType,
 	Inventory: { [number]: SavedInventorySlot },
 	Sect: string?,
+	SectRank: SectConfig.DiscipleRank?,
+	ContributionPoints: number?,
+	SpiritStones: number?,
 	AlchemyExp: number?,
 	AlchemyLevel: number?,
+	OwnedGamepasses: { [string]: boolean }?,
+	UnlockedSkins: { [string]: boolean }?,
+	EquippedSkin: string?,
 }
 
 local PlayerDataManager = {}
@@ -44,6 +53,9 @@ local AUTO_SAVE_INTERVAL = 300 -- 5 minutes
 local playerDataStore: DataStore? = nil
 local isLoadedMap: { [Player]: boolean } = {}
 local playerAlchemyData: { [Player]: { Exp: number, Level: number } } = {}
+local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfig.DiscipleRank, ContributionPoints: number } } = {}
+local playerGamepasses: { [Player]: { [string]: boolean } } = {}
+local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
 
 local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	Version = 2,
@@ -63,8 +75,14 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 		[6] = { ItemId = "SpearItem", Count = 1 },
 	},
 	Sect = "Azure Cloud Sect",
+	SectRank = "OuterDisciple",
+	ContributionPoints = 0,
+	SpiritStones = 250, -- Starting spirit stone allowance
 	AlchemyExp = 0,
 	AlchemyLevel = 1,
+	OwnedGamepasses = {},
+	UnlockedSkins = { ["DefaultBronze"] = true },
+	EquippedSkin = "DefaultBronze",
 }
 
 function PlayerDataManager.Init()
@@ -101,7 +119,7 @@ function PlayerDataManager.Init()
 		task.wait(2)
 	end)
 
-	print("[PlayerDataManager] Engine Initialized with CultivatedQi Persistence.")
+	print("[PlayerDataManager] Engine Initialized with Sect Economy & DataStore V2 Schema.")
 end
 
 function PlayerDataManager.OnPlayerAdded(player: Player)
@@ -139,17 +157,44 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			EquippedWeapon = DEFAULT_PLAYER_DATA.EquippedWeapon,
 			Inventory = table.clone(DEFAULT_PLAYER_DATA.Inventory),
 			Sect = DEFAULT_PLAYER_DATA.Sect,
+			SectRank = DEFAULT_PLAYER_DATA.SectRank or "OuterDisciple",
+			ContributionPoints = DEFAULT_PLAYER_DATA.ContributionPoints or 0,
+			SpiritStones = DEFAULT_PLAYER_DATA.SpiritStones or 250,
 			AlchemyExp = 0,
 			AlchemyLevel = 1,
+			OwnedGamepasses = {},
+			UnlockedSkins = { ["DefaultBronze"] = true },
+			EquippedSkin = "DefaultBronze",
 		}
 	else
-		print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, CultivatedQi: %s).", player.Name, loadedData.Cultivation.Realm, loadedData.Cultivation.Order or 1, CultivationConfig.FormatNumber(loadedData.Cultivation.CultivatedQi or 200)))
+		print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, CultivatedQi: %s, Stones: %d, Rank: %s).", 
+			player.Name, 
+			loadedData.Cultivation.Realm, 
+			loadedData.Cultivation.Order or 1, 
+			CultivationConfig.FormatNumber(loadedData.Cultivation.CultivatedQi or 200),
+			loadedData.SpiritStones or 250,
+			loadedData.SectRank or "OuterDisciple"
+		))
 	end
 
 	isLoadedMap[player] = true
+	
 	playerAlchemyData[player] = {
 		Exp = loadedData.AlchemyExp or 0,
 		Level = loadedData.AlchemyLevel or 1,
+	}
+
+	playerEconomyData[player] = {
+		SpiritStones = loadedData.SpiritStones or 250,
+		SectRank = loadedData.SectRank or "OuterDisciple",
+		ContributionPoints = loadedData.ContributionPoints or 0,
+	}
+
+	playerGamepasses[player] = loadedData.OwnedGamepasses or {}
+	
+	playerSkinData[player] = {
+		EquippedSkin = loadedData.EquippedSkin or "DefaultBronze",
+		UnlockedSkins = loadedData.UnlockedSkins or { ["DefaultBronze"] = true },
 	}
 
 	-- Restore saved CultivatedQi and Order into CultivationManager
@@ -163,14 +208,92 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	
 	InventoryManager.SetInventory(player, loadedData.Inventory)
 	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "FlyingSwordItem")
+
+	-- Set Character Attributes for client replication
+	local character = player.Character or player.CharacterAdded:Wait()
+	character:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
+	character:SetAttribute("SectRank", playerEconomyData[player].SectRank)
+	character:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
 end
 
 function PlayerDataManager.OnPlayerRemoving(player: Player)
 	PlayerDataManager.SaveData(player)
 	isLoadedMap[player] = nil
 	playerAlchemyData[player] = nil
+	playerEconomyData[player] = nil
+	playerGamepasses[player] = nil
+	playerSkinData[player] = nil
 end
 
+-- ECONOMY & SPIRIT STONES
+function PlayerDataManager.GetSpiritStones(player: Player): number
+	local data = playerEconomyData[player]
+	return data and data.SpiritStones or 0
+end
+
+function PlayerDataManager.AddSpiritStones(player: Player, amount: number): number
+	local data = playerEconomyData[player]
+	if not data then return 0 end
+	data.SpiritStones = math.max(0, data.SpiritStones + amount)
+	if player.Character then
+		player.Character:SetAttribute("SpiritStones", data.SpiritStones)
+	end
+	return data.SpiritStones
+end
+
+function PlayerDataManager.RemoveSpiritStones(player: Player, amount: number): boolean
+	local data = playerEconomyData[player]
+	if not data or data.SpiritStones < amount then return false end
+	data.SpiritStones -= amount
+	if player.Character then
+		player.Character:SetAttribute("SpiritStones", data.SpiritStones)
+	end
+	return true
+end
+
+-- SECT RANK & CONTRIBUTION
+function PlayerDataManager.GetSectRank(player: Player): SectConfig.DiscipleRank
+	local data = playerEconomyData[player]
+	return data and data.SectRank or "OuterDisciple"
+end
+
+function PlayerDataManager.SetSectRank(player: Player, rank: SectConfig.DiscipleRank)
+	local data = playerEconomyData[player]
+	if not data then return end
+	data.SectRank = rank
+	if player.Character then
+		player.Character:SetAttribute("SectRank", rank)
+	end
+end
+
+function PlayerDataManager.GetContributionPoints(player: Player): number
+	local data = playerEconomyData[player]
+	return data and data.ContributionPoints or 0
+end
+
+function PlayerDataManager.AddContributionPoints(player: Player, amount: number): number
+	local data = playerEconomyData[player]
+	if not data then return 0 end
+	data.ContributionPoints = math.max(0, data.ContributionPoints + amount)
+	return data.ContributionPoints
+end
+
+-- GAMEPASSES & SKINS
+function PlayerDataManager.HasGamepass(player: Player, passId: string): boolean
+	local passes = playerGamepasses[player]
+	return passes and passes[passId] == true or false
+end
+
+function PlayerDataManager.SetGamepassOwned(player: Player, passId: string)
+	local passes = playerGamepasses[player]
+	if not passes then
+		passes = {}
+		playerGamepasses[player] = passes
+	end
+	passes[passId] = true
+end
+
+-- ALCHEMY DATA
 function PlayerDataManager.AddAlchemyExp(player: Player, expGained: number): (number, number)
 	local data = playerAlchemyData[player]
 	if not data then
@@ -206,6 +329,9 @@ function PlayerDataManager.SaveData(player: Player): boolean
 	local inventory = InventoryManager.GetInventory(player)
 	local equippedWeapon = WeaponManager.GetEquippedWeapon(player)
 	local alchemy = playerAlchemyData[player] or { Exp = 0, Level = 1 }
+	local economy = playerEconomyData[player] or { SpiritStones = 250, SectRank = "OuterDisciple", ContributionPoints = 0 }
+	local gamepasses = playerGamepasses[player] or {}
+	local skinData = playerSkinData[player] or { EquippedSkin = "DefaultBronze", UnlockedSkins = { ["DefaultBronze"] = true } }
 
 	if not cultivation then return false end
 
@@ -215,6 +341,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 			serializedInventory[slotIdx] = {
 				ItemId = slot.ItemId,
 				Count = slot.Count,
+				Quality = slot.Quality,
 			}
 		end
 	end
@@ -225,13 +352,19 @@ function PlayerDataManager.SaveData(player: Player): boolean
 			Realm = cultivation.Realm,
 			Order = cultivation.Order,
 			CurrentQi = cultivation.CurrentQi,
-			CultivatedQi = cultivation.CultivatedQi, -- Exact cultivated progress saved
+			CultivatedQi = cultivation.CultivatedQi,
 		},
 		EquippedWeapon = equippedWeapon,
 		Inventory = serializedInventory,
 		Sect = (player.Character and player.Character:GetAttribute("Sect") :: string?) or "Azure Cloud Sect",
+		SectRank = economy.SectRank,
+		ContributionPoints = economy.ContributionPoints,
+		SpiritStones = economy.SpiritStones,
 		AlchemyExp = alchemy.Exp,
 		AlchemyLevel = alchemy.Level,
+		OwnedGamepasses = gamepasses,
+		UnlockedSkins = skinData.UnlockedSkins,
+		EquippedSkin = skinData.EquippedSkin,
 	}
 
 	local dataKey = "Player_" .. player.UserId

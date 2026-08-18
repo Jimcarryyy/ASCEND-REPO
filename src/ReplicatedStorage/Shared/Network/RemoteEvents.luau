@@ -19,6 +19,10 @@ export type RemoteName =
 	| "AlchemyAction"
 	| "CombatVFX"
 	| "GatheringAction"
+	| "SectAction"
+	| "MarketAction"
+	| "MonetizationAction"
+	| "ArenaAction"
 
 local ALL_REMOTES: { RemoteName } = {
 	"CombatAction",
@@ -31,6 +35,10 @@ local ALL_REMOTES: { RemoteName } = {
 	"AlchemyAction",
 	"CombatVFX",
 	"GatheringAction",
+	"SectAction",
+	"MarketAction",
+	"MonetizationAction",
+	"ArenaAction",
 }
 
 local RemoteEvents = {}
