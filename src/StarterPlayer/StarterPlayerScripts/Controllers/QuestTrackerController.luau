@@ -2,17 +2,15 @@
 --[[
     QuestTrackerController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/QuestTrackerController.luau
-    Client UI controller for the Persistent On-Screen Sect Quest & Duties Tracker.
-    Theme: Dark Obsidian (#111827), Antique Gold (#8B6B32), Ivory Text (#F1E8D2), and Jade Highlights.
+    Client controller for the Quest Tracker HUD.
+    Hooks directly into StarterGui.QuestTrackerGUI with automatic UIListLayout spacing.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
-local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local QuestTrackerController = {}
@@ -20,25 +18,34 @@ local QuestTrackerController = {}
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
-local UI_FONT = Enum.Font.FredokaOne
-local T = UIAssets.Theme
-
+local CLICK_SOUND_ID = "rbxassetid://6895079853"
 local sectRemote: RemoteEvent
 
-local screenGui: ScreenGui
-local trackerFrame: Frame
-local questListContainer: Frame
-local toggleBtn: TextButton
+-- Studio GUI References
+local questTrackerGui: ScreenGui?
+local questFrame: Frame?
+local titleFrame: Frame?
+local dropDownBtn: Instance?
+local questScrollingFrame: ScrollingFrame?
+local dutyCardTemplate: Frame?
 
 local isCollapsed = false
 local activeQuests: { [string]: any } = {}
 
+local function PlayClickAudio()
+	local sound = Instance.new("Sound")
+	sound.SoundId = CLICK_SOUND_ID
+	sound.Volume = 0.5
+	sound.Parent = SoundService
+	sound:Play()
+	game:GetService("Debris"):AddItem(sound, 1)
+end
+
 function QuestTrackerController.Init()
 	sectRemote = RemoteEvents.GetRemote("SectAction")
 
-	QuestTrackerController.BuildUI()
+	QuestTrackerController.HookStudioUI()
 
-	-- Network Listeners
 	sectRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" or type(payload.Action) ~= "string" then return end
 
@@ -51,145 +58,118 @@ function QuestTrackerController.Init()
 		end
 	end)
 
-	-- Request initial quest data
 	task.defer(function()
 		task.wait(1)
 		sectRemote:FireServer({ Action = "RequestSectData" })
 	end)
 
-	print("[ASCEND] QuestTrackerController Initialized (Persistent On-Screen Tracker Active).")
+	print("[ASCEND] QuestTrackerController Initialized (With Vertical Spacing Enforcement).")
 end
 
-function QuestTrackerController.BuildUI()
-	screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "QuestTrackerGui"
-	screenGui.ResetOnSpawn = false
-	screenGui.DisplayOrder = 10
-	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	screenGui.Parent = playerGui
+function QuestTrackerController.HookStudioUI()
+	questTrackerGui = playerGui:WaitForChild("QuestTrackerGUI", 10) :: ScreenGui?
+	if not questTrackerGui then return end
 
-	trackerFrame = Instance.new("Frame")
-	trackerFrame.Name = "TrackerWidget"
-	trackerFrame.Size = UDim2.new(0, 220, 0, 190)
-	trackerFrame.Position = UDim2.new(1, -230, 0.32, 0) -- Mid-Right Screen
-	trackerFrame.BackgroundColor3 = T.DeepBackground
-	trackerFrame.BackgroundTransparency = 0.15
-	trackerFrame.BorderSizePixel = 0
-	trackerFrame.Parent = screenGui
+	questFrame = questTrackerGui:WaitForChild("QuestFrame", 5) :: Frame?
+	if not questFrame then return end
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = trackerFrame
+	titleFrame = questFrame:WaitForChild("TitleFrame", 5) :: Frame?
+	questScrollingFrame = questFrame:WaitForChild("QuestScrollingFrame", 5) :: ScrollingFrame?
 
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = T.MainBorder
-	stroke.Thickness = 1.5
-	stroke.Parent = trackerFrame
+	if questScrollingFrame then
+		-- Ensure UIListLayout exists so cards never stack
+		local listLayout = questScrollingFrame:FindFirstChildOfClass("UIListLayout")
+		if not listLayout then
+			listLayout = Instance.new("UIListLayout")
+			listLayout.FillDirection = Enum.FillDirection.Vertical
+			listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			listLayout.Padding = UDim.new(0, 6)
+			listLayout.Parent = questScrollingFrame
+		end
 
-	-- Header Bar
-	local header = Instance.new("Frame")
-	header.Name = "Header"
-	header.Size = UDim2.new(1, 0, 0, 32)
-	header.BackgroundColor3 = T.SecondarySurface
-	header.BorderSizePixel = 0
-	header.Parent = trackerFrame
+		questScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
-	local hCorner = Instance.new("UICorner")
-	hCorner.CornerRadius = UDim.new(0, 8)
-	hCorner.Parent = header
+		dutyCardTemplate = questScrollingFrame:WaitForChild("DutyCard", 5) :: Frame?
+		if dutyCardTemplate then
+			dutyCardTemplate.Visible = false
+		end
+	end
 
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -40, 1, 0)
-	title.Position = UDim2.new(0, 10, 0, 0)
-	title.BackgroundTransparency = 1
-	title.Text = "📜 SECT DUTIES"
-	title.TextColor3 = T.HighlightBorder
-	title.Font = UI_FONT
-	title.TextSize = 13
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Parent = header
+	-- Bind DropDown / Collapse Button
+	if titleFrame then
+		dropDownBtn = titleFrame:FindFirstChild("DropDownIcon")
+		if dropDownBtn then
+			local function toggleCollapse()
+				PlayClickAudio()
+				isCollapsed = not isCollapsed
+				if questScrollingFrame then
+					questScrollingFrame.Visible = not isCollapsed
+				end
+			end
 
-	toggleBtn = Instance.new("TextButton")
-	toggleBtn.Size = UDim2.new(0, 24, 0, 24)
-	toggleBtn.Position = UDim2.new(1, -28, 0.5, -12)
-	toggleBtn.BackgroundColor3 = T.RaisedSurface
-	toggleBtn.Text = "−"
-	toggleBtn.TextColor3 = T.PrimaryText
-	toggleBtn.Font = UI_FONT
-	toggleBtn.TextSize = 14
-	toggleBtn.Parent = header
-
-	local tbCorner = Instance.new("UICorner")
-	tbCorner.CornerRadius = UDim.new(0, 4)
-	tbCorner.Parent = toggleBtn
-
-	toggleBtn.MouseButton1Click:Connect(function()
-		isCollapsed = not isCollapsed
-		toggleBtn.Text = if isCollapsed then "+" else "−"
-		local targetSize = if isCollapsed then UDim2.new(0, 220, 0, 32) else UDim2.new(0, 220, 0, 190)
-		TweenService:Create(trackerFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = targetSize }):Play()
-		questListContainer.Visible = not isCollapsed
-	end)
-
-	-- Quests List Container
-	questListContainer = Instance.new("Frame")
-	questListContainer.Name = "QuestList"
-	questListContainer.Size = UDim2.new(1, -16, 1, -40)
-	questListContainer.Position = UDim2.new(0, 8, 0, 36)
-	questListContainer.BackgroundTransparency = 1
-	questListContainer.Parent = trackerFrame
-
-	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 6)
-	layout.Parent = questListContainer
+			if dropDownBtn:IsA("GuiButton") then
+				dropDownBtn.MouseButton1Click:Connect(toggleCollapse)
+			elseif dropDownBtn:IsA("GuiObject") then
+				dropDownBtn.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+						toggleCollapse()
+					end
+				end)
+			end
+		end
+	end
 end
 
 function QuestTrackerController.RenderQuests()
-	questListContainer:ClearAllChildren()
+	if not questScrollingFrame or not dutyCardTemplate then return end
 
-	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 6)
-	layout.Parent = questListContainer
+	-- Clean up previous clones
+	for _, child in ipairs(questScrollingFrame:GetChildren()) do
+		if child ~= dutyCardTemplate and child:IsA("GuiObject") and child.Name == "ClonedDutyCard" then
+			child:Destroy()
+		end
+	end
 
+	local order = 1
 	for questId, questDef in pairs(SectConfig.GetAllQuests()) do
 		local progress = activeQuests[questId] or { CurrentAmount = 0, TargetAmount = questDef.TargetAmount, Completed = false }
 
-		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, 0, 0, 42)
-		row.BackgroundColor3 = T.SecondarySurface
-		row.BorderSizePixel = 0
-		row.Parent = questListContainer
+		local cardClone = dutyCardTemplate:Clone()
+		cardClone.Name = "ClonedDutyCard"
+		cardClone.LayoutOrder = order
+		cardClone.Size = UDim2.new(1, -8, 0, 42) -- Explicit height per card
+		cardClone.Visible = true
+		cardClone.Parent = questScrollingFrame
+		order += 1
 
-		local rCorner = Instance.new("UICorner")
-		rCorner.CornerRadius = UDim.new(0, 4)
-		rCorner.Parent = row
+		local textFrame = cardClone:FindFirstChild("QuestTextFrame") :: Frame?
+		local checkPending = cardClone:FindFirstChild("CheckIconPending") :: ImageLabel?
+		local checkDone = cardClone:FindFirstChild("CheckIconDone") :: ImageLabel?
 
-		local rStroke = Instance.new("UIStroke")
-		rStroke.Color = if progress.Completed then T.JadeAccent else T.RaisedSurface
-		rStroke.Thickness = 1
-		rStroke.Parent = row
+		if textFrame then
+			local qTitle = textFrame:FindFirstChild("QuestTitle") :: TextLabel?
+			local qDisc = textFrame:FindFirstChild("QuestDisc") :: TextLabel?
 
-		local qTitle = Instance.new("TextLabel")
-		qTitle.Size = UDim2.new(1, -8, 0, 18)
-		qTitle.Position = UDim2.new(0, 6, 0, 3)
-		qTitle.BackgroundTransparency = 1
-		qTitle.Text = questDef.Title
-		qTitle.TextColor3 = if progress.Completed then T.JadeAccent else T.PrimaryText
-		qTitle.Font = UI_FONT
-		qTitle.TextSize = 11
-		qTitle.TextXAlignment = Enum.TextXAlignment.Left
-		qTitle.Parent = row
+			if qTitle then
+				qTitle.Text = questDef.Title
+			end
+			if qDisc then
+				if progress.Completed then
+					qDisc.Text = string.format("Completed (%d/%d) - Ready to Submit", progress.CurrentAmount, questDef.TargetAmount)
+					qDisc.TextColor3 = Color3.fromRGB(16, 185, 129)
+				else
+					qDisc.Text = string.format("%s (%d/%d)", questDef.Description, progress.CurrentAmount, questDef.TargetAmount)
+					qDisc.TextColor3 = Color3.fromRGB(169, 169, 159)
+				end
+			end
+		end
 
-		local qStatus = Instance.new("TextLabel")
-		qStatus.Size = UDim2.new(1, -8, 0, 16)
-		qStatus.Position = UDim2.new(0, 6, 0, 22)
-		qStatus.BackgroundTransparency = 1
-		qStatus.Text = if progress.Completed then "✓ Ready to submit at Elder" else string.format("Progress: %d / %d", progress.CurrentAmount, questDef.TargetAmount)
-		qStatus.TextColor3 = if progress.Completed then T.JadeAccent else T.SpiritBlue
-		qStatus.Font = UI_FONT
-		qStatus.TextSize = 10
-		qStatus.TextXAlignment = Enum.TextXAlignment.Left
-		qStatus.Parent = row
+		if checkPending then
+			checkPending.Visible = not progress.Completed
+		end
+		if checkDone then
+			checkDone.Visible = progress.Completed
+		end
 	end
 end
 

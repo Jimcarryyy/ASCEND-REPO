@@ -27,6 +27,7 @@ local WindEnvironmentController = require(Controllers:WaitForChild("WindEnvironm
 local MarketController = require(Controllers:WaitForChild("MarketController"))
 local QuestTrackerController = require(Controllers:WaitForChild("QuestTrackerController"))
 local ArenaController = require(Controllers:WaitForChild("ArenaController"))
+local SkillBarController = require(Controllers:WaitForChild("SkillBarController"))
 
 -- Overhead UI Controller
 local ClientFolder = StarterPlayerScripts:WaitForChild("Client")
@@ -46,5 +47,6 @@ WindEnvironmentController.Init()
 MarketController.Init()
 QuestTrackerController.Init()
 ArenaController.Init()
+SkillBarController.Init()
 
 print("[ASCEND] All Client Controllers Initialized Successfully with Quest Tracker & Sparring Arena HUD!")

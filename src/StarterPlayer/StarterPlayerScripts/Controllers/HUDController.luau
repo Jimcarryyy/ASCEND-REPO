@@ -3,7 +3,7 @@
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
     Client HUD Engine for ASCEND.
-    Features: Unified Dark Obsidian & Gold Theme, Top-Right Quick Dock with [⚔️ Arena], Dynamic Qi/HP sync, and level diamond badge.
+    Features: Hooks into StarterGui.TopMenuGUI and VitalHUDGui (Zero hardcoded dock creation).
 ]]
 
 local Players = game:GetService("Players")
@@ -26,17 +26,10 @@ local UI_FONT   = Enum.Font.FredokaOne
 local UI_FONT_2 = Enum.Font.LuckiestGuy
 local T         = UIAssets.Theme
 
-local COLOR_LIGHT_PANEL  = T.SecondarySurface
-local COLOR_LIGHT_CARD   = T.RaisedSurface
-local COLOR_LIGHT_BORDER = T.MainBorder
-local COLOR_TEXT_MAIN    = T.PrimaryText
-local COLOR_JADE_DARK    = T.JadeAccent
-local COLOR_GOLD_ACCENT  = T.HighlightBorder
-local COLOR_HP_GREEN     = T.JadeAccent
-
 local CLICK_SOUND_ID = "rbxassetid://6895079853"
 
 local hudScreenGui: ScreenGui?
+local topMenuGui: ScreenGui?
 local vitalFrame: ImageLabel?
 local portraitMaskFrame: Frame?
 local avatarHeadshot: ImageLabel?
@@ -59,7 +52,6 @@ local qiFillYOffset: number = 0
 
 local hotbarFrame: Frame?
 local toastContainer: Frame?
-local mobileDockFrame: Frame?
 local hotbarSlots: { [number]: Frame } = {}
 
 local currentInventoryData: { [number]: any } = {}
@@ -95,7 +87,7 @@ function HUDController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 
 	HUDController.HookExplorerHUD()
-	HUDController.BuildMobileQuickDock()
+	HUDController.HookTopMenu()
 
 	updateInventoryRemote.OnClientEvent:Connect(function(inventoryData: { [number]: any })
 		currentInventoryData = inventoryData or {}
@@ -145,70 +137,40 @@ function HUDController.Init()
 		end
 	end)
 
-	print("[ASCEND] HUDController Initialized with Unified Theme & Mobile Quick Dock.")
+	print("[ASCEND] HUDController Initialized (Hooked to Studio TopMenuGUI & VitalHUDGui).")
 end
 
-function HUDController.BuildMobileQuickDock()
-	if not hudScreenGui then
-		hudScreenGui = (playerGui:WaitForChild("VitalHUDGui", 8) or playerGui:WaitForChild("AscendMainHUD", 8)) :: ScreenGui?
-	end
-	if not hudScreenGui then return end
+-- Binds to your Studio TopMenuGUI Frame
+function HUDController.HookTopMenu()
+	topMenuGui = playerGui:WaitForChild("TopMenuGUI", 10) :: ScreenGui?
+	if not topMenuGui then return end
 
-	local existingDock = hudScreenGui:FindFirstChild("MobileQuickDock")
-	if existingDock then existingDock:Destroy() end
+	local topMenu = topMenuGui:WaitForChild("TopMenu", 5) :: Frame?
+	if not topMenu then return end
 
-	mobileDockFrame = Instance.new("Frame")
-	mobileDockFrame.Name = "MobileQuickDock"
-	mobileDockFrame.Size = UDim2.new(0, 310, 0, 48)
-	mobileDockFrame.Position = UDim2.new(1, -325, 0, 15) -- Top-Right Corner
-	mobileDockFrame.BackgroundColor3 = T.DeepBackground
-	mobileDockFrame.BorderSizePixel = 0
-	mobileDockFrame.Parent = hudScreenGui
+	local function BindMenuClick(menuName: string, onClick: () -> ())
+		local menuContainer = topMenu:FindFirstChild(menuName)
+		if not menuContainer then return end
 
-	local dockCorner = Instance.new("UICorner")
-	dockCorner.CornerRadius = UDim.new(0, 8)
-	dockCorner.Parent = mobileDockFrame
-
-	local dockStroke = Instance.new("UIStroke")
-	dockStroke.Color = T.MainBorder
-	dockStroke.Thickness = 1.5
-	dockStroke.Parent = mobileDockFrame
-
-	local dockLayout = Instance.new("UIListLayout")
-	dockLayout.FillDirection = Enum.FillDirection.Horizontal
-	dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	dockLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	dockLayout.Padding = UDim.new(0, 6)
-	dockLayout.Parent = mobileDockFrame
-
-	local function AddDockBtn(name: string, iconText: string, onClick: () -> ())
-		local btn = Instance.new("TextButton")
-		btn.Name = name
-		btn.Size = UDim2.new(0, 42, 0, 36)
-		btn.BackgroundColor3 = T.SecondarySurface
-		btn.Text = iconText
-		btn.TextColor3 = T.PrimaryText
-		btn.Font = UI_FONT
-		btn.TextSize = 16
-		btn.Parent = mobileDockFrame
-
-		local bCorner = Instance.new("UICorner")
-		bCorner.CornerRadius = UDim.new(0, 6)
-		bCorner.Parent = btn
-
-		local bStroke = Instance.new("UIStroke")
-		bStroke.Color = T.MainBorder
-		bStroke.Thickness = 1
-		bStroke.Parent = btn
-
-		btn.MouseButton1Click:Connect(function()
+		local function trigger()
 			PlayClickAudio()
 			onClick()
-		end)
+		end
+
+		if menuContainer:IsA("GuiButton") then
+			menuContainer.MouseButton1Click:Connect(trigger)
+		else
+			-- If container is a Frame, bind to click/touch anywhere inside it
+			menuContainer.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					trigger()
+				end
+			end)
+		end
 	end
 
-	-- 1. Bag [B]
-	AddDockBtn("BagBtn", "🎒", function()
+	-- 1. Bag Menu
+	BindMenuClick("BagMenu", function()
 		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
 		if controllers then
 			local invCtrl = controllers:FindFirstChild("InventoryController")
@@ -219,53 +181,13 @@ function HUDController.BuildMobileQuickDock()
 		end
 	end)
 
-	-- 2. Sect Duties [L]
-	AddDockBtn("DutiesBtn", "📜", function()
-		local sectRemote = RemoteEvents.GetRemote("SectAction")
-		sectRemote:FireServer({ Action = "RequestSectData" })
-		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
-		if controllers then
-			local mktCtrl = controllers:FindFirstChild("MarketController")
-			if mktCtrl then
-				local req = require(mktCtrl) :: any
-				if req.Open then req.Open() end
-			end
-		end
-	end)
-
-	-- 3. Market [M]
-	AddDockBtn("MarketBtn", "🛒", function()
-		local mktRemote = RemoteEvents.GetRemote("MarketAction")
-		mktRemote:FireServer({ Action = "RequestMarketData" })
-		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
-		if controllers then
-			local mktCtrl = controllers:FindFirstChild("MarketController")
-			if mktCtrl then
-				local req = require(mktCtrl) :: any
-				if req.Open then req.Open() end
-			end
-		end
-	end)
-
-	-- 4. Alchemy [K]
-	AddDockBtn("AlchemyBtn", "⚗️", function()
-		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
-		if controllers then
-			local alchCtrl = controllers:FindFirstChild("AlchemyController")
-			if alchCtrl then
-				local req = require(alchCtrl) :: any
-				if req.Toggle then req.Toggle() end
-			end
-		end
-	end)
-
-	-- 5. Meditate [G]
-	AddDockBtn("MeditateBtn", "🧘", function()
+	-- 2. Meditate Menu
+	BindMenuClick("MeditateMenu", function()
 		combatActionRemote:FireServer({ ToggleMeditation = true })
 	end)
 
-	-- 6. Sparring Arena [P]
-	AddDockBtn("ArenaBtn", "⚔️", function()
+	-- 3. Arena Menu
+	BindMenuClick("ArenaMenu", function()
 		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
 		if controllers then
 			local arenaCtrl = controllers:FindFirstChild("ArenaController")
@@ -274,6 +196,11 @@ function HUDController.BuildMobileQuickDock()
 				if req.OpenRegistrationModal then req.OpenRegistrationModal() end
 			end
 		end
+	end)
+
+	-- 4. Settings Menu (Placeholder ready)
+	BindMenuClick("SettingsMenu", function()
+		print("[HUDController] Settings Menu clicked.")
 	end)
 end
 
@@ -346,7 +273,7 @@ function HUDController.HookExplorerHUD()
 			hpLeftLabel.Position = UDim2.new(0, 14, 0, 0)
 			hpLeftLabel.BackgroundTransparency = 1
 			hpLeftLabel.Text = "HP"
-			hpLeftLabel.TextColor3 = COLOR_TEXT_MAIN
+			hpLeftLabel.TextColor3 = T.PrimaryText
 			hpLeftLabel.Font = UI_FONT_2
 			hpLeftLabel.TextSize = 13
 			hpLeftLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -387,7 +314,7 @@ function HUDController.HookExplorerHUD()
 			qiLeftLabel.Position = UDim2.new(0, 14, 0, 0)
 			qiLeftLabel.BackgroundTransparency = 1
 			qiLeftLabel.Text = "QI"
-			qiLeftLabel.TextColor3 = COLOR_TEXT_MAIN
+			qiLeftLabel.TextColor3 = T.PrimaryText
 			qiLeftLabel.Font = UI_FONT_2
 			qiLeftLabel.TextSize = 13
 			qiLeftLabel.TextXAlignment = Enum.TextXAlignment.Left
