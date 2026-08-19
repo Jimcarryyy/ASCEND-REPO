@@ -90,3 +90,22 @@ All numerical HP and Qi text across HUDs, Overheads, and Damage Numbers format u
 * **Dynamic Preloading:** Scans `ReplicatedStorage` and `SoundService` for renderable instances (`MeshPart`, `Sound`, `Decal`, `ImageLabel`) and tracks `ContentProvider:PreloadAsync()`.
 * **Server Sync Gate:** Holds progress bar at 95% until server fires `UpdateCultivation`, confirming player profile DataStore load.
 * **Skip Button:** `"SKIP [SPACE / CLICK]"` button appears after 1.5 seconds.
+
+### Official Dark Obsidian & Antique Gold Design Tokens (Updated 2026-08-20)
+
+- **Deep UI Background:** `#111827` (Dark Navy Charcoal)
+- **Secondary Surface:** `#1C2638` (Dark Blue-Gray)
+- **Raised Surface:** `#273246` (Card/Slot Background)
+- **Main Border:** `#8B6B32` (Antique Bronze-Gold, 1.5px to 2px stroke)
+- **Highlight Border:** `#C49A4A` (Warm Celestial Gold)
+- **Primary Text:** `#F1E8D2` (Warm Ivory, `Enum.Font.FredokaOne` / `GothamBold`)
+- **Secondary Text:** `#A9A99F` (Muted Gray-Beige)
+- **Jade Accent:** `#10B981` (HP / Vitality / Success)
+- **Spirit Blue:** `#3B82F6` (Qi Energy / Info)
+- **Vermilion:** `#E63946` (Danger / Close / Drop)
+- **DisplayOrder Hierarchy:**
+  - `DisplayOrder = 99`: Top-Level Toasts (`AscendToastGui`)
+  - `DisplayOrder = 25`: Modals (`SpiritPouchGui`, `SectMarketGui`, `SpiritCauldronGui`)
+  - `DisplayOrder = 18`: Arena In-Match HUD (`ArenaHUDGui`)
+  - `DisplayOrder = 10`: Persistent Trackers (`QuestTrackerGui`)
+  - `DisplayOrder = 5`: Main HUD & Top Menu (`VitalHUDGui`, `TopMenuGUI`, `SkillsGUI`)

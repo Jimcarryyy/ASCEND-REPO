@@ -55,3 +55,11 @@ $$\text{Final Damage} = \text{Skill Base Damage} \times \text{Cultivator Power M
 * **Standing / Fighting (Passive):** Restores `CurrentQi` up to `CultivatedQi` in **60 seconds** ($1.66\%$ per second).
 * **Active Meditation ([G] Key):** Restores `CurrentQi` up to `CultivatedQi` in **10 seconds** ($10.0\%$ per second).
 * **Qi Lock During Meditation:** Pressing **[G]** blocks all combat attacks (`LMB`, `F`, `Q`, `E`, `R`, `Shift`) on both client and server.
+
+### Flying Sword Skill Set & Cooldown Timings (Added 2026-08-20)
+
+- **M1 — Celestial Sword Slash:** 4-hit combo chain ($0.4\text{s}, 0.4\text{s}, 0.5\text{s}, 1.0\text{s}$ cooldowns).
+- **Q — Sword Tempest:** 360° blade vortex ($3.0\text{s}$ cooldown).
+- **E — Telekinesis Thrust:** Piercing long-range sword beam ($5.0\text{s}$ cooldown).
+- **F — Heavy Slam:** Heavenly blade poise-break slam ($1.5\text{s}$ cooldown).
+- **Shift / Q — Flash Step:** Evasive dash with I-frames ($2.0\text{s}$ cooldown).

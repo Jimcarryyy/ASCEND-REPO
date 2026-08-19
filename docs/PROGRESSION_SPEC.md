@@ -86,3 +86,9 @@ $$\mathbf{CurrentQi \le CultivatedQi \le MaxQiGoal}$$
     * **`CultivatedQi` and `CurrentQi` ARE PRESERVED** (e.g. $120.0\text{k}$ remains $120.0\text{k}$).
     * Display after breakthrough: **`120.0k / 120.0k`**. Player continues cultivating toward $150.0\text{k}$.
 * **Encouraging Rejection Guidance:** If a player attempts a breakthrough before reaching `MaxQiGoal`, the server rejects the request and displays a lower-center toast: **`"Keep cultivating! Your Qi isn't ready for breakthrough yet."`**
+
+### Dynamic Reward Scaling Formula (Added 2026-08-20)
+
+To maintain early zone relevance while preserving high-realm power fantasy:
+$$\text{Reward} = \text{BaseReward} \times (1 + (\text{RealmIndex} - 1) \times 0.35)$$
+- Applied to Spirit Stones and Condensed Qi awarded from defeating zone mobs and completing daily sect bounties.

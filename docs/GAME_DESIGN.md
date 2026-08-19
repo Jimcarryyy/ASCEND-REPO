@@ -91,3 +91,14 @@ Code
 - **Tree & Bamboo Collision:** Leaves/canopies have `CanCollide = false`. Physical collision is strictly enforced on tree trunks and individual bamboo stalks (`TreeCollisionManager.luau`).
 - **Stylized Wind Physics:** Vegetation sways dynamically with an organic gusting wind envelope (`REST -> GUST -> SWAY -> SETTLE`) with spatial distance culling (<160 studs) and object-specific flexibility (large trees $3.7^\circ$, small trees $5.5^\circ$, bamboo $8.0^\circ$).
 - **Lighting & Night Readability:** 12-minute 4-phase day/night lighting cycle with soft moonlit ambient (`OutdoorAmbient = #415073`) so trees retain visual presence at night without becoming pitch-black silhouettes. PointLights are strictly limited to spirit herbs, Qi nodes, and cauldrons.
+
+### Azure Cloud Sect Progression Loop (Added 2026-08-20)
+
+- **Disciple Promotion Ladder:**
+  - *Outer Disciple:* Qi Condensation (Tier 1) | 0 Contribution
+  - *Inner Disciple:* Foundation Establishment (Tier 2) | 500 Contribution
+  - *Core Disciple:* Golden Core (Tier 3) | 2,500 Contribution
+  - *Direct Disciple:* Nascent Soul (Tier 4) | 10,000 Contribution
+  - *Sect Elder:* Spirit Severing (Tier 5) | 50,000 Contribution
+  - *Grand Elder:* Tribulation Transcending (Tier 9) | 150,000 Contribution
+- **Balanced Sparring Arena:** 1v1 equalized combat matching disciples in the exact same realm bracket for contribution points and stones.

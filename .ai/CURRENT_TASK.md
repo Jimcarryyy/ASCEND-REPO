@@ -94,3 +94,11 @@ Implementing server-authoritative wild Spirit Beast AI (e.g., *Ironhide Boar*, *
 - [x] Custom Xianxia Loading Screen (`LoadingScreen.client.luau`) in `ReplicatedFirst`.
 - [x] R6 Locomotion Engine (`Animate.client.luau`) with LeftShift sprint, velocity-synced audio, 100% idle rotation lock, and 0.3s jump recovery debounce.
 - [x] Environment Polish Pass: tree trunk collision filtering (`TreeCollisionManager.luau`), 12-min 4-phase Xianxia day/night lighting (`EnvironmentTimeManager.luau`), and organic gusting wind controller (`WindEnvironmentController.luau`).
+
+# Current Task: Phase 7 — Version 1 Studio UI Hierarchy & Cross-Platform Polish
+
+## Status: Active
+- **Active Subtask:** Completing the Hybrid Studio UI setup (connecting custom Explorer ScreenGuis for Inventory, Alchemy, and Vitals to client controllers).
+- **Completed in this session:**
+  - Phase A (100% Server & Data Logic): `SectConfig`, `MonetizationConfig`, `PlayerDataManager` V2 schema, `VendorManager`, `SectManager`, `MobAIManager`, `ArenaManager`, `MarketplaceManager`.
+  - Phase B (Initial UI Hooks): `QuestTrackerController`, `SkillBarController`, `MarketController`, and `HUDController` Top Menu.

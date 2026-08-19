@@ -45,3 +45,8 @@ Below is the directory of all active technical specification documents for ASCEN
 | **`AI_PROMPT_GUIDE.md`** | Stylized Low-Poly 3D Generation & 2D Icon Prompts | 🟢 Active |
 | **`ROBLOX_PERFORMANCE_RULES.md`**| 60 FPS Mobile Performance & Memory Limits | 🟢 Active |
 | **`CODE_DEPENDENCY_GUIDE.md`**| Full Require Graph & Cross-Module References | 🟢 Active |
+
+### Version 1 Architecture Summary (Updated 2026-08-20)
+ASCEND features a complete data-driven architecture:
+1. **Server Core:** DataStore V2 persistence, 10-Realm / 90-Order progression, 3-slot manual alchemy, gathering RNG, Sect economy, R6 zone mob AI, and 1v1 same-realm sparring arena.
+2. **Client Hybrid UI:** Studio Explorer frames driven by dedicated Luau controllers with responsive scaling, unified Dark Obsidian/Gold aesthetics, and cross-platform touch support.

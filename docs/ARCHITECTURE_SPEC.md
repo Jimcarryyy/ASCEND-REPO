@@ -64,3 +64,13 @@ src/
 1. **Experience Asset Ownership Protection:** If an animation asset ID was published under a personal account or group that does not match the experience place owner, Roblox blocks the track on live player avatars while allowing it on Studio local viewport rigs. Granting access via Studio Output (`Click to share access`) resolves the block.
 2. **R15 Mesh Package Conflict on R6 Rigs:** If a player's Roblox.com web avatar wears R15 3D Layered Clothing or mesh packages, forcing R6 inserts MeshPart limbs that Roblox's R6 C++ Animator cannot animate with standard R6 KeyframeSequences.
 3. **`ApplyDescription()` Animator Invalidation:** Executing `humanoid:ApplyDescription()` on the server re-creates the `Animator` instance at runtime, invalidating any animation tracks previously loaded before `ApplyDescription()` completed.
+
+### Sect Economy, Arena & Monetization Subsystems (Added 2026-08-20)
+
+- **`SectManager.luau` (Server):** Manages quest lifecycle (`Gather`, `CraftDan`, `DefeatMob`), daily stipends, and rank promotions verified against `CultivationConfig.RealmTier`.
+- **`VendorManager.luau` (Server):** Validates inventory transactions and Spirit Stone balances for buying/selling ingredients.
+- **`MobAIManager.luau` (Server):** Manages R6 humanoid mob lifecycle and dynamically scales Spirit Stone and Qi rewards based on player realm tier.
+- **`ArenaManager.luau` (Server):** Matchmaking engine pairing duelists in identical cultivation realm brackets for 90-second non-lethal combat.
+- **`MarketplaceManager.luau` (Server):** Processes `MarketplaceService.ProcessReceipt` and verifies persistent gamepass perks.
+- **`SkillBarController.luau` (Client):** Drives cooldown overlay frames and countdown text on `StarterGui.SkillsGUI`.
+- **`QuestTrackerController.luau` (Client):** Hooks `StarterGui.QuestTrackerGUI` and formats dynamic duty cards.

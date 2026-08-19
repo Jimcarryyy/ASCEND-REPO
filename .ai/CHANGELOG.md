@@ -134,3 +134,35 @@ This document tracks released and unreleased changes, feature additions, and arc
 - Fixed rigid jump spam by adding a 0.3s landing recovery debounce and skipping `Fall` on short jumps.
 - Fixed R6 character tripping/flop pose bug by disabling `FallingDown` and `Ragdoll` humanoid states.
 - Fixed orphaned `Animator` tracks caused by server `ApplyDescription()` runtime calls.
+
+
+## [Phase 7 — Fast-Track V1 & Azure Cloud Sect Expansion] - 2026-08-20
+
+### Added
+- **Sect Configuration & Economy Engine (`SectConfig.luau` & `MonetizationConfig.luau`):**
+  - Defined 6 Disciple Ranks (*Outer -> Inner -> Core -> Direct -> Sect Elder -> Grand Elder*) aligned with `CultivationConfig.RealmTier`.
+  - Added daily sect quests (*Herbal Foraging, Alchemy Refinement, Sparring Discipline*) and market catalog pricing for herbs, dans, and beast cores.
+  - Added Gamepass definitions (2x Qi Speed, Auto-Meditation, Tribulation Shield, +20 Slots, VIP Elder) and DevProducts (Spirit Stone packs, Instant Qi Dan, Cleansing Water).
+- **Server Marketplace & Receipt Engine (`MarketplaceManager.luau`):**
+  - Integrated `MarketplaceService.ProcessReceipt` and real-time gamepass perk activation.
+- **Sect Duties & Promotion Manager (`SectManager.luau`):**
+  - Server validation for quest submission, contribution point tracking, disciple rank promotions, daily stipends, and `workspace.QuestNPCs` ProximityPrompts.
+- **Sect Market & Trading Manager (`VendorManager.luau`):**
+  - Server-authoritative buying and selling of items using Spirit Stones with `workspace.MarketVendors` ProximityPrompts.
+- **R6 Zone Mob Engine (`MobConfig.luau` & `MobAIManager.luau`):**
+  - Spawner subsystem in `workspace.MobSpawns`, pathfinding AI, attack/leash state machine, and realm-scaled dynamic rewards.
+- **1v1 Sparring Arena Engine (`ArenaManager.luau`):**
+  - Same-realm matchmaking queue, non-lethal knockdown resolution in Sector 3, 90s duel countdown, and `workspace.SparringArena` ProximityPrompts.
+- **Hybrid Client UI/UX Controllers:**
+  - `QuestTrackerController.luau`: Hooked to Studio `StarterGui.QuestTrackerGUI` with 56px legible duty cards and collapse toggle.
+  - `SkillBarController.luau`: Hooked to Studio `StarterGui.SkillsGUI` driving real-time dark cooldown masks and countdown timers for M1, Q, E, and F.
+  - `MarketController.luau`: Dedicated top-level `ToastGui` (`DisplayOrder = 99`), separated Merchant Market and Quest Elder Pavilion modals.
+  - `HUDController.luau`: Hooked to Studio `StarterGui.TopMenuGUI` (`BagMenu`, `MeditateMenu`, `ArenaMenu`, `SettingsMenu`).
+
+### Changed
+- **DataStore V2 Persistence (`PlayerDataManager.luau`):** Extended schema to persist `SpiritStones`, `SectRank`, `ContributionPoints`, `OwnedGamepasses`, and `UnlockedSkins`.
+- **Inventory Helpers (`InventoryManager.luau`):** Added `HasItem(player, itemId, count)` and `RemoveItem(player, itemId, count)`.
+- **Quest Progression Sync:** Hooked `GatheringManager.luau` and `AlchemyManager.luau` to automatically report progress to `SectManager`.
+- **UI/UX Design Tokens (`UIAssets.luau`):** Unified entire game palette to **Dark Obsidian (`#111827`) + Antique Bronze-Gold (`#8B6B32` / `#C49A4A`) + Cultivation Jade (`#10B981`) + Azure Spirit Blue (`#3B82F6`)**.
+- **Input Gating (`InputController.luau`):** Prevented accidental M1 sword swings when clicking UI elements.
+- **Locomotion Cleanliness (`Animate.client.luau`):** Silenced console print spam.

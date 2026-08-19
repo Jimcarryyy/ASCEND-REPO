@@ -86,3 +86,15 @@ This file lays out the next planned development milestones and future roadmap. U
    - Multi-phase World Boss encounters, flying sword flight showcases, and raid mechanics.
 3. **Upper Realm / Divine Plane Expansion (Post-V1):**
    - Expanding beyond the 10 Major Realms ($100\text{M}$ V1 Cap) into Trillions/Quintillions Divine Realms in future expansion updates.
+
+   # Immediate Next Steps for Next Session
+
+1. **Complete Hybrid UI Studio Hookup for Remaining Modals:**
+   - Hook Studio Explorer frames for `SpiritPouchGui` (Inventory) and `SpiritCauldronGui` (Alchemy) to `InventoryController.luau` and `AlchemyController.luau`.
+   - Update `VitalHUDGui` in Studio to match the dark obsidian and gold talisman styling.
+2. **End-to-End Gameplay Loop Testing in 2-Player Test Mode:**
+   - Test full progression: Gather Herbs -> Brew Pills -> Defeat R6 Mobs -> Submit Sect Quests -> Gain Contribution -> Promote Disciple Rank -> Duel in 1v1 Arena -> Buy/Sell in Market.
+3. **Roblox Creator Dashboard Setup:**
+   - Create and input live Gamepass IDs and Developer Product IDs into `MonetizationConfig.luau`.
+4. **Final Zone 1 Map Placement:**
+   - Verify physical placement of `workspace.MarketVendors`, `workspace.QuestNPCs`, `workspace.MobSpawns`, and `workspace.SparringArena` parts.

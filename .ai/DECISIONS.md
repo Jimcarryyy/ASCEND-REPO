@@ -140,3 +140,17 @@ This document records key architecture decisions for ASCEND, including accepted 
   3. Implemented `WindEnvironmentController.luau` client controller: single-loop organic gusting wind (`REST -> GUST -> SWAY -> SETTLE`) with spatial culling (<160 studs) and `math.noise` position offsets for desynchronized sway across large trees, small trees, flexible bamboo stalks, and grass.
 * **Consequences:** Transformed the world into a living, responsive Xianxia environment without adding PointLight clutter or dropping mobile FPS.
 
+## Architectural Decisions — Fast-Track V1 & UI/UX Hybrid Architecture
+
+### 1. Fast-Track V1 Scope Pivot
+- **Context:** Custom 3D beast rigs and multi-phase boss mechanics require high asset authoring overhead for a solo developer.
+- **Decision:** Shift complex custom-rigged beasts to late-stage content. For V1 MVP, use standard R6 humanoid mobs and an equalized same-realm 1v1 Sparring Arena for combat progression, prioritizing monetization and sect loop retention.
+
+### 2. Hybrid Studio UI Architecture (Explorer Hierarchy + Luau Data Binding)
+- **Context:** Pure programmatic `Instance.new` UI makes visual styling tedious to adjust in Studio.
+- **Decision:** Build visual UI layouts in Studio Explorer under `StarterGui` (using `Scale` and `UIAspectRatioConstraint`), while Luau controllers (`QuestTrackerController`, `SkillBarController`, `HUDController`, `MarketController`) handle data binding, remote syncing, and user interaction.
+
+### 3. Unified Dark Obsidian & Antique Gold Palette
+- **Context:** The UI was previously fragmented between bright white/pastel cards and dark modals.
+- **Decision:** Standardized on `#111827` (Deep Background), `#1C2638` (Secondary Surface), `#8B6B32` / `#C49A4A` (Antique Gold Borders), `#F1E8D2` (Warm Ivory Text), `#10B981` (Jade Vitality), and `#3B82F6` (Azure Qi). Rarity colors are applied as subtle outer border strokes rather than full-card background fills.
+
