@@ -3,6 +3,7 @@
     AlchemyController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AlchemyController.luau
     Client UI controller for Manual Herb Combination Alchemy with 2D PNG Icon Cards.
+    Theme: Dark Obsidian (#111827), Antique Gold (#8B6B32), and Jade Cultivation (#10B981).
 ]]
 
 local Players = game:GetService("Players")
@@ -22,19 +23,20 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local UI_FONT = Enum.Font.FredokaOne
+local T = UIAssets.Theme
 
--- LIGHT-MODE PALETTE
-local COLOR_LIGHT_MAIN   = Color3.fromRGB(248, 250, 249)
-local COLOR_LIGHT_PANEL  = Color3.fromRGB(241, 245, 249)
-local COLOR_LIGHT_CARD   = Color3.fromRGB(255, 255, 255)
-local COLOR_LIGHT_BORDER = Color3.fromRGB(203, 213, 225)
+-- UNIFIED DARK OBSIDIAN & ANTIQUE GOLD PALETTE
+local COLOR_LIGHT_MAIN   = T.DeepBackground   -- Color3.fromHex("#111827")
+local COLOR_LIGHT_PANEL  = T.SecondarySurface -- Color3.fromHex("#1C2638")
+local COLOR_LIGHT_CARD   = T.RaisedSurface    -- Color3.fromHex("#273246")
+local COLOR_LIGHT_BORDER = T.MainBorder       -- Color3.fromHex("#8B6B32")
 
-local COLOR_TEXT_MAIN    = Color3.fromRGB(15, 23, 42)
-local COLOR_TEXT_SUB     = Color3.fromRGB(100, 116, 139)
-local COLOR_AZURE_BLUE   = Color3.fromRGB(59, 130, 246)
-local COLOR_HP_GREEN     = Color3.fromRGB(16, 185, 129)
-local COLOR_ACTION_GOLD  = Color3.fromRGB(217, 119, 6)
-local COLOR_DANGER_RED   = Color3.fromRGB(225, 29, 72)
+local COLOR_TEXT_MAIN    = T.PrimaryText      -- Color3.fromHex("#F1E8D2")
+local COLOR_TEXT_SUB     = T.SecondaryText    -- Color3.fromHex("#A9A99F")
+local COLOR_AZURE_BLUE   = T.SpiritBlue       -- Color3.fromHex("#3B82F6")
+local COLOR_HP_GREEN     = T.JadeAccent       -- Color3.fromHex("#10B981")
+local COLOR_ACTION_GOLD  = T.HighlightBorder  -- Color3.fromHex("#C49A4A")
+local COLOR_DANGER_RED   = T.Vermilion        -- Color3.fromHex("#E63946")
 
 local alchemyGui: ScreenGui
 local overlayBackdrop: Frame
@@ -166,7 +168,7 @@ function AlchemyController.Init()
 		end
 	end)
 
-	print("[ASCEND] AlchemyController Initialized with 2D PNG Icon Cards.")
+	print("[ASCEND] AlchemyController Initialized with Unified Dark Obsidian Theme.")
 end
 
 function AlchemyController.BuildUI()
@@ -214,7 +216,7 @@ function AlchemyController.BuildUI()
 	closeBtn.Position = UDim2.new(1, -44, 0, 8)
 	closeBtn.BackgroundColor3 = COLOR_DANGER_RED
 	closeBtn.Text = "X"
-	closeBtn.TextColor3 = COLOR_LIGHT_CARD
+	closeBtn.TextColor3 = COLOR_TEXT_MAIN
 	closeBtn.Font = UI_FONT
 	closeBtn.TextSize = 20
 	closeBtn.Parent = mainModal
@@ -537,7 +539,7 @@ function AlchemyController.BuildUI()
 	refineButton.Position = UDim2.new(0, 12, 1, -64)
 	refineButton.BackgroundColor3 = COLOR_ACTION_GOLD
 	refineButton.Text = "REFINE SPIRIT DAN"
-	refineButton.TextColor3 = COLOR_LIGHT_CARD
+	refineButton.TextColor3 = COLOR_TEXT_MAIN
 	refineButton.Font = UI_FONT
 	refineButton.TextSize = 20
 	refineButton.Parent = col2
@@ -733,13 +735,14 @@ function AlchemyController.RefreshHerbPicker()
 				stroke.Thickness = 1.5
 				stroke.Parent = slotFrame
 
-				if itemDef.Icon and itemDef.Icon ~= "" then
+				local iconAsset = UIAssets.Icons[slotData.ItemId] or itemDef.Icon
+				if iconAsset and iconAsset ~= "" then
 					local icon = Instance.new("ImageLabel")
 					icon.Size = UDim2.new(1, -12, 1, -20)
 					icon.Position = UDim2.new(0, 6, 0, 4)
 					icon.BackgroundTransparency = 1
 					icon.ScaleType = Enum.ScaleType.Fit
-					icon.Image = itemDef.Icon
+					icon.Image = iconAsset
 					icon.Parent = slotFrame
 				else
 					local nameLbl = Instance.new("TextLabel")
@@ -797,9 +800,10 @@ function AlchemyController.UpdateCauldronSlotDisplay()
 			local data = cauldronSlots[i]
 			if data and data.ItemId then
 				local itemDef = ItemConfig.GetItem(data.ItemId)
-				if itemDef and itemDef.Icon and itemDef.Icon ~= "" then
+				local iconAsset = UIAssets.Icons[data.ItemId] or (itemDef and itemDef.Icon)
+				if iconAsset and iconAsset ~= "" then
 					if slotIcon then
-						slotIcon.Image = itemDef.Icon
+						slotIcon.Image = iconAsset
 						slotIcon.Visible = true
 					end
 					if nameLbl then nameLbl.Visible = false end

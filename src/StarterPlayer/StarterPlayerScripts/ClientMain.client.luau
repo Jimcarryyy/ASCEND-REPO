@@ -11,11 +11,11 @@ local Controllers = StarterPlayerScripts:WaitForChild("Controllers")
 
 local localPlayer = Players.LocalPlayer
 
--- Standard Competitive Open-World Camera Limits
+-- Camera Limits
 localPlayer.CameraMinZoomDistance = 0.5
-localPlayer.CameraMaxZoomDistance = 30 -- Max 30 studs to prevent off-screen scouting & vision exploits
+localPlayer.CameraMaxZoomDistance = 30
 
--- Standard Controllers
+-- Core Controllers
 local HUDController = require(Controllers:WaitForChild("HUDController"))
 local InputController = require(Controllers:WaitForChild("InputController"))
 local CombatVFXController = require(Controllers:WaitForChild("CombatVFXController"))
@@ -25,13 +25,15 @@ local AlchemyController = require(Controllers:WaitForChild("AlchemyController"))
 local GatheringController = require(Controllers:WaitForChild("GatheringController"))
 local WindEnvironmentController = require(Controllers:WaitForChild("WindEnvironmentController"))
 local MarketController = require(Controllers:WaitForChild("MarketController"))
+local QuestTrackerController = require(Controllers:WaitForChild("QuestTrackerController"))
+local ArenaController = require(Controllers:WaitForChild("ArenaController"))
 
--- Overhead UI Controller (Located in StarterPlayerScripts.Client.UI)
+-- Overhead UI Controller
 local ClientFolder = StarterPlayerScripts:WaitForChild("Client")
 local UIFolder = ClientFolder:WaitForChild("UI")
 local OverheadUIController = require(UIFolder:WaitForChild("OverheadUIController"))
 
--- Initialize Client Controllers
+-- Initialize All Client Controllers
 HUDController.Init()
 InputController.Init()
 CombatVFXController.Init()
@@ -42,5 +44,7 @@ OverheadUIController.Init()
 GatheringController.Init()
 WindEnvironmentController.Init()
 MarketController.Init()
+QuestTrackerController.Init()
+ArenaController.Init()
 
-print("[ASCEND] All Client Controllers Initialized Successfully with Sect Market & Dynamic Overhead UI!")
+print("[ASCEND] All Client Controllers Initialized Successfully with Quest Tracker & Sparring Arena HUD!")

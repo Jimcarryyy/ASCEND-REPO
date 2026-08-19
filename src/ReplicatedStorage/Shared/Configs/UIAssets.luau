@@ -3,6 +3,7 @@
     UIAssets.luau
     Location: src/ReplicatedStorage/Shared/Configs/UIAssets.luau
     Centralized UI Asset Registry & Color Palette definitions for ASCEND.
+    Theme: Blackened Lacquer + Aged Gold + Jade Cultivation + Spiritual Blue.
 ]]
 
 local UIAssets = {}
@@ -24,32 +25,38 @@ UIAssets.Icons = {
 	SpiritHealingDan        = "rbxassetid://72471225624084",
 }
 
-UIAssets.GradeCardColors = {
-	["Sovereign Immortal Quality"] = {
-		Background = Color3.fromRGB(254, 226, 226), -- Soft Crimson
-		Border     = Color3.fromRGB(225, 29, 72),   -- Ruby Red
-	},
-	["Century Superior Quality"]   = {
-		Background = Color3.fromRGB(243, 232, 255), -- Soft Purple
-		Border     = Color3.fromRGB(147, 51, 234),   -- Epic Purple
-	},
-	["Refined Medium Quality"]    = {
-		Background = Color3.fromRGB(224, 242, 254), -- Soft Azure
-		Border     = Color3.fromRGB(59, 130, 246),   -- Rare Blue
-	},
-	["Standard Quality"]          = {
-		Background = Color3.fromRGB(209, 250, 229), -- Soft Emerald
-		Border     = Color3.fromRGB(16, 185, 129),   -- Emerald Green
-	},
+-- Master Design Tokens
+UIAssets.Theme = {
+	DeepBackground   = Color3.fromHex("#111827"), -- 70% Dark Navy Charcoal
+	SecondarySurface = Color3.fromHex("#1C2638"), -- 15% Dark Blue-Gray
+	RaisedSurface    = Color3.fromHex("#273246"), -- Elevated Card Surface
+	MainBorder       = Color3.fromHex("#8B6B32"), -- Antique Bronze-Gold Frame
+	HighlightBorder  = Color3.fromHex("#C49A4A"), -- Warm Celestial Gold
+	PrimaryText      = Color3.fromHex("#F1E8D2"), -- Warm Ivory Text
+	SecondaryText    = Color3.fromHex("#A9A99F"), -- Muted Gray-Beige Subtitle
+	JadeAccent       = Color3.fromHex("#10B981"), -- HP / Vitality / Positive Action
+	SpiritBlue       = Color3.fromHex("#3B82F6"), -- Qi Energy / Info
+	CyanHighlight    = Color3.fromHex("#22D3EE"), -- Active Glow
+	Vermilion        = Color3.fromHex("#E63946"), -- Warning / Danger / Drop
+	AmberRank        = Color3.fromHex("#D97706"), -- Sect Rank / Premium Accent
 }
 
+-- Dark Charcoal Card Backgrounds with Accent Rarity Borders
 UIAssets.RarityCardColors = {
-	Mythic    = { Background = Color3.fromRGB(254, 226, 226), Border = Color3.fromRGB(225, 29, 72) },
-	Legendary = { Background = Color3.fromRGB(254, 243, 199), Border = Color3.fromRGB(217, 119, 6) },
-	Epic      = { Background = Color3.fromRGB(243, 232, 255), Border = Color3.fromRGB(147, 51, 234) },
-	Rare      = { Background = Color3.fromRGB(224, 242, 254), Border = Color3.fromRGB(59, 130, 246) },
-	Uncommon  = { Background = Color3.fromRGB(209, 250, 229), Border = Color3.fromRGB(16, 185, 129) },
-	Common    = { Background = Color3.fromRGB(255, 255, 255), Border = Color3.fromRGB(203, 213, 225) },
+	Mythic    = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#E11D48"), Text = Color3.fromHex("#FDA4AF") },
+	Legendary = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#F59E0B"), Text = Color3.fromHex("#FDE68A") },
+	Epic      = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#A855F7"), Text = Color3.fromHex("#E9D5FF") },
+	Rare      = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#3B82F6"), Text = Color3.fromHex("#BFDBFE") },
+	Uncommon  = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#10B981"), Text = Color3.fromHex("#A7F3D0") },
+	Common    = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#64748B"), Text = Color3.fromHex("#E2E8F0") },
+}
+
+-- Quality Grade Accent Borders
+UIAssets.GradeCardColors = {
+	["Sovereign Immortal Quality"] = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#E11D48") },
+	["Century Superior Quality"]   = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#A855F7") },
+	["Refined Medium Quality"]    = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#3B82F6") },
+	["Standard Quality"]          = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#10B981") },
 }
 
 return UIAssets

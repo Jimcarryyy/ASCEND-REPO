@@ -3,7 +3,7 @@
     ArenaManager.luau
     Location: src/ServerScriptService/Server/Combat/ArenaManager.luau
     Server-authoritative 1v1 Balanced Sparring Arena for the Azure Cloud Sect.
-    Features: Same-realm matchmaking queue, 90s duel countdown, non-lethal HP resolution, and contribution rewards.
+    Features: Same-realm matchmaking queue, in-world ProximityPrompt, 90s duel countdown, non-lethal HP resolution, and contribution rewards.
 ]]
 
 local Players = game:GetService("Players")
@@ -40,14 +40,14 @@ local ARENA_TIME_LIMIT = 90 -- seconds
 local ALL_REALMS: { CultivationConfig.RealmTier } = {
 	"QiCondensation",
 	"FoundationEstablishment",
-	"CoreFormation",
+	"GoldenCore",
 	"NascentSoul",
-	"SoulFormation",
-	"VoidRefinement",
+	"SpiritSevering",
+	"VoidRefining",
 	"BodyIntegration",
-	"GreatVehicle",
-	"TribulationTranscendence",
-	"TrueImmortal",
+	"Mahayana",
+	"TribulationTranscending",
+	"ImmortalAscension",
 }
 
 function ArenaManager.Init()
@@ -77,6 +77,9 @@ function ArenaManager.Init()
 		end
 	end)
 
+	-- Scan Workspace for physical arena prompt
+	task.spawn(ArenaManager.SetupArenaPrompt)
+
 	-- Heartbeat duel monitor
 	task.spawn(function()
 		while true do
@@ -85,7 +88,41 @@ function ArenaManager.Init()
 		end
 	end)
 
-	print("[ASCEND] ArenaManager Initialized (Realm-Matched 1v1 Sparring Active).")
+	print("[ASCEND] ArenaManager Initialized (Realm-Matched 1v1 Sparring & ProximityPrompt Active).")
+end
+
+function ArenaManager.SetupArenaPrompt()
+	local arena = Workspace:FindFirstChild("SparringArena") or Workspace:FindFirstChild("ArenaRing")
+	if not arena then
+		arena = Instance.new("Folder")
+		arena.Name = "SparringArena"
+		arena.Parent = Workspace
+	end
+
+	local function BindPrompt(part: Instance)
+		if not (part:IsA("BasePart") or part:IsA("Model")) then return end
+		local targetPart = part:IsA("Model") and (part.PrimaryPart or part:FindFirstChildWhichIsA("BasePart")) or part :: BasePart
+		if not targetPart or targetPart:FindFirstChild("ArenaPrompt") then return end
+
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "ArenaPrompt"
+		prompt.ObjectText = "Elder Wu — Sparring Master"
+		prompt.ActionText = "Register for 1v1 Sparring"
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 14
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = targetPart
+
+		prompt.Triggered:Connect(function(player: Player)
+			arenaRemote:FireClient(player, { Action = "OpenArenaMenu" })
+		end)
+	end
+
+	for _, child in ipairs(arena:GetChildren()) do
+		BindPrompt(child)
+	end
+
+	arena.ChildAdded:Connect(BindPrompt)
 end
 
 function ArenaManager.GetArenaSpawns(): (Vector3, Vector3, Vector3)
@@ -117,7 +154,6 @@ function ArenaManager.AddToQueue(player: Player)
 		queueByRealm[realm] = queue
 	end
 
-	-- Avoid duplicate entry
 	for _, p in ipairs(queue) do
 		if p == player then return end
 	end
@@ -126,7 +162,6 @@ function ArenaManager.AddToQueue(player: Player)
 	arenaRemote:FireClient(player, { Action = "QueueJoined", Realm = realm })
 	print(string.format("[ArenaManager] %s joined the %s Sparring Queue.", player.Name, realm))
 
-	-- Matchmaking check: Pair 2 players in the same realm
 	if #queue >= 2 then
 		local p1 = table.remove(queue, 1) :: Player
 		local p2 = table.remove(queue, 1) :: Player
@@ -165,7 +200,6 @@ function ArenaManager.StartDuel(p1: Player, p2: Player, realm: CultivationConfig
 	activeDuels[p1] = duel
 	activeDuels[p2] = duel
 
-	-- Teleport players to arena spawns and restore full HP/Qi
 	local function PreparePlayer(p: Player, spawnPos: Vector3, opponent: Player)
 		local char = p.Character
 		if char then
@@ -202,13 +236,11 @@ function ArenaManager.MonitorDuels()
 		local p1Hum = p1.Character and p1.Character:FindFirstChild("Humanoid") :: Humanoid?
 		local p2Hum = p2.Character and p2.Character:FindFirstChild("Humanoid") :: Humanoid?
 
-		-- Non-Lethal Knockdown Check (HP <= 1)
 		if p1Hum and p1Hum.Health <= 1 then
 			ArenaManager.EndDuel(duel, p2, "Knockdown Victory")
 		elseif p2Hum and p2Hum.Health <= 1 then
 			ArenaManager.EndDuel(duel, p1, "Knockdown Victory")
 		elseif now - duel.StartTime >= duel.Duration then
-			-- Timeout: Compare remaining HP percentage
 			local p1Pct = p1Hum and (p1Hum.Health / p1Hum.MaxHealth) or 0
 			local p2Pct = p2Hum and (p2Hum.Health / p2Hum.MaxHealth) or 0
 

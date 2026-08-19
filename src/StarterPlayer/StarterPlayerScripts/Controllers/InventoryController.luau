@@ -3,7 +3,7 @@
     InventoryController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
     Client UI controller for ASCEND Spirit Pouch.
-    Renders 2D PNG Icons and Dynamic Grade/Rarity Background Colors.
+    Theme: Dark Obsidian (#111827), Antique Gold (#8B6B32), Ivory Text (#F1E8D2), and Rarity Accent Borders.
 ]]
 
 local Players = game:GetService("Players")
@@ -19,19 +19,20 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local UI_FONT = Enum.Font.FredokaOne
+local T = UIAssets.Theme
 
--- LIGHT-MODE PALETTE
-local COLOR_LIGHT_MAIN   = Color3.fromRGB(248, 250, 249)
-local COLOR_LIGHT_PANEL  = Color3.fromRGB(241, 245, 249)
-local COLOR_LIGHT_CARD   = Color3.fromRGB(255, 255, 255)
-local COLOR_LIGHT_BORDER = Color3.fromRGB(203, 213, 225)
+-- UNIFIED DARK OBSIDIAN & ANTIQUE GOLD PALETTE
+local COLOR_LIGHT_MAIN   = T.DeepBackground   -- Color3.fromHex("#111827")
+local COLOR_LIGHT_PANEL  = T.SecondarySurface -- Color3.fromHex("#1C2638")
+local COLOR_LIGHT_CARD   = T.RaisedSurface    -- Color3.fromHex("#273246")
+local COLOR_LIGHT_BORDER = T.MainBorder       -- Color3.fromHex("#8B6B32")
 
-local COLOR_TEXT_MAIN    = Color3.fromRGB(15, 23, 42)
-local COLOR_TEXT_SUB     = Color3.fromRGB(100, 116, 139)
-local COLOR_AZURE_BLUE   = Color3.fromRGB(59, 130, 246)
-local COLOR_HP_GREEN     = Color3.fromRGB(16, 185, 129)
-local COLOR_ACTION_GOLD  = Color3.fromRGB(217, 119, 6)
-local COLOR_DANGER_RED   = Color3.fromRGB(225, 29, 72)
+local COLOR_TEXT_MAIN    = T.PrimaryText      -- Color3.fromHex("#F1E8D2")
+local COLOR_TEXT_SUB     = T.SecondaryText    -- Color3.fromHex("#A9A99F")
+local COLOR_AZURE_BLUE   = T.SpiritBlue       -- Color3.fromHex("#3B82F6")
+local COLOR_HP_GREEN     = T.JadeAccent       -- Color3.fromHex("#10B981")
+local COLOR_ACTION_GOLD  = T.HighlightBorder  -- Color3.fromHex("#C49A4A")
+local COLOR_DANGER_RED   = T.Vermilion        -- Color3.fromHex("#E63946")
 
 local spiritPouchGui: ScreenGui
 local overlayBackdrop: Frame
@@ -88,7 +89,7 @@ function InventoryController.Init()
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 
-		if input.KeyCode == Enum.KeyCode.K then
+		if input.KeyCode == Enum.KeyCode.K or input.KeyCode == Enum.KeyCode.B then
 			overlayBackdrop.Visible = not overlayBackdrop.Visible
 			if overlayBackdrop.Visible then
 				inventoryActionRemote:FireServer({ Action = "RequestSync" })
@@ -104,7 +105,7 @@ function InventoryController.Init()
 		inventoryActionRemote:FireServer({ Action = "RequestSync" })
 	end)
 
-	print("[ASCEND] InventoryController Initialized with Dynamic Card Backgrounds.")
+	print("[ASCEND] InventoryController Initialized with Unified Dark Obsidian Palette.")
 end
 
 function InventoryController.BuildUI()
@@ -153,7 +154,7 @@ function InventoryController.BuildUI()
 	closeBtn.Position = UDim2.new(1, -44, 0, 8)
 	closeBtn.BackgroundColor3 = COLOR_DANGER_RED
 	closeBtn.Text = "X"
-	closeBtn.TextColor3 = COLOR_LIGHT_CARD
+	closeBtn.TextColor3 = COLOR_TEXT_MAIN
 	closeBtn.Font = UI_FONT
 	closeBtn.TextSize = 20
 	closeBtn.Parent = mainModal
@@ -580,7 +581,7 @@ function InventoryController.BuildUI()
 	actionPrimaryBtn.Position = UDim2.new(0, 12, 1, -104)
 	actionPrimaryBtn.BackgroundColor3 = COLOR_ACTION_GOLD
 	actionPrimaryBtn.Text = "EQUIP"
-	actionPrimaryBtn.TextColor3 = COLOR_LIGHT_MAIN
+	actionPrimaryBtn.TextColor3 = COLOR_TEXT_MAIN
 	actionPrimaryBtn.Font = UI_FONT
 	actionPrimaryBtn.TextSize = 18
 	actionPrimaryBtn.Parent = itemCardContainer
@@ -596,7 +597,7 @@ function InventoryController.BuildUI()
 	actionDropBtn.Position = UDim2.new(0, 12, 1, -52)
 	actionDropBtn.BackgroundColor3 = COLOR_DANGER_RED
 	actionDropBtn.Text = "DROP"
-	actionDropBtn.TextColor3 = COLOR_LIGHT_CARD
+	actionDropBtn.TextColor3 = COLOR_TEXT_MAIN
 	actionDropBtn.Font = UI_FONT
 	actionDropBtn.TextSize = 18
 	actionDropBtn.Parent = itemCardContainer
@@ -667,7 +668,7 @@ function InventoryController.SetupGridSlots()
 		rarityHeader.Position = UDim2.new(0, 0, 0, 0)
 		rarityHeader.BackgroundColor3 = COLOR_LIGHT_BORDER
 		rarityHeader.Text = ""
-		rarityHeader.TextColor3 = COLOR_LIGHT_CARD
+		rarityHeader.TextColor3 = COLOR_TEXT_MAIN
 		rarityHeader.Font = UI_FONT
 		rarityHeader.TextSize = 9
 		rarityHeader.Visible = false
@@ -773,9 +774,10 @@ function InventoryController.RefreshGrid()
 
 					slotFrame.BackgroundColor3 = bgCol
 
-					if itemDef.Icon and itemDef.Icon ~= "" then
+					local iconAsset = UIAssets.Icons[slotData.ItemId] or itemDef.Icon
+					if iconAsset and iconAsset ~= "" then
 						if icon then
-							icon.Image = itemDef.Icon
+							icon.Image = iconAsset
 							icon.Visible = true
 						end
 						if itemNameLabel then itemNameLabel.Visible = false end
@@ -870,8 +872,9 @@ function InventoryController.InspectSlot(slotIdx: number)
 	local boxStroke = tooltipIconBox:FindFirstChild("BoxStroke") :: UIStroke?
 	if boxStroke then boxStroke.Color = borderCol end
 
-	if itemDef.Icon and itemDef.Icon ~= "" then
-		tooltipIcon.Image = itemDef.Icon
+	local iconAsset = UIAssets.Icons[slotData.ItemId] or itemDef.Icon
+	if iconAsset and iconAsset ~= "" then
+		tooltipIcon.Image = iconAsset
 		tooltipIcon.Visible = true
 	else
 		tooltipIcon.Visible = false
