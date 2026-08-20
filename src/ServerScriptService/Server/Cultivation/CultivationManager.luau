@@ -294,6 +294,7 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
 
+	-- 1. Realm-Colored Highlight
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "QiMeditationHighlight"
 	highlight.Adornee = character
@@ -304,23 +305,45 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.Parent = character
 
+	-- Ground Raycast Alignment
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterDescendantsInstances = { character }
 	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
 	local rayResult = Workspace:Raycast(hrp.Position, Vector3.new(0, -20, 0), raycastParams)
 	local groundY = if rayResult then rayResult.Position.Y else (hrp.Position.Y - 2.8)
-
 	hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 1.6, hrp.Position.Z) * hrp.CFrame.Rotation
 
-	local auraPart = Instance.new("Part")
-	auraPart.Name = "QiMeditationAura"
-	auraPart.Size = Vector3.new(10, 0.2, 10)
-	auraPart.CFrame = CFrame.new(hrp.Position.X, groundY + 0.1, hrp.Position.Z)
-	auraPart.CanCollide = false
-	auraPart.Transparency = 1
-	auraPart.Anchored = true
-	auraPart.Parent = character
+	-- 2. Dynamic Full Body Aura Cloning & Color Tinting
+	local auraTemplate = ReplicatedStorage:FindFirstChild("Full body aura") or (ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("Full body aura"))
+	if auraTemplate then
+		local auraClone = auraTemplate:Clone()
+		auraClone.Name = "QiMeditationAura"
+
+		for _, descendant in ipairs(auraClone:GetDescendants()) do
+			if descendant:IsA("ParticleEmitter") then
+				descendant.Color = ColorSequence.new(auraColor)
+				descendant.Enabled = true
+			elseif descendant:IsA("PointLight") then
+				descendant.Color = auraColor
+			elseif descendant:IsA("BasePart") then
+				descendant.CanCollide = false
+				descendant.CanTouch = false
+				descendant.CanQuery = false
+				descendant.Massless = true
+				descendant.Transparency = 1
+
+				-- Position & Weld to Character Root
+				descendant.CFrame = hrp.CFrame
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = hrp
+				weld.Part1 = descendant
+				weld.Parent = descendant
+			end
+		end
+
+		auraClone.Parent = character
+	end
 
 	hrp.Anchored = true
 end

@@ -25,6 +25,7 @@ local AnimationConfig = {
 		Swim = "rbxassetid://125750702",
 		CrouchIdle = "rbxassetid://121105579761179",
 		CrouchWalk = "rbxassetid://139963626951619",
+		Meditation = "rbxassetid://129333803961409",
 	},
 	FlyingSword = {
 		M1 = { AnimationId = "rbxassetid://93342220169849", Speed = 1.8, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 14 },

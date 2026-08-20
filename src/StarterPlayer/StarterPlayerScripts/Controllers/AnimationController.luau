@@ -20,8 +20,8 @@ local player = Players.LocalPlayer
 local currentWeapon = "FlyingSword"
 local loadedTracks: { [string]: AnimationTrack } = {}
 
--- Custom R15/R6 Meditation Pose Asset ID
-local MEDITATION_ANIM_ID = "rbxassetid://124985492575278"
+-- Custom R6 Meditation Pose Asset ID
+local MEDITATION_ANIM_ID = (AnimationConfig.Movement and AnimationConfig.Movement.Meditation) or "rbxassetid://129333803961409"
 local meditationTrack: AnimationTrack? = nil
 local isCurrentlyMeditating = false
 
