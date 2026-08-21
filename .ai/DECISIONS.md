@@ -154,3 +154,19 @@ This document records key architecture decisions for ASCEND, including accepted 
 - **Context:** The UI was previously fragmented between bright white/pastel cards and dark modals.
 - **Decision:** Standardized on `#111827` (Deep Background), `#1C2638` (Secondary Surface), `#8B6B32` / `#C49A4A` (Antique Gold Borders), `#F1E8D2` (Warm Ivory Text), `#10B981` (Jade Vitality), and `#3B82F6` (Azure Qi). Rarity colors are applied as subtle outer border strokes rather than full-card background fills.
 
+### Architectural & Design Decisions (Combat & Locomotion Session)
+
+1. **Pure Sword Focus for V1 Launch Scope:**
+   - Eliminated legacy generic weapon classes (`Spear`, `Gauntlet`) from `AnimationConfig.luau`. All combat is 100% focused on Pure Sword Dao (Jian straight swords & Dao curved sabers).
+
+2. **Combat Commitment vs Fast Sprinting:**
+   - Sprinting at 52 studs/sec during attacks broke hitbox accuracy and Arena balance. We established **Combat Commitment Footwork**: attacks dampen speed to `WalkSpeed = 8` during swings, returning to normal speed upon recovery.
+
+3. **Dynamic Arena Speed Scaling:**
+   - Character speed dynamically adapts: Deepwoken-balanced speeds inside the Sector 3 Arena (`16 / 28`), fast high-mobility speeds in the Open World (`18 / 52`).
+
+4. **Independent Studio Attachment Pairing:**
+   - Swapped hardcoded programmatic CFrame rotations for calibrated attachment pairs (`RightGripAttachment` <-> `SwordAttachment` in hand, `BackSwordMount` <-> `BackSwordAttachment` on back).
+
+5. **Anti-Ragdoll Physics Constraint in R6:**
+   - Standard Roblox R6 physics introduces severe balance-tipping bugs on stepped terrain. Permanently disabling `Ragdoll`, `FallingDown`, `PlatformStanding`, and `GettingUp` produces a rock-solid, responsive martial arts combat feel.

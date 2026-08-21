@@ -74,3 +74,16 @@ src/
 - **`MarketplaceManager.luau` (Server):** Processes `MarketplaceService.ProcessReceipt` and verifies persistent gamepass perks.
 - **`SkillBarController.luau` (Client):** Drives cooldown overlay frames and countdown text on `StarterGui.SkillsGUI`.
 - **`QuestTrackerController.luau` (Client):** Hooks `StarterGui.QuestTrackerGUI` and formats dynamic duty cards.
+
+### Weapon Sheath & Locomotion Architecture
+
+#### 1. Dual-Attachment Weapon Mounting (`WeaponManager.luau`)
+* Swords are stored as single-mesh templates in `ReplicatedStorage.Weapons`.
+* **Hand Attachment:** `Right Arm.RightGripAttachment` connected to `Sword.SwordAttachment`.
+* **Back Sheath Attachment:** `Torso.BackSwordMount` (`CFrame.new(0, 0.35, 0.68) * CFrame.Angles(0, 0, math.rad(135))`) connected to `Sword.BackSwordAttachment`.
+* **State Switching:** Controlled via `WeaponManager.SetWeaponState(player, "Hand" | "Back" | "Hidden")`.
+
+#### 2. Locomotion Anti-Drift & Physics Hardening (`Animate.client.luau`)
+* **Idle Yaw Pinning:** When `Humanoid.MoveDirection.Magnitude == 0`, `targetIdleYaw` captures the stopping orientation and pins `HumanoidRootPart.CFrame` with `AssemblyAngularVelocity = Vector3.zero`.
+* **Anti-Ragdoll Physics:** Permanently disables `FallingDown`, `Ragdoll`, `PlatformStanding`, and `GettingUp`, enforcing `MaxSlopeAngle = 89` for smooth stair/terrain traversal.
+* **UI Input Sinks:** `InputController.luau` checks `IsAnyMenuOpen()` and `UserInputService:GetFocusedTextBox()` to prevent input bleed into attacks/jumping while interacting with interfaces.

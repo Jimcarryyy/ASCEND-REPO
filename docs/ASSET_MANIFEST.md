@@ -89,3 +89,20 @@ All 12 2D icons are uploaded to Roblox Studio and registered in `UIAssets.luau` 
 * **Jumping Audio:** `SoundService["Movement sounds"].Main.Character.Jumping`.
 * **Landing Audio:** `SoundService["Movement sounds"].Main.Character.Landing`.
 * **Default Footstep Muting:** `HumanoidRootPart.Running.Volume = 0` to prevent double audio playback.
+
+
+### Updated Asset Manifest Entries
+
+| Asset Name | Asset ID / Type | Classification | Notes / Settings |
+| :--- | :--- | :--- | :--- |
+| **R6 Meditation Form** | `rbxassetid://129333803961409` | Animation (R6) | Grounded cross-legged cultivation sitting posture. |
+| **Sword Attack 1** | `rbxassetid://129254042886405` | Animation (R6) | Heavy horizontal opening slash (`0.44s`, `0.85x`). |
+| **Sword Attack 2** | `rbxassetid://78342794513338` | Animation (R6) | Deep diagonal downward cut (`0.40s`, `0.85x`). |
+| **Sword Attack 3** | `rbxassetid://133701354257850` | Animation (R6) | Wide sweeping cross-cleave (`0.44s`, `0.85x`). |
+| **Sword Attack 4** | `rbxassetid://140582503077234` | Animation (R6) | Heavy forward body-thrust (`0.46s`, `0.80x`). |
+| **Sword Attack 5** | `rbxassetid://111677132360566` | Animation (R6) | Overhead finisher slam (`0.54s`, `0.75x`). |
+| **Qi Dash 1** | `rbxassetid://118004062849712` | Animation (R6) | Flash-step burst dash stage 1. |
+| **Qi Dash 2** | `rbxassetid://87494050060721` | Animation (R6) | Flash-step burst dash stage 2. |
+| **Sword Slash SFX** | `rbxassetid://79218449800283` | Sound (Audio) | Crisp, authentic heavy blade cutting whoosh. |
+| **Qi Dash SFX** | `rbxassetid://93272068959626` | Sound (Audio) | Ethereal spirit burst dash sound. |
+

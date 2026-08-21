@@ -166,3 +166,38 @@ This document tracks released and unreleased changes, feature additions, and arc
 - **UI/UX Design Tokens (`UIAssets.luau`):** Unified entire game palette to **Dark Obsidian (`#111827`) + Antique Bronze-Gold (`#8B6B32` / `#C49A4A`) + Cultivation Jade (`#10B981`) + Azure Spirit Blue (`#3B82F6`)**.
 - **Input Gating (`InputController.luau`):** Prevented accidental M1 sword swings when clicking UI elements.
 - **Locomotion Cleanliness (`Animate.client.luau`):** Silenced console print spam.
+
+## [2026-08-22] - Pure Sword Combat, Dynamic Sheath, Locomotion Hardening & Qi Dash
+
+### Added
+- **5-Hit M1 Broadsword Combo:** Added 5-stage animation string with authentic heavy broadsword weight (`Speed = 0.75x–0.85x`, `FadeTime = 0.08s`):
+  - Hit 1: `rbxassetid://129254042886405` (`0.44s`)
+  - Hit 2: `rbxassetid://78342794513338` (`0.40s`)
+  - Hit 3: `rbxassetid://133701354257850` (`0.44s`)
+  - Hit 4: `rbxassetid://140582503077234` (`0.46s`)
+  - Hit 5: `rbxassetid://111677132360566` (`0.54s` Heavy Finisher)
+- **2-Stage Repeatable Qi Dash (`LeftShift`):** Looping flash-step dash (`Dash 1: rbxassetid://118004062849712` -> `Dash 2: rbxassetid://87494050060721`), 3.0s cooldown, ~18-stud burst distance, and smooth 0.08s deceleration decay.
+- **Dedicated Audio & Trails:**
+  - Authentic Sword Slash SFX: `rbxassetid://79218449800283`.
+  - Qi Dash SFX: `rbxassetid://93272068959626`.
+  - Custom HEX color gradient sword trails activated strictly during attack windows.
+- **Dynamic Dual-Attachment Sheath System (`WeaponManager.luau`):**
+  - In-Hand Combat: `Right Arm.RightGripAttachment` ── `SwordAttachment`.
+  - Diagonal Back Sheath: `Torso.BackSwordMount` ── `BackSwordAttachment` (`-45°` / `135°` tilt).
+  - Dedicated `R` key draw/sheath toggle.
+- **Focus Target Mode (`FocusTargetController.luau`):** Center-screen Azure Qi reticle with upper-body aim lock (`LeftControl` / `MMB`).
+- **Standardized V1 Keybind Map:** Double-Tap `W` (Sprint), `M1` (Combo), `Q/E/F` (Skills), `LeftShift` (Dash), `C` (Cultivate), `R` (Sheath), `B` (Breakthrough), `Tab/I` (Inventory), `P` (Arena).
+
+### Changed
+- **Dynamic Arena Speed Scaling:** Inside Sector 3 Sparring Arena (`Walk: 16 | Sprint: 28`) vs Outside Arena (`Walk: 18 | Sprint: 52`).
+- **Combat Footwork Commitment:** Movement speed dampens to `WalkSpeed = 8` during M1 swings to eliminate floating/sliding and guarantee fair Arena hitbox connectivity.
+- **M1 Server Cooldown:** Tuned to `0.28s` in `CombatStateManager.luau` to allow consecutive combo clicks without server dropping.
+- **Inventory Keybind:** Replaced legacy `K` with `Tab` / `I` and exposed `InventoryController.Toggle()`.
+
+### Fixed
+- **Idle 360° Rotation Drift:** Implemented Idle Yaw Pinning in `Animate.client.luau`, locking character facing angle upon stopping.
+- **Rough Terrain / Bumping Physics Glitch:** Permanently disabled `FallingDown`, `Ragdoll`, `PlatformStanding`, and `GettingUp` states.
+- **Meditation Animation Blending / Bouncing:** Explicitly stopped all active locomotion tracks on meditation start.
+- **Meditation Sheath Bug:** Blocked `R` key draw during meditation and forced sword to remain on the back.
+- **UI Interaction Conflicts:** Blocked mouse attacks and Spacebar jumps when clicking or interacting with game menus.
+- **Zero-Distance Dash Bug:** Corrected `LinearVelocity.ForceLimitMode` to `Enum.ForceLimitMode.PerAxis` with Y-force clamped to 0.

@@ -98,3 +98,25 @@ This file lays out the next planned development milestones and future roadmap. U
    - Create and input live Gamepass IDs and Developer Product IDs into `MonetizationConfig.luau`.
 4. **Final Zone 1 Map Placement:**
    - Verify physical placement of `workspace.MarketVendors`, `workspace.QuestNPCs`, `workspace.MobSpawns`, and `workspace.SparringArena` parts.
+
+
+   # Immediate Development Roadmap
+
+## Phase 7 Next Steps:
+
+### 1. Flying Sword Flight Engine (御剑飞行)
+* Toggle flight mode via `V` keybind.
+* Position sword horizontally under cultivator's feet (`HumanoidRootPart.FlightSwordMount`).
+* Smooth 3D omnidirectional flight physics (W/S pitch & thrust, A/D strafe, Space ascend, Shift descend).
+* Aerodynamic banking tilt when turning.
+* Cultivation realm flight speed scaling (Base: 65 -> Peak: 140+ studs/sec).
+
+### 2. Center-Reticle Combat Aiming Trajectory
+* Cast sword skill projectiles (Telekinesis Thrust `E`, Sword Tempest `Q`, Falling Sky Slam `F`) directly toward the center focus reticle in 3D world space.
+
+### 3. Complete Remaining 4 Sword Assets (Tiers 5–8)
+* Generate, import, add SurfaceAppearance, and attach `SwordAttachment` + `BackSwordAttachment` for:
+  * `VioletSoulSovereignJian` (Tier 5 Legendary)
+  * `VoidStarCleaverDao` (Tier 6 Mythic)
+  * `AzurePatriarchHeritageJian` (Sect Prestige)
+  * `RadiantImmortalSovereignJian` (VIP / Celestial)

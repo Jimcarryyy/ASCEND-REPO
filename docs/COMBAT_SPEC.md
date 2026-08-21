@@ -63,3 +63,27 @@ $$\text{Final Damage} = \text{Skill Base Damage} \times \text{Cultivator Power M
 - **E — Telekinesis Thrust:** Piercing long-range sword beam ($5.0\text{s}$ cooldown).
 - **F — Heavy Slam:** Heavenly blade poise-break slam ($1.5\text{s}$ cooldown).
 - **Shift / Q — Flash Step:** Evasive dash with I-frames ($2.0\text{s}$ cooldown).
+
+### Combat Movement, Combo String & Qi Dash Specifications
+
+#### 1. 5-Hit Heavy Broadsword Combo (`MouseButton1`)
+* **Timing & Pacing:**
+  * Attack 1: `rbxassetid://129254042886405` (`0.44s`, `0.85x speed`)
+  * Attack 2: `rbxassetid://78342794513338` (`0.40s`, `0.85x speed`)
+  * Attack 3: `rbxassetid://133701354257850` (`0.44s`, `0.85x speed`)
+  * Attack 4: `rbxassetid://140582503077234` (`0.46s`, `0.80x speed`)
+  * Attack 5: `rbxassetid://111677132360566` (`0.54s`, `0.75x speed` Heavy Finisher)
+* **Combat Footwork Commitment:** During any M1 swing, `WalkSpeed` is dampened to `8` studs/sec to ground the martial attack and ensure clean hitbox registration in PvP.
+* **Anti-Spam Duration Lockout:** Swings cannot be interrupted mid-arc by spam-clicking. Pausing for `> 1.3s` resets the combo back to Attack 1.
+* **Audio & Trail Sync:** Authentic slash sound `rbxassetid://79218449800283` and tier-colored trail ribbons activate strictly during slash execution.
+
+#### 2. Repeatable 2-Stage Qi Dash (`LeftShift`)
+* **Sequence:** Dash 1 (`rbxassetid://118004062849712`) ──> Dash 2 (`rbxassetid://87494050060721`).
+* **Cooldown:** 3.0s.
+* **Burst Velocity:** 88 studs/sec for 0.20s (~18 studs distance) with smooth 0.08s deceleration decay.
+* **Lockout:** Complete input/attack lockout during the 0.20s dash window.
+* **Sprint Continuity:** Automatically resumes full sprinting if `W` is held when dash completes.
+
+#### 3. Arena vs Open-World Speed Scaling
+* **In Arena (`Character:GetAttribute("InArena") == true`):** Walk: `16` | Sprint: `28` (Deepwoken-style balanced combat).
+* **Outside Arena (Open World):** Walk: `18` | Sprint: `52` (High-speed exploration).

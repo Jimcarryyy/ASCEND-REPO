@@ -102,3 +102,33 @@ Code
   - *Sect Elder:* Spirit Severing (Tier 5) | 50,000 Contribution
   - *Grand Elder:* Tribulation Transcending (Tier 9) | 150,000 Contribution
 - **Balanced Sparring Arena:** 1v1 equalized combat matching disciples in the exact same realm bracket for contribution points and stones.
+
+
+### V1 Pure Sword Lineup & Standardized Keybind Schema
+
+#### V1 Pure Sword Arsenal (8 Total Swords)
+1. **Mortal Iron Jian (凡铁剑):** Tier 1 (Common) — Starter Forged Steel.
+2. **Azure Cloud Disciple Jian (青云剑):** Tier 2 (Uncommon) — Sect Initiate Cyan Cloud Sword.
+3. **Flowing Qi Spirit Sword (流气灵剑):** Tier 3 (Rare) — Luminous Sapphire Crystal Spirit Blade.
+4. **Verdant Jade Flying Sword (青玉飞剑):** Tier 4 (Epic) — Imperial Emerald Jade Flying Blade.
+5. **Violet Soul Sovereign Jian (紫魄灵剑):** Tier 5 (Legendary) — Nascent Soul Purple Lightning Sword.
+6. **Void Star Cleaver Dao (裂虚天刃):** Tier 6 (Mythic) — Single-Edged Curved Void Saber.
+7. **Azure Patriarch Heritage Jian (青云祖师剑):** Sect Prestige (Legendary) — Elder Sovereign Ancient Bronze Jian.
+8. **Radiant Immortal Sovereign Jian (天尊飞仙剑):** VIP / Monetization (Celestial) — Divine White-Gold Deity Flying Sword.
+
+#### Unified Keybind Schema
+| Action | Keybind | Description |
+| :--- | :--- | :--- |
+| **Sprint** | **Double-Tap `W`** | High-speed sprint (52 Open World / 28 Arena). |
+| **Basic Attack** | **`MouseButton1`** | 5-hit heavy broadsword combo string. |
+| **Qi Dash** | **`LeftShift`** | 2-stage flash-step dash (3.0s cooldown). |
+| **Sword Tempest** | **`Q`** | Whirlwind Qi sword vortex. |
+| **Telekinesis Thrust**| **`E`** | Telekinetic forward piercing thrust beam. |
+| **Falling Sky Slam** | **`F`** | Aerial downward heavy sword cleave. |
+| **Sheath / Draw** | **`R`** | Snaps sword between Hand and Diagonal Back Sheath. |
+| **Meditation Form** | **`C`** | Toggles grounded cultivation sitting form & realm aura. |
+| **Breakthrough** | **`B`** | Requests Major / Minor realm ascension trial. |
+| **Spirit Pouch** | **`Tab` / `I`** | Opens 60-slot inventory modal. |
+| **Sparring Arena** | **`P`** | Opens Sector 3 1v1 Sparring Arena registration. |
+| **Focus Target Aim** | **`LeftControl` / `MMB`** | Toggles screen-center reticle and upper-body aim lock. |
+| **Flight Mode** | **`V`** *(Upcoming)* | Mounts sword beneath feet for 3D flight. |

@@ -102,3 +102,30 @@ Implementing server-authoritative wild Spirit Beast AI (e.g., *Ironhide Boar*, *
 - **Completed in this session:**
   - Phase A (100% Server & Data Logic): `SectConfig`, `MonetizationConfig`, `PlayerDataManager` V2 schema, `VendorManager`, `SectManager`, `MobAIManager`, `ArenaManager`, `MarketplaceManager`.
   - Phase B (Initial UI Hooks): `QuestTrackerController`, `SkillBarController`, `MarketController`, and `HUDController` Top Menu.
+
+  # Current Task & Work Session State
+
+## Completed in this Session:
+- [x] **5-Hit Heavy Broadsword Combo Engine:** Integrated 5-hit string (`MouseButton1`) with natural 1.0x speeds, fixed commitment durations (`0.40s – 0.54s`), anti-spam lockouts, and 1.3s pause reset back to Attack 1.
+- [x] **2-Stage Repeatable Qi Dash (`LeftShift`):** 3.0s cooldown, ~18-stud burst distance (`LinearVelocity` with `ForceLimitMode.PerAxis`, Y-force clamped), smooth 0.08s deceleration decay, and sprint preservation when holding `W`.
+- [x] **Dynamic Weapon Attachment & Sheath Engine (`WeaponManager.luau`):** Snaps between Hand (`RightGripAttachment`) and diagonal Back Sheath (`BackSwordMount` at 135°). Dedicated `R` key to sheath/draw (strictly locked during meditation).
+- [x] **Grounded Meditation & Realm Aura:** `C` key toggle, custom R6 pose (`rbxassetid://129333803961409`), dynamic 10-realm color-tinted particle aura (`ReplicatedStorage["Full body aura"]`), and automatic back-sheathing.
+- [x] **Locomotion & Physics Hardening:**
+  - Double-Tap `W` to Sprint.
+  - Dynamic Speed Scaling: Sector 3 Arena (**Walk: 16 | Sprint: 28**) vs Open World (**Walk: 18 | Sprint: 52**).
+  - Combat Footwork Commitment: Movement dampens to `WalkSpeed = 8` during M1 swings for fair Arena PvP.
+  - Idle Yaw Pinning: 100% eliminated slow 360° idle rotation drift.
+  - Anti-Ragdoll Hardening: Permanently disabled `FallingDown`, `Ragdoll`, `PlatformStanding`, and `GettingUp`.
+  - UI Input Gating: Sinks mouse attacks and Spacebar jumps while interacting with menus/alchemy.
+- [x] **Focus Target Controller (`FocusTargetController.luau`):** Screen-center Azure Qi reticle with upper-body / RootPart yaw/pitch aiming (`LeftControl` / `MMB`).
+- [x] **Spirit Pouch Hotkeys:** Replaced legacy `K` with `Tab` / `I` and exposed `InventoryController.Toggle()`.
+
+## Next Immediate Tasks (Next Session):
+- [ ] **Flying Sword Flight Mode (御剑飞行):**
+  - Implement dedicated `V` key flight toggle.
+  - Sword snaps beneath feet horizontally (`HumanoidRootPart.FlightSwordMount`).
+  - True 3D omnidirectional flight physics with camera pitch/yaw steering and dynamic banking into turns.
+- [ ] **Center-Reticle Skill Aim Trajectory:**
+  - Wire Telekinesis Thrust (`E`), Sword Barrage (`R`), and Tempest (`Q`) to unleash along the exact camera-center reticle raycast trajectory.
+- [ ] **Generate Remaining 4 Swords (Tiers 5–8):**
+  - Generate, import, pivot, and hook `VioletSoulSovereignJian`, `VoidStarCleaverDao`, `AzurePatriarchHeritageJian`, and `RadiantImmortalSovereignJian`.
