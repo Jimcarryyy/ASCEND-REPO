@@ -2,7 +2,8 @@
 --[[
     AnimationConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/AnimationConfig.luau
-    Central registry mapping weapon skill keys and movement states to Roblox R6 Animation IDs.
+    Central animation registry for ASCEND (Pure Sword Cultivator R6).
+    Includes 2-Stage Qi Dash loop and 5-Hit M1 Broadsword Combo.
 ]]
 
 export type AnimDef = {
@@ -10,14 +11,14 @@ export type AnimDef = {
 	Speed: number,
 	FadeTime: number,
 	CastDuration: number,
-	WalkSpeedDampen: number,
+	WalkSpeedDampen: number?,
 }
 
 local AnimationConfig = {
 	Movement = {
 		Idle = "rbxassetid://98257310687211",
-		Walk = "rbxassetid://114762664703275",        -- Walk V1
-		Run = "rbxassetid://133708659027167",        -- Run V1
+		Walk = "rbxassetid://114762664703275",
+		Run = "rbxassetid://133708659027167",
 		Jump = "rbxassetid://115002701112708",
 		Fall = "rbxassetid://105371732122929",
 		Land = "rbxassetid://127232864368618",
@@ -26,30 +27,22 @@ local AnimationConfig = {
 		CrouchIdle = "rbxassetid://121105579761179",
 		CrouchWalk = "rbxassetid://139963626951619",
 		Meditation = "rbxassetid://129333803961409",
+
+		-- 2-Stage Repeatable Qi Dash Animations
+		Dash_1 = "rbxassetid://118004062849712",
+		Dash_2 = "rbxassetid://87494050060721",
 	},
+
 	FlyingSword = {
-		M1 = { AnimationId = "rbxassetid://93342220169849", Speed = 1.8, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 14 },
-		F = { AnimationId = "rbxassetid://93342220169849", Speed = 1.6, FadeTime = 0.03, CastDuration = 0.25, WalkSpeedDampen = 12 },
-		Q = { AnimationId = "rbxassetid://132236998171530", Speed = 1.0, FadeTime = 0.02, CastDuration = 0.43, WalkSpeedDampen = 36 }, -- Instant Long Dash (Q)
-		E = { AnimationId = "rbxassetid://93342220169849", Speed = 1.6, FadeTime = 0.03, CastDuration = 0.25, WalkSpeedDampen = 12 },
-		R = { AnimationId = "rbxassetid://93342220169849", Speed = 1.4, FadeTime = 0.05, CastDuration = 0.35, WalkSpeedDampen = 10 },
-		Shift = { AnimationId = "", Speed = 1.0, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 28 },
-	},
-	Spear = {
-		M1 = { AnimationId = "rbxassetid://507767714", Speed = 1.8, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 14 },
-		F = { AnimationId = "rbxassetid://507765644", Speed = 1.5, FadeTime = 0.03, CastDuration = 0.28, WalkSpeedDampen = 10 },
-		Q = { AnimationId = "rbxassetid://507767714", Speed = 1.7, FadeTime = 0.03, CastDuration = 0.25, WalkSpeedDampen = 12 },
-		E = { AnimationId = "rbxassetid://507768375", Speed = 1.6, FadeTime = 0.03, CastDuration = 0.3, WalkSpeedDampen = 12 },
-		R = { AnimationId = "rbxassetid://507765644", Speed = 1.4, FadeTime = 0.05, CastDuration = 0.35, WalkSpeedDampen = 10 },
-		Shift = { AnimationId = "", Speed = 1.0, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 28 },
-	},
-	Gauntlet = {
-		M1 = { AnimationId = "rbxassetid://507768375", Speed = 2.0, FadeTime = 0.02, CastDuration = 0.18, WalkSpeedDampen = 15 },
-		F = { AnimationId = "rbxassetid://507765644", Speed = 1.5, FadeTime = 0.03, CastDuration = 0.3, WalkSpeedDampen = 10 },
-		Q = { AnimationId = "rbxassetid://507768375", Speed = 1.8, FadeTime = 0.03, CastDuration = 0.35, WalkSpeedDampen = 12 },
-		E = { AnimationId = "rbxassetid://507767714", Speed = 1.6, FadeTime = 0.03, CastDuration = 0.25, WalkSpeedDampen = 12 },
-		R = { AnimationId = "rbxassetid://507765644", Speed = 1.4, FadeTime = 0.05, CastDuration = 0.4, WalkSpeedDampen = 8 },
-		Shift = { AnimationId = "", Speed = 1.0, FadeTime = 0.02, CastDuration = 0.2, WalkSpeedDampen = 28 },
+		M1_1 = { AnimationId = "rbxassetid://129254042886405", Speed = 0.85, FadeTime = 0.08, CastDuration = 0.44, WalkSpeedDampen = 8 },
+		M1_2 = { AnimationId = "rbxassetid://78342794513338",  Speed = 0.85, FadeTime = 0.08, CastDuration = 0.40, WalkSpeedDampen = 8 },
+		M1_3 = { AnimationId = "rbxassetid://133701354257850", Speed = 0.85, FadeTime = 0.08, CastDuration = 0.44, WalkSpeedDampen = 8 },
+		M1_4 = { AnimationId = "rbxassetid://140582503077234", Speed = 0.80, FadeTime = 0.08, CastDuration = 0.46, WalkSpeedDampen = 8 },
+		M1_5 = { AnimationId = "rbxassetid://111677132360566", Speed = 0.75, FadeTime = 0.10, CastDuration = 0.54, WalkSpeedDampen = 4 },
+
+		Q = { AnimationId = "rbxassetid://132236998171530", Speed = 1.0, FadeTime = 0.02, CastDuration = 0.43 },
+		E = { AnimationId = "rbxassetid://93342220169849", Speed = 1.0, FadeTime = 0.03, CastDuration = 0.25 },
+		F = { AnimationId = "rbxassetid://93342220169849", Speed = 1.0, FadeTime = 0.03, CastDuration = 0.25 },
 	},
 }
 

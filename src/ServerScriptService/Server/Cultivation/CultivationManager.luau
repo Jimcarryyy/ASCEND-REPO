@@ -4,7 +4,7 @@
     Location: src/ServerScriptService/Server/Cultivation/CultivationManager.luau
     Server-authoritative cultivation state engine for ASCEND.
     Supports 10 Major Realms (90 Orders), Strict CurrentQi <= CultivatedQi <= MaxQiGoal Invariant,
-    Continuous Gradual Meditation Qi Recovery, Safe-Zone Qi Nodes, and Encouraging Breakthrough Rejection Signals.
+    Continuous Gradual Meditation Qi Recovery, Dynamic Full Body Aura, and Sword Sheathing to Back.
 ]]
 
 local Players = game:GetService("Players")
@@ -31,7 +31,7 @@ local CultivationManager = {}
 local playerData: { [Player]: PlayerCultivationData } = {}
 local passiveQiLoopThread: thread? = nil
 local tribulationThreads: { [Player]: thread } = {}
-local lastToggleTimestamp: { [Player]: number } = {} -- Server debounce map
+local lastToggleTimestamp: { [Player]: number } = {}
 
 local updateCultivationRemote: RemoteEvent
 local combatActionRemote: RemoteEvent
@@ -44,7 +44,6 @@ local function getWeaponManager(): any
 	return weaponManagerRef
 end
 
--- Checks if player is sitting inside any designated safe-zone Qi Node in workspace.QiNodes
 local function GetQiNodeMultiplier(character: Model): number
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then return 1.0 end
@@ -61,12 +60,12 @@ local function GetQiNodeMultiplier(character: Model): number
 				if type(customMultiplier) == "number" and customMultiplier > 0 then
 					return customMultiplier
 				end
-				return 5.0 -- 5.0x Cultivation expansion boost inside designated Qi Nodes
+				return 5.0
 			end
 		end
 	end
 
-	return 1.0 -- Standard ground meditation
+	return 1.0
 end
 
 function CultivationManager.Init()
@@ -90,7 +89,6 @@ function CultivationManager.Init()
 		end
 	end)
 
-	-- Global Qi Recovery & Active Cultivation Loop (Ticks every 0.5s)
 	passiveQiLoopThread = task.spawn(function()
 		while true do
 			task.wait(0.5)
@@ -99,10 +97,6 @@ function CultivationManager.Init()
 					local character = player.Character
 					if character and character.Parent then
 						local isMeditating = pData.IsMeditating
-						
-						-- 1. ENERGY RECOVERY:
-						-- Standing = 60s to full (1.66%/s)
-						-- Meditating = 10s to full (10.0%/s) — 6x faster, but strictly gradual over time!
 						local recoveryRate = if isMeditating then (pData.CultivatedQi / 10.0) else (pData.CultivatedQi / 60.0)
 						
 						if pData.CurrentQi < pData.CultivatedQi then
@@ -110,15 +104,12 @@ function CultivationManager.Init()
 							pData.CurrentQi = math.min(pData.CultivatedQi, pData.CurrentQi + qiGained)
 						end
 
-						-- 2. MEDITATION / CULTIVATION: Gradually expands CultivatedQi toward MaxQiGoal
 						if isMeditating and pData.CultivatedQi < pData.MaxQiGoal then
 							local qiNodeMult = GetQiNodeMultiplier(character)
-							-- Base expansion rate: 0.1% of MaxQiGoal per second (0.5% in Qi Nodes)
 							local expansionRate = (pData.MaxQiGoal * 0.001) * qiNodeMult
 							pData.CultivatedQi = math.min(pData.MaxQiGoal, pData.CultivatedQi + (expansionRate * 0.5))
 						end
 
-						-- Enforce Universal Invariant: CurrentQi <= CultivatedQi <= MaxQiGoal
 						pData.CultivatedQi = math.clamp(pData.CultivatedQi, 0, pData.MaxQiGoal)
 						pData.CurrentQi = math.clamp(pData.CurrentQi, 0, pData.CultivatedQi)
 
@@ -129,7 +120,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Engine Initialized (Breakthrough Guidance & Persistence Sync Enabled).")
+	print("[ASCEND] CultivationManager Engine Initialized (Dynamic Aura & Sheath Sync Active).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -182,8 +173,6 @@ end
 function CultivationManager.SetPlayerData(player: Player, realm: CultivationConfig.RealmTier, currentQi: number, order: number?, cultivatedQi: number?)
 	local orderNum = math.clamp(order or 1, 1, 9)
 	local targetGoal = CultivationConfig.GetOrderTargetQi(realm, orderNum)
-	
-	-- Restore exact saved CultivatedQi
 	local savedCultivated = cultivatedQi or CultivationConfig.GetOrderStartingMaxQi(realm, orderNum)
 	local cultivatedCap = math.clamp(savedCultivated, 100, targetGoal)
 	local activeEnergy = math.clamp(currentQi or cultivatedCap, 0, cultivatedCap)
@@ -212,7 +201,6 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	local character = player.Character
 	if not character then return end
 
-	-- Calculate Fixed Breakthrough Goal for Current Realm & Order
 	local maxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
 	pData.MaxQiGoal = maxQiGoal
 
@@ -226,7 +214,6 @@ function CultivationManager.ApplyRealmStats(player: Player)
 		humanoid.Health = maxHp
 	end
 
-	-- Initialize Attributes on Character for Overhead Badges
 	local realmInfo = CultivationConfig[pData.Realm]
 	if realmInfo then
 		character:SetAttribute("Realm", string.format("%s — Order %d", realmInfo.Name, pData.Order))
@@ -265,13 +252,15 @@ function CultivationManager.ToggleMeditation(player: Player)
 	local weaponMgr = getWeaponManager()
 
 	if pData.IsMeditating then
-		if weaponMgr and weaponMgr.SetWeaponVisibility then
-			weaponMgr.SetWeaponVisibility(player, false)
+		-- Automatically sheathe sword to back on meditation
+		if weaponMgr and weaponMgr.SetWeaponState then
+			weaponMgr.SetWeaponState(player, "Back")
 		end
 		CultivationManager.StartGroundedMeditation(player, character, pData.Realm, false)
 	else
-		if weaponMgr and weaponMgr.SetWeaponVisibility then
-			weaponMgr.SetWeaponVisibility(player, true)
+		-- Keep sword on back upon exiting meditation
+		if weaponMgr and weaponMgr.SetWeaponState then
+			weaponMgr.SetWeaponState(player, "Back")
 		end
 		CultivationManager.StopGroundedMeditation(player, character)
 	end
@@ -294,7 +283,7 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
 
-	-- 1. Realm-Colored Highlight
+	-- 1. Realm Highlight
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "QiMeditationHighlight"
 	highlight.Adornee = character
@@ -333,7 +322,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 				descendant.Massless = true
 				descendant.Transparency = 1
 
-				-- Position & Weld to Character Root
 				descendant.CFrame = hrp.CFrame
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = hrp
@@ -361,7 +349,7 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 	if hrp then hrp.Anchored = false end
 	if humanoid then
 		humanoid.Sit = false
-		humanoid.WalkSpeed = 14
+		humanoid.WalkSpeed = 18
 		humanoid.JumpPower = 65
 		humanoid.AutoRotate = true
 	end
@@ -372,8 +360,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	if not pData or pData.IsTribulationActive then return false end
 
 	if pData.CultivatedQi < pData.MaxQiGoal then
-		print(string.format("[CultivationManager] Breakthrough rejected for %s: CultivatedQi insufficient (%s / %s Goal)", player.Name, CultivationConfig.FormatNumber(pData.CultivatedQi), CultivationConfig.FormatNumber(pData.MaxQiGoal)))
-		
 		updateCultivationRemote:FireClient(player, {
 			Action = "BreakthroughRejected",
 			Message = "Keep cultivating! Your Qi isn't ready for breakthrough yet."
@@ -381,16 +367,13 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		return false
 	end
 
-	-- Minor Breakthrough (Order 1-8)
 	if pData.Order < 9 then
 		pData.Order += 1
 		CultivationManager.ApplyRealmStats(player)
 		CultivationManager.SyncClient(player)
-		print(string.format("[CultivationManager] ✨ %s achieved Minor Breakthrough to %s — Order %d!", player.Name, CultivationConfig[pData.Realm].Name, pData.Order))
 		return true
 	end
 
-	-- Major Breakthrough (Order 9 -> Next Realm Order 1)
 	local nextRealmMap: { [CultivationConfig.RealmTier]: CultivationConfig.RealmTier } = {
 		QiCondensation = "FoundationEstablishment",
 		FoundationEstablishment = "GoldenCore",

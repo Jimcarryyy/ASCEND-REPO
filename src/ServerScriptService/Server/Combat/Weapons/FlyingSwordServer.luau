@@ -39,7 +39,6 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 		hits, damage = FlyingSwordServer.ExecuteSkill(player, skillKey, hrp, payload)
 	end
 
-	-- Attach hit position, damage, and explicit WeaponType for client sound/VFX broadcast
 	payload = payload or {}
 	payload.WeaponType = "FlyingSword"
 
@@ -56,7 +55,6 @@ function FlyingSwordServer.ExecuteM1Combo(player: Player, hrp: BasePart): ({ Hit
 	local now = os.clock()
 	local comboData = playerCombos[player] or { Step = 1, LastTime = 0 }
 
-	-- Reset combo if too much time elapsed
 	if now - comboData.LastTime > 1.2 then
 		comboData.Step = 1
 	end
@@ -67,12 +65,10 @@ function FlyingSwordServer.ExecuteM1Combo(player: Player, hrp: BasePart): ({ Hit
 		currentStepData = FlyingSwordConfig.M1Combo[1]
 	end
 
-	-- Dynamic Damage Scaling based on Cultivator Power Multiplier
 	local pData = CultivationManager.GetPlayerData(player)
 	local powerMult = if pData then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
 	local finalDamage = math.floor(currentStepData.Damage * powerMult)
 
-	-- Calculate hitbox CFrame
 	local hitboxCFrame = hrp.CFrame * CFrame.new(currentStepData.Offset)
 	local hits = HitboxManager.CastBoxHitbox(hrp.Parent :: Model, hitboxCFrame, currentStepData.Range)
 
@@ -80,9 +76,6 @@ function FlyingSwordServer.ExecuteM1Combo(player: Player, hrp: BasePart): ({ Hit
 		HitboxManager.ApplyDamageAndKnockback(player, hit, finalDamage, currentStepData.Knockback)
 	end
 
-	print(string.format("[FlyingSwordServer] %s M1 Step %d hit %d targets for %s damage (Mult: %.1f)", player.Name, comboData.Step, #hits, CultivationConfig.FormatNumber(finalDamage), powerMult))
-
-	-- Advance combo step
 	comboData.Step = if comboData.Step >= 4 then 1 else comboData.Step + 1
 	comboData.LastTime = now
 	playerCombos[player] = comboData
@@ -94,7 +87,6 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 	local skillData = FlyingSwordConfig.Skills[skillKey]
 	if not skillData then return {}, 0 end
 
-	-- Dynamic Skill Damage Scaling based on Cultivator Power Multiplier
 	local pData = CultivationManager.GetPlayerData(player)
 	local powerMult = if pData then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
 	local finalDamage = math.floor(skillData.Damage * powerMult)
@@ -107,10 +99,6 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 		for _, hit in ipairs(hits) do
 			HitboxManager.ApplyDamageAndKnockback(player, hit, finalDamage, skillData.Knockback)
 		end
-
-		print(string.format("[FlyingSwordServer] %s executed %s (%s) hitting %d targets for %s damage", player.Name, skillData.Name, skillKey, #hits, CultivationConfig.FormatNumber(finalDamage)))
-	else
-		print(string.format("[FlyingSwordServer] %s executed utility skill %s (%s)", player.Name, skillData.Name, skillKey))
 	end
 
 	return hits, finalDamage

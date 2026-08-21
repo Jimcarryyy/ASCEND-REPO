@@ -4,6 +4,7 @@
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
     Client UI controller for ASCEND Spirit Pouch.
     Theme: Dark Obsidian (#111827), Antique Gold (#8B6B32), Ivory Text (#F1E8D2), and Rarity Accent Borders.
+    Features: Tab / I Keybinds, TopMenu Bag integration, 60-slot grid, 3D character doll, and real-time sword equipping.
 ]]
 
 local Players = game:GetService("Players")
@@ -86,18 +87,14 @@ function InventoryController.Init()
 		InventoryController.Update3DDoll()
 	end)
 
+	-- Keybind Listener for Tab & I
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then return end
-
-		if input.KeyCode == Enum.KeyCode.K or input.KeyCode == Enum.KeyCode.B then
-			overlayBackdrop.Visible = not overlayBackdrop.Visible
-			if overlayBackdrop.Visible then
-				inventoryActionRemote:FireServer({ Action = "RequestSync" })
-				InventoryController.RefreshGrid()
-				InventoryController.UpdateVitalStats()
-				InventoryController.Update3DDoll()
-			end
+		if input.KeyCode == Enum.KeyCode.Tab or input.KeyCode == Enum.KeyCode.I then
+			InventoryController.Toggle()
+			return
 		end
+
+		if gameProcessed then return end
 	end)
 
 	task.defer(function()
@@ -105,7 +102,19 @@ function InventoryController.Init()
 		inventoryActionRemote:FireServer({ Action = "RequestSync" })
 	end)
 
-	print("[ASCEND] InventoryController Initialized with Unified Dark Obsidian Palette.")
+	print("[ASCEND] InventoryController Initialized with Tab / I Keybinds.")
+end
+
+function InventoryController.Toggle()
+	if not overlayBackdrop then return end
+	overlayBackdrop.Visible = not overlayBackdrop.Visible
+
+	if overlayBackdrop.Visible then
+		inventoryActionRemote:FireServer({ Action = "RequestSync" })
+		InventoryController.RefreshGrid()
+		InventoryController.UpdateVitalStats()
+		InventoryController.Update3DDoll()
+	end
 end
 
 function InventoryController.BuildUI()
@@ -928,7 +937,8 @@ function InventoryController.UpdateVitalStats()
 	qiBarFill.Size = UDim2.new(qiRatio, 0, 1, 0)
 	qiBarText.Text = string.format("%d / %d", math.floor(clampedQi), math.floor(maxQi))
 
-	realmTitleLabel.Text = "Qi Condensation — Tier 1"
+	local realmAttr = char:GetAttribute("Realm")
+	realmTitleLabel.Text = if realmAttr then tostring(realmAttr) else "Qi Condensation — Tier 1"
 end
 
 function InventoryController.UseSlot(slotIdx: number)

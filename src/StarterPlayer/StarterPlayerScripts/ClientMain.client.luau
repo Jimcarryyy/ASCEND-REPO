@@ -29,8 +29,10 @@ local QuestTrackerController = require(Controllers:WaitForChild("QuestTrackerCon
 local ArenaController = require(Controllers:WaitForChild("ArenaController"))
 local SkillBarController = require(Controllers:WaitForChild("SkillBarController"))
 
+
 -- Overhead UI Controller
 local ClientFolder = StarterPlayerScripts:WaitForChild("Client")
+local FocusTargetController = require(script.Parent.Controllers.FocusTargetController)
 local UIFolder = ClientFolder:WaitForChild("UI")
 local OverheadUIController = require(UIFolder:WaitForChild("OverheadUIController"))
 
@@ -48,5 +50,6 @@ MarketController.Init()
 QuestTrackerController.Init()
 ArenaController.Init()
 SkillBarController.Init()
+FocusTargetController.Init()
 
 print("[ASCEND] All Client Controllers Initialized Successfully with Quest Tracker & Sparring Arena HUD!")

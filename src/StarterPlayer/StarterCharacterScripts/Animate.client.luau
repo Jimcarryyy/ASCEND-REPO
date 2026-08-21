@@ -3,7 +3,7 @@
     Animate.client.luau
     Location: src/StarterPlayer/StarterCharacterScripts/Animate.client.luau
     Master R6 Movement Animation & Audio Sync Engine for ASCEND.
-    Features: Normal 1.0x Run Audio Beat Matching, Fast 32-Speed Sprinting, Snappy Jump Power 65, and 100% Idle Spin Lock.
+    Features: Rock-solid Idle Yaw Pinning (0% rotation drift), Anti-ragdoll protection, and clean locomotion audio.
 ]]
 
 local Character = script.Parent :: Model
@@ -16,8 +16,9 @@ if not Humanoid or not RootPart or not Animator then
 	return
 end
 
--- Apply Snappy Jump Power
+-- Snappy Jump Power & Slope Climb Support
 Humanoid.JumpPower = 65
+Humanoid.MaxSlopeAngle = 89
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -27,9 +28,11 @@ local RunService = game:GetService("RunService")
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
 local moveCfg = AnimationConfig.Movement
 
--- Disable Tripping / Ragdoll Physics States
+-- Permanently disable tripping, ragdoll, and getting-up physics bugs
 Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
 Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+Humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
 
 -- Custom Looped Movement Audio IDs
 local WALK_SOUND_ID = "rbxassetid://4416041299"       -- 5.851s Looped Walk Audio
@@ -39,9 +42,10 @@ local currentLocomotionState = "None"
 local activeLocomotionTrack: AnimationTrack? = nil
 local loadedLocomotionTracks: { [string]: AnimationTrack } = {}
 
+local isDeliberateJump = false
 local freefallStartTime = 0
 local canJump = true
-local idleLockCFrame: CFrame? = nil
+local targetIdleYaw: number? = nil
 
 -- Create Custom Audio Instances on HumanoidRootPart
 local customWalkSound = Instance.new("Sound")
@@ -129,7 +133,6 @@ local function GetLocomotionTrack(animName: string, animId: string, priority: En
 		trk.Priority = priority
 		trk.Looped = looped
 		loadedLocomotionTracks[animName] = trk
-		print(string.format("[Animate] Dynamically bound track '%s' (%s).", animName, cleanId))
 		return trk
 	else
 		warn(string.format("[Animate] Failed to load track '%s' (%s): %s", animName, cleanId, tostring(trk)))
@@ -137,30 +140,21 @@ local function GetLocomotionTrack(animName: string, animId: string, priority: En
 	return nil
 end
 
--- Pre-Warm all locomotion tracks
+-- Locomotion tracks with standard Movement priority
 local trackIdle  = GetLocomotionTrack("Idle", moveCfg.Idle, Enum.AnimationPriority.Idle, true)
-local trackWalk  = GetLocomotionTrack("Walk", moveCfg.Walk, Enum.AnimationPriority.Action2, true)
-local trackRun   = GetLocomotionTrack("Run", moveCfg.Run, Enum.AnimationPriority.Action3, true)
-local trackJump  = GetLocomotionTrack("Jump", moveCfg.Jump, Enum.AnimationPriority.Action4, false)
-local trackFall  = GetLocomotionTrack("Fall", moveCfg.Fall, Enum.AnimationPriority.Action4, true)
-local trackLand  = GetLocomotionTrack("Land", moveCfg.Land, Enum.AnimationPriority.Action4, false)
-local trackClimb = GetLocomotionTrack("Climb", moveCfg.Climb, Enum.AnimationPriority.Action2, true)
-local trackSwim  = GetLocomotionTrack("Swim", moveCfg.Swim, Enum.AnimationPriority.Action2, true)
+local trackWalk  = GetLocomotionTrack("Walk", moveCfg.Walk, Enum.AnimationPriority.Movement, true)
+local trackRun   = GetLocomotionTrack("Run", moveCfg.Run, Enum.AnimationPriority.Movement, true)
+local trackJump  = GetLocomotionTrack("Jump", moveCfg.Jump, Enum.AnimationPriority.Action2, false)
+local trackFall  = GetLocomotionTrack("Fall", moveCfg.Fall, Enum.AnimationPriority.Action2, true)
+local trackLand  = GetLocomotionTrack("Land", moveCfg.Land, Enum.AnimationPriority.Action2, false)
+local trackClimb = GetLocomotionTrack("Climb", moveCfg.Climb, Enum.AnimationPriority.Movement, true)
+local trackSwim  = GetLocomotionTrack("Swim", moveCfg.Swim, Enum.AnimationPriority.Movement, true)
 
 local function SetLocomotionState(newState: string)
 	if currentLocomotionState == newState then return end
 	currentLocomotionState = newState
 
 	local targetTrack: AnimationTrack? = nil
-
-	if newState == "Idle" then
-		targetTrack = trackIdle
-		if RootPart then
-			idleLockCFrame = CFrame.new(RootPart.Position) * RootPart.CFrame.Rotation
-		end
-	else
-		idleLockCFrame = nil
-	end
 
 	if newState == "Walk" then targetTrack = trackWalk
 	elseif newState == "Run" then targetTrack = trackRun
@@ -169,35 +163,60 @@ local function SetLocomotionState(newState: string)
 	elseif newState == "Land" then targetTrack = trackLand
 	elseif newState == "Climb" then targetTrack = trackClimb
 	elseif newState == "Swim" then targetTrack = trackSwim
+	elseif newState == "Idle" then targetTrack = trackIdle
 	end
 
 	if activeLocomotionTrack and activeLocomotionTrack ~= targetTrack then
-		activeLocomotionTrack:Stop(0.12)
+		activeLocomotionTrack:Stop(0.1)
 	end
 
 	activeLocomotionTrack = targetTrack
 	if targetTrack and not targetTrack.IsPlaying then
 		if newState == "Jump" then
-			targetTrack:Play(0.05, 1, 1.4) -- 1.4x Accelerated Jump Takeoff
+			targetTrack:Play(0.04, 1, 1.2)
+		elseif newState == "Land" then
+			targetTrack:Play(0.05, 1, 1.3)
 		else
-			targetTrack:Play(0.12)
+			targetTrack:Play(0.1)
 		end
 	end
 end
 
--- Start default Idle track
 SetLocomotionState("Idle")
 
--- Stop all custom locomotion audio
 local function StopMovementAudio()
 	if customWalkSound.IsPlaying then customWalkSound:Stop() end
 	if customRunSound.IsPlaying then customRunSound:Stop() end
 end
 
--- Humanoid State Change Listener
+local function StopAllLocomotionTracks()
+	StopMovementAudio()
+	if activeLocomotionTrack and activeLocomotionTrack.IsPlaying then
+		activeLocomotionTrack:Stop(0.05)
+		activeLocomotionTrack = nil
+	end
+	for _, track in pairs(loadedLocomotionTracks) do
+		if track and track.IsPlaying then
+			track:Stop(0.05)
+		end
+	end
+	currentLocomotionState = "None"
+	targetIdleYaw = nil
+end
+
+Character:GetAttributeChangedSignal("IsMeditating"):Connect(function()
+	local isMed = Character:GetAttribute("IsMeditating") == true
+	if isMed then
+		StopAllLocomotionTracks()
+	else
+		SetLocomotionState("Idle")
+	end
+end)
+
+-- State Change Listener
 Humanoid.StateChanged:Connect(function(_, newState)
 	if Character:GetAttribute("IsMeditating") == true then
-		StopMovementAudio()
+		StopAllLocomotionTracks()
 		return
 	end
 
@@ -207,30 +226,41 @@ Humanoid.StateChanged:Connect(function(_, newState)
 			return
 		end
 
+		isDeliberateJump = true
 		freefallStartTime = os.clock()
 		SetLocomotionState("Jump")
 		PlayImpactAudio(soundJumping)
 		StopMovementAudio()
+		targetIdleYaw = nil
 
 	elseif newState == Enum.HumanoidStateType.Freefall then
-		freefallStartTime = os.clock()
-		task.delay(0.35, function()
-			if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and (os.clock() - freefallStartTime) >= 0.35 then
-				SetLocomotionState("Fall")
-			end
-		end)
+		targetIdleYaw = nil
+		if not isDeliberateJump then
+			freefallStartTime = os.clock()
+			task.delay(0.25, function()
+				if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and not isDeliberateJump then
+					SetLocomotionState("Fall")
+				end
+			end)
+		else
+			task.delay(1.2, function()
+				if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and (os.clock() - freefallStartTime) >= 1.2 then
+					SetLocomotionState("Fall")
+				end
+			end)
+		end
 
 	elseif newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.GettingUp then
+		isDeliberateJump = false
 		SetLocomotionState("Land")
 		PlayImpactAudio(soundLanding)
 
-		-- 0.3s Jump Recovery Debounce
 		canJump = false
-		task.delay(0.3, function()
+		task.delay(0.2, function()
 			canJump = true
 		end)
 
-		task.delay(0.18, function()
+		task.delay(0.16, function()
 			if Humanoid.MoveDirection.Magnitude > 0.05 then
 				local isSprinting = Humanoid.WalkSpeed > 20
 				SetLocomotionState(if isSprinting then "Run" else "Walk")
@@ -240,27 +270,29 @@ Humanoid.StateChanged:Connect(function(_, newState)
 		end)
 
 	elseif newState == Enum.HumanoidStateType.Swimming then
+		isDeliberateJump = false
 		SetLocomotionState("Swim")
 		StopMovementAudio()
+		targetIdleYaw = nil
 
 	elseif newState == Enum.HumanoidStateType.Climbing then
+		isDeliberateJump = false
 		SetLocomotionState("Climb")
 		StopMovementAudio()
+		targetIdleYaw = nil
 	end
 end)
 
--- Continuous Locomotion & Audio Loop
+-- Continuous Locomotion Loop with Zero Idle Drift Pinning
 RunService.RenderStepped:Connect(function()
-	if not Character.Parent or not Humanoid.Parent then return end
-
-	-- 100% IDLE ROTATION LOCK
-	if currentLocomotionState == "Idle" and RootPart and idleLockCFrame then
-		RootPart.AssemblyAngularVelocity = Vector3.zero
-		RootPart.CFrame = CFrame.new(RootPart.Position) * idleLockCFrame.Rotation
-	end
+	if not Character.Parent or not Humanoid.Parent or not RootPart then return end
 
 	if Character:GetAttribute("IsMeditating") == true then
 		StopMovementAudio()
+		if activeLocomotionTrack and activeLocomotionTrack.IsPlaying then
+			activeLocomotionTrack:Stop(0.05)
+			activeLocomotionTrack = nil
+		end
 		return
 	end
 
@@ -269,25 +301,40 @@ RunService.RenderStepped:Connect(function()
 		or state == Enum.HumanoidStateType.Freefall 
 		or state == Enum.HumanoidStateType.Climbing 
 		or state == Enum.HumanoidStateType.Swimming then
+		targetIdleYaw = nil
 		return
 	end
 
 	if Humanoid.MoveDirection.Magnitude > 0.05 then
+		-- Actively moving: clear idle pin and steer freely
+		targetIdleYaw = nil
 		local isSprinting = Humanoid.WalkSpeed > 20
 
 		if isSprinting then
 			SetLocomotionState("Run")
 			if customWalkSound.IsPlaying then customWalkSound:Stop() end
-			customRunSound.PlaybackSpeed = 1.0 -- Normal speed matches running footstep beat 1:1
+			customRunSound.PlaybackSpeed = 1.0
 			if not customRunSound.IsPlaying then customRunSound:Play() end
 		else
 			SetLocomotionState("Walk")
 			if customRunSound.IsPlaying then customRunSound:Stop() end
-			customWalkSound.PlaybackSpeed = math.clamp(Humanoid.WalkSpeed / 14.0, 0.8, 1.5)
+			customWalkSound.PlaybackSpeed = math.clamp(Humanoid.WalkSpeed / 18.0, 0.8, 1.4)
 			if not customWalkSound.IsPlaying then customWalkSound:Play() end
 		end
 	else
+		-- STANDING IDLE: Capture exact facing angle and pin it firmly
 		SetLocomotionState("Idle")
 		StopMovementAudio()
+
+		if not targetIdleYaw then
+			local _, y, _ = RootPart.CFrame:ToOrientation()
+			targetIdleYaw = y
+		end
+
+		-- Lock rotation firmly to targetIdleYaw (only when not in focus target mode)
+		if Character:GetAttribute("IsFocusMode") ~= true and targetIdleYaw then
+			RootPart.AssemblyAngularVelocity = Vector3.zero
+			RootPart.CFrame = CFrame.new(RootPart.Position) * CFrame.Angles(0, targetIdleYaw, 0)
+		end
 	end
 end)

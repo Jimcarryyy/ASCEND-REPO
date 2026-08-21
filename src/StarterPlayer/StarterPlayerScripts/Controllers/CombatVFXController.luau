@@ -2,15 +2,16 @@
 --[[
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
-    Client VFX and visual feedback controller for ASCEND combat.
-    Renders 3-Wave Magma Crescent Cleaves, Celestial Sunfalls, Camera Shake,
-    and Dynamic Floating Damage Numbers.
+    Client VFX and Audio controller for ASCEND combat.
+    Renders 3-Wave Magma Cleaves, Sunfalls, Camera Shake, Floating Damage Numbers,
+    and plays authentic M1 Air Swing & Hit Impact sound effects.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 
 local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -20,13 +21,71 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 local combatVFXRemote: RemoteEvent
+local combatActionRemote: RemoteEvent
+
+-- Audio IDs
+local SWING_AIR_SOUND_ID = "rbxassetid://79218449800283" -- M1 Air Swing Whoosh
+local HIT_IMPACT_SOUND_ID = "rbxassetid://140462043853173" -- M1 Solid Hit Impact
 
 -- Camera Shake Variables
 local shakeIntensity = 0
 local shakeDecay = 8
 
+-- Helper to play 3D Spatial Audio at a position
+local function Play3DSound(soundId: string, position: Vector3, volume: number?)
+	local soundPart = Instance.new("Part")
+	soundPart.Name = "CombatSFXPart"
+	soundPart.Position = position
+	soundPart.Transparency = 1
+	soundPart.CanCollide = false
+	soundPart.CanTouch = false
+	soundPart.CanQuery = false
+	soundPart.Anchored = true
+	soundPart.Parent = workspace
+
+	local sound = Instance.new("Sound")
+	sound.SoundId = soundId
+	sound.Volume = volume or 0.8
+	sound.RollOffMaxDistance = 80
+	sound.RollOffMinDistance = 5
+	sound.Parent = soundPart
+
+	sound:Play()
+	sound.Ended:Connect(function()
+		soundPart:Destroy()
+	end)
+
+	task.delay(2.5, function()
+		if soundPart and soundPart.Parent then
+			soundPart:Destroy()
+		end
+	end)
+end
+
 function CombatVFXController.Init()
 	combatVFXRemote = RemoteEvents.GetRemote("CombatVFX")
+	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
+
+	-- Listen for Combat Action events to trigger Swing & Hit Audio
+	combatActionRemote.OnClientEvent:Connect(function(attacker: Player, skillKey: string, payload: any?)
+		if skillKey == "M1" then
+			local attackerChar = attacker.Character
+			local hrp = if attackerChar then attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+			local origin = if hrp then hrp.Position else Vector3.zero
+
+			-- 1. Always play Air Swing Whoosh on attack execution
+			Play3DSound(SWING_AIR_SOUND_ID, origin, 0.7)
+
+			-- 2. If a hit connected, play Hit Impact SFX and spawn damage feedback
+			if type(payload) == "table" and payload.TargetPosition then
+				Play3DSound(HIT_IMPACT_SOUND_ID, payload.TargetPosition, 0.9)
+				CombatVFXController.AddCameraShake(0.2)
+				if payload.Damage then
+					CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, false)
+				end
+			end
+		end
+	end)
 
 	combatVFXRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" or not payload.EffectType then return end
@@ -57,7 +116,7 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (Magma Cleaves, Sunfalls, Camera Shake, Damage Numbers).")
+	print("[ASCEND] CombatVFXController Initialized (M1 Swing & Impact Audio Synced).")
 end
 
 -- =============================================================================
@@ -80,7 +139,7 @@ function CombatVFXController.SpawnMagmaCrescentCleave(origin: Vector3, direction
 
 			local mesh = Instance.new("SpecialMesh")
 			mesh.MeshType = Enum.MeshType.FileMesh
-			mesh.MeshId = "rbxassetid://431221415" -- Arc Crescent Mesh
+			mesh.MeshId = "rbxassetid://431221415"
 			mesh.Scale = Vector3.new(1 + (waveIndex * 0.3), 0.5, 1 + (waveIndex * 0.3))
 			mesh.Parent = wavePart
 
@@ -96,7 +155,6 @@ function CombatVFXController.SpawnMagmaCrescentCleave(origin: Vector3, direction
 			pe.Speed = NumberRange.new(10, 20)
 			pe.Parent = wavePart
 
-			-- Animate Forward Slash Sweep & Fade
 			local targetCFrame = wavePart.CFrame + (normDir * 25)
 			local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			local tween = TweenService:Create(wavePart, tweenInfo, {
@@ -118,7 +176,6 @@ end
 -- 2. CELESTIAL SUNFALL IMPACTS
 -- =============================================================================
 function CombatVFXController.SpawnCelestialSunfall(position: Vector3)
-	-- Vertical Sun Shaft Beam
 	local beamPart = Instance.new("Part")
 	beamPart.Name = "CelestialSunfallShaft"
 	beamPart.Size = Vector3.new(8, 120, 8)
@@ -130,7 +187,6 @@ function CombatVFXController.SpawnCelestialSunfall(position: Vector3)
 	beamPart.Transparency = 0.2
 	beamPart.Parent = workspace
 
-	-- Expanding Solar Shockwave Ring on Ground
 	local ringPart = Instance.new("Part")
 	ringPart.Name = "SunfallGroundRing"
 	ringPart.Shape = Enum.PartType.Cylinder
@@ -144,7 +200,6 @@ function CombatVFXController.SpawnCelestialSunfall(position: Vector3)
 
 	CombatVFXController.AddCameraShake(0.7)
 
-	-- Tween Sunbeam Dissolve & Shockwave Expansion
 	local shaftTween = TweenService:Create(beamPart, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Transparency = 1,
 		Size = Vector3.new(1, 120, 1),
@@ -194,7 +249,6 @@ function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number
 	label.TextStrokeColor3 = Color3.fromRGB(20, 20, 20)
 	label.Parent = billboard
 
-	-- Animate Float Upward & Scale Pop
 	local targetOffset = billboard.StudsOffsetWorldSpace + Vector3.new(0, 3, 0)
 
 	local floatTween = TweenService:Create(billboard, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {

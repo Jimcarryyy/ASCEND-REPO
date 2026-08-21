@@ -3,7 +3,7 @@
     InventoryManager.luau
     Location: src/ServerScriptService/Server/State/InventoryManager.luau
     Server-authoritative inventory engine for ASCEND.
-    Capped at 60 slots with quality grade metadata stacking support.
+    Capped at 60 slots with dynamic testing items injection and weapon equipping.
 ]]
 
 local Players = game:GetService("Players")
@@ -16,7 +16,7 @@ local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 export type InventorySlot = {
 	ItemId: string,
 	Count: number,
-	Quality: string?, -- Optional quality metadata (e.g. "Century Superior Quality")
+	Quality: string?,
 }
 
 local InventoryManager = {}
@@ -53,7 +53,7 @@ function InventoryManager.Init()
 		end
 	end)
 
-	print("[ASCEND] InventoryManager Engine Initialized with 60 Slots & Quality Grade Support.")
+	print("[ASCEND] InventoryManager Engine Initialized with 60 Slots & Dynamic Sword Equipping.")
 end
 
 function InventoryManager.OnPlayerAdded(player: Player)
@@ -70,23 +70,24 @@ function InventoryManager.EnsureTestItems(player: Player)
 		playerInventories[player] = inv
 	end
 
-	local hasTestWeapons = false
-	for _, slot in pairs(inv) do
-		if slot and (slot.ItemId == "AzureCloudSword" or slot.ItemId == "FlyingSwordItem") then
-			hasTestWeapons = true
-			break
-		end
-	end
-
-	if not hasTestWeapons then
+	-- Inject consumable pills & herbs
+	if not InventoryManager.HasItem(player, "SpiritHealingDan", 1) then
 		InventoryManager.AddItem(player, "SpiritHealingDan", 5, "Standard Quality")
 		InventoryManager.AddItem(player, "FoundationGatheringDan", 3, "Standard Quality")
-		InventoryManager.AddItem(player, "SpiritGrass", 12)
+		InventoryManager.AddItem(player, "SpiritGrass_10Yr", 12)
+	end
 
-		for itemId, itemDef in pairs(ItemConfig.GetAllItems()) do
-			if itemDef.Type == "Weapon" or itemDef.Type == "Crest" then
-				InventoryManager.AddItem(player, itemId, 1)
-			end
+	-- Inject all 4 swords into Spirit Pouch for testing
+	local testSwords = {
+		"MortalIronJian",
+		"AzureCloudDiscipleJian",
+		"FlowingQiSpiritSword",
+		"VerdantJadeFlyingSword",
+	}
+
+	for _, swordId in ipairs(testSwords) do
+		if not InventoryManager.HasItem(player, swordId, 1) then
+			InventoryManager.AddItem(player, swordId, 1)
 		end
 	end
 end
@@ -109,7 +110,7 @@ function InventoryManager.AddItem(player: Player, itemId: string, count: number,
 	local maxStack = itemDef.MaxStack or 1
 	local remaining = count
 
-	-- 1. Stack into existing slots with space ONLY if ItemId AND Quality match
+	-- 1. Stack into existing slots
 	for slotIdx = 1, MAX_SLOTS do
 		local slot = inv[slotIdx]
 		if slot and slot.ItemId == itemId and slot.Quality == quality and slot.Count < maxStack then
@@ -203,6 +204,7 @@ function InventoryManager.UseItem(player: Player, slotIndex: number)
 		end
 
 	elseif itemDef.Type == "Weapon" or itemDef.Type == "Crest" then
+		-- Dynamically equip weapon on character
 		local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 		WeaponManager.EquipWeapon(player, itemDef.Id)
 	end

@@ -188,33 +188,42 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Icon = UIAssets.Icons.SpiritAsh,
 	},
 
-	-- WEAPONS & EQUIPMENT
-	["FlyingSwordItem"] = {
-		Id = "FlyingSwordItem",
-		Name = "Azure Cloud Flying Sword",
-		Description = "An elegant flying sword capable of rapid Qi slashes and aerial dash strikes.",
-		Rarity = "Uncommon",
+	-- WEAPONS & FLYING SWORDS
+	["MortalIronJian"] = {
+		Id = "MortalIronJian",
+		Name = "Mortal Iron Jian",
+		Description = "A beginner cultivator's mortal forged straight sword. Sturdy, reliable, and grounded in iron discipline.",
+		Rarity = "Common",
 		Type = "Weapon",
 		MaxStack = 1,
 		Stats = { Damage = 15, Speed = 1.0 },
 	},
-	["GauntletItem"] = {
-		Id = "GauntletItem",
-		Name = "Ironclad Spirit Gauntlets",
-		Description = "Heavy martial gauntlets that channel earth-shattering Qi punches.",
-		Rarity = "Common",
+	["AzureCloudDiscipleJian"] = {
+		Id = "AzureCloudDiscipleJian",
+		Name = "Azure Cloud Disciple Jian",
+		Description = "Official initiate straight sword of the Azure Cloud Sect, engraved with flowing cloud qi runes.",
+		Rarity = "Uncommon",
 		Type = "Weapon",
 		MaxStack = 1,
-		Stats = { Damage = 18, Speed = 0.8 },
+		Stats = { Damage = 25, Speed = 1.0 },
 	},
-	["SpearItem"] = {
-		Id = "SpearItem",
-		Name = "Serpent Qi Spear",
-		Description = "A long-reaching spear built for piercing lunges.",
-		Rarity = "Common",
+	["FlowingQiSpiritSword"] = {
+		Id = "FlowingQiSpiritSword",
+		Name = "Flowing Qi Spirit Sword",
+		Description = "A refined spirit sword forged from deep sapphire crystal, channeling swirling currents of immortal wind qi.",
+		Rarity = "Rare",
 		Type = "Weapon",
 		MaxStack = 1,
-		Stats = { Damage = 20, Speed = 0.9 },
+		Stats = { Damage = 40, Speed = 1.1 },
+	},
+	["VerdantJadeFlyingSword"] = {
+		Id = "VerdantJadeFlyingSword",
+		Name = "Verdant Jade Flying Sword",
+		Description = "An exquisite flying sword carved from imperial spirit emerald jade, humming with vital life-force qi.",
+		Rarity = "Epic",
+		Type = "Weapon",
+		MaxStack = 1,
+		Stats = { Damage = 60, Speed = 1.15 },
 	},
 }
 

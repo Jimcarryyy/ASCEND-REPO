@@ -3,7 +3,8 @@
     ArenaManager.luau
     Location: src/ServerScriptService/Server/Combat/ArenaManager.luau
     Server-authoritative 1v1 Balanced Sparring Arena for the Azure Cloud Sect.
-    Features: Same-realm matchmaking queue, in-world ProximityPrompt, 90s duel countdown, non-lethal HP resolution, and contribution rewards.
+    Features: Same-realm matchmaking queue, in-world ProximityPrompt, 90s duel countdown,
+    non-lethal HP resolution, contribution rewards, and dynamic InArena combat speed enforcement.
 ]]
 
 local Players = game:GetService("Players")
@@ -88,7 +89,7 @@ function ArenaManager.Init()
 		end
 	end)
 
-	print("[ASCEND] ArenaManager Initialized (Realm-Matched 1v1 Sparring & ProximityPrompt Active).")
+	print("[ASCEND] ArenaManager Initialized (Realm-Matched 1v1 Sparring & InArena Combat Speed Enabled).")
 end
 
 function ArenaManager.SetupArenaPrompt()
@@ -203,6 +204,8 @@ function ArenaManager.StartDuel(p1: Player, p2: Player, realm: CultivationConfig
 	local function PreparePlayer(p: Player, spawnPos: Vector3, opponent: Player)
 		local char = p.Character
 		if char then
+			-- Enforce Arena Combat Speed scaling (Deepwoken balance)
+			char:SetAttribute("InArena", true)
 			char:PivotTo(CFrame.new(spawnPos, opponent.Character and opponent.Character:GetPivot().Position or spawnPos))
 			local hum = char:FindFirstChild("Humanoid") :: Humanoid?
 			if hum then
@@ -263,6 +266,8 @@ function ArenaManager.EndDuel(duel: ActiveDuel, winner: Player?, reason: string)
 	local function ResolveFighter(p: Player, isWinner: boolean, isDraw: boolean)
 		local char = p.Character
 		if char then
+			-- Restore open-world speed scaling
+			char:SetAttribute("InArena", false)
 			char:PivotTo(CFrame.new(duel.SpectatorSpawn))
 			local hum = char:FindFirstChild("Humanoid") :: Humanoid?
 			if hum then hum.Health = hum.MaxHealth end

@@ -3,7 +3,7 @@
     CombatStateManager.luau
     Location: src/ServerScriptService/Server/State/CombatStateManager.luau
     Server-authoritative combat state engine for ASCEND.
-    Tracks player combat states, manages server-side cooldowns,
+    Tracks player combat states, manages server-side cooldowns (M1 = 0.22s for fluid combos),
     and validates dynamic percentage-based skill Qi consumption.
 ]]
 
@@ -29,14 +29,13 @@ CombatStateManager.__index = CombatStateManager
 local playerStates: { [Player]: PlayerState } = {}
 local playerCooldowns: { [Player]: { [string]: SkillCooldownData } } = {}
 
--- Update SKILL_COOLDOWNS table for Q-Key Dash
 local SKILL_COOLDOWNS: { [string]: number } = {
-	M1 = 0.6,
+	M1 = 0.28,
 	F = 1.5,
 	Q = 3.0, 
 	E = 5.0,
 	R = 8.0,
-	Shift = 2.0,
+	Shift = 3.0, -- Server-enforced 3.0s Dash cooldown
 }
 
 local combatActionRemote: RemoteEvent
@@ -56,12 +55,21 @@ function CombatStateManager.Init()
 	combatActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
 		if type(payload) == "string" then
 			CombatStateManager.HandleSkillRequest(player, payload, nil)
-		elseif type(payload) == "table" and type(payload.SkillKey) == "string" then
-			CombatStateManager.HandleSkillRequest(player, payload.SkillKey, payload)
+		elseif type(payload) == "table" then
+			-- 1. Sheath Toggle (R key)
+			if payload.ToggleSheath then
+				WeaponManager.ToggleSheath(player)
+				return
+			end
+
+			-- 2. Combat Skill / M1 Execution
+			if type(payload.SkillKey) == "string" then
+				CombatStateManager.HandleSkillRequest(player, payload.SkillKey, payload)
+			end
 		end
 	end)
 
-	print("[ASCEND] CombatStateManager Server Engine Initialized (Dynamic Percentage Qi Consumption Enabled).")
+	print("[ASCEND] CombatStateManager Initialized with 0.22s M1 Combo Cooldown.")
 end
 
 function CombatStateManager.OnPlayerAdded(player: Player)
@@ -93,68 +101,68 @@ function CombatStateManager.IsSkillOnCooldown(player: Player, skillKey: string):
 	return elapsed < data.Duration
 end
 
-function CombatStateManager.GetRemainingCooldown(player: Player, skillKey: string): number
-	local cooldowns = playerCooldowns[player]
-	if not cooldowns then return 0 end
-
-	local data = cooldowns[skillKey]
-	if not data then return 0 end
-
-	local elapsed = os.clock() - data.Duration
-	return math.max(0, data.Duration - elapsed)
-end
-
 function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string, payload: any?): boolean
-	-- 1. Validate character health
 	local character = player.Character
 	if not character then return false end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return false end
 
-	-- 2. Validate player combat state
+	-- Auto-draw weapon to hand if on back
+	if WeaponManager.GetWeaponState(player) == "Back" then
+		WeaponManager.SetWeaponState(player, "Hand")
+	end
+
 	local currentState = CombatStateManager.GetPlayerState(player)
 	if currentState == "Stunned" or currentState == "QiDeviation" then
 		return false
 	end
 
-	-- 3. Validate skill key
 	local cooldownDuration = SKILL_COOLDOWNS[skillKey]
 	if not cooldownDuration then return false end
 
-	-- 4. Check server cooldown
 	if CombatStateManager.IsSkillOnCooldown(player, skillKey) then
 		return false
 	end
 
-	-- 5. DYNAMIC PERCENTAGE-BASED QI CONSUMPTION (Runtime require avoids circular lock)
-	local cultMgr = require(ServerScriptService.Server.Cultivation.CultivationManager)
-	local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
+	-- Dynamic Qi Consumption for special skills
+	if skillKey ~= "M1" then
+		local cultMgr = require(ServerScriptService.Server.Cultivation.CultivationManager)
+		local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
 
-	if pData then
-		local cultivatedCap = pData.CultivatedQi or 1000
-		local costPercent = CultivationConfig.SkillCostPercent[skillKey] or 0
-		local dynamicQiCost = math.floor(cultivatedCap * costPercent)
+		if pData then
+			local cultivatedCap = pData.CultivatedQi or 1000
+			local costPercent = CultivationConfig.SkillCostPercent[skillKey] or 0
+			local dynamicQiCost = math.floor(cultivatedCap * costPercent)
 
-		if dynamicQiCost > 0 and cultMgr and cultMgr.ConsumeQi then
-			local hasQi = cultMgr.ConsumeQi(player, dynamicQiCost)
-			if not hasQi then
-				warn(string.format("[CombatStateManager] Request rejected for %s: Insufficient Qi for skill %s (%s required).", player.Name, skillKey, CultivationConfig.FormatNumber(dynamicQiCost)))
-				return false
+			if dynamicQiCost > 0 and cultMgr and cultMgr.ConsumeQi then
+				local hasQi = cultMgr.ConsumeQi(player, dynamicQiCost)
+				if not hasQi then
+					return false
+				end
 			end
 		end
 	end
 
-	-- 6. Record server cooldown & Sync
+	-- Record server cooldown
 	playerCooldowns[player][skillKey] = {
 		Duration = cooldownDuration,
 		Timestamp = os.clock(),
 	}
-	syncCooldownRemote:FireClient(player, skillKey, cooldownDuration)
 
-	-- 7. Execute weapon attack mechanics (Pure Sword Cultivator Paradigm)
+	if skillKey ~= "M1" then
+		syncCooldownRemote:FireClient(player, skillKey, cooldownDuration)
+	end
+
+	-- Execute damage calculation and preserve payload
 	payload = FlyingSwordServer.ExecuteAttack(player, skillKey, payload)
 
-	combatActionRemote:FireAllClients(player, skillKey, payload)
+	-- Broadcast to all other clients
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= player then
+			combatActionRemote:FireClient(otherPlayer, player, skillKey, payload)
+		end
+	end
+
 	return true
 end
 
