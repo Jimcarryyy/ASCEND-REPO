@@ -3,7 +3,7 @@
     AnimationConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/AnimationConfig.luau
     Central animation registry for ASCEND (Pure Sword Cultivator R6).
-    Includes 2-Stage Qi Dash loop and 5-Hit M1 Broadsword Combo.
+    Includes 2-Stage Qi Dash loop, 5-Hit M1 Broadsword Combo, and Block/Parry/Stun poses.
 ]]
 
 export type AnimDef = {
@@ -39,6 +39,10 @@ local AnimationConfig = {
 		M1_3 = { AnimationId = "rbxassetid://133701354257850", Speed = 0.85, FadeTime = 0.08, CastDuration = 0.44, WalkSpeedDampen = 8 },
 		M1_4 = { AnimationId = "rbxassetid://140582503077234", Speed = 0.80, FadeTime = 0.08, CastDuration = 0.46, WalkSpeedDampen = 8 },
 		M1_5 = { AnimationId = "rbxassetid://111677132360566", Speed = 0.75, FadeTime = 0.10, CastDuration = 0.54, WalkSpeedDampen = 4 },
+
+		Block = { AnimationId = "rbxassetid://112773782841691", Speed = 1.0, FadeTime = 0.05, CastDuration = 9999, WalkSpeedDampen = 6 },
+		Parry = { AnimationId = "rbxassetid://5763723309", Speed = 1.6, FadeTime = 0.02, CastDuration = 0.28 },
+		Stun  = { AnimationId = "rbxassetid://", Speed = 1.0, FadeTime = 0.05, CastDuration = 0.50 },
 
 		Q = { AnimationId = "rbxassetid://132236998171530", Speed = 1.0, FadeTime = 0.02, CastDuration = 0.43 },
 		E = { AnimationId = "rbxassetid://93342220169849", Speed = 1.0, FadeTime = 0.03, CastDuration = 0.25 },

@@ -59,4 +59,11 @@ UIAssets.GradeCardColors = {
 	["Standard Quality"]          = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#10B981") },
 }
 
+-- Add to UIAssets.luau:
+UIAssets.Fonts = {
+	Header = Enum.Font.LuckiestGuy,
+	Body   = Enum.Font.FredokaOne,
+	Accent = Enum.Font.Fondamento,
+}
+
 return UIAssets

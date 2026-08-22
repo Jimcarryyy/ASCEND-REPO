@@ -8,6 +8,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local WeaponManager = {}
 local weaponsFolder = ReplicatedStorage:WaitForChild("Weapons") :: Folder
@@ -116,6 +117,7 @@ function WeaponManager.ToggleSheath(player: Player)
 		WeaponManager.SetWeaponState(player, "Hand")
 	end
 end
+
 -- Get current equipped weapon ID
 function WeaponManager.GetEquippedWeapon(player: Player): string
 	local weaponData = activeWeapons[player]

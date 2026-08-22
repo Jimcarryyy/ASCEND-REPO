@@ -2,18 +2,14 @@
 --[[
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
-    Client VFX and Audio controller for ASCEND combat.
-    Renders 3-Wave Magma Cleaves, Sunfalls, Camera Shake, Floating Damage Numbers,
-    and plays authentic M1 Air Swing & Hit Impact sound effects.
+    Client VFX and Audio controller with Scaled Floating Damage Numbers and de-duplicated 3D sound routing.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
-local SoundService = game:GetService("SoundService")
 
-local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local CombatVFXController = {}
@@ -24,14 +20,14 @@ local combatVFXRemote: RemoteEvent
 local combatActionRemote: RemoteEvent
 
 -- Audio IDs
-local SWING_AIR_SOUND_ID = "rbxassetid://79218449800283" -- M1 Air Swing Whoosh
-local HIT_IMPACT_SOUND_ID = "rbxassetid://140462043853173" -- M1 Solid Hit Impact
+local SWING_AIR_SOUND_ID = "rbxassetid://79218449800283"
+local HIT_IMPACT_SOUND_ID = "rbxassetid://140462043853173"
+local PARRY_CLASH_SOUND_ID = "rbxassetid://9114223175"
 
 -- Camera Shake Variables
 local shakeIntensity = 0
 local shakeDecay = 8
 
--- Helper to play 3D Spatial Audio at a position
 local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 	local soundPart = Instance.new("Part")
 	soundPart.Name = "CombatSFXPart"
@@ -45,7 +41,7 @@ local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
-	sound.Volume = volume or 0.8
+	sound.Volume = volume or 0.85
 	sound.RollOffMaxDistance = 80
 	sound.RollOffMinDistance = 5
 	sound.Parent = soundPart
@@ -66,22 +62,35 @@ function CombatVFXController.Init()
 	combatVFXRemote = RemoteEvents.GetRemote("CombatVFX")
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 
-	-- Listen for Combat Action events to trigger Swing & Hit Audio
 	combatActionRemote.OnClientEvent:Connect(function(attacker: Player, skillKey: string, payload: any?)
-		if skillKey == "M1" then
-			local attackerChar = attacker.Character
-			local hrp = if attackerChar then attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
-			local origin = if hrp then hrp.Position else Vector3.zero
+		local attackerChar = attacker.Character
+		local hrp = if attackerChar then attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+		local origin = if hrp then hrp.Position else Vector3.zero
 
-			-- 1. Always play Air Swing Whoosh on attack execution
+		-- 1. Swing Audio: ONLY played for OTHER observers (Attacker already played it locally with 0ms lag)
+		if skillKey == "M1" and attacker ~= player then
 			Play3DSound(SWING_AIR_SOUND_ID, origin, 0.7)
+		end
 
-			-- 2. If a hit connected, play Hit Impact SFX and spawn damage feedback
-			if type(payload) == "table" and payload.TargetPosition then
-				Play3DSound(HIT_IMPACT_SOUND_ID, payload.TargetPosition, 0.9)
-				CombatVFXController.AddCameraShake(0.2)
-				if payload.Damage then
-					CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, false)
+		-- 2. Hit Feedback on Target
+		if type(payload) == "table" and payload.HasHit == true and payload.TargetPosition ~= nil then
+			if payload.WasParried then
+				-- Handled by ParryClash event
+			elseif payload.WasBlocked then
+				Play3DSound(PARRY_CLASH_SOUND_ID, payload.TargetPosition, 0.7)
+				if attacker == player then
+					CombatVFXController.AddCameraShake(0.15)
+				end
+				if payload.Damage and payload.Damage > 0 then
+					CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, false, Color3.fromRGB(175, 195, 220), "🛡️")
+				end
+			else
+				Play3DSound(HIT_IMPACT_SOUND_ID, payload.TargetPosition, 0.95)
+				if attacker == player then
+					CombatVFXController.AddCameraShake(payload.IsCrit and 0.45 or 0.25)
+				end
+				if payload.Damage and payload.Damage > 0 then
+					CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, payload.IsCrit == true)
 				end
 			end
 		end
@@ -90,7 +99,11 @@ function CombatVFXController.Init()
 	combatVFXRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" or not payload.EffectType then return end
 
-		if payload.EffectType == "MagmaCrescentCleave" then
+		if payload.EffectType == "ParryClash" then
+			CombatVFXController.SpawnParryClash(payload.Position)
+		elseif payload.EffectType == "BlockSparks" then
+			CombatVFXController.SpawnBlockSparks(payload.Position)
+		elseif payload.EffectType == "MagmaCrescentCleave" then
 			CombatVFXController.SpawnMagmaCrescentCleave(payload.Origin, payload.Direction)
 		elseif payload.EffectType == "CelestialSunfall" then
 			CombatVFXController.SpawnCelestialSunfall(payload.Position)
@@ -101,7 +114,6 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	-- Procedural Camera Shake Update Loop
 	RunService.RenderStepped:Connect(function(dt)
 		if shakeIntensity > 0.01 then
 			local offsetX = (math.random() * 2 - 1) * shakeIntensity
@@ -116,12 +128,71 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (M1 Swing & Impact Audio Synced).")
+	print("[ASCEND] CombatVFXController Initialized (Zero-Echo Audio & Scaled Damage Numbers).")
 end
 
--- =============================================================================
--- 1. 3-WAVE MAGMA CRESCENT CLEAVES
--- =============================================================================
+function CombatVFXController.SpawnParryClash(position: Vector3)
+	Play3DSound(PARRY_CLASH_SOUND_ID, position, 1.0)
+	CombatVFXController.AddCameraShake(0.4)
+
+	local flashPart = Instance.new("Part")
+	flashPart.Name = "ParryFlash"
+	flashPart.Shape = Enum.PartType.Ball
+	flashPart.Size = Vector3.new(2, 2, 2)
+	flashPart.Position = position
+	flashPart.Color = Color3.fromRGB(255, 240, 150)
+	flashPart.Material = Enum.Material.Neon
+	flashPart.Anchored = true
+	flashPart.CanCollide = false
+	flashPart.Parent = workspace
+
+	local pe = Instance.new("ParticleEmitter")
+	pe.Texture = "rbxassetid://242200234"
+	pe.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 200)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 140, 0)),
+	})
+	pe.Size = NumberSequence.new(0.6, 0)
+	pe.Lifetime = NumberRange.new(0.15, 0.3)
+	pe.Rate = 120
+	pe.Speed = NumberRange.new(25, 45)
+	pe.SpreadAngle = Vector2.new(180, 180)
+	pe.Parent = flashPart
+	pe:Emit(40)
+
+	local tween = TweenService:Create(flashPart, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(6, 6, 6),
+		Transparency = 1,
+	})
+	tween:Play()
+	tween.Completed:Connect(function()
+		flashPart:Destroy()
+	end)
+end
+
+function CombatVFXController.SpawnBlockSparks(position: Vector3)
+	local sparkPart = Instance.new("Part")
+	sparkPart.Position = position
+	sparkPart.Transparency = 1
+	sparkPart.Anchored = true
+	sparkPart.CanCollide = false
+	sparkPart.Parent = workspace
+
+	local pe = Instance.new("ParticleEmitter")
+	pe.Texture = "rbxassetid://242200234"
+	pe.Color = ColorSequence.new(Color3.fromRGB(200, 220, 255))
+	pe.Size = NumberSequence.new(0.4, 0)
+	pe.Lifetime = NumberRange.new(0.1, 0.2)
+	pe.Rate = 60
+	pe.Speed = NumberRange.new(15, 25)
+	pe.Parent = sparkPart
+	pe:Emit(15)
+
+	task.delay(0.5, function()
+		sparkPart:Destroy()
+	end)
+end
+
 function CombatVFXController.SpawnMagmaCrescentCleave(origin: Vector3, direction: Vector3)
 	local normDir = direction.Magnitude > 0 and direction.Unit or Vector3.new(0, 0, -1)
 
@@ -172,9 +243,6 @@ function CombatVFXController.SpawnMagmaCrescentCleave(origin: Vector3, direction
 	end
 end
 
--- =============================================================================
--- 2. CELESTIAL SUNFALL IMPACTS
--- =============================================================================
 function CombatVFXController.SpawnCelestialSunfall(position: Vector3)
 	local beamPart = Instance.new("Part")
 	beamPart.Name = "CelestialSunfallShaft"
@@ -219,21 +287,18 @@ function CombatVFXController.SpawnCelestialSunfall(position: Vector3)
 	end)
 end
 
--- =============================================================================
--- 3. CAMERA SHAKE ENGINE
--- =============================================================================
 function CombatVFXController.AddCameraShake(intensity: number)
 	shakeIntensity = math.clamp(shakeIntensity + intensity, 0, 1.5)
 end
 
 -- =============================================================================
--- 4. FLOATING ANIMATED DAMAGE NUMBERS
+-- DYNAMIC SCALED FLOATING DAMAGE NUMBERS & CRITICAL STRIKES
 -- =============================================================================
-function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number, isCrit: boolean?)
+function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number, isCrit: boolean?, customColor: Color3?, prefixText: string?)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "DamageNumberGui"
-	billboard.Size = UDim2.new(0, 120, 0, 40)
-	billboard.StudsOffsetWorldSpace = position + Vector3.new(math.random(-1, 1), 2, math.random(-1, 1))
+	billboard.Size = if isCrit then UDim2.new(0, 180, 0, 50) else UDim2.new(0, 140, 0, 40)
+	billboard.StudsOffsetWorldSpace = position + Vector3.new(math.random(-10, 10) / 10, 2, math.random(-10, 10) / 10)
 	billboard.AlwaysOnTop = true
 	billboard.Adornee = workspace.Terrain
 	billboard.Parent = workspace
@@ -241,21 +306,41 @@ function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, 0, 1, 0)
 	label.BackgroundTransparency = 1
-	label.Text = tostring(math.floor(damage))
-	label.Font = UIAssets.Fonts.Header or Enum.Font.Fondamento
-	label.TextSize = if isCrit then 28 else 20
-	label.TextColor3 = if isCrit then Color3.fromRGB(255, 215, 0) else Color3.fromRGB(255, 255, 255)
-	label.TextStrokeTransparency = 0
-	label.TextStrokeColor3 = Color3.fromRGB(20, 20, 20)
+
+	local formattedNum = tostring(math.floor(damage))
+	if prefixText then
+		label.Text = string.format("%s %s", prefixText, formattedNum)
+	elseif isCrit then
+		label.Text = string.format("CRIT! %s", formattedNum)
+	else
+		label.Text = formattedNum
+	end
+
+	label.Font = Enum.Font.LuckiestGuy
+
+	-- Dynamic Font Size Scaling
+	if isCrit then
+		label.TextSize = 34
+		label.TextColor3 = customColor or Color3.fromRGB(255, 215, 0) -- Radiant Gold
+		label.TextStrokeTransparency = 0
+		label.TextStrokeColor3 = Color3.fromRGB(130, 25, 0) -- Fiery Crimson Outline
+	else
+		local baseSize = math.clamp(20 + math.floor(damage / 15), 20, 26)
+		label.TextSize = baseSize
+		label.TextColor3 = customColor or Color3.fromRGB(255, 255, 255)
+		label.TextStrokeTransparency = 0
+		label.TextStrokeColor3 = Color3.fromRGB(20, 20, 20)
+	end
+
 	label.Parent = billboard
 
-	local targetOffset = billboard.StudsOffsetWorldSpace + Vector3.new(0, 3, 0)
+	local targetOffset = billboard.StudsOffsetWorldSpace + Vector3.new(0, isCrit and 4.2 or 3.0, 0)
 
-	local floatTween = TweenService:Create(billboard, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+	local floatTween = TweenService:Create(billboard, TweenInfo.new(isCrit and 0.95 or 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		StudsOffsetWorldSpace = targetOffset,
 	})
 
-	local fadeTween = TweenService:Create(label, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+	local fadeTween = TweenService:Create(label, TweenInfo.new(isCrit and 0.95 or 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 		TextTransparency = 1,
 		TextStrokeTransparency = 1,
 	})
