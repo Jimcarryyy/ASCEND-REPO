@@ -3,6 +3,7 @@
     RemoteEvents.luau
     Location: src/ReplicatedStorage/Shared/Network/RemoteEvents.luau
     Centralized network remote management for ASCEND.
+    Instantiates all official game remotes under ReplicatedStorage.Remotes.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -23,6 +24,12 @@ export type RemoteName =
 	| "MarketAction"
 	| "MonetizationAction"
 	| "ArenaAction"
+	| "ArenaRegister"
+	| "ArenaMatchUpdate"
+	| "DialogueEvent"
+	| "UpdateQuestTracker"
+	| "QuestAction"
+	| "UpdateSect"
 
 local ALL_REMOTES: { RemoteName } = {
 	"CombatAction",
@@ -39,6 +46,12 @@ local ALL_REMOTES: { RemoteName } = {
 	"MarketAction",
 	"MonetizationAction",
 	"ArenaAction",
+	"ArenaRegister",
+	"ArenaMatchUpdate",
+	"DialogueEvent",
+	"UpdateQuestTracker",
+	"QuestAction",
+	"UpdateSect",
 }
 
 local RemoteEvents = {}
@@ -70,7 +83,7 @@ function RemoteEvents.Init(): Folder
 		end
 		return newFolder
 	else
-		local waitedFolder = ReplicatedStorage:WaitForChild("Remotes", 10) :: Folder?
+		local waitedFolder = ReplicatedStorage:WaitForChild("Remotes", 15) :: Folder?
 		if not waitedFolder then
 			error("[RemoteEvents] Client timed out waiting for 'Remotes' folder in ReplicatedStorage!")
 		end
@@ -79,7 +92,7 @@ function RemoteEvents.Init(): Folder
 	end
 end
 
-function RemoteEvents.GetRemote(name: RemoteName): RemoteEvent
+function RemoteEvents.GetRemote(name: string): RemoteEvent
 	local folder = RemoteEvents.Init()
 
 	local remote = folder:FindFirstChild(name) :: RemoteEvent?

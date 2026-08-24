@@ -2,10 +2,9 @@
 --[[
     SkillBarController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
-    Client controller for Combat Action Bars:
-    - Manages Desktop SkillsGUI (M1, Q, E, F, SHIFT).
-    - Builds and drives the Native Transparent Mobile Touch Action Cluster on Phone/Tablet.
-    - Synchronizes real-time cooldown masks and timer overlays across both platforms.
+    Combat Action Bar Manager:
+    - Desktop SkillsGUI (M1, Q, E, F, SHIFT).
+    - Complete 6-Button Mobile Touch Cluster (M1, Q, E, F, DASH, 🛡️ BLOCK/PARRY).
 ]]
 
 local Players = game:GetService("Players")
@@ -50,12 +49,9 @@ function SkillBarController.Init()
 	end
 
 	RunService.RenderStepped:Connect(SkillBarController.UpdateCooldowns)
-	print("[ASCEND] SkillBarController Initialized with Native Mobile Touch Controls.")
+	print("[ASCEND] SkillBarController Initialized (Desktop & Complete 6-Button Mobile Cluster).")
 end
 
--- =============================================================================
--- 1. DESKTOP SKILLS GUI
--- =============================================================================
 function SkillBarController.HookDesktopUI(skillsGui: ScreenGui)
 	local skillFrame = skillsGui:WaitForChild("SkillFrame", 5) :: Frame?
 	if not skillFrame then return end
@@ -64,7 +60,7 @@ function SkillBarController.HookDesktopUI(skillsGui: ScreenGui)
 		["M1"]   = { FrameName = "M1_SKILL",   TextName = "M1_TEXT",   Cooldown = 0.38 },
 		["Q"]    = { FrameName = "Q_SKILL",    TextName = "Q_TEXT",    Cooldown = 3.0 },
 		["E"]    = { FrameName = "E_SKILL",    TextName = "E_TEXT",    Cooldown = 5.0 },
-		["F"]    = { FrameName = "F_SKILL",    TextName = "F_TEXT",    Cooldown = 0.5 },
+		["F"]    = { FrameName = "F_SKILL",    TextName = "F_TEXT",    Cooldown = 2.5 },
 		["Dash"] = { FrameName = "DASH_SKILL", TextName = "DASH_TEXT", Cooldown = 3.0 },
 	}
 
@@ -118,9 +114,6 @@ function SkillBarController.HookDesktopUI(skillsGui: ScreenGui)
 	end
 end
 
--- =============================================================================
--- 2. NATIVE ROBLOX-STYLED TRANSPARENT MOBILE TOUCH CLUSTER
--- =============================================================================
 function SkillBarController.CreateNativeMobileTouchCluster()
 	if mobileTouchGui then mobileTouchGui:Destroy() end
 
@@ -132,18 +125,20 @@ function SkillBarController.CreateNativeMobileTouchCluster()
 
 	local buttonCluster = Instance.new("Frame")
 	buttonCluster.Name = "ActionCluster"
-	buttonCluster.Size = UDim2.new(0, 260, 0, 260)
+	buttonCluster.Size = UDim2.new(0, 300, 0, 300)
 	buttonCluster.Position = UDim2.new(1, -20, 1, -20)
 	buttonCluster.AnchorPoint = Vector2.new(1, 1)
 	buttonCluster.BackgroundTransparency = 1
 	buttonCluster.Parent = mobileTouchGui
 
+	-- 6-Button Mobile Combat Layout
 	local buttonLayouts = {
-		["M1"]   = { Name = "M1_BTN",   Label = "⚔️\nM1",   Size = 72, Pos = UDim2.new(1, -75, 1, -165), Cooldown = 0.38, IsMain = true },
-		["Dash"] = { Name = "DASH_BTN", Label = "💨\nDASH", Size = 54, Pos = UDim2.new(1, -155, 1, -85),  Cooldown = 3.0, IsMain = false },
-		["F"]    = { Name = "F_BTN",    Label = "🛡️\nPARRY",Size = 54, Pos = UDim2.new(1, -155, 1, -160), Cooldown = 0.5, IsMain = false },
-		["Q"]    = { Name = "Q_BTN",    Label = "🌪️\nQ",    Size = 50, Pos = UDim2.new(1, -75, 1, -245),  Cooldown = 3.0, IsMain = false },
-		["E"]    = { Name = "E_BTN",    Label = "🗡️\nE",    Size = 50, Pos = UDim2.new(1, -155, 1, -235), Cooldown = 5.0, IsMain = false },
+		["M1"]   = { Name = "M1_BTN",    Label = "⚔️\nM1",     Size = 72, Pos = UDim2.new(1, -75, 1, -165), Cooldown = 0.38, IsMain = true },
+		["Dash"] = { Name = "DASH_BTN",  Label = "💨\nDASH",   Size = 54, Pos = UDim2.new(1, -155, 1, -85),  Cooldown = 3.0, IsMain = false },
+		["T"]    = { Name = "BLOCK_BTN", Label = "🛡️\nPARRY",  Size = 54, Pos = UDim2.new(1, -155, 1, -160), Cooldown = 0.5, IsMain = false },
+		["F"]    = { Name = "F_BTN",     Label = "⚡\nSLAM",   Size = 50, Pos = UDim2.new(1, -235, 1, -160), Cooldown = 2.5, IsMain = false },
+		["Q"]    = { Name = "Q_BTN",     Label = "🌪️\nQ",      Size = 50, Pos = UDim2.new(1, -75, 1, -245),  Cooldown = 3.0, IsMain = false },
+		["E"]    = { Name = "E_BTN",     Label = "🗡️\nE",      Size = 50, Pos = UDim2.new(1, -155, 1, -235), Cooldown = 5.0, IsMain = false },
 	}
 
 	for skillKey, cfg in pairs(buttonLayouts) do
@@ -153,7 +148,7 @@ function SkillBarController.CreateNativeMobileTouchCluster()
 		btn.Position = cfg.Pos
 		btn.AnchorPoint = Vector2.new(0.5, 0.5)
 		btn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-		btn.BackgroundTransparency = 0.45 -- Native Roblox frosted look
+		btn.BackgroundTransparency = 0.45
 		btn.Text = cfg.Label
 		btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 		btn.Font = Enum.Font.FredokaOne
@@ -165,7 +160,7 @@ function SkillBarController.CreateNativeMobileTouchCluster()
 		btn.Parent = buttonCluster
 
 		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(1, 0) -- Perfect Circle
+		corner.CornerRadius = UDim.new(1, 0)
 		corner.Parent = btn
 
 		local stroke = Instance.new("UIStroke")
@@ -174,7 +169,6 @@ function SkillBarController.CreateNativeMobileTouchCluster()
 		stroke.Thickness = 1.5
 		stroke.Parent = btn
 
-		-- Circular Cooldown Mask
 		local overlay = Instance.new("Frame")
 		overlay.Name = "CooldownOverlay"
 		overlay.Size = UDim2.new(1, 0, 0, 0)
@@ -213,7 +207,6 @@ function SkillBarController.CreateNativeMobileTouchCluster()
 			IsOnCooldown = false,
 		}
 
-		-- Touch Events with Push Feedback
 		btn.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
 				TweenService:Create(btn, TweenInfo.new(0.08), { BackgroundTransparency = 0.2, Size = UDim2.new(0, cfg.Size * 0.92, 0, cfg.Size * 0.92) }):Play()
@@ -242,20 +235,17 @@ function SkillBarController.OnActionTriggered(skillKey: string, isPress: boolean
 		if req.TriggerM1 then req.TriggerM1() end
 	elseif skillKey == "Dash" and isPress then
 		if req.TriggerDash then req.TriggerDash() end
-	elseif skillKey == "F" then
+	elseif skillKey == "T" then
 		if isPress then
 			if req.StartBlock then req.StartBlock() end
 		else
 			if req.StopBlock then req.StopBlock() end
 		end
-	elseif (skillKey == "Q" or skillKey == "E") and isPress then
+	elseif (skillKey == "Q" or skillKey == "E" or skillKey == "F") and isPress then
 		if req.TriggerSkill then req.TriggerSkill(skillKey) end
 	end
 end
 
--- =============================================================================
--- 3. COOLDOWN PROPAGATION ENGINE
--- =============================================================================
 function SkillBarController.TriggerCooldown(skillKey: string)
 	local now = os.clock()
 

@@ -2,131 +2,91 @@
 --[[
     FocusTargetController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/FocusTargetController.luau
-    Handles Focus Target Combat Mode: Center crosshair UI, Humanoid strafe locking,
-    and Upper Body / RootJoint orientation tracking towards mouse/aim point.
+    Azure Center Reticle and Upper-Body Focus Targeting Controller.
+    Bound to MouseButton3 (Middle Click) and Z key.
 ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
 local FocusTargetController = {}
+FocusTargetController.__index = FocusTargetController
 
 local player = Players.LocalPlayer
-local mouse = player:GetMouse()
-local camera = workspace.CurrentCamera
+local camera = Workspace.CurrentCamera
 
-local isFocusMode = false
-local reticleGui: ScreenGui?
-local reticleFrame: Frame?
+local isFocusActive = false
+local focusReticleGui: ScreenGui? = nil
+local reticleImage: ImageLabel? = nil
+
+local function CreateReticleGui()
+	if focusReticleGui then return end
+
+	local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
+	focusReticleGui = Instance.new("ScreenGui")
+	focusReticleGui.Name = "FocusTargetReticleGui"
+	focusReticleGui.ResetOnSpawn = false
+	focusReticleGui.Enabled = false
+	focusReticleGui.Parent = playerGui
+
+	reticleImage = Instance.new("ImageLabel")
+	reticleImage.Name = "AzureReticle"
+	reticleImage.Size = UDim2.new(0, 36, 0, 36)
+	reticleImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+	reticleImage.AnchorPoint = Vector2.new(0.5, 0.5)
+	reticleImage.BackgroundTransparency = 1
+	reticleImage.Image = "rbxassetid://13165215707"
+	reticleImage.ImageColor3 = Color3.fromRGB(100, 220, 255)
+	reticleImage.Parent = focusReticleGui
+end
 
 function FocusTargetController.Init()
-	FocusTargetController.CreateReticleUI()
+	CreateReticleGui()
 
-	-- Toggle Focus Mode with LeftControl or Middle Click
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 		if gameProcessed then return end
-		if input.KeyCode == Enum.KeyCode.LeftControl or input.UserInputType == Enum.UserInputType.MouseButton3 then
-			FocusTargetController.ToggleFocusMode()
+		-- Bound to Middle Click (MouseButton3) and Z key
+		if input.UserInputType == Enum.UserInputType.MouseButton3 or input.KeyCode == Enum.KeyCode.Z then
+			FocusTargetController.ToggleFocus()
 		end
 	end)
 
-	-- Upper body & RootPart tracking loop
-	RunService.RenderStepped:Connect(function(dt)
-		if not isFocusMode then return end
+	RunService.RenderStepped:Connect(function()
+		if not isFocusActive then return end
 
 		local character = player.Character
-		if not character then return end
-
-		local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		if not hrp or not humanoid or humanoid.Health <= 0 then return end
-
-		-- Check if player is meditating
-		if character:GetAttribute("IsMeditating") == true then return end
-
-		humanoid.AutoRotate = false
-
-		-- Calculate mouse aim direction in 3D world space
-		local mousePos = mouse.Hit.Position
-		local lookVector = (mousePos - hrp.Position)
-		local horizontalDir = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
-
-		if horizontalDir.Magnitude > 0.1 then
-			-- Smoothly twist RootPart to match horizontal mouse aim
-			local targetCFrame = CFrame.lookAt(hrp.Position, hrp.Position + horizontalDir)
-			hrp.CFrame = hrp.CFrame:Lerp(targetCFrame, math.clamp(dt * 20, 0, 1))
+		if not character or character:GetAttribute("IsMeditating") == true then
+			if isFocusActive then FocusTargetController.SetFocus(false) end
+			return
 		end
 
-		-- Upper body / RootJoint Pitch adjustment
-		local rootJoint = hrp:FindFirstChild("RootJoint") :: Motor6D?
-		if rootJoint then
-			local pitchAngle = math.clamp(math.asin(lookVector.Unit.Y), math.rad(-35), math.rad(35))
-			local targetC0 = CFrame.new(0, 0, 0) * CFrame.Angles(math.rad(-90) + pitchAngle * 0.4, 0, math.rad(180))
-			rootJoint.C0 = rootJoint.C0:Lerp(targetC0, math.clamp(dt * 15, 0, 1))
+		local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not hrp then return end
+
+		if camera then
+			local lookVec = camera.CFrame.LookVector
+			local flatLook = Vector3.new(lookVec.X, 0, lookVec.Z).Unit
+			if flatLook.Magnitude > 0.1 then
+				hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatLook)
+			end
 		end
 	end)
 
-	print("[ASCEND] FocusTargetController Initialized with Upper-Body Aim Lock.")
+	print("[ASCEND] FocusTargetController Initialized (MMB / Z Focus Aiming).")
 end
 
-function FocusTargetController.CreateReticleUI()
-	local playerGui = player:WaitForChild("PlayerGui")
-	reticleGui = Instance.new("ScreenGui")
-	reticleGui.Name = "FocusReticleGUI"
-	reticleGui.ResetOnSpawn = false
-	reticleGui.Enabled = false
-
-	reticleFrame = Instance.new("Frame")
-	reticleFrame.Name = "Reticle"
-	reticleFrame.Size = UDim2.new(0, 16, 0, 16)
-	reticleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-	reticleFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-	reticleFrame.BackgroundTransparency = 1
-
-	local circle = Instance.new("Frame")
-	circle.Size = UDim2.new(0, 8, 0, 8)
-	circle.AnchorPoint = Vector2.new(0.5, 0.5)
-	circle.Position = UDim2.new(0.5, 0, 0.5, 0)
-	circle.BackgroundColor3 = Color3.fromRGB(0, 220, 255)
-	circle.BorderSizePixel = 0
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(1, 0)
-	corner.Parent = circle
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(15, 23, 42)
-	stroke.Thickness = 1.5
-	stroke.Parent = circle
-
-	circle.Parent = reticleFrame
-	reticleFrame.Parent = reticleGui
-	reticleGui.Parent = playerGui
+function FocusTargetController.ToggleFocus()
+	FocusTargetController.SetFocus(not isFocusActive)
 end
 
-function FocusTargetController.ToggleFocusMode()
-	isFocusMode = not isFocusMode
-	if reticleGui then
-		reticleGui.Enabled = isFocusMode
+function FocusTargetController.SetFocus(active: boolean)
+	isFocusActive = active
+	if focusReticleGui then
+		focusReticleGui.Enabled = isFocusActive
 	end
-
-	local character = player.Character
-	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
-	if humanoid and not isFocusMode then
-		humanoid.AutoRotate = true
-
-		local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local rootJoint = if hrp then hrp:FindFirstChild("RootJoint") :: Motor6D? else nil
-		if rootJoint then
-			rootJoint.C0 = CFrame.new(0, 0, 0) * CFrame.Angles(math.rad(-90), 0, math.rad(180))
-		end
-	end
-end
-
-function FocusTargetController.IsFocusMode(): boolean
-	return isFocusMode
+	UserInputService.MouseBehavior = if isFocusActive then Enum.MouseBehavior.LockCenter else Enum.MouseBehavior.Default
 end
 
 return FocusTargetController

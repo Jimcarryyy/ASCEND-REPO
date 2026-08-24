@@ -2,952 +2,787 @@
 --[[
     InventoryController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
-    Client UI controller for ASCEND Spirit Pouch.
-    Theme: Dark Obsidian (#111827), Antique Gold (#8B6B32), Ivory Text (#F1E8D2), and Rarity Accent Borders.
-    Features: Tab / I Keybinds, TopMenu Bag integration, 60-slot grid, 3D character doll, and real-time sword equipping.
+    Directly bound to StarterGui.SpiritPouchInventoryGui:
+    - Dual-device adaptive grid: 6 slots/row on PC ({0, 100}, {0, 100}), 4 slots/row on Phone ({0, 56}, {0, 56})
+    - SelectedGlow alignment guarantee (fits slot frame precisely on all resolutions)
+    - Universal 3D Viewport Engine: 3D models for Swords (Weapons) & Herbs (Herbs)
+    - Dynamic 3D spinning inspection preview for all 3D items
+    - 2D Sprite fallback for pills and flat icons
+    - Real-time DataStore item population, search, category filtering, and rarity sorting
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
+local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
-local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local InventoryController = {}
+InventoryController.__index = InventoryController
+
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 
-local UI_FONT = Enum.Font.FredokaOne
-local T = UIAssets.Theme
+local weaponsFolder = ReplicatedStorage:FindFirstChild("Weapons") :: Folder?
+local herbsFolder = ReplicatedStorage:FindFirstChild("Herbs") :: Folder?
+local itemsFolder = ReplicatedStorage:FindFirstChild("Items") or ReplicatedStorage:FindFirstChild("Models") :: Folder?
 
--- UNIFIED DARK OBSIDIAN & ANTIQUE GOLD PALETTE
-local COLOR_LIGHT_MAIN   = T.DeepBackground   -- Color3.fromHex("#111827")
-local COLOR_LIGHT_PANEL  = T.SecondarySurface -- Color3.fromHex("#1C2638")
-local COLOR_LIGHT_CARD   = T.RaisedSurface    -- Color3.fromHex("#273246")
-local COLOR_LIGHT_BORDER = T.MainBorder       -- Color3.fromHex("#8B6B32")
-
-local COLOR_TEXT_MAIN    = T.PrimaryText      -- Color3.fromHex("#F1E8D2")
-local COLOR_TEXT_SUB     = T.SecondaryText    -- Color3.fromHex("#A9A99F")
-local COLOR_AZURE_BLUE   = T.SpiritBlue       -- Color3.fromHex("#3B82F6")
-local COLOR_HP_GREEN     = T.JadeAccent       -- Color3.fromHex("#10B981")
-local COLOR_ACTION_GOLD  = T.HighlightBorder  -- Color3.fromHex("#C49A4A")
-local COLOR_DANGER_RED   = T.Vermilion        -- Color3.fromHex("#E63946")
-
-local spiritPouchGui: ScreenGui
-local overlayBackdrop: Frame
-local mainModal: Frame
-local searchBox: TextBox
-local capacityLabel: TextLabel
-local itemGrid: ScrollingFrame
-local sortDropdownBtn: TextButton
-
-local characterViewport: ViewportFrame
-local statsCardContainer: Frame
-local realmTitleLabel: TextLabel
-local hpBarFill: Frame
-local hpBarText: TextLabel
-local qiBarFill: Frame
-local qiBarText: TextLabel
-
-local itemCardContainer: Frame
-local tooltipTitle: TextLabel
-local tooltipRarityBadge: TextLabel
-local tooltipIconBox: Frame
-local tooltipIcon: ImageLabel
-local tooltipStatsBox: Frame
-local tooltipStats: TextLabel
-local tooltipDescBox: Frame
-local tooltipDesc: TextLabel
-local actionPrimaryBtn: TextButton
-local actionDropBtn: TextButton
-
-local gearSlots: { [string]: Frame } = {}
-local slotButtons: { [number]: Frame } = {}
-local currentInventory: { [number]: any } = {}
-local selectedSlotIndex: number? = 1
-
-local activeCategoryFilter: string = "ALL"
-local currentSearchQuery: string = ""
-
-local updateInventoryRemote: RemoteEvent
 local inventoryActionRemote: RemoteEvent
+local updateInventoryRemote: RemoteEvent
 
-function InventoryController.Init()
-	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
-	inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
+-- UI Element References
+local screenGui: ScreenGui
+local overlayBackdrop: Frame
+local mainFrame: GuiObject
+local headerFrame: Frame
+local closeButton: GuiButton
+local tabContainer: GuiObject
+local tabFrame: Frame
+local gridSection: GuiObject
+local itemGridScroll: ScrollingFrame
+local gridLayout: UIGridLayout
+local slotTemplate: GuiObject
+local searchBox: TextBox
+local sortImageButton: GuiButton
+local sortTextLabel: TextLabel?
+local inspectionSection: GuiObject
+local itemNameLabel: TextLabel
+local itemRarityLabel: TextLabel
+local itemPreviewFrame: Frame
+local itemIconLarge: ImageLabel
+local inspectionViewport: ViewportFrame?
+local activeInspectionSpinCleanup: (() -> ())?
+local statBox: Frame
+local statLabel: TextLabel
+local descriptionLabel: TextLabel
+local useImageButton: GuiButton
+local useTextLabel: TextLabel?
+local dropImageButton: GuiButton
+local dropTextLabel: TextLabel?
 
-	InventoryController.BuildUI()
+-- State Cache
+local inventoryCache: { [number]: { ItemId: string, Count: number, Quality: string? } } = {}
+local activeSlotClones: { GuiObject } = {}
+local selectedSlotIndex: number? = nil
+local currentCategory: string = "ALL"
+local searchQuery: string = ""
+local currentSortMode: "Rarity" | "Name" | "Count" = "Rarity"
+local isOpen: boolean = false
 
-	updateInventoryRemote.OnClientEvent:Connect(function(inventoryData: { [number]: any })
-		currentInventory = inventoryData or {}
-		InventoryController.RefreshGrid()
-		InventoryController.UpdateVitalStats()
-		InventoryController.Update3DDoll()
-	end)
+local CATEGORY_MAP: { [string]: { string } } = {
+	["ALL"]         = {},
+	["CONSUMABLES"] = { "Consumable", "Pill", "Dan" },
+	["SUPPLIES"]    = { "Consumable", "Pill", "Dan" },
+	["CURRENCIES"]  = { "Currency", "SpiritStones" },
+	["MONEY"]       = { "Currency", "SpiritStones" },
+	["INGREDIENTS"] = { "Material", "Herb", "Ingredient" },
+	["MATS"]        = { "Material", "Herb", "Ingredient" },
+	["EQUIPMENT"]   = { "Weapon", "FlyingSword", "Sword", "Equipment", "Artifact", "Armor", "Crest" },
+	["GEAR"]        = { "Weapon", "FlyingSword", "Sword", "Equipment", "Artifact", "Armor", "Crest" },
+}
 
-	-- Keybind Listener for Tab & I
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if input.KeyCode == Enum.KeyCode.Tab or input.KeyCode == Enum.KeyCode.I then
-			InventoryController.Toggle()
-			return
-		end
+-- Rarity Palette
+type RarityColorToken = { Color: Color3, TextColor: Color3 }
 
-		if gameProcessed then return end
-	end)
+local RARITY_COLORS: { [string]: RarityColorToken } = {
+	["Mortal"]    = { Color = Color3.fromHex("#64748B"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Common"]    = { Color = Color3.fromHex("#64748B"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Spiritual"] = { Color = Color3.fromHex("#10B981"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Uncommon"]  = { Color = Color3.fromHex("#10B981"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Earth"]     = { Color = Color3.fromHex("#3B82F6"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Rare"]      = { Color = Color3.fromHex("#3B82F6"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Heaven"]    = { Color = Color3.fromHex("#A855F7"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Epic"]      = { Color = Color3.fromHex("#A855F7"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Legendary"] = { Color = Color3.fromHex("#F59E0B"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Mythic"]    = { Color = Color3.fromHex("#E11D48"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Sovereign"] = { Color = Color3.fromHex("#22D3EE"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Celestial"] = { Color = Color3.fromHex("#F8FAFC"), TextColor = Color3.fromHex("#1E232A") },
+}
 
-	task.defer(function()
-		task.wait(0.8)
-		inventoryActionRemote:FireServer({ Action = "RequestSync" })
-	end)
+local DEFAULT_RARITY_TOKEN: RarityColorToken = {
+	Color = Color3.fromHex("#64748B"),
+	TextColor = Color3.fromHex("#FFFFFF"),
+}
 
-	print("[ASCEND] InventoryController Initialized with Tab / I Keybinds.")
+local function GetRarityToken(rarityName: string): RarityColorToken
+	return RARITY_COLORS[rarityName] or DEFAULT_RARITY_TOKEN
 end
 
-function InventoryController.Toggle()
-	if not overlayBackdrop then return end
-	overlayBackdrop.Visible = not overlayBackdrop.Visible
-
-	if overlayBackdrop.Visible then
-		inventoryActionRemote:FireServer({ Action = "RequestSync" })
-		InventoryController.RefreshGrid()
-		InventoryController.UpdateVitalStats()
-		InventoryController.Update3DDoll()
-	end
+local function IsTouchDevice(): boolean
+	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
 
-function InventoryController.BuildUI()
-	local oldGui = playerGui:FindFirstChild("SpiritPouchInventoryGui")
-	if oldGui then oldGui:Destroy() end
-
-	spiritPouchGui = Instance.new("ScreenGui")
-	spiritPouchGui.Name = "SpiritPouchInventoryGui"
-	spiritPouchGui.ResetOnSpawn = false
-	spiritPouchGui.DisplayOrder = 25
-	spiritPouchGui.Enabled = true
-	spiritPouchGui.Parent = playerGui
-
-	overlayBackdrop = Instance.new("Frame")
-	overlayBackdrop.Name = "OverlayBackdrop"
-	overlayBackdrop.Size = UDim2.new(1, 0, 1, 0)
-	overlayBackdrop.BackgroundTransparency = 1
-	overlayBackdrop.BorderSizePixel = 0
-	overlayBackdrop.Visible = false
-	overlayBackdrop.Parent = spiritPouchGui
-
-	mainModal = Instance.new("Frame")
-	mainModal.Name = "MainModal"
-	mainModal.Size = UDim2.new(0, 1260, 0, 680)
-	mainModal.Position = UDim2.new(0.5, -630, 0.5, -340)
-	mainModal.BackgroundColor3 = COLOR_LIGHT_MAIN
-	mainModal.BorderSizePixel = 0
-	mainModal.Parent = overlayBackdrop
-
-	local mStroke = Instance.new("UIStroke")
-	mStroke.Color = COLOR_LIGHT_BORDER
-	mStroke.Thickness = 1.5
-	mStroke.Parent = mainModal
-
-	local headerTitle = Instance.new("TextLabel")
-	headerTitle.Size = UDim2.new(1, 0, 0, 52)
-	headerTitle.BackgroundTransparency = 1
-	headerTitle.Text = "SPIRIT POUCH"
-	headerTitle.TextColor3 = COLOR_TEXT_MAIN
-	headerTitle.Font = UI_FONT
-	headerTitle.TextSize = 36
-	headerTitle.Parent = mainModal
-
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.new(0, 36, 0, 36)
-	closeBtn.Position = UDim2.new(1, -44, 0, 8)
-	closeBtn.BackgroundColor3 = COLOR_DANGER_RED
-	closeBtn.Text = "X"
-	closeBtn.TextColor3 = COLOR_TEXT_MAIN
-	closeBtn.Font = UI_FONT
-	closeBtn.TextSize = 20
-	closeBtn.Parent = mainModal
-
-	closeBtn.MouseButton1Click:Connect(function()
-		overlayBackdrop.Visible = false
-	end)
-
-	-- TAB BAR
-	local verticalTabBar = Instance.new("Frame")
-	verticalTabBar.Name = "VerticalTabBar"
-	verticalTabBar.Size = UDim2.new(0, 120, 1, -64)
-	verticalTabBar.Position = UDim2.new(0, 12, 0, 52)
-	verticalTabBar.BackgroundColor3 = COLOR_LIGHT_PANEL
-	verticalTabBar.BorderSizePixel = 0
-	verticalTabBar.Parent = mainModal
-
-	local vtStroke = Instance.new("UIStroke")
-	vtStroke.Color = COLOR_LIGHT_BORDER
-	vtStroke.Thickness = 1.5
-	vtStroke.Parent = verticalTabBar
-
-	local vtLayout = Instance.new("UIListLayout")
-	vtLayout.FillDirection = Enum.FillDirection.Vertical
-	vtLayout.Padding = UDim.new(0, 8)
-	vtLayout.Parent = verticalTabBar
-
-	local vtPadding = Instance.new("UIPadding")
-	vtPadding.PaddingTop = UDim.new(0, 8)
-	vtPadding.PaddingLeft = UDim.new(0, 6)
-	vtPadding.PaddingRight = UDim.new(0, 6)
-	vtPadding.Parent = verticalTabBar
-
-	local iconTabs = {
-		{ Id = "ALL", Label = "ALL" },
-		{ Id = "CONSUMABLE", Label = "CONSUMABLES" },
-		{ Id = "HERB", Label = "INGREDIENTS" },
-		{ Id = "WEAPON", Label = "EQUIPMENT" },
-		{ Id = "CURRENCY", Label = "CURRENCIES" },
-	}
-
-	for idx, tabData in ipairs(iconTabs) do
-		local btn = Instance.new("TextButton")
-		btn.Name = "Tab_" .. tabData.Id
-		btn.Size = UDim2.new(1, 0, 0, 52)
-		btn.BackgroundColor3 = if idx == 1 then COLOR_LIGHT_CARD else COLOR_LIGHT_PANEL
-		btn.Text = tabData.Label
-		btn.TextColor3 = if idx == 1 then COLOR_AZURE_BLUE else COLOR_TEXT_SUB
-		btn.Font = UI_FONT
-		btn.TextSize = 13
-		btn.Parent = verticalTabBar
-
-		local btnStroke = Instance.new("UIStroke")
-		btnStroke.Color = COLOR_LIGHT_BORDER
-		btnStroke.Thickness = 1
-		btnStroke.Parent = btn
-
-		btn.MouseButton1Click:Connect(function()
-			activeCategoryFilter = tabData.Id
-			for _, child in ipairs(verticalTabBar:GetChildren()) do
-				if child:IsA("TextButton") then
-					child.BackgroundColor3 = COLOR_LIGHT_PANEL
-					child.TextColor3 = COLOR_TEXT_SUB
-				end
-			end
-			btn.BackgroundColor3 = COLOR_LIGHT_CARD
-			btn.TextColor3 = COLOR_AZURE_BLUE
-			InventoryController.RefreshGrid()
-		end)
-	end
-
-	-- COLUMN 1: CULTIVATOR HUB
-	local col1 = Instance.new("Frame")
-	col1.Name = "Column1_CultivatorHub"
-	col1.Size = UDim2.new(0, 360, 1, -64)
-	col1.Position = UDim2.new(0, 140, 0, 52)
-	col1.BackgroundColor3 = COLOR_LIGHT_PANEL
-	col1.BorderSizePixel = 0
-	col1.Parent = mainModal
-
-	local col1Stroke = Instance.new("UIStroke")
-	col1Stroke.Color = COLOR_LIGHT_BORDER
-	col1Stroke.Thickness = 1.5
-	col1Stroke.Parent = col1
-
-	local c1Header = Instance.new("TextLabel")
-	c1Header.Size = UDim2.new(1, 0, 0, 40)
-	c1Header.BackgroundColor3 = COLOR_LIGHT_CARD
-	c1Header.Text = "CULTIVATOR"
-	c1Header.TextColor3 = COLOR_TEXT_MAIN
-	c1Header.Font = UI_FONT
-	c1Header.TextSize = 20
-	c1Header.Parent = col1
-
-	characterViewport = Instance.new("ViewportFrame")
-	characterViewport.Name = "CharacterViewport"
-	characterViewport.Size = UDim2.new(0, 220, 0, 300)
-	characterViewport.Position = UDim2.new(0, 12, 0, 48)
-	characterViewport.BackgroundColor3 = COLOR_LIGHT_CARD
-	characterViewport.BorderSizePixel = 0
-	characterViewport.Parent = col1
-
-	local cvStroke = Instance.new("UIStroke")
-	cvStroke.Color = COLOR_LIGHT_BORDER
-	cvStroke.Thickness = 1.5
-	cvStroke.Parent = characterViewport
-
-	local eqContainer = Instance.new("Frame")
-	eqContainer.Size = UDim2.new(0, 108, 0, 300)
-	eqContainer.Position = UDim2.new(1, -120, 0, 48)
-	eqContainer.BackgroundTransparency = 1
-	eqContainer.Parent = col1
-
-	local eqLayout = Instance.new("UIListLayout")
-	eqLayout.FillDirection = Enum.FillDirection.Vertical
-	eqLayout.Padding = UDim.new(0, 10)
-	eqLayout.Parent = eqContainer
-
-	local slotNames = { "HEAD", "ROBE", "WEAPON", "ARTIFACT" }
-	for _, slotName in ipairs(slotNames) do
-		local slot = Instance.new("Frame")
-		slot.Name = "Slot_" .. slotName
-		slot.Size = UDim2.new(1, 0, 0, 67)
-		slot.BackgroundColor3 = COLOR_LIGHT_CARD
-		slot.BorderSizePixel = 0
-		slot.Parent = eqContainer
-
-		local sStroke = Instance.new("UIStroke")
-		sStroke.Color = COLOR_LIGHT_BORDER
-		sStroke.Thickness = 1.5
-		sStroke.Parent = slot
-
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(1, 0, 1, 0)
-		label.BackgroundTransparency = 1
-		label.Text = slotName
-		label.TextColor3 = COLOR_TEXT_SUB
-		label.Font = UI_FONT
-		label.TextSize = 13
-		label.Parent = slot
-
-		gearSlots[slotName] = slot
-	end
-
-	statsCardContainer = Instance.new("Frame")
-	statsCardContainer.Name = "StatsContainerCard"
-	statsCardContainer.Size = UDim2.new(1, -24, 0, 230)
-	statsCardContainer.Position = UDim2.new(0, 12, 1, -242)
-	statsCardContainer.BackgroundColor3 = COLOR_LIGHT_CARD
-	statsCardContainer.BorderSizePixel = 0
-	statsCardContainer.Parent = col1
-
-	local scStroke = Instance.new("UIStroke")
-	scStroke.Color = COLOR_LIGHT_BORDER
-	scStroke.Thickness = 1.5
-	scStroke.Parent = statsCardContainer
-
-	local hpBg = Instance.new("Frame")
-	hpBg.Size = UDim2.new(1, -65, 0, 28)
-	hpBg.Position = UDim2.new(0, 50, 0, 18)
-	hpBg.BackgroundColor3 = COLOR_LIGHT_PANEL
-	hpBg.BorderSizePixel = 0
-	hpBg.Parent = statsCardContainer
-
-	hpBarFill = Instance.new("Frame")
-	hpBarFill.Size = UDim2.new(1, 0, 1, 0)
-	hpBarFill.BackgroundColor3 = COLOR_HP_GREEN
-	hpBarFill.BorderSizePixel = 0
-	hpBarFill.Parent = hpBg
-
-	hpBarText = Instance.new("TextLabel")
-	hpBarText.Size = UDim2.new(1, 0, 1, 0)
-	hpBarText.BackgroundTransparency = 1
-	hpBarText.Text = "800 / 800"
-	hpBarText.TextColor3 = COLOR_TEXT_MAIN
-	hpBarText.Font = UI_FONT
-	hpBarText.TextSize = 13
-	hpBarText.ZIndex = 5
-	hpBarText.Parent = hpBg
-
-	local hpLabel = Instance.new("TextLabel")
-	hpLabel.Size = UDim2.new(0, 40, 0, 28)
-	hpLabel.Position = UDim2.new(0, -45, 0, 0)
-	hpLabel.BackgroundTransparency = 1
-	hpLabel.Text = "HP"
-	hpLabel.TextColor3 = COLOR_TEXT_SUB
-	hpLabel.Font = UI_FONT
-	hpLabel.TextSize = 13
-	hpLabel.TextXAlignment = Enum.TextXAlignment.Right
-	hpLabel.Parent = hpBg
-
-	local qiBg = Instance.new("Frame")
-	qiBg.Size = UDim2.new(1, -65, 0, 28)
-	qiBg.Position = UDim2.new(0, 50, 0, 58)
-	qiBg.BackgroundColor3 = COLOR_LIGHT_PANEL
-	qiBg.BorderSizePixel = 0
-	qiBg.Parent = statsCardContainer
-
-	qiBarFill = Instance.new("Frame")
-	qiBarFill.Size = UDim2.new(1, 0, 1, 0)
-	qiBarFill.BackgroundColor3 = COLOR_AZURE_BLUE
-	qiBarFill.BorderSizePixel = 0
-	qiBarFill.Parent = qiBg
-
-	qiBarText = Instance.new("TextLabel")
-	qiBarText.Size = UDim2.new(1, 0, 1, 0)
-	qiBarText.BackgroundTransparency = 1
-	qiBarText.Text = "800 / 800"
-	qiBarText.TextColor3 = COLOR_TEXT_MAIN
-	qiBarText.Font = UI_FONT
-	qiBarText.TextSize = 13
-	qiBarText.ZIndex = 5
-	qiBarText.Parent = qiBg
-
-	local qiLabel = Instance.new("TextLabel")
-	qiLabel.Size = UDim2.new(0, 40, 0, 28)
-	qiLabel.Position = UDim2.new(0, -45, 0, 0)
-	qiLabel.BackgroundTransparency = 1
-	qiLabel.Text = "QI"
-	qiLabel.TextColor3 = COLOR_TEXT_SUB
-	qiLabel.Font = UI_FONT
-	qiLabel.TextSize = 13
-	qiLabel.TextXAlignment = Enum.TextXAlignment.Right
-	qiLabel.Parent = qiBg
-
-	realmTitleLabel = Instance.new("TextLabel")
-	realmTitleLabel.Size = UDim2.new(1, -24, 0, 28)
-	realmTitleLabel.Position = UDim2.new(0, 12, 0, 108)
-	realmTitleLabel.BackgroundTransparency = 1
-	realmTitleLabel.Text = "Qi Condensation — Tier 1"
-	realmTitleLabel.TextColor3 = COLOR_ACTION_GOLD
-	realmTitleLabel.Font = UI_FONT
-	realmTitleLabel.TextSize = 16
-	realmTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-	realmTitleLabel.Parent = statsCardContainer
-
-	capacityLabel = Instance.new("TextLabel")
-	capacityLabel.Size = UDim2.new(1, -24, 0, 24)
-	capacityLabel.Position = UDim2.new(0, 12, 0, 148)
-	capacityLabel.BackgroundTransparency = 1
-	capacityLabel.Text = "STORAGE  0 / 60 SLOTS"
-	capacityLabel.TextColor3 = COLOR_TEXT_SUB
-	capacityLabel.Font = UI_FONT
-	capacityLabel.TextSize = 14
-	capacityLabel.TextXAlignment = Enum.TextXAlignment.Left
-	capacityLabel.Parent = statsCardContainer
-
-	-- COLUMN 2: INVENTORY GRID
-	local col2 = Instance.new("Frame")
-	col2.Name = "Column2_InventoryGrid"
-	col2.Size = UDim2.new(0, 460, 1, -64)
-	col2.Position = UDim2.new(0, 510, 0, 52)
-	col2.BackgroundColor3 = COLOR_LIGHT_PANEL
-	col2.BorderSizePixel = 0
-	col2.Parent = mainModal
-
-	local col2Stroke = Instance.new("UIStroke")
-	col2Stroke.Color = COLOR_LIGHT_BORDER
-	col2Stroke.Thickness = 1.5
-	col2Stroke.Parent = col2
-
-	local searchBg = Instance.new("Frame")
-	searchBg.Size = UDim2.new(0, 260, 0, 38)
-	searchBg.Position = UDim2.new(0, 12, 0, 10)
-	searchBg.BackgroundColor3 = COLOR_LIGHT_CARD
-	searchBg.BorderSizePixel = 0
-	searchBg.Parent = col2
-
-	local sbStroke = Instance.new("UIStroke")
-	sbStroke.Color = COLOR_LIGHT_BORDER
-	sbStroke.Thickness = 1.5
-	sbStroke.Parent = searchBg
-
-	searchBox = Instance.new("TextBox")
-	searchBox.Size = UDim2.new(1, -12, 1, 0)
-	searchBox.Position = UDim2.new(0, 6, 0, 0)
-	searchBox.BackgroundTransparency = 1
-	searchBox.PlaceholderText = "Search items..."
-	searchBox.Text = ""
-	searchBox.TextColor3 = COLOR_TEXT_MAIN
-	searchBox.PlaceholderColor3 = COLOR_TEXT_SUB
-	searchBox.Font = UI_FONT
-	searchBox.TextSize = 14
-	searchBox.TextXAlignment = Enum.TextXAlignment.Left
-	searchBox.ClearTextOnFocus = false
-	searchBox.Parent = searchBg
-
-	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-		currentSearchQuery = searchBox.Text:lower()
-		InventoryController.RefreshGrid()
-	end)
-
-	sortDropdownBtn = Instance.new("TextButton")
-	sortDropdownBtn.Size = UDim2.new(0, 160, 0, 38)
-	sortDropdownBtn.Position = UDim2.new(1, -172, 0, 10)
-	sortDropdownBtn.BackgroundColor3 = COLOR_LIGHT_CARD
-	sortDropdownBtn.Text = "Sort by Rarity"
-	sortDropdownBtn.TextColor3 = COLOR_TEXT_MAIN
-	sortDropdownBtn.Font = UI_FONT
-	sortDropdownBtn.TextSize = 14
-	sortDropdownBtn.Parent = col2
-
-	itemGrid = Instance.new("ScrollingFrame")
-	itemGrid.Name = "ItemGrid"
-	itemGrid.Size = UDim2.new(1, -20, 1, -64)
-	itemGrid.Position = UDim2.new(0, 10, 0, 56)
-	itemGrid.BackgroundTransparency = 1
-	itemGrid.BorderSizePixel = 0
-	itemGrid.ScrollBarThickness = 4
-	itemGrid.ScrollBarImageColor3 = COLOR_AZURE_BLUE
-	itemGrid.CanvasSize = UDim2.new(0, 0, 0, 1200)
-	itemGrid.Parent = col2
-
-	local gridLayout = Instance.new("UIGridLayout")
-	gridLayout.CellSize = UDim2.new(0, 76, 0, 76)
-	gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
-	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	gridLayout.Parent = itemGrid
-
-	-- COLUMN 3: INSPECTION
-	itemCardContainer = Instance.new("Frame")
-	itemCardContainer.Name = "Column3_ItemInspection"
-	itemCardContainer.Size = UDim2.new(0, 270, 1, -64)
-	itemCardContainer.Position = UDim2.new(0, 978, 0, 52)
-	itemCardContainer.BackgroundColor3 = COLOR_LIGHT_PANEL
-	itemCardContainer.BorderSizePixel = 0
-	itemCardContainer.Parent = mainModal
-
-	local icStroke = Instance.new("UIStroke")
-	icStroke.Color = COLOR_LIGHT_BORDER
-	icStroke.Thickness = 1.5
-	icStroke.Parent = itemCardContainer
-
-	local c3Header = Instance.new("TextLabel")
-	c3Header.Size = UDim2.new(1, 0, 0, 40)
-	c3Header.BackgroundColor3 = COLOR_LIGHT_CARD
-	c3Header.Text = "ITEM INSPECTION"
-	c3Header.TextColor3 = COLOR_TEXT_MAIN
-	c3Header.Font = UI_FONT
-	c3Header.TextSize = 18
-	c3Header.Parent = itemCardContainer
-
-	tooltipTitle = Instance.new("TextLabel")
-	tooltipTitle.Size = UDim2.new(1, -20, 0, 36)
-	tooltipTitle.Position = UDim2.new(0, 10, 0, 48)
-	tooltipTitle.BackgroundTransparency = 1
-	tooltipTitle.Font = UI_FONT
-	tooltipTitle.TextSize = 18
-	tooltipTitle.TextWrapped = true
-	tooltipTitle.TextColor3 = COLOR_TEXT_MAIN
-	tooltipTitle.TextXAlignment = Enum.TextXAlignment.Center
-	tooltipTitle.Parent = itemCardContainer
-
-	tooltipRarityBadge = Instance.new("TextLabel")
-	tooltipRarityBadge.Size = UDim2.new(1, -20, 0, 22)
-	tooltipRarityBadge.Position = UDim2.new(0, 10, 0, 86)
-	tooltipRarityBadge.BackgroundTransparency = 1
-	tooltipRarityBadge.Font = UI_FONT
-	tooltipRarityBadge.TextSize = 14
-	tooltipRarityBadge.TextColor3 = COLOR_TEXT_MAIN
-	tooltipRarityBadge.Text = "COMMON ITEM"
-	tooltipRarityBadge.TextXAlignment = Enum.TextXAlignment.Center
-	tooltipRarityBadge.Parent = itemCardContainer
-
-	tooltipIconBox = Instance.new("Frame")
-	tooltipIconBox.Size = UDim2.new(0, 110, 0, 110)
-	tooltipIconBox.Position = UDim2.new(0.5, -55, 0, 112)
-	tooltipIconBox.BackgroundColor3 = COLOR_LIGHT_CARD
-	tooltipIconBox.BorderSizePixel = 0
-	tooltipIconBox.Parent = itemCardContainer
-
-	local ibStroke = Instance.new("UIStroke")
-	ibStroke.Name = "BoxStroke"
-	ibStroke.Color = COLOR_LIGHT_BORDER
-	ibStroke.Thickness = 1.5
-	ibStroke.Parent = tooltipIconBox
-
-	tooltipIcon = Instance.new("ImageLabel")
-	tooltipIcon.Size = UDim2.new(1, -12, 1, -12)
-	tooltipIcon.Position = UDim2.new(0, 6, 0, 6)
-	tooltipIcon.BackgroundTransparency = 1
-	tooltipIcon.ScaleType = Enum.ScaleType.Fit
-	tooltipIcon.Parent = tooltipIconBox
-
-	tooltipStatsBox = Instance.new("Frame")
-	tooltipStatsBox.Size = UDim2.new(1, -24, 0, 75)
-	tooltipStatsBox.Position = UDim2.new(0, 12, 0, 232)
-	tooltipStatsBox.BackgroundColor3 = COLOR_LIGHT_CARD
-	tooltipStatsBox.BorderSizePixel = 0
-	tooltipStatsBox.Parent = itemCardContainer
-
-	tooltipStats = Instance.new("TextLabel")
-	tooltipStats.Size = UDim2.new(1, -16, 1, -8)
-	tooltipStats.Position = UDim2.new(0, 8, 0, 4)
-	tooltipStats.BackgroundTransparency = 1
-	tooltipStats.Font = UI_FONT
-	tooltipStats.TextSize = 13
-	tooltipStats.TextColor3 = COLOR_HP_GREEN
-	tooltipStats.TextWrapped = true
-	tooltipStats.TextXAlignment = Enum.TextXAlignment.Left
-	tooltipStats.Parent = tooltipStatsBox
-
-	tooltipDescBox = Instance.new("Frame")
-	tooltipDescBox.Size = UDim2.new(1, -24, 0, 175)
-	tooltipDescBox.Position = UDim2.new(0, 12, 0, 317)
-	tooltipDescBox.BackgroundColor3 = COLOR_LIGHT_CARD
-	tooltipDescBox.BorderSizePixel = 0
-	tooltipDescBox.Parent = itemCardContainer
-
-	tooltipDesc = Instance.new("TextLabel")
-	tooltipDesc.Size = UDim2.new(1, -12, 1, -12)
-	tooltipDesc.Position = UDim2.new(0, 6, 0, 6)
-	tooltipDesc.BackgroundTransparency = 1
-	tooltipDesc.Font = UI_FONT
-	tooltipDesc.TextSize = 13
-	tooltipDesc.TextColor3 = COLOR_TEXT_SUB
-	tooltipDesc.TextWrapped = true
-	tooltipDesc.TextXAlignment = Enum.TextXAlignment.Left
-	tooltipDesc.TextYAlignment = Enum.TextYAlignment.Top
-	tooltipDesc.Parent = tooltipDescBox
-
-	actionPrimaryBtn = Instance.new("TextButton")
-	actionPrimaryBtn.Size = UDim2.new(1, -24, 0, 44)
-	actionPrimaryBtn.Position = UDim2.new(0, 12, 1, -104)
-	actionPrimaryBtn.BackgroundColor3 = COLOR_ACTION_GOLD
-	actionPrimaryBtn.Text = "EQUIP"
-	actionPrimaryBtn.TextColor3 = COLOR_TEXT_MAIN
-	actionPrimaryBtn.Font = UI_FONT
-	actionPrimaryBtn.TextSize = 18
-	actionPrimaryBtn.Parent = itemCardContainer
-
-	actionPrimaryBtn.MouseButton1Click:Connect(function()
-		if selectedSlotIndex then
-			InventoryController.UseSlot(selectedSlotIndex)
-		end
-	end)
-
-	actionDropBtn = Instance.new("TextButton")
-	actionDropBtn.Size = UDim2.new(1, -24, 0, 44)
-	actionDropBtn.Position = UDim2.new(0, 12, 1, -52)
-	actionDropBtn.BackgroundColor3 = COLOR_DANGER_RED
-	actionDropBtn.Text = "DROP"
-	actionDropBtn.TextColor3 = COLOR_TEXT_MAIN
-	actionDropBtn.Font = UI_FONT
-	actionDropBtn.TextSize = 18
-	actionDropBtn.Parent = itemCardContainer
-
-	actionDropBtn.MouseButton1Click:Connect(function()
-		if selectedSlotIndex then
-			inventoryActionRemote:FireServer({
-				Action = "DropItem",
-				SlotIndex = selectedSlotIndex,
-			})
-		end
-	end)
-
-	InventoryController.SetupGridSlots()
+local function IsPositionInsideGui(guiObject: GuiObject, x: number, y: number): boolean
+	local pos = guiObject.AbsolutePosition
+	local size = guiObject.AbsoluteSize
+	return x >= pos.X and x <= (pos.X + size.X) and y >= pos.Y and y <= (pos.Y + size.Y)
 end
 
-function InventoryController.Update3DDoll()
-	local char = player.Character
-	if not char or not characterViewport then return end
+-- =============================================================================
+-- UNIVERSAL 3D MODEL RESOLVER
+-- =============================================================================
+local function Find3DItemModel(itemId: string): Instance?
+	if weaponsFolder then
+		local m = weaponsFolder:FindFirstChild(itemId)
+		if m then return m end
+	end
 
-	characterViewport:ClearAllChildren()
+	if not herbsFolder then
+		herbsFolder = ReplicatedStorage:FindFirstChild("Herbs") :: Folder?
+	end
+	if herbsFolder then
+		local m = herbsFolder:FindFirstChild(itemId)
+		if m then return m end
+		local baseName = itemId:gsub("_%d+Yr", "")
+		m = herbsFolder:FindFirstChild(baseName)
+		if m then return m end
+	end
 
-	local camera = Instance.new("Camera")
-	camera.CameraType = Enum.CameraType.Scriptable
-	characterViewport.CurrentCamera = camera
-	camera.Parent = characterViewport
+	if not itemsFolder then
+		itemsFolder = ReplicatedStorage:FindFirstChild("Items") or ReplicatedStorage:FindFirstChild("Models") :: Folder?
+	end
+	if itemsFolder then
+		local m = itemsFolder:FindFirstChild(itemId)
+		if m then return m end
+	end
 
-	local worldModel = Instance.new("WorldModel")
-	worldModel.Parent = characterViewport
+	local rootModel = ReplicatedStorage:FindFirstChild(itemId)
+	if rootModel and (rootModel:IsA("Model") or rootModel:IsA("BasePart")) then
+		return rootModel
+	end
 
-	char.Archivable = true
-	local charClone = char:Clone()
-	char.Archivable = false
+	return nil
+end
 
-	for _, child in ipairs(charClone:GetDescendants()) do
-		if child:IsA("LuaSourceContainer") or child:IsA("Sound") then
+-- =============================================================================
+-- 3D VIEWPORT RENDERER
+-- =============================================================================
+local function Setup3DViewport(viewport: ViewportFrame, itemModel: Instance, spin: boolean): (() -> ())?
+	viewport:ClearAllChildren()
+
+	local clone = itemModel:Clone()
+	if clone:IsA("BasePart") then
+		clone.CFrame = CFrame.new(0, 0, 0)
+		clone.Anchored = true
+	elseif clone:IsA("Model") then
+		local primary = clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart")
+		if primary then
+			clone:PivotTo(CFrame.new(0, 0, 0))
+		end
+	end
+	clone.Parent = viewport
+
+	for _, child in ipairs(clone:GetDescendants()) do
+		if child:IsA("Script") or child:IsA("LocalScript") then
 			child:Destroy()
 		end
 	end
 
-	charClone.Parent = worldModel
+	local camera = Instance.new("Camera")
+	-- Narrower FOV wastes fewer of the ViewportFrame's pixels on empty space
+	-- around the item, which is what actually reduces the "pixelated" look
+	-- (a ViewportFrame renders at its real on-screen pixel size, so the more
+	-- of that area the model itself occupies, the sharper it reads).
+	camera.FieldOfView = 30
 
-	local hrp = charClone:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if hrp then
-		hrp.CFrame = CFrame.new(0, 0, 0)
-		camera.CFrame = CFrame.new(Vector3.new(0, 0.2, -6.2), Vector3.new(0, 0.1, 0))
-	end
-end
+	local size = if clone:IsA("BasePart") then clone.Size else (clone:IsA("Model") and clone:GetExtentsSize() or Vector3.new(1, 4, 1))
+	local maxDim = math.max(size.X, size.Y, size.Z)
+	-- Tighter framing than before (was maxDim * 1.35, min 3.5) so the model
+	-- fills more of the frame instead of floating in a lot of empty backdrop.
+	local dist = math.max(2.4, maxDim * 1.05)
 
-function InventoryController.SetupGridSlots()
-	for i = 1, 60 do
-		local slot = Instance.new("Frame")
-		slot.Name = "Slot_" .. i
-		slot.LayoutOrder = i
-		slot.BackgroundColor3 = COLOR_LIGHT_CARD
-		slot.BorderSizePixel = 0
-		slot.Parent = itemGrid
+	camera.CFrame = CFrame.lookAt(Vector3.new(0, 0, dist), Vector3.new(0, 0, 0))
+	viewport.CurrentCamera = camera
+	camera.Parent = viewport
 
-		local stroke = Instance.new("UIStroke")
-		stroke.Name = "RarityBorder"
-		stroke.Thickness = 1.5
-		stroke.Color = COLOR_LIGHT_BORDER
-		stroke.Parent = slot
+	viewport.Ambient = Color3.fromRGB(210, 215, 230)
+	viewport.LightColor = Color3.fromRGB(255, 255, 255)
+	viewport.LightDirection = Vector3.new(-1, -1.2, -1).Unit
 
-		local rarityHeader = Instance.new("TextLabel")
-		rarityHeader.Name = "RarityHeader"
-		rarityHeader.Size = UDim2.new(1, 0, 0, 16)
-		rarityHeader.Position = UDim2.new(0, 0, 0, 0)
-		rarityHeader.BackgroundColor3 = COLOR_LIGHT_BORDER
-		rarityHeader.Text = ""
-		rarityHeader.TextColor3 = COLOR_TEXT_MAIN
-		rarityHeader.Font = UI_FONT
-		rarityHeader.TextSize = 9
-		rarityHeader.Visible = false
-		rarityHeader.Parent = slot
-
-		local icon = Instance.new("ImageLabel")
-		icon.Name = "Icon"
-		icon.Size = UDim2.new(1, -12, 1, -28)
-		icon.Position = UDim2.new(0, 6, 0, 18)
-		icon.BackgroundTransparency = 1
-		icon.ScaleType = Enum.ScaleType.Fit
-		icon.Visible = false
-		icon.Parent = slot
-
-		local itemNameLabel = Instance.new("TextLabel")
-		itemNameLabel.Name = "ItemNameLabel"
-		itemNameLabel.Size = UDim2.new(1, -8, 1, -28)
-		itemNameLabel.Position = UDim2.new(0, 4, 0, 18)
-		itemNameLabel.BackgroundTransparency = 1
-		itemNameLabel.Text = ""
-		itemNameLabel.TextColor3 = COLOR_TEXT_MAIN
-		itemNameLabel.Font = UI_FONT
-		itemNameLabel.TextSize = 10
-		itemNameLabel.TextWrapped = true
-		itemNameLabel.TextYAlignment = Enum.TextYAlignment.Center
-		itemNameLabel.Visible = false
-		itemNameLabel.Parent = slot
-
-		local quantity = Instance.new("TextLabel")
-		quantity.Name = "Quantity"
-		quantity.Size = UDim2.new(1, -4, 0, 14)
-		quantity.Position = UDim2.new(0, 0, 1, -14)
-		quantity.BackgroundTransparency = 1
-		quantity.TextColor3 = COLOR_TEXT_MAIN
-		quantity.Font = UI_FONT
-		quantity.TextSize = 11
-		quantity.TextXAlignment = Enum.TextXAlignment.Right
-		quantity.Text = ""
-		quantity.Parent = slot
-
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1, 0, 1, 0)
-		btn.BackgroundTransparency = 1
-		btn.Text = ""
-		btn.Parent = slot
-
-		btn.MouseButton1Click:Connect(function()
-			InventoryController.InspectSlot(i)
+	if spin then
+		local angle = 0
+		local conn: RBXScriptConnection?
+		conn = RunService.RenderStepped:Connect(function(dt)
+			if not viewport.Parent or not clone.Parent then
+				if conn then conn:Disconnect() end
+				return
+			end
+			angle = (angle + 35 * dt) % 360
+			local rotCFrame = CFrame.Angles(0, math.rad(angle), math.rad(25))
+			if clone:IsA("BasePart") then
+				clone.CFrame = rotCFrame
+			elseif clone:IsA("Model") then
+				clone:PivotTo(rotCFrame)
+			end
 		end)
-
-		slotButtons[i] = slot
+		return function()
+			if conn then conn:Disconnect() end
+		end
+	else
+		local staticCFrame = CFrame.Angles(0, math.rad(135), math.rad(35))
+		if clone:IsA("BasePart") then
+			clone.CFrame = staticCFrame
+		elseif clone:IsA("Model") then
+			clone:PivotTo(staticCFrame)
+		end
+		return nil
 	end
 end
 
-function InventoryController.RefreshGrid()
-	local usedCount = 0
-	local firstValidSlot: number? = nil
+function InventoryController.Init()
+	inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
+	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
 
-	for i = 1, 60 do
-		local slotFrame = slotButtons[i]
-		if not slotFrame then continue end
-
-		local icon = slotFrame:FindFirstChild("Icon") :: ImageLabel?
-		local itemNameLabel = slotFrame:FindFirstChild("ItemNameLabel") :: TextLabel?
-		local quantity = slotFrame:FindFirstChild("Quantity") :: TextLabel?
-		local rarityHeader = slotFrame:FindFirstChild("RarityHeader") :: TextLabel?
-		local stroke = slotFrame:FindFirstChildOfClass("UIStroke")
-
-		local slotData = currentInventory[i]
-		local isVisible = true
-
-		if slotData then
-			usedCount += 1
-			if not firstValidSlot then
-				firstValidSlot = i
-			end
-
-			local itemDef = ItemConfig.GetItem(slotData.ItemId)
-			if itemDef then
-				local itemType = itemDef.Type or "Material"
-				if activeCategoryFilter ~= "ALL" then
-					if activeCategoryFilter == "CONSUMABLE" and itemType ~= "Consumable" then
-						isVisible = false
-					elseif activeCategoryFilter == "HERB" and itemType ~= "Material" then
-						isVisible = false
-					elseif activeCategoryFilter == "WEAPON" and itemType ~= "Weapon" and itemType ~= "Crest" then
-						isVisible = false
-					end
-				end
-
-				if currentSearchQuery ~= "" and not itemDef.Name:lower():find(currentSearchQuery, 1, true) then
-					isVisible = false
-				end
-
-				if isVisible then
-					local colorData = UIAssets.RarityCardColors[itemDef.Rarity]
-					if slotData.Quality and UIAssets.GradeCardColors[slotData.Quality] then
-						colorData = UIAssets.GradeCardColors[slotData.Quality]
-					end
-
-					local bgCol = if colorData then colorData.Background else COLOR_LIGHT_CARD
-					local borderCol = if colorData then colorData.Border else COLOR_LIGHT_BORDER
-
-					slotFrame.BackgroundColor3 = bgCol
-
-					local iconAsset = UIAssets.Icons[slotData.ItemId] or itemDef.Icon
-					if iconAsset and iconAsset ~= "" then
-						if icon then
-							icon.Image = iconAsset
-							icon.Visible = true
-						end
-						if itemNameLabel then itemNameLabel.Visible = false end
-					else
-						if icon then icon.Visible = false end
-						if itemNameLabel then
-							itemNameLabel.Text = itemDef.Name
-							itemNameLabel.Visible = true
-						end
-					end
-
-					if quantity then
-						quantity.Text = "x" .. tostring(slotData.Count)
-					end
-
-					if rarityHeader then
-						local badgeText = itemDef.Rarity:upper()
-						if slotData.Quality then
-							badgeText = slotData.Quality:gsub(" Quality", ""):upper()
-						end
-						rarityHeader.Text = badgeText
-						rarityHeader.BackgroundColor3 = borderCol
-						rarityHeader.Visible = true
-					end
-
-					if stroke then
-						stroke.Color = if i == selectedSlotIndex then COLOR_AZURE_BLUE else borderCol
-						stroke.Thickness = if i == selectedSlotIndex then 2.5 else 1.5
-					end
-				end
-			end
-		else
-			slotFrame.BackgroundColor3 = COLOR_LIGHT_CARD
-			isVisible = (activeCategoryFilter == "ALL" and currentSearchQuery == "")
-		end
-
-		slotFrame.Visible = isVisible
-		if not slotData or not isVisible then
-			if icon then icon.Visible = false end
-			if itemNameLabel then itemNameLabel.Visible = false end
-			if quantity then quantity.Text = "" end
-			if rarityHeader then rarityHeader.Visible = false end
-			if stroke then stroke.Color = COLOR_LIGHT_BORDER end
-		end
-	end
-
-	if capacityLabel then
-		capacityLabel.Text = string.format("STORAGE  %d / 60 SLOTS", usedCount)
-	end
-
-	if firstValidSlot then
-		if not selectedSlotIndex or not currentInventory[selectedSlotIndex] then
-			selectedSlotIndex = firstValidSlot
-		end
-		InventoryController.InspectSlot(selectedSlotIndex)
-	end
-end
-
-function InventoryController.InspectSlot(slotIdx: number)
-	selectedSlotIndex = slotIdx
-
-	local slotData = currentInventory[slotIdx]
-	if not slotData then
-		itemCardContainer.Visible = false
+	screenGui = playerGui:WaitForChild("SpiritPouchInventoryGui", 10) :: ScreenGui
+	if not screenGui then
+		warn("[InventoryController] SpiritPouchInventoryGui not found in PlayerGui!")
 		return
 	end
 
-	local itemDef = ItemConfig.GetItem(slotData.ItemId)
-	if not itemDef then return end
+	screenGui.DisplayOrder = 10
+	screenGui.Enabled = false
 
-	itemCardContainer.Visible = true
+	overlayBackdrop = screenGui:WaitForChild("OverlayBackdrop", 5) :: Frame
+	mainFrame = screenGui:WaitForChild("MainFrame", 5) :: GuiObject
+	mainFrame.Active = true
 
-	local titleText = itemDef.Name
-	if slotData.Quality then
-		titleText ..= string.format("\n(%s)", slotData.Quality)
+	-- 1. Header Frame
+	headerFrame = mainFrame:WaitForChild("HeaderFrame", 5) :: Frame
+	closeButton = (headerFrame:FindFirstChild("CloseButton") or headerFrame:FindFirstChild("TextButton") or headerFrame:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
+
+	-- 2. TabContainer & TabFrame
+	tabContainer = mainFrame:WaitForChild("TabContainer", 5) :: GuiObject
+	tabFrame = (tabContainer:FindFirstChild("TabFrame") or tabContainer) :: Frame
+
+	-- 3. GridSection & TopBar
+	gridSection = mainFrame:WaitForChild("GridSection", 5) :: GuiObject
+	gridSection.Active = true
+
+	local topBar = gridSection:WaitForChild("TopBar", 5) :: Frame
+	local searchContainer = topBar:FindFirstChild("SearchBarContainer") or topBar
+	searchBox = (searchContainer:FindFirstChild("SearchBox") or topBar:FindFirstChild("SearchBox", true)) :: TextBox
+	if searchBox then
+		searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+		searchBox.PlaceholderColor3 = Color3.fromRGB(160, 175, 195)
 	end
-	tooltipTitle.Text = titleText
 
-	local colorData = UIAssets.RarityCardColors[itemDef.Rarity]
-	if slotData.Quality and UIAssets.GradeCardColors[slotData.Quality] then
-		colorData = UIAssets.GradeCardColors[slotData.Quality]
+	sortImageButton = (topBar:FindFirstChild("SortImageButton") or topBar:FindFirstChild("SortButton") or topBar:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
+	sortTextLabel = sortImageButton:FindFirstChild("SortTextLabel") or sortImageButton:FindFirstChildOfClass("TextLabel")
+
+	itemGridScroll = gridSection:WaitForChild("ItemGridScroll", 5) :: ScrollingFrame
+	itemGridScroll.Active = true
+	itemGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	itemGridScroll.ScrollBarThickness = 6
+
+	-- Re-run the responsive column calculation whenever the grid's actual
+	-- available width changes (window resize, orientation change, split-screen,
+	-- etc.) instead of only computing it once at Open().
+	itemGridScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		InventoryController.UpdateGridCellSize()
+	end)
+
+	gridLayout = itemGridScroll:WaitForChild("UIGridLayout", 5) :: UIGridLayout
+	InventoryController.UpdateGridCellSize()
+
+	local foundTemplate = (itemGridScroll:FindFirstChild("SlotFrame") or itemGridScroll:FindFirstChild("SlotTemplate")) :: GuiObject?
+	if not foundTemplate then
+		foundTemplate = itemGridScroll:WaitForChild("SlotFrame", 5) :: GuiObject
+	end
+	slotTemplate = foundTemplate:Clone()
+	slotTemplate.Visible = false
+	foundTemplate.Visible = false
+
+	-- 4. InspectionSection
+	inspectionSection = mainFrame:WaitForChild("InspectionSection", 5) :: GuiObject
+	inspectionSection.Active = true
+	itemNameLabel = inspectionSection:WaitForChild("ItemNameLabel", 5) :: TextLabel
+	itemRarityLabel = inspectionSection:WaitForChild("ItemRarityLabel", 5) :: TextLabel
+	descriptionLabel = inspectionSection:WaitForChild("DescriptionLabel", 5) :: TextLabel
+
+	itemPreviewFrame = inspectionSection:WaitForChild("ItemPreviewFrame", 5) :: Frame
+	itemIconLarge = itemPreviewFrame:WaitForChild("ItemIconLarge", 5) :: ImageLabel
+
+	inspectionViewport = itemPreviewFrame:FindFirstChild("InspectionViewport") :: ViewportFrame?
+	if not inspectionViewport then
+		inspectionViewport = Instance.new("ViewportFrame")
+		inspectionViewport.Name = "InspectionViewport"
+		inspectionViewport.Size = UDim2.new(1, 0, 1, 0)
+		inspectionViewport.Position = UDim2.new(0, 0, 0, 0)
+		inspectionViewport.BackgroundTransparency = 1
+		inspectionViewport.BorderSizePixel = 0
+		inspectionViewport.Visible = false
+		inspectionViewport.ZIndex = 4
+		inspectionViewport.Parent = itemPreviewFrame
 	end
 
-	local cardBg = if colorData then colorData.Background else COLOR_LIGHT_CARD
-	local borderCol = if colorData then colorData.Border else COLOR_AZURE_BLUE
+	statBox = inspectionSection:WaitForChild("StatBox", 5) :: Frame
+	statLabel = statBox:WaitForChild("StatLabel", 5) :: TextLabel
 
-	tooltipRarityBadge.Text = string.format("%s %s", itemDef.Rarity:upper(), itemDef.Type:upper())
-	tooltipRarityBadge.TextColor3 = borderCol
-	tooltipDesc.Text = itemDef.Description
+	local actionContainer = inspectionSection:WaitForChild("ActionButtonsContainer", 5) :: Frame
+	useImageButton = (actionContainer:FindFirstChild("UseImageButton") or actionContainer:FindFirstChild("UseButton") or actionContainer:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
+	useTextLabel = useImageButton:FindFirstChild("UseTextLabel") or useImageButton:FindFirstChildOfClass("TextLabel")
 
-	tooltipIconBox.BackgroundColor3 = cardBg
-	local boxStroke = tooltipIconBox:FindFirstChild("BoxStroke") :: UIStroke?
-	if boxStroke then boxStroke.Color = borderCol end
+	dropImageButton = (actionContainer:FindFirstChild("DropImageButton") or actionContainer:FindFirstChild("DropButton") or actionContainer:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
+	dropTextLabel = dropImageButton:FindFirstChild("DropTextLabel") or dropImageButton:FindFirstChildOfClass("TextLabel")
 
-	local iconAsset = UIAssets.Icons[slotData.ItemId] or itemDef.Icon
-	if iconAsset and iconAsset ~= "" then
-		tooltipIcon.Image = iconAsset
-		tooltipIcon.Visible = true
+	-- 5. Bind Button Events
+	if closeButton then
+		closeButton.MouseButton1Click:Connect(function()
+			InventoryController.Close()
+		end)
+	end
+
+	if overlayBackdrop then
+		overlayBackdrop.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				local clickPos = input.Position
+				if not IsPositionInsideGui(mainFrame, clickPos.X, clickPos.Y) then
+					InventoryController.Close()
+				end
+			end
+		end)
+	end
+
+	local tabList = tabFrame:GetChildren()
+	for _, child in ipairs(tabList) do
+		if child:IsA("GuiButton") then
+			local tabName = child.Name:upper()
+			local cleanKey = tabName:gsub("TAB_", "")
+			child.MouseButton1Click:Connect(function()
+				currentCategory = cleanKey
+				InventoryController.RenderGrid()
+			end)
+		end
+	end
+
+	if searchBox then
+		searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+			searchQuery = searchBox.Text:lower()
+			InventoryController.RenderGrid()
+		end)
+	end
+
+	if sortImageButton then
+		sortImageButton.MouseButton1Click:Connect(function()
+			if currentSortMode == "Rarity" then
+				currentSortMode = "Name"
+				InventoryController.SetSortButtonText("Sort by Name")
+			elseif currentSortMode == "Name" then
+				currentSortMode = "Count"
+				InventoryController.SetSortButtonText("Sort by Count")
+			else
+				currentSortMode = "Rarity"
+				InventoryController.SetSortButtonText("Sort by Rarity")
+			end
+			InventoryController.RenderGrid()
+		end)
+	end
+
+	if useImageButton then
+		useImageButton.MouseButton1Click:Connect(function()
+			if not selectedSlotIndex or not inventoryCache[selectedSlotIndex] then return end
+			local slotData = inventoryCache[selectedSlotIndex]
+			local itemDef = ItemConfig.GetItem(slotData.ItemId)
+			if not itemDef then return end
+
+			inventoryActionRemote:FireServer({ Action = "UseItem", SlotIndex = selectedSlotIndex })
+		end)
+	end
+
+	if dropImageButton then
+		dropImageButton.MouseButton1Click:Connect(function()
+			if not selectedSlotIndex or not inventoryCache[selectedSlotIndex] then return end
+			inventoryActionRemote:FireServer({ Action = "DropItem", SlotIndex = selectedSlotIndex })
+		end)
+	end
+
+	updateInventoryRemote.OnClientEvent:Connect(function(newInventory: { [number]: any })
+		inventoryCache = newInventory or {}
+		InventoryController.RenderGrid()
+	end)
+
+	task.defer(function()
+		task.wait(0.5)
+		inventoryActionRemote:FireServer({ Action = "RequestSync" })
+	end)
+
+	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+		if gameProcessed then return end
+		if input.KeyCode == Enum.KeyCode.Tab or input.KeyCode == Enum.KeyCode.I then
+			InventoryController.Toggle()
+		end
+	end)
+
+	print("[ASCEND] InventoryController Initialized (Adaptive 6-Col PC / 4-Col Phone Active).")
+end
+
+-- =============================================================================
+-- RESPONSIVE GRID ADAPTATION (GRADUAL 6 -> 4 COLUMNS BY AVAILABLE WIDTH)
+-- =============================================================================
+local GRID_MAX_COLUMNS = 6
+local GRID_MIN_COLUMNS = 4
+local GRID_MAX_CELL_SIZE = 100
+local GRID_MIN_CELL_SIZE = 64
+local GRID_CELL_PADDING = 5
+
+function InventoryController.UpdateGridCellSize()
+	if not gridLayout or not itemGridScroll then return end
+
+	local containerWidth = itemGridScroll.AbsoluteSize.X
+	if containerWidth <= 0 then
+		-- Layout hasn't resolved yet (e.g. first frame after Open()); retry
+		-- next step instead of computing off a bogus zero width.
+		task.defer(InventoryController.UpdateGridCellSize)
+		return
+	end
+
+	-- Pick the largest column count (6 down to 4) whose resulting cell size
+	-- still meets the minimum readable size, so the grid scales gradually
+	-- with actual available width instead of a hard PC/phone switch, and
+	-- cells stretch to fill the row (no leftover "wasted space" gutter).
+	local chosenColumns = GRID_MIN_COLUMNS
+	local chosenCellSize = GRID_MIN_CELL_SIZE
+
+	for columns = GRID_MAX_COLUMNS, GRID_MIN_COLUMNS, -1 do
+		local totalPadding = GRID_CELL_PADDING * (columns - 1)
+		local cellSize = (containerWidth - totalPadding) / columns
+		if cellSize >= GRID_MIN_CELL_SIZE then
+			chosenColumns = columns
+			chosenCellSize = math.min(cellSize, GRID_MAX_CELL_SIZE)
+			break
+		end
+	end
+
+	gridLayout.FillDirectionMaxCells = chosenColumns
+	gridLayout.CellPadding = UDim2.new(0, GRID_CELL_PADDING, 0, GRID_CELL_PADDING)
+	gridLayout.CellSize = UDim2.new(0, chosenCellSize, 0, chosenCellSize)
+end
+
+function InventoryController.SetSortButtonText(text: string)
+	if sortTextLabel then
+		sortTextLabel.Text = text
+	elseif sortImageButton and sortImageButton:IsA("TextButton") then
+		(sortImageButton :: TextButton).Text = text
+	end
+end
+
+function InventoryController.Toggle()
+	if isOpen then
+		InventoryController.Close()
 	else
-		tooltipIcon.Visible = false
+		InventoryController.Open()
+	end
+end
+
+function InventoryController.Open()
+	isOpen = true
+	screenGui.Enabled = true
+	mainFrame.Visible = true
+	if overlayBackdrop then overlayBackdrop.Visible = true end
+
+	InventoryController.UpdateGridCellSize()
+	inventoryActionRemote:FireServer({ Action = "RequestSync" })
+	InventoryController.RenderGrid()
+end
+
+function InventoryController.Close()
+	isOpen = false
+	screenGui.Enabled = false
+	mainFrame.Visible = false
+	if overlayBackdrop then overlayBackdrop.Visible = false end
+
+	if activeInspectionSpinCleanup then
+		activeInspectionSpinCleanup()
+		activeInspectionSpinCleanup = nil
+	end
+end
+
+-- =============================================================================
+-- POPULATE GRID WITH REAL ITEMS & ALIGNED SELECTED GLOW
+-- =============================================================================
+function InventoryController.RenderGrid()
+	for _, clone in ipairs(activeSlotClones) do
+		clone:Destroy()
+	end
+	table.clear(activeSlotClones)
+
+	InventoryController.UpdateGridCellSize()
+
+	type SlotEntry = { SlotIndex: number, ItemId: string, Count: number, Quality: string?, ItemDef: any }
+	local filteredSlots: { SlotEntry } = {}
+
+	for slotIdx = 1, 60 do
+		local slotData = inventoryCache[slotIdx]
+		if slotData and slotData.ItemId and slotData.ItemId ~= "" then
+			local itemDef = ItemConfig.GetItem(slotData.ItemId)
+			if itemDef then
+				local allowedTypes = CATEGORY_MAP[currentCategory] or {}
+				local passesCategory = (#allowedTypes == 0) or table.find(allowedTypes, itemDef.Type) ~= nil
+				local passesSearch = (searchQuery == "") or (itemDef.Name:lower():find(searchQuery, 1, true) ~= nil)
+
+				if passesCategory and passesSearch then
+					table.insert(filteredSlots, {
+						SlotIndex = slotIdx,
+						ItemId = slotData.ItemId,
+						Count = slotData.Count or 1,
+						Quality = slotData.Quality,
+						ItemDef = itemDef,
+					})
+				end
+			end
+		end
 	end
 
-	if itemDef.Type == "Consumable" then
-		actionPrimaryBtn.Text = "USE"
-		actionPrimaryBtn.BackgroundColor3 = COLOR_HP_GREEN
+	-- Sorting
+	local RARITY_RANKS = {
+		["Mortal"]    = 1, ["Common"]    = 1,
+		["Spiritual"] = 2, ["Uncommon"]  = 2,
+		["Earth"]     = 3, ["Rare"]      = 3,
+		["Heaven"]    = 4, ["Epic"]      = 4,
+		["Legendary"] = 5,
+		["Mythic"]    = 6,
+		["Sovereign"] = 7,
+		["Celestial"] = 8,
+	}
+
+	if currentSortMode == "Rarity" then
+		table.sort(filteredSlots, function(a, b)
+			local rA = RARITY_RANKS[a.ItemDef.Rarity] or 1
+			local rB = RARITY_RANKS[b.ItemDef.Rarity] or 1
+			return rA > rB
+		end)
+	elseif currentSortMode == "Name" then
+		table.sort(filteredSlots, function(a, b)
+			return a.ItemDef.Name < b.ItemDef.Name
+		end)
+	elseif currentSortMode == "Count" then
+		table.sort(filteredSlots, function(a, b)
+			return a.Count > b.Count
+		end)
+	end
+
+	-- Populate Slots
+	for _, entry in ipairs(filteredSlots) do
+		local slotObj = slotTemplate:Clone()
+		slotObj.Name = "Slot_" .. tostring(entry.SlotIndex)
+		slotObj.Visible = true
+
+		local rarityName = entry.ItemDef.Rarity or "Common"
+		local token = GetRarityToken(rarityName)
+
+		-- 1. Header Ribbon & Text
+		local headerRibbon = slotObj:FindFirstChild("HeaderRibbon") :: ImageLabel?
+		local rarityLabel: TextLabel? = nil
+		if headerRibbon then
+			headerRibbon.Size = UDim2.new(1, 0, 0.22, 0)
+			headerRibbon.Position = UDim2.new(0, 0, 0, 0)
+			headerRibbon.AnchorPoint = Vector2.new(0, 0)
+			headerRibbon.ImageColor3 = token.Color
+			rarityLabel = (headerRibbon:FindFirstChild("TextLabel") or headerRibbon:FindFirstChildWhichIsA("TextLabel")) :: TextLabel?
+		else
+			rarityLabel = (slotObj:FindFirstChild("RarityBadge") or slotObj:FindFirstChild("TextLabel")) :: TextLabel?
+		end
+
+		if rarityLabel then
+			rarityLabel.Size = UDim2.new(1, 0, 1, 0)
+			rarityLabel.Position = UDim2.new(0, 0, 0, 0)
+			rarityLabel.TextScaled = true
+			rarityLabel.Text = rarityName:upper()
+			rarityLabel.TextColor3 = token.TextColor
+			rarityLabel.Visible = true
+		end
+
+		-- 2. Aligned Selected Glow
+		-- The glow asset is drawn slightly larger than the slot on purpose (it's
+		-- meant to sit just outside the slot's own border), so it must be sized
+		-- larger than 100% here, and the slot must not clip the overhang away.
+		local GLOW_OVERSCAN = 0.08 -- 8% larger than the slot on each axis
+		local selectedGlow = slotObj:FindFirstChild("SelectedGlow") :: ImageLabel?
+		if selectedGlow then
+			selectedGlow.Size = UDim2.new(1 + GLOW_OVERSCAN, 0, 1 + GLOW_OVERSCAN, 0)
+			selectedGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+			selectedGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+			selectedGlow.ZIndex = 5
+			selectedGlow.Visible = (selectedSlotIndex == entry.SlotIndex)
+		end
+
+		if slotObj:IsA("GuiObject") then
+			(slotObj :: GuiObject).ClipsDescendants = false
+		end
+
+		-- 3. Universal 3D/2D Item Rendering
+		local itemIcon = slotObj:FindFirstChild("ItemIcon") :: ImageLabel?
+		local item3DModel = Find3DItemModel(entry.ItemId)
+
+		if item3DModel then
+			if itemIcon then itemIcon.Visible = false end
+
+			local slotViewport = slotObj:FindFirstChild("Slot3DViewport") :: ViewportFrame?
+			if not slotViewport then
+				slotViewport = Instance.new("ViewportFrame")
+				slotViewport.Name = "Slot3DViewport"
+				slotViewport.Size = UDim2.new(0.85, 0, 0.72, 0)
+				slotViewport.Position = UDim2.new(0.5, 0, 0.60, 0)
+				slotViewport.AnchorPoint = Vector2.new(0.5, 0.5)
+				slotViewport.BackgroundTransparency = 1
+				slotViewport.BorderSizePixel = 0
+				slotViewport.ZIndex = 3
+				slotViewport.Parent = slotObj
+			end
+			slotViewport.Visible = true
+			Setup3DViewport(slotViewport, item3DModel, false)
+		else
+			local slotViewport = slotObj:FindFirstChild("Slot3DViewport") :: ViewportFrame?
+			if slotViewport then slotViewport.Visible = false end
+
+			local iconAsset = (UIAssets.Icons and UIAssets.Icons[entry.ItemId]) or entry.ItemDef.Icon
+			if itemIcon then
+				itemIcon.BackgroundColor3 = token.Color
+				if iconAsset and iconAsset ~= "" then
+					itemIcon.Image = iconAsset
+					itemIcon.Visible = true
+				else
+					itemIcon.Visible = false
+				end
+			end
+		end
+
+		-- 4. Quantity Label
+		local quantityLabel = slotObj:FindFirstChild("QuantityLabel") :: TextLabel?
+		if quantityLabel then
+			quantityLabel.Text = if entry.Count > 1 then "x" .. tostring(entry.Count) else ""
+			quantityLabel.Visible = (entry.Count > 1)
+		end
+
+		local function selectSlot()
+			selectedSlotIndex = entry.SlotIndex
+			InventoryController.UpdateInspection(entry.ItemDef, entry.Count, entry.Quality)
+			InventoryController.RenderGrid()
+		end
+
+		if slotObj:IsA("GuiButton") then
+			slotObj.MouseButton1Click:Connect(selectSlot)
+		else
+			slotObj.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					selectSlot()
+				end
+			end)
+		end
+
+		slotObj.Parent = itemGridScroll
+		table.insert(activeSlotClones, slotObj)
+	end
+
+	-- Auto-select first item or maintain selection
+	if not selectedSlotIndex and #filteredSlots > 0 then
+		selectedSlotIndex = filteredSlots[1].SlotIndex
+		InventoryController.UpdateInspection(filteredSlots[1].ItemDef, filteredSlots[1].Count, filteredSlots[1].Quality)
+	elseif #filteredSlots == 0 then
+		InventoryController.ClearInspection()
+	end
+end
+
+-- =============================================================================
+-- UPDATE INSPECTION CARD (3D ROTATING MESH & STATS)
+-- =============================================================================
+function InventoryController.UpdateInspection(itemDef: any, count: number, quality: string?)
+	if not itemDef then
+		InventoryController.ClearInspection()
+		return
+	end
+
+	if activeInspectionSpinCleanup then
+		activeInspectionSpinCleanup()
+		activeInspectionSpinCleanup = nil
+	end
+
+	local rarityName = itemDef.Rarity or "Common"
+	local token = GetRarityToken(rarityName)
+
+	itemNameLabel.Text = itemDef.Name
+	itemRarityLabel.Text = string.format("%s %s", rarityName:upper(), (itemDef.Type or "ITEM"):upper())
+	itemRarityLabel.TextColor3 = token.Color
+	descriptionLabel.Text = itemDef.Description or "No lore inscription found."
+
+	local item3DModel = Find3DItemModel(itemDef.Id or itemDef.Name)
+
+	if item3DModel and inspectionViewport then
+		itemIconLarge.Visible = false
+		inspectionViewport.Visible = true
+		activeInspectionSpinCleanup = Setup3DViewport(inspectionViewport, item3DModel, true)
 	else
-		actionPrimaryBtn.Text = "EQUIP"
-		actionPrimaryBtn.BackgroundColor3 = COLOR_ACTION_GOLD
+		if inspectionViewport then
+			inspectionViewport.Visible = false
+			inspectionViewport:ClearAllChildren()
+		end
+
+		local iconAsset = (UIAssets.Icons and UIAssets.Icons[itemDef.Id]) or itemDef.Icon
+		if itemIconLarge then
+			itemIconLarge.BackgroundColor3 = token.Color
+			if iconAsset and iconAsset ~= "" then
+				itemIconLarge.Image = iconAsset
+				itemIconLarge.Visible = true
+			else
+				itemIconLarge.Visible = false
+			end
+		end
 	end
 
-	local statText = ""
-	if slotData.Quality then
-		statText ..= string.format("GRADE: %s\n", slotData.Quality:upper())
-	end
-
+	local statSummary = ""
 	if itemDef.Stats then
-		if itemDef.Stats.HealAmount then
-			statText ..= string.format("HEALTH RESTORED: +%d\n", itemDef.Stats.HealAmount)
-		end
-		if itemDef.Stats.QiGrant then
-			statText ..= string.format("SPIRIT QI RESTORED: +%d\n", itemDef.Stats.QiGrant)
-		end
 		if itemDef.Stats.Damage then
-			statText ..= string.format("ATTACK DAMAGE: +%d\n", itemDef.Stats.Damage)
-		end
-		if itemDef.Stats.Speed then
-			statText ..= string.format("ATTACK SPEED: %.1fx\n", itemDef.Stats.Speed)
+			statSummary = string.format("BASE DAMAGE: +%d", itemDef.Stats.Damage)
+		elseif itemDef.Stats.HealAmount then
+			statSummary = string.format("HEALTH RESTORED: +%d", itemDef.Stats.HealAmount)
+		elseif itemDef.Stats.QiGrant then
+			statSummary = string.format("SPIRIT QI RESTORED: +%d", itemDef.Stats.QiGrant)
 		end
 	end
-	tooltipStats.Text = if statText ~= "" then statText else "NO EXTRA ATTRIBUTES"
+
+	if quality then
+		statSummary = statSummary .. string.format(" [%s Quality]", quality)
+	end
+
+	statLabel.Text = if statSummary ~= "" then statSummary else "STANDARD GRADE"
+
+	local isWeapon = (itemDef.Type == "Weapon" or itemDef.Type == "FlyingSword" or itemDef.Type == "Crest")
+	if useImageButton then
+		useImageButton.Visible = true
+		local actionText = (isWeapon) and "EQUIP" or "USE"
+		if useTextLabel then
+			useTextLabel.Text = actionText
+		elseif useImageButton:IsA("TextButton") then
+			(useImageButton :: TextButton).Text = actionText
+		end
+	end
+
+	if dropImageButton then
+		dropImageButton.Visible = true
+	end
 end
 
-function InventoryController.UpdateVitalStats()
-	local char = player.Character
-	if not char then return end
-
-	local humanoid = char:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		local hpRatio = math.clamp(humanoid.Health / math.max(1, humanoid.MaxHealth), 0, 1)
-		hpBarFill.Size = UDim2.new(hpRatio, 0, 1, 0)
-		hpBarText.Text = string.format("%d / %d", math.floor(humanoid.Health), math.floor(humanoid.MaxHealth))
+function InventoryController.ClearInspection()
+	selectedSlotIndex = nil
+	itemNameLabel.Text = "Select an Item"
+	itemRarityLabel.Text = "EMPTY"
+	itemRarityLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+	descriptionLabel.Text = "Select an item from your spirit pouch to inspect its spiritual properties."
+	if itemIconLarge then itemIconLarge.Visible = false end
+	if inspectionViewport then
+		inspectionViewport.Visible = false
+		inspectionViewport:ClearAllChildren()
 	end
-
-	local currentQi = char:GetAttribute("Qi") or 0
-	local maxQi = char:GetAttribute("MaxQi") or 800
-	local clampedQi = math.min(currentQi, maxQi)
-	local qiRatio = math.clamp(clampedQi / math.max(1, maxQi), 0, 1)
-	qiBarFill.Size = UDim2.new(qiRatio, 0, 1, 0)
-	qiBarText.Text = string.format("%d / %d", math.floor(clampedQi), math.floor(maxQi))
-
-	local realmAttr = char:GetAttribute("Realm")
-	realmTitleLabel.Text = if realmAttr then tostring(realmAttr) else "Qi Condensation — Tier 1"
-end
-
-function InventoryController.UseSlot(slotIdx: number)
-	if currentInventory[slotIdx] then
-		inventoryActionRemote:FireServer({
-			Action = "UseItem",
-			SlotIndex = slotIdx,
-		})
+	if activeInspectionSpinCleanup then
+		activeInspectionSpinCleanup()
+		activeInspectionSpinCleanup = nil
 	end
+	statLabel.Text = "-"
+	if useImageButton then useImageButton.Visible = false end
+	if dropImageButton then dropImageButton.Visible = false end
 end
 
 return InventoryController

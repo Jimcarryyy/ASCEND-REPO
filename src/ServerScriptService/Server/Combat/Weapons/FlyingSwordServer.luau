@@ -2,7 +2,7 @@
 --[[
     FlyingSwordServer.luau
     Location: src/ServerScriptService/Server/Combat/Weapons/FlyingSwordServer.luau
-    Server-side combat engine with Critical Strike calculations (Step 5 Guaranteed Crit, 20% Base Crit).
+    Server attack engine with Arena Stat Normalization and Velocity Hitbox queries.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,8 +16,6 @@ local CultivationManager = require(ServerScriptService.Server.Cultivation.Cultiv
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 
 local FlyingSwordServer = {}
-
--- Player M1 combo tracking: [Player] -> { Step = number, LastTime = number }
 local playerCombos: { [Player]: { Step: number, LastTime: number } } = {}
 
 local function GetEquippedWeaponBaseDamage(player: Player): number
@@ -31,9 +29,7 @@ end
 
 function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, payload: any?): any?
 	local pData = CultivationManager.GetPlayerData(player)
-	if pData and pData.IsMeditating then
-		return payload
-	end
+	if pData and pData.IsMeditating then return payload end
 
 	local character = player.Character
 	if not character then return payload end
@@ -41,16 +37,18 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then return payload end
 
+	local inArena = (character:GetAttribute("InArena") == true)
 	local hits: { HitboxManager.HitResult } = {}
 	local damage = 0
 	local wasParried = false
 	local wasBlocked = false
+	local wasGuardBroken = false
 	local isCrit = false
 
 	if skillKey == "M1" then
-		hits, damage, wasParried, wasBlocked, isCrit = FlyingSwordServer.ExecuteM1Combo(player, hrp, payload)
+		hits, damage, wasParried, wasBlocked, wasGuardBroken, isCrit = FlyingSwordServer.ExecuteM1Combo(player, hrp, inArena, payload)
 	else
-		hits, damage, wasParried, wasBlocked, isCrit = FlyingSwordServer.ExecuteSkill(player, skillKey, hrp, payload)
+		hits, damage, wasParried, wasBlocked, wasGuardBroken, isCrit = FlyingSwordServer.ExecuteSkill(player, skillKey, hrp, inArena, payload)
 	end
 
 	payload = payload or {}
@@ -63,6 +61,7 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 		payload.IsCrit = isCrit
 		payload.WasParried = wasParried
 		payload.WasBlocked = wasBlocked
+		payload.WasGuardBroken = wasGuardBroken
 		payload.TargetPosition = hits[1].HitPart.Position
 	else
 		payload.HasHit = false
@@ -71,13 +70,14 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 		payload.IsCrit = false
 		payload.WasParried = false
 		payload.WasBlocked = false
+		payload.WasGuardBroken = false
 		payload.TargetPosition = nil
 	end
 
 	return payload
 end
 
-function FlyingSwordServer.ExecuteM1Combo(player: Player, hrp: BasePart, payload: any?): ({ HitboxManager.HitResult }, number, boolean, boolean, boolean)
+function FlyingSwordServer.ExecuteM1Combo(player: Player, hrp: BasePart, inArena: boolean, payload: any?): ({ HitboxManager.HitResult }, number, boolean, boolean, boolean, boolean)
 	local now = os.clock()
 	local comboData = playerCombos[player] or { Step = 1, LastTime = 0 }
 
@@ -91,17 +91,22 @@ function FlyingSwordServer.ExecuteM1Combo(player: Player, hrp: BasePart, payload
 		currentStepData = FlyingSwordConfig.M1Combo[1]
 	end
 
-	local pData = CultivationManager.GetPlayerData(player)
-	local powerMult = if pData then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
-	local weaponBaseDmg = GetEquippedWeaponBaseDamage(player)
-	local totalBaseDmg = weaponBaseDmg + currentStepData.Damage
-
-	-- Critical Strike roll (Step 5 Guaranteed Crit, or 20% Base Crit)
 	local isCrit = (comboData.Step == 5) or (math.random(1, 100) <= 20)
 	local critMult = if isCrit then 1.75 else 1.0
-	local finalDamage = math.floor(totalBaseDmg * powerMult * critMult)
 
-	-- Aim-projected hitbox
+	local finalDamage = 0
+	if inArena then
+		-- Arena Stat Normalization (Flat balanced HP & Damage)
+		finalDamage = math.floor(currentStepData.ArenaDamage * critMult)
+	else
+		-- Open World Cultivation Scaling
+		local pData = CultivationManager.GetPlayerData(player)
+		local powerMult = if pData then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
+		local weaponBaseDmg = GetEquippedWeaponBaseDamage(player)
+		finalDamage = math.floor((weaponBaseDmg + currentStepData.Damage) * powerMult * critMult)
+	end
+
+	-- Aim Orientation
 	local aimDir = if payload and payload.AimDirection and payload.AimDirection.Magnitude > 0 
 		then payload.AimDirection 
 		else hrp.CFrame.LookVector
@@ -109,36 +114,42 @@ function FlyingSwordServer.ExecuteM1Combo(player: Player, hrp: BasePart, payload
 	local orientationCFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatAimDir)
 	local hitboxCFrame = orientationCFrame * CFrame.new(currentStepData.Offset)
 
-	local hits = HitboxManager.CastBoxHitbox(hrp.Parent :: Model, hitboxCFrame, currentStepData.Range)
+	local hits = HitboxManager.CastCompensatedBox(hrp.Parent :: Model, hitboxCFrame, currentStepData.Range)
 
 	local anyParried = false
 	local anyBlocked = false
+	local anyGuardBroken = false
 
 	for _, hit in ipairs(hits) do
-		local res = HitboxManager.ApplyDamageAndKnockback(player, hit, finalDamage, currentStepData.Knockback)
+		local res = HitboxManager.ApplyCombatResolution(player, hit, finalDamage, currentStepData.PostureDamage, currentStepData.Knockback)
 		if res.WasParried then anyParried = true end
 		if res.WasBlocked then anyBlocked = true end
+		if res.WasGuardBroken then anyGuardBroken = true end
 	end
 
 	comboData.Step = if comboData.Step >= 5 then 1 else comboData.Step + 1
 	comboData.LastTime = now
 	playerCombos[player] = comboData
 
-	return hits, finalDamage, anyParried, anyBlocked, isCrit
+	return hits, finalDamage, anyParried, anyBlocked, anyGuardBroken, isCrit
 end
 
-function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: BasePart, payload: any?): ({ HitboxManager.HitResult }, number, boolean, boolean, boolean)
+function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: BasePart, inArena: boolean, payload: any?): ({ HitboxManager.HitResult }, number, boolean, boolean, boolean, boolean)
 	local skillData = FlyingSwordConfig.Skills[skillKey]
-	if not skillData then return {}, 0, false, false, false end
-
-	local pData = CultivationManager.GetPlayerData(player)
-	local powerMult = if pData then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
-	local weaponBaseDmg = GetEquippedWeaponBaseDamage(player)
-	local totalBaseDmg = weaponBaseDmg + skillData.Damage
+	if not skillData then return {}, 0, false, false, false, false end
 
 	local isCrit = (math.random(1, 100) <= 25)
 	local critMult = if isCrit then 1.75 else 1.0
-	local finalDamage = math.floor(totalBaseDmg * powerMult * critMult)
+
+	local finalDamage = 0
+	if inArena then
+		finalDamage = math.floor(skillData.ArenaDamage * critMult)
+	else
+		local pData = CultivationManager.GetPlayerData(player)
+		local powerMult = if pData then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
+		local weaponBaseDmg = GetEquippedWeaponBaseDamage(player)
+		finalDamage = math.floor((weaponBaseDmg + skillData.Damage) * powerMult * critMult)
+	end
 
 	local aimDir = if payload and payload.AimDirection and payload.AimDirection.Magnitude > 0 
 		then payload.AimDirection 
@@ -150,17 +161,19 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 	local hits = {}
 	local anyParried = false
 	local anyBlocked = false
+	local anyGuardBroken = false
 
 	if finalDamage > 0 then
-		hits = HitboxManager.CastBoxHitbox(hrp.Parent :: Model, hitboxCFrame, skillData.Range)
+		hits = HitboxManager.CastCompensatedBox(hrp.Parent :: Model, hitboxCFrame, skillData.Range)
 		for _, hit in ipairs(hits) do
-			local res = HitboxManager.ApplyDamageAndKnockback(player, hit, finalDamage, skillData.Knockback)
+			local res = HitboxManager.ApplyCombatResolution(player, hit, finalDamage, skillData.PostureDamage, skillData.Knockback)
 			if res.WasParried then anyParried = true end
 			if res.WasBlocked then anyBlocked = true end
+			if res.WasGuardBroken then anyGuardBroken = true end
 		end
 	end
 
-	return hits, finalDamage, anyParried, anyBlocked, isCrit
+	return hits, finalDamage, anyParried, anyBlocked, anyGuardBroken, isCrit
 end
 
 return FlyingSwordServer

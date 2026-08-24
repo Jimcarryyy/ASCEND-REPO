@@ -31,7 +31,7 @@ export type SavedPlayerData = {
 		CurrentQi: number,
 		CultivatedQi: number?,
 	},
-	EquippedWeapon: WeaponManager.WeaponType,
+	EquippedWeapon: string,
 	Inventory: { [number]: SavedInventorySlot },
 	Sect: string?,
 	SectRank: SectConfig.DiscipleRank?,
@@ -48,7 +48,7 @@ local PlayerDataManager = {}
 
 local DATA_STORE_NAME = "ASCEND_PlayerData_V2"
 local MAX_RETRIES = 3
-local AUTO_SAVE_INTERVAL = 300 -- 5 minutes
+local AUTO_SAVE_INTERVAL = 300
 
 local playerDataStore: DataStore? = nil
 local isLoadedMap: { [Player]: boolean } = {}
@@ -56,6 +56,9 @@ local playerAlchemyData: { [Player]: { Exp: number, Level: number } } = {}
 local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfig.DiscipleRank, ContributionPoints: number } } = {}
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
+
+-- Set to true to reset Han_jueee back to Qi Condensation Order 1 for fair sparring tests
+local FORCE_RESET_HAN_JUEEE = true
 
 local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	Version = 2,
@@ -127,7 +130,10 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	local dataKey = "Player_" .. player.UserId
 	local loadedData: SavedPlayerData? = nil
 
-	if playerDataStore then
+	if FORCE_RESET_HAN_JUEEE and (player.Name == "Han_jueee" or player.Name == "Han_jue") then
+		loadedData = table.clone(DEFAULT_PLAYER_DATA)
+		print(string.format("[PlayerDataManager] FORCED RESET: Account %s reset to QiCondensation Order 1.", player.Name))
+	elseif playerDataStore then
 		for attempt = 1, MAX_RETRIES do
 			local success, result = pcall(function()
 				return playerDataStore:GetAsync(dataKey)
@@ -198,7 +204,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		UnlockedSkins = loadedData.UnlockedSkins or { ["DefaultBronze"] = true },
 	}
 
-	-- Restore saved CultivatedQi and Order into CultivationManager
 	CultivationManager.SetPlayerData(
 		player, 
 		loadedData.Cultivation.Realm, 
@@ -208,9 +213,8 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	)
 	
 	InventoryManager.SetInventory(player, loadedData.Inventory)
-	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "FlyingSwordItem")
+	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "MortalIronJian")
 
-	-- Set Character Attributes for client replication
 	local character = player.Character or player.CharacterAdded:Wait()
 	character:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
 	character:SetAttribute("SectRank", playerEconomyData[player].SectRank)
@@ -226,7 +230,6 @@ function PlayerDataManager.OnPlayerRemoving(player: Player)
 	playerSkinData[player] = nil
 end
 
--- ECONOMY & SPIRIT STONES
 function PlayerDataManager.GetSpiritStones(player: Player): number
 	local data = playerEconomyData[player]
 	return data and data.SpiritStones or 0
@@ -252,7 +255,6 @@ function PlayerDataManager.RemoveSpiritStones(player: Player, amount: number): b
 	return true
 end
 
--- SECT RANK & CONTRIBUTION
 function PlayerDataManager.GetSectRank(player: Player): SectConfig.DiscipleRank
 	local data = playerEconomyData[player]
 	return data and data.SectRank or "OuterDisciple"
@@ -279,7 +281,6 @@ function PlayerDataManager.AddContributionPoints(player: Player, amount: number)
 	return data.ContributionPoints
 end
 
--- GAMEPASSES & SKINS
 function PlayerDataManager.HasGamepass(player: Player, passId: string): boolean
 	local passes = playerGamepasses[player]
 	return passes and passes[passId] == true or false
@@ -294,7 +295,6 @@ function PlayerDataManager.SetGamepassOwned(player: Player, passId: string)
 	passes[passId] = true
 end
 
--- ALCHEMY DATA
 function PlayerDataManager.AddAlchemyExp(player: Player, expGained: number): (number, number)
 	local data = playerAlchemyData[player]
 	if not data then

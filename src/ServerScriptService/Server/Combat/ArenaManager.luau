@@ -3,8 +3,8 @@
     ArenaManager.luau
     Location: src/ServerScriptService/Server/Combat/ArenaManager.luau
     Server-authoritative 1v1 Balanced Sparring Arena for the Azure Cloud Sect.
-    Features: Same-realm matchmaking queue, in-world ProximityPrompt, 90s duel countdown,
-    non-lethal HP resolution, contribution rewards, and dynamic InArena combat speed enforcement.
+    Features: Unified Instant Matchmaking, 1,000 HP Stat Normalization, 90s countdown,
+    Non-Lethal Concessions, and Top Duel HUD replication.
 ]]
 
 local Players = game:GetService("Players")
@@ -21,7 +21,7 @@ local CultivationManager = require(ServerScriptService.Server.Cultivation.Cultiv
 type ActiveDuel = {
 	Player1: Player,
 	Player2: Player,
-	Realm: CultivationConfig.RealmTier,
+	Realm: string,
 	StartTime: number,
 	Duration: number,
 	P1Spawn: Vector3,
@@ -33,30 +33,13 @@ type ActiveDuel = {
 local ArenaManager = {}
 
 local arenaRemote: RemoteEvent
-local queueByRealm: { [CultivationConfig.RealmTier]: { Player } } = {}
+local unifiedQueue: { Player } = {}
 local activeDuels: { [Player]: ActiveDuel } = {}
 
 local ARENA_TIME_LIMIT = 90 -- seconds
 
-local ALL_REALMS: { CultivationConfig.RealmTier } = {
-	"QiCondensation",
-	"FoundationEstablishment",
-	"GoldenCore",
-	"NascentSoul",
-	"SpiritSevering",
-	"VoidRefining",
-	"BodyIntegration",
-	"Mahayana",
-	"TribulationTranscending",
-	"ImmortalAscension",
-}
-
 function ArenaManager.Init()
 	arenaRemote = RemoteEvents.GetRemote("ArenaAction")
-
-	for _, realm in ipairs(ALL_REALMS) do
-		queueByRealm[realm] = {}
-	end
 
 	arenaRemote.OnServerEvent:Connect(function(player: Player, payload: any)
 		if type(payload) ~= "table" or type(payload.Action) ~= "string" then return end
@@ -73,27 +56,26 @@ function ArenaManager.Init()
 		ArenaManager.RemoveFromQueue(player)
 		local duel = activeDuels[player]
 		if duel and duel.IsActive then
-			local winner = duel.Player1 == player and duel.Player2 or duel.Player1
-			ArenaManager.EndDuel(duel, winner, "Opponent disconnected")
+			local winner = (duel.Player1 == player) and duel.Player2 or duel.Player1
+			ArenaManager.EndDuel(duel, winner, "Opponent Disconnected")
 		end
 	end)
 
-	-- Scan Workspace for physical arena prompt
 	task.spawn(ArenaManager.SetupArenaPrompt)
 
-	-- Heartbeat duel monitor
+	-- Heartbeat monitor for HP <= 1 and 90s timer
 	task.spawn(function()
 		while true do
-			task.wait(1)
+			task.wait(0.5)
 			ArenaManager.MonitorDuels()
 		end
 	end)
 
-	print("[ASCEND] ArenaManager Initialized (Realm-Matched 1v1 Sparring & InArena Combat Speed Enabled).")
+	print("[ASCEND] ArenaManager Initialized (Unified Instant Queue & 1,000 HP Normalization Active).")
 end
 
 function ArenaManager.SetupArenaPrompt()
-	local arena = Workspace:FindFirstChild("SparringArena") or Workspace:FindFirstChild("ArenaRing")
+	local arena = Workspace:FindFirstChild("SparringArena", true) or Workspace:FindFirstChild("ArenaRing", true)
 	if not arena then
 		arena = Instance.new("Folder")
 		arena.Name = "SparringArena"
@@ -102,7 +84,7 @@ function ArenaManager.SetupArenaPrompt()
 
 	local function BindPrompt(part: Instance)
 		if not (part:IsA("BasePart") or part:IsA("Model")) then return end
-		local targetPart = part:IsA("Model") and (part.PrimaryPart or part:FindFirstChildWhichIsA("BasePart")) or part :: BasePart
+		local targetPart = if part:IsA("Model") then (part.PrimaryPart or part:FindFirstChildWhichIsA("BasePart")) else (part :: BasePart)
 		if not targetPart or targetPart:FindFirstChild("ArenaPrompt") then return end
 
 		local prompt = Instance.new("ProximityPrompt")
@@ -127,70 +109,62 @@ function ArenaManager.SetupArenaPrompt()
 end
 
 function ArenaManager.GetArenaSpawns(): (Vector3, Vector3, Vector3)
-	local arena = Workspace:FindFirstChild("SparringArena") or Workspace:FindFirstChild("ArenaRing")
+	local arena = Workspace:FindFirstChild("SparringArena", true) or Workspace:FindFirstChild("ArenaRing", true)
 	if arena then
-		local s1 = arena:FindFirstChild("Spawn1") :: BasePart?
-		local s2 = arena:FindFirstChild("Spawn2") :: BasePart?
-		local spec = arena:FindFirstChild("SpectatorSpawn") :: BasePart?
+		local s1 = arena:FindFirstChild("Spawn1", true) :: BasePart?
+		local s2 = arena:FindFirstChild("Spawn2", true) :: BasePart?
+		local spec = arena:FindFirstChild("SpectatorSpawn", true) :: BasePart?
 
 		if s1 and s2 and spec then
 			return s1.Position + Vector3.new(0, 3, 0), s2.Position + Vector3.new(0, 3, 0), spec.Position + Vector3.new(0, 3, 0)
 		end
 	end
 
-	-- Fallback Sector 3 sparring ground defaults
-	return Vector3.new(300, 25, -200), Vector3.new(340, 25, -200), Vector3.new(320, 25, -230)
+	-- Default Sector 3 Arena Coordinates
+	return Vector3.new(-120, 14, 280), Vector3.new(-120, 14, 340), Vector3.new(-160, 14, 310)
 end
 
 function ArenaManager.AddToQueue(player: Player)
 	if activeDuels[player] then return end
 
-	local cultivation = CultivationManager.GetPlayerData(player)
-	if not cultivation then return end
-
-	local realm = cultivation.Realm
-	local queue = queueByRealm[realm]
-	if not queue then
-		queue = {}
-		queueByRealm[realm] = queue
-	end
-
-	for _, p in ipairs(queue) do
+	for _, p in ipairs(unifiedQueue) do
 		if p == player then return end
 	end
 
-	table.insert(queue, player)
-	arenaRemote:FireClient(player, { Action = "QueueJoined", Realm = realm })
-	print(string.format("[ArenaManager] %s joined the %s Sparring Queue.", player.Name, realm))
+	local cultivation = CultivationManager.GetPlayerData(player)
+	local realmName = if cultivation then tostring(cultivation.Realm) else "Qi Condensation"
 
-	if #queue >= 2 then
-		local p1 = table.remove(queue, 1) :: Player
-		local p2 = table.remove(queue, 1) :: Player
-		ArenaManager.StartDuel(p1, p2, realm)
+	table.insert(unifiedQueue, player)
+	arenaRemote:FireClient(player, { Action = "QueueJoined", Realm = realmName })
+	print(string.format("[ArenaManager] %s joined the 1v1 Sparring Queue.", player.Name))
+
+	-- Match as soon as 2 players are in queue
+	if #unifiedQueue >= 2 then
+		local p1 = table.remove(unifiedQueue, 1) :: Player
+		local p2 = table.remove(unifiedQueue, 1) :: Player
+		ArenaManager.StartDuel(p1, p2, realmName)
 	end
 end
 
 function ArenaManager.RemoveFromQueue(player: Player)
-	for _, queue in pairs(queueByRealm) do
-		for i, p in ipairs(queue) do
-			if p == player then
-				table.remove(queue, i)
-				arenaRemote:FireClient(player, { Action = "QueueLeft" })
-				print(string.format("[ArenaManager] %s left the Sparring Queue.", player.Name))
-				return
-			end
+	for i, p in ipairs(unifiedQueue) do
+		if p == player then
+			table.remove(unifiedQueue, i)
+			arenaRemote:FireClient(player, { Action = "QueueLeft" })
+			print(string.format("[ArenaManager] %s left the Sparring Queue.", player.Name))
+			return
 		end
 	end
 end
 
-function ArenaManager.StartDuel(p1: Player, p2: Player, realm: CultivationConfig.RealmTier)
+function ArenaManager.StartDuel(p1: Player, p2: Player, realm: string)
 	local p1Spawn, p2Spawn, specSpawn = ArenaManager.GetArenaSpawns()
 
 	local duel: ActiveDuel = {
 		Player1 = p1,
 		Player2 = p2,
 		Realm = realm,
-		StartTime = os.time(),
+		StartTime = os.clock(),
 		Duration = ARENA_TIME_LIMIT,
 		P1Spawn = p1Spawn,
 		P2Spawn = p2Spawn,
@@ -204,14 +178,17 @@ function ArenaManager.StartDuel(p1: Player, p2: Player, realm: CultivationConfig
 	local function PreparePlayer(p: Player, spawnPos: Vector3, opponent: Player)
 		local char = p.Character
 		if char then
-			-- Enforce Arena Combat Speed scaling (Deepwoken balance)
 			char:SetAttribute("InArena", true)
 			char:PivotTo(CFrame.new(spawnPos, opponent.Character and opponent.Character:GetPivot().Position or spawnPos))
-			local hum = char:FindFirstChild("Humanoid") :: Humanoid?
+
+			local hum = char:FindFirstChildOfClass("Humanoid")
 			if hum then
-				hum.Health = hum.MaxHealth
+				hum.MaxHealth = 1000
+				hum.Health = 1000
+				hum.WalkSpeed = 16
 			end
 		end
+
 		arenaRemote:FireClient(p, {
 			Action = "DuelStarting",
 			OpponentName = opponent.Name,
@@ -223,11 +200,11 @@ function ArenaManager.StartDuel(p1: Player, p2: Player, realm: CultivationConfig
 	PreparePlayer(p1, p1Spawn, p2)
 	PreparePlayer(p2, p2Spawn, p1)
 
-	print(string.format("[ArenaManager] ⚔️ Duel Started: %s vs %s (Realm: %s)!", p1.Name, p2.Name, realm))
+	print(string.format("[ArenaManager] ⚔️ 1v1 Duel Commenced: %s vs %s!", p1.Name, p2.Name))
 end
 
 function ArenaManager.MonitorDuels()
-	local now = os.time()
+	local now = os.clock()
 	local evaluated: { [ActiveDuel]: boolean } = {}
 
 	for _, duel in pairs(activeDuels) do
@@ -236,45 +213,54 @@ function ArenaManager.MonitorDuels()
 
 		local p1 = duel.Player1
 		local p2 = duel.Player2
-		local p1Hum = p1.Character and p1.Character:FindFirstChild("Humanoid") :: Humanoid?
-		local p2Hum = p2.Character and p2.Character:FindFirstChild("Humanoid") :: Humanoid?
+		local p1Hum = p1.Character and p1.Character:FindFirstChildOfClass("Humanoid")
+		local p2Hum = p2.Character and p2.Character:FindFirstChildOfClass("Humanoid")
 
-		if p1Hum and p1Hum.Health <= 1 then
+		local p1Health = if p1Hum then p1Hum.Health else 0
+		local p2Health = if p2Hum then p2Hum.Health else 0
+
+		-- Simultaneous zero HP -> Draw
+		if p1Health <= 1 and p2Health <= 1 then
+			ArenaManager.EndDuel(duel, nil, "Simultaneous Double Knockout")
+		elseif p1Health <= 1 then
 			ArenaManager.EndDuel(duel, p2, "Knockdown Victory")
-		elseif p2Hum and p2Hum.Health <= 1 then
+		elseif p2Health <= 1 then
 			ArenaManager.EndDuel(duel, p1, "Knockdown Victory")
-		elseif now - duel.StartTime >= duel.Duration then
-			local p1Pct = p1Hum and (p1Hum.Health / p1Hum.MaxHealth) or 0
-			local p2Pct = p2Hum and (p2Hum.Health / p2Hum.MaxHealth) or 0
-
-			if p1Pct > p2Pct then
+		elseif (now - duel.StartTime) >= duel.Duration then
+			if p1Health > p2Health then
 				ArenaManager.EndDuel(duel, p1, "Time Limit Exceeded (Higher HP)")
-			elseif p2Pct > p1Pct then
+			elseif p2Health > p1Health then
 				ArenaManager.EndDuel(duel, p2, "Time Limit Exceeded (Higher HP)")
 			else
-				ArenaManager.EndDuel(duel, nil, "Draw Match")
+				ArenaManager.EndDuel(duel, nil, "Time Limit Draw")
 			end
 		end
 	end
 end
 
 function ArenaManager.EndDuel(duel: ActiveDuel, winner: Player?, reason: string)
+	if not duel.IsActive then return end
 	duel.IsActive = false
+
 	activeDuels[duel.Player1] = nil
 	activeDuels[duel.Player2] = nil
 
 	local function ResolveFighter(p: Player, isWinner: boolean, isDraw: boolean)
 		local char = p.Character
 		if char then
-			-- Restore open-world speed scaling
 			char:SetAttribute("InArena", false)
 			char:PivotTo(CFrame.new(duel.SpectatorSpawn))
-			local hum = char:FindFirstChild("Humanoid") :: Humanoid?
-			if hum then hum.Health = hum.MaxHealth end
+
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum then
+				hum.MaxHealth = 100
+				hum.Health = 100
+				hum.WalkSpeed = 18
+			end
 		end
 
-		local contrib = isWinner and 100 or (isDraw and 50 or 25)
-		local stones = isWinner and 150 or (isDraw and 75 or 50)
+		local contrib = if isWinner then 100 else (if isDraw then 50 else 25)
+		local stones = if isWinner then 150 else (if isDraw then 75 else 50)
 
 		PlayerDataManager.AddContributionPoints(p, contrib)
 		PlayerDataManager.AddSpiritStones(p, stones)
@@ -290,15 +276,14 @@ function ArenaManager.EndDuel(duel: ActiveDuel, winner: Player?, reason: string)
 	end
 
 	if winner then
-		local loser = duel.Player1 == winner and duel.Player2 or duel.Player1
+		local loser = (duel.Player1 == winner) and duel.Player2 or duel.Player1
 		ResolveFighter(winner, true, false)
 		ResolveFighter(loser, false, false)
 		print(string.format("[ArenaManager] 🏆 %s defeated %s in Sparring Arena (%s).", winner.Name, loser.Name, reason))
 	else
 		ResolveFighter(duel.Player1, false, true)
 		ResolveFighter(duel.Player2, false, true)
-		print(string.format("[ArenaManager] 🤝 Sparring duel between %s and %s ended in a Draw (%s).", 
-			duel.Player1.Name, duel.Player2.Name, reason))
+		print(string.format("[ArenaManager] 🤝 Duel between %s and %s resulted in a Draw (%s).", duel.Player1.Name, duel.Player2.Name, reason))
 	end
 end
 

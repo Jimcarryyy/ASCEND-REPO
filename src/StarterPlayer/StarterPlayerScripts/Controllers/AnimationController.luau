@@ -2,14 +2,14 @@
 --[[
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
-    Client controller for ASCEND animation state.
-    Handles animation playback, preloading, and lifecycle cleanup on character respawn.
+    Handles animations, combat footwork dampening, and seamless sprint resumption.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContentProvider = game:GetService("ContentProvider")
 local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
@@ -23,12 +23,10 @@ local loadedTracks: { [string]: AnimationTrack } = {}
 local activeAttackTrack: AnimationTrack? = nil
 local blockTrack: AnimationTrack? = nil
 
--- Audio IDs
 local SWORD_SLASH_SOUND_ID = "rbxassetid://79218449800283"
 local DASH_SOUND_ID = "rbxassetid://93272068959626"
 local PARRY_CLASH_SOUND_ID = "rbxassetid://9114223175"
 
--- Custom R6 Meditation Pose Asset ID
 local MEDITATION_ANIM_ID = (AnimationConfig.Movement and (AnimationConfig.Movement :: any).Meditation) or "rbxassetid://129333803961409"
 local meditationTrack: AnimationTrack? = nil
 local isCurrentlyMeditating = false
@@ -45,10 +43,7 @@ local function PlayLocalSFX(soundId: string, volume: number?)
 	sound.Parent = hrp
 	sound:Play()
 
-	sound.Ended:Connect(function()
-		sound:Destroy()
-	end)
-
+	sound.Ended:Connect(function() sound:Destroy() end)
 	task.delay(1.5, function()
 		if sound and sound.Parent then sound:Destroy() end
 	end)
@@ -59,50 +54,18 @@ function AnimationController.Init()
 	local updateSkillStateRemote = RemoteEvents.GetRemote("UpdateSkillState")
 	local updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 
-	-- Preload All Animations
-	task.spawn(function()
-		local animsToPreload = {
-			MEDITATION_ANIM_ID,
-			SWORD_SLASH_SOUND_ID,
-			DASH_SOUND_ID,
-			PARRY_CLASH_SOUND_ID,
-			"rbxassetid://118004062849712",
-			"rbxassetid://87494050060721",
-			"rbxassetid://129254042886405",
-			"rbxassetid://78342794513338",
-			"rbxassetid://133701354257850",
-			"rbxassetid://140582503077234",
-			"rbxassetid://111677132360566",
-			"rbxassetid://132236998171530",
-			"rbxassetid://93342220169849",
-		}
-		local instances = {}
-		for _, id in ipairs(animsToPreload) do
-			if id:find("rbxassetid://") then
-				local a = Instance.new("Animation")
-				a.AnimationId = id
-				table.insert(instances, a)
-			end
-		end
-		pcall(function()
-			ContentProvider:PreloadAsync(instances)
-		end)
-	end)
-
-	-- Full Cache Cleanup on Character Respawn
-	player.CharacterAdded:Connect(function(newCharacter)
+	player.CharacterAdded:Connect(function(character)
 		AnimationController.ClearLoadedTracks()
 		isCurrentlyMeditating = false
 		meditationTrack = nil
 		activeAttackTrack = nil
 		blockTrack = nil
+		character:SetAttribute("IsAttacking", false)
 	end)
 
-	-- Meditation State Handler
 	updateCultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		local character = player.Character
 		if not character then return end
-
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
 		if not humanoid or not animator then return end
@@ -132,17 +95,13 @@ function AnimationController.Init()
 				if meditationTrack then
 					meditationTrack:AdjustSpeed(1)
 					meditationTrack.TimePosition = 0
-					if not meditationTrack.IsPlaying then
-						meditationTrack:Play(0.2)
-					end
+					if not meditationTrack.IsPlaying then meditationTrack:Play(0.2) end
 
 					local currentTrack = meditationTrack
 					task.spawn(function()
 						local trackLength = currentTrack.Length
 						if trackLength == 0 then trackLength = 1.0 end
-						local holdTime = math.max(0.1, trackLength - 0.08)
-						task.wait(holdTime)
-
+						task.wait(math.max(0.1, trackLength - 0.08))
 						if meditationTrack == currentTrack and currentTrack.IsPlaying and isCurrentlyMeditating then
 							currentTrack:AdjustSpeed(0)
 						end
@@ -166,12 +125,16 @@ function AnimationController.Init()
 	end)
 
 	combatActionRemote.OnClientEvent:Connect(function(target: Player, skillKey: string, payload: any?)
-		if target == player and skillKey == "Stunned" then
-			AnimationController.PlayStunAnimation((payload and payload.Duration) or 0.5)
+		if target == player and skillKey == "StatusEffect" then
+			local effectType = payload and payload.Effect
+			local duration = payload and payload.Duration or 0.5
+			if effectType == "Stunned" or effectType == "GuardBroken" then
+				AnimationController.PlayStunAnimation(duration)
+			end
 		end
 	end)
 
-	print("[ASCEND] AnimationController Initialized (Respawn-Resilient Track Management).")
+	print("[ASCEND] AnimationController Initialized (Footwork & Anti-Sky Launch Active).")
 end
 
 function AnimationController.ClearLoadedTracks()
@@ -219,9 +182,7 @@ end
 function AnimationController.StopBlock()
 	local trackKey = "FlyingSword_Block"
 	local track = loadedTracks[trackKey]
-	if track and track.IsPlaying then
-		track:Stop(0.08)
-	end
+	if track and track.IsPlaying then track:Stop(0.08) end
 	blockTrack = nil
 
 	local character = player.Character
@@ -255,9 +216,7 @@ function AnimationController.PlayStunAnimation(duration: number)
 
 	track:Play(0.05, 1, 1.0)
 	task.delay(duration, function()
-		if track and track.IsPlaying then
-			track:Stop(0.1)
-		end
+		if track and track.IsPlaying then track:Stop(0.1) end
 	end)
 end
 
@@ -298,6 +257,13 @@ function AnimationController.PerformDash(dashStep: number)
 	end
 	dashDir = Vector3.new(dashDir.X, 0, dashDir.Z).Unit
 
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = { character }
+	local hitWall = Workspace:Raycast(hrp.Position, dashDir * 3.5, rayParams)
+
+	local dashVelocity = if hitWall then dashDir * 15 else dashDir * 78
+
 	local attach = hrp:FindFirstChild("DashAttachment") :: Attachment?
 	if not attach then
 		attach = Instance.new("Attachment")
@@ -309,15 +275,17 @@ function AnimationController.PerformDash(dashStep: number)
 	linearVel.Name = "DashForce"
 	linearVel.Attachment0 = attach
 	linearVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
-	linearVel.MaxAxesForce = Vector3.new(250000, 0, 250000)
-	linearVel.VectorVelocity = dashDir * 88
+	linearVel.MaxAxesForce = Vector3.new(200000, 30000, 200000)
+	linearVel.VectorVelocity = Vector3.new(dashVelocity.X, 0, dashVelocity.Z)
 	linearVel.RelativeTo = Enum.ActuatorRelativeTo.World
 	linearVel.Parent = hrp
 
-	task.delay(0.16, function()
+	hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, math.clamp(hrp.AssemblyLinearVelocity.Y, -20, 2), hrp.AssemblyLinearVelocity.Z)
+
+	task.delay(0.15, function()
 		if linearVel and linearVel.Parent then
 			local decayTween = TweenService:Create(linearVel, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				VectorVelocity = dashDir * 15,
+				VectorVelocity = dashDir * 10,
 			})
 			decayTween:Play()
 			decayTween.Completed:Connect(function()
@@ -365,9 +333,10 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 
 	local equippedSword = character:FindFirstChild("EquippedSword")
 	local trail = if equippedSword then equippedSword:FindFirstChildOfClass("Trail") else nil
-	if trail then
-		trail.Enabled = true
-	end
+	if trail then trail.Enabled = true end
+
+	-- Lock combat footwork attribute
+	character:SetAttribute("IsAttacking", true)
 
 	if animDef.WalkSpeedDampen and humanoid then
 		humanoid.WalkSpeed = animDef.WalkSpeedDampen
@@ -380,15 +349,18 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 
 	local duration = animDef.CastDuration or 0.44
 	task.delay(duration, function()
-		if trail and activeAttackTrack == track then
-			trail.Enabled = false
+		if trail and activeAttackTrack == track then trail.Enabled = false end
+		if track and track.IsPlaying and activeAttackTrack == track then track:Stop(0.08) end
+		if activeAttackTrack == track then
+			character:SetAttribute("IsAttacking", false)
 		end
-		if track and track.IsPlaying and activeAttackTrack == track then
-			track:Stop(0.08)
-		end
+
+		-- Restore sprint speed if sprint is toggled on, otherwise walk speed
 		if humanoid and humanoid.Parent and activeAttackTrack == track then
-			local inArena = character:GetAttribute("InArena") == true
-			humanoid.WalkSpeed = inArena and 16 or 18
+			local InputController = require(player.PlayerScripts.Controllers.InputController)
+			local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
+			local isSprinting = InputController.IsSprinting()
+			humanoid.WalkSpeed = isSprinting and sprintSpeed or walkSpeed
 		end
 	end)
 end

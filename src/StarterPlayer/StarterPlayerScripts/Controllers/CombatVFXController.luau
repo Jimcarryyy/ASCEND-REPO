@@ -2,7 +2,8 @@
 --[[
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
-    Client VFX and Audio controller with Scaled Floating Damage Numbers and de-duplicated 3D sound routing.
+    Client VFX and Audio engine with Hitstop Micro-Pause, Guard-Break Shatter,
+    Clash Sparks, and Scaled Damage Numbers.
 ]]
 
 local Players = game:GetService("Players")
@@ -19,12 +20,10 @@ local camera = workspace.CurrentCamera
 local combatVFXRemote: RemoteEvent
 local combatActionRemote: RemoteEvent
 
--- Audio IDs
 local SWING_AIR_SOUND_ID = "rbxassetid://79218449800283"
 local HIT_IMPACT_SOUND_ID = "rbxassetid://140462043853173"
 local PARRY_CLASH_SOUND_ID = "rbxassetid://9114223175"
 
--- Camera Shake Variables
 local shakeIntensity = 0
 local shakeDecay = 8
 
@@ -52,9 +51,7 @@ local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 	end)
 
 	task.delay(2.5, function()
-		if soundPart and soundPart.Parent then
-			soundPart:Destroy()
-		end
+		if soundPart and soundPart.Parent then soundPart:Destroy() end
 	end)
 end
 
@@ -67,27 +64,27 @@ function CombatVFXController.Init()
 		local hrp = if attackerChar then attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 		local origin = if hrp then hrp.Position else Vector3.zero
 
-		-- 1. Swing Audio: ONLY played for OTHER observers (Attacker already played it locally with 0ms lag)
 		if skillKey == "M1" and attacker ~= player then
 			Play3DSound(SWING_AIR_SOUND_ID, origin, 0.7)
 		end
 
-		-- 2. Hit Feedback on Target
 		if type(payload) == "table" and payload.HasHit == true and payload.TargetPosition ~= nil then
 			if payload.WasParried then
-				-- Handled by ParryClash event
+				-- Handled by ParryClash
+			elseif payload.WasGuardBroken then
+				Play3DSound(PARRY_CLASH_SOUND_ID, payload.TargetPosition, 1.0)
+				CombatVFXController.AddCameraShake(0.55)
+				CombatVFXController.ApplyHitstop(0.06)
+				CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, true, Color3.fromRGB(255, 60, 60), "💥 GUARD BREAK!")
 			elseif payload.WasBlocked then
 				Play3DSound(PARRY_CLASH_SOUND_ID, payload.TargetPosition, 0.7)
-				if attacker == player then
-					CombatVFXController.AddCameraShake(0.15)
-				end
-				if payload.Damage and payload.Damage > 0 then
-					CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, false, Color3.fromRGB(175, 195, 220), "🛡️")
-				end
+				if attacker == player then CombatVFXController.AddCameraShake(0.15) end
+				CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, false, Color3.fromRGB(175, 195, 220), "🛡️")
 			else
 				Play3DSound(HIT_IMPACT_SOUND_ID, payload.TargetPosition, 0.95)
 				if attacker == player then
 					CombatVFXController.AddCameraShake(payload.IsCrit and 0.45 or 0.25)
+					CombatVFXController.ApplyHitstop(0.04)
 				end
 				if payload.Damage and payload.Damage > 0 then
 					CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, payload.IsCrit == true)
@@ -103,14 +100,6 @@ function CombatVFXController.Init()
 			CombatVFXController.SpawnParryClash(payload.Position)
 		elseif payload.EffectType == "BlockSparks" then
 			CombatVFXController.SpawnBlockSparks(payload.Position)
-		elseif payload.EffectType == "MagmaCrescentCleave" then
-			CombatVFXController.SpawnMagmaCrescentCleave(payload.Origin, payload.Direction)
-		elseif payload.EffectType == "CelestialSunfall" then
-			CombatVFXController.SpawnCelestialSunfall(payload.Position)
-		elseif payload.EffectType == "CameraShake" then
-			CombatVFXController.AddCameraShake(payload.Intensity or 0.5)
-		elseif payload.EffectType == "DamageNumber" then
-			CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.DamageAmount, payload.IsCrit)
 		end
 	end)
 
@@ -128,7 +117,28 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (Zero-Echo Audio & Scaled Damage Numbers).")
+	print("[ASCEND] CombatVFXController Initialized (Hitstop & Guard-Break VFX Active).")
+end
+
+-- 0.04s - 0.06s Client Animation Hitstop
+function CombatVFXController.ApplyHitstop(duration: number)
+	local character = player.Character
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
+	if not animator then return end
+
+	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+		track:AdjustSpeed(0.05)
+	end
+
+	task.delay(duration, function()
+		if animator and animator.Parent then
+			for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+				track:AdjustSpeed(1.0)
+			end
+		end
+	end)
 end
 
 function CombatVFXController.SpawnParryClash(position: Vector3)
@@ -188,112 +198,13 @@ function CombatVFXController.SpawnBlockSparks(position: Vector3)
 	pe.Parent = sparkPart
 	pe:Emit(15)
 
-	task.delay(0.5, function()
-		sparkPart:Destroy()
-	end)
-end
-
-function CombatVFXController.SpawnMagmaCrescentCleave(origin: Vector3, direction: Vector3)
-	local normDir = direction.Magnitude > 0 and direction.Unit or Vector3.new(0, 0, -1)
-
-	for waveIndex = 1, 3 do
-		task.delay((waveIndex - 1) * 0.12, function()
-			local wavePart = Instance.new("Part")
-			wavePart.Name = "MagmaCrescentWave_" .. waveIndex
-			wavePart.Size = Vector3.new(6 + (waveIndex * 2), 0.5, 2)
-			wavePart.CFrame = CFrame.lookAt(origin + (normDir * (waveIndex * 4)), origin + (normDir * (waveIndex * 4 + 10)))
-			wavePart.Color = Color3.fromRGB(255, 70, 30)
-			wavePart.Material = Enum.Material.Neon
-			wavePart.Anchored = true
-			wavePart.CanCollide = false
-			wavePart.Parent = workspace
-
-			local mesh = Instance.new("SpecialMesh")
-			mesh.MeshType = Enum.MeshType.FileMesh
-			mesh.MeshId = "rbxassetid://431221415"
-			mesh.Scale = Vector3.new(1 + (waveIndex * 0.3), 0.5, 1 + (waveIndex * 0.3))
-			mesh.Parent = wavePart
-
-			local pe = Instance.new("ParticleEmitter")
-			pe.Texture = "rbxassetid://242200234"
-			pe.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 120, 20)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 20, 0)),
-			})
-			pe.Size = NumberSequence.new(1.5, 0)
-			pe.Lifetime = NumberRange.new(0.3, 0.6)
-			pe.Rate = 40
-			pe.Speed = NumberRange.new(10, 20)
-			pe.Parent = wavePart
-
-			local targetCFrame = wavePart.CFrame + (normDir * 25)
-			local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			local tween = TweenService:Create(wavePart, tweenInfo, {
-				CFrame = targetCFrame,
-				Transparency = 1,
-			})
-
-			tween:Play()
-			CombatVFXController.AddCameraShake(0.35)
-
-			tween.Completed:Connect(function()
-				wavePart:Destroy()
-			end)
-		end)
-	end
-end
-
-function CombatVFXController.SpawnCelestialSunfall(position: Vector3)
-	local beamPart = Instance.new("Part")
-	beamPart.Name = "CelestialSunfallShaft"
-	beamPart.Size = Vector3.new(8, 120, 8)
-	beamPart.Position = position + Vector3.new(0, 60, 0)
-	beamPart.Color = Color3.fromRGB(255, 220, 100)
-	beamPart.Material = Enum.Material.Neon
-	beamPart.Anchored = true
-	beamPart.CanCollide = false
-	beamPart.Transparency = 0.2
-	beamPart.Parent = workspace
-
-	local ringPart = Instance.new("Part")
-	ringPart.Name = "SunfallGroundRing"
-	ringPart.Shape = Enum.PartType.Cylinder
-	ringPart.Size = Vector3.new(0.5, 4, 4)
-	ringPart.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90))
-	ringPart.Color = Color3.fromRGB(255, 200, 60)
-	ringPart.Material = Enum.Material.Neon
-	ringPart.Anchored = true
-	ringPart.CanCollide = false
-	ringPart.Parent = workspace
-
-	CombatVFXController.AddCameraShake(0.7)
-
-	local shaftTween = TweenService:Create(beamPart, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Transparency = 1,
-		Size = Vector3.new(1, 120, 1),
-	})
-
-	local ringTween = TweenService:Create(ringPart, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = Vector3.new(0.5, 32, 32),
-		Transparency = 1,
-	})
-
-	shaftTween:Play()
-	ringTween:Play()
-
-	shaftTween.Completed:Connect(function()
-		beamPart:Destroy()
-		ringPart:Destroy()
-	end)
+	task.delay(0.5, function() sparkPart:Destroy() end)
 end
 
 function CombatVFXController.AddCameraShake(intensity: number)
 	shakeIntensity = math.clamp(shakeIntensity + intensity, 0, 1.5)
 end
 
--- =============================================================================
--- DYNAMIC SCALED FLOATING DAMAGE NUMBERS & CRITICAL STRIKES
--- =============================================================================
 function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number, isCrit: boolean?, customColor: Color3?, prefixText: string?)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "DamageNumberGui"
@@ -318,12 +229,11 @@ function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number
 
 	label.Font = Enum.Font.LuckiestGuy
 
-	-- Dynamic Font Size Scaling
 	if isCrit then
 		label.TextSize = 34
-		label.TextColor3 = customColor or Color3.fromRGB(255, 215, 0) -- Radiant Gold
+		label.TextColor3 = customColor or Color3.fromRGB(255, 215, 0)
 		label.TextStrokeTransparency = 0
-		label.TextStrokeColor3 = Color3.fromRGB(130, 25, 0) -- Fiery Crimson Outline
+		label.TextStrokeColor3 = Color3.fromRGB(130, 25, 0)
 	else
 		local baseSize = math.clamp(20 + math.floor(damage / 15), 20, 26)
 		label.TextSize = baseSize

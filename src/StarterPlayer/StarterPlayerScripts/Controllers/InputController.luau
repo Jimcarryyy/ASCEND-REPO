@@ -2,7 +2,13 @@
 --[[
     InputController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InputController.luau
-    Handles client inputs for Keyboard, Mouse, and Mobile Dynamic Thumbstick Auto-Run.
+    Unified Input Controller for ASCEND:
+    - CTRL: Toggle Run/Sprint ON/OFF on PC/Desktop
+    - T: Block & Perfect Parry (Hold to Guard, Tap for Parry)
+    - F: Falling Sky Slam (Heavy Slam Skill)
+    - Q, E: Sword Skills
+    - LeftShift: 2-Stage Qi Dash
+    - Mobile: Dynamic Thumbstick Auto-Run
 ]]
 
 local Players = game:GetService("Players")
@@ -35,9 +41,6 @@ local isMeditating = false
 local isSprinting = false
 local isBlocking = false
 
--- Debounce & Combo Tracking
-local lastWPressTime = 0
-local DOUBLE_TAP_WINDOW = 0.28
 local lastCPress = 0
 local lastRPress = 0
 local lastM1Press = 0
@@ -53,7 +56,7 @@ local function IsTouchDevice(): boolean
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
 
-local function GetLocomotionSpeeds(): (number, number)
+function InputController.GetLocomotionSpeeds(): (number, number)
 	local character = player.Character
 	local inArena = character and (character:GetAttribute("InArena") == true)
 	if inArena then
@@ -61,6 +64,10 @@ local function GetLocomotionSpeeds(): (number, number)
 	else
 		return 18, 52
 	end
+end
+
+function InputController.IsSprinting(): boolean
+	return isSprinting
 end
 
 local function IsAnyMenuOpen(): boolean
@@ -85,7 +92,7 @@ function InputController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 
-	player.CharacterAdded:Connect(function(newChar)
+	player.CharacterAdded:Connect(function()
 		isMeditating = false
 		isSprinting = false
 		isBlocking = false
@@ -109,28 +116,52 @@ function InputController.Init()
 	UserInputService.InputEnded:Connect(InputController.OnInputEnded)
 
 	-- =========================================================================
-	-- MOBILE JOYSTICK AUTO-SPRINT ENGINE
+	-- 1. DESKTOP SPRINT MOVEMENT & COMBAT FOOTWORK MONITOR
 	-- =========================================================================
 	RunService.Heartbeat:Connect(function()
-		if not IsTouchDevice() then return end
-
 		local character = player.Character
-		if not character or isMeditating or isBlocking or not enabled then return end
+		if not character or not enabled then return end
 
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		if not humanoid or humanoid.Health <= 0 then return end
 
-		local moveMag = humanoid.MoveDirection.Magnitude
+		local isAttacking = character:GetAttribute("IsAttacking") == true
+		local isDashing = character:GetAttribute("IsDashing") == true
+		local isStunned = character:GetAttribute("IsStunned") == true 
+			or character:GetAttribute("CCState") == "Stunned" 
+			or character:GetAttribute("CCState") == "GuardBroken"
 
-		-- If pushing joystick all the way forward -> auto-sprint
-		if moveMag > 0.85 and not isSprinting and character:GetAttribute("IsDashing") ~= true then
-			InputController.StartSprint()
-		elseif moveMag < 0.20 and isSprinting then
-			InputController.StopSprint()
+		if isAttacking or isBlocking or isMeditating or isStunned or isDashing then
+			return -- Footwork / Stun lockouts handle their own WalkSpeed
+		end
+
+		local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
+
+		if IsTouchDevice() then
+			-- Mobile Touch: Dynamic thumbstick magnitude
+			local moveMag = humanoid.MoveDirection.Magnitude
+			if moveMag > 0.85 and not isSprinting then
+				isSprinting = true
+				humanoid.WalkSpeed = sprintSpeed
+			elseif moveMag < 0.20 and isSprinting then
+				isSprinting = false
+				humanoid.WalkSpeed = walkSpeed
+			end
+		else
+			-- Desktop/PC: Enforce speed based on isSprinting toggle
+			if isSprinting then
+				if humanoid.WalkSpeed ~= sprintSpeed then
+					humanoid.WalkSpeed = sprintSpeed
+				end
+			else
+				if humanoid.WalkSpeed ~= walkSpeed then
+					humanoid.WalkSpeed = walkSpeed
+				end
+			end
 		end
 	end)
 
-	print("[ASCEND] InputController Initialized (With Joystick Auto-Sprint).")
+	print("[ASCEND] InputController Initialized (CTRL: Run Toggle | T: Block).")
 end
 
 function InputController.SetEnabled(state: boolean)
@@ -141,41 +172,32 @@ function InputController.SetEnabled(state: boolean)
 	end
 end
 
-function InputController.StartBlock()
+-- =============================================================================
+-- SPRINT ON / OFF TOGGLE
+-- =============================================================================
+function InputController.ToggleSprint()
 	if isMeditating or not enabled or isBlocking then return end
 	local character = player.Character
-	if character and (character:GetAttribute("IsDashing") == true or character:GetAttribute("IsStunned") == true) then return end
+	if character and character:GetAttribute("IsDashing") == true then return end
 
-	isBlocking = true
 	if isSprinting then
 		InputController.StopSprint()
+	else
+		InputController.StartSprint()
 	end
-
-	local AnimationController = require(script.Parent.AnimationController)
-	AnimationController.StartBlock()
-	combatActionRemote:FireServer({ Action = "BlockStart", Timestamp = os.clock() })
-
-	local SkillBarController = require(script.Parent.SkillBarController)
-	SkillBarController.TriggerCooldown("F")
-end
-
-function InputController.StopBlock()
-	if not isBlocking then return end
-	isBlocking = false
-
-	local AnimationController = require(script.Parent.AnimationController)
-	AnimationController.StopBlock()
-	combatActionRemote:FireServer({ Action = "BlockEnd", Timestamp = os.clock() })
 end
 
 function InputController.StartSprint()
 	if isMeditating or not enabled or isBlocking then return end
 	local character = player.Character
-	if character and character:GetAttribute("IsDashing") == true then return end
+	if character and (character:GetAttribute("IsDashing") == true or character:GetAttribute("IsAttacking") == true) then
+		isSprinting = true
+		return
+	end
 
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 	if humanoid then
-		local _, sprintSpeed = GetLocomotionSpeeds()
+		local _, sprintSpeed = InputController.GetLocomotionSpeeds()
 		isSprinting = true
 		humanoid.WalkSpeed = sprintSpeed
 	end
@@ -185,10 +207,37 @@ function InputController.StopSprint()
 	local character = player.Character
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 	if humanoid then
-		local walkSpeed, _ = GetLocomotionSpeeds()
+		local walkSpeed, _ = InputController.GetLocomotionSpeeds()
 		isSprinting = false
 		humanoid.WalkSpeed = walkSpeed
 	end
+end
+
+function InputController.StartBlock()
+	if isMeditating or not enabled or isBlocking then return end
+	local character = player.Character
+	if character and (character:GetAttribute("IsDashing") == true or character:GetAttribute("IsStunned") == true or character:GetAttribute("IsAttacking") == true) then return end
+
+	isBlocking = true
+	if isSprinting then
+		isSprinting = false -- Block cancels sprint
+	end
+
+	local AnimationController = require(script.Parent.AnimationController)
+	AnimationController.StartBlock()
+	combatActionRemote:FireServer({ Action = "BlockStart", Timestamp = os.clock() })
+
+	local SkillBarController = require(script.Parent.SkillBarController)
+	SkillBarController.TriggerCooldown("T")
+end
+
+function InputController.StopBlock()
+	if not isBlocking then return end
+	isBlocking = false
+
+	local AnimationController = require(script.Parent.AnimationController)
+	AnimationController.StopBlock()
+	combatActionRemote:FireServer({ Action = "BlockEnd", Timestamp = os.clock() })
 end
 
 function InputController.GetTargetPayload(skillKey: string, comboIndex: number?, dashIndex: number?): ActionPayload
@@ -214,7 +263,6 @@ function InputController.TriggerDash()
 	if (now - lastDashPress) < DASH_COOLDOWN then return end
 	lastDashPress = now
 
-	local wasSprintingBeforeDash = isSprinting
 	local currentDashStep = dashStep
 	dashStep = if dashStep == 1 then 2 else 1
 
@@ -226,12 +274,6 @@ function InputController.TriggerDash()
 
 	local SkillBarController = require(script.Parent.SkillBarController)
 	SkillBarController.TriggerCooldown("Dash")
-
-	task.delay(0.24, function()
-		if wasSprintingBeforeDash and not isMeditating then
-			InputController.StartSprint()
-		end
-	end)
 end
 
 function InputController.TriggerM1()
@@ -240,10 +282,6 @@ function InputController.TriggerM1()
 
 	if (now - lastM1Press) < currentAttackLockout then
 		return
-	end
-
-	if isSprinting then
-		InputController.StopSprint()
 	end
 
 	if (now - lastM1Press) > COMBO_TIMEOUT then
@@ -288,25 +326,25 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 	local character = player.Character
 	if character and character:GetAttribute("IsDashing") == true then return end
 
-	if input.KeyCode == Enum.KeyCode.F then
+	-- 1. CTRL: Toggle Run / Sprint ON/OFF on PC
+	if input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.RightControl then
+		InputController.ToggleSprint()
+		return
+	end
+
+	-- 2. T Key: Block & Parry Stance
+	if input.KeyCode == Enum.KeyCode.T then
 		InputController.StartBlock()
 		return
 	end
 
-	if input.KeyCode == Enum.KeyCode.W then
-		local now = os.clock()
-		if (now - lastWPressTime) <= DOUBLE_TAP_WINDOW then
-			InputController.StartSprint()
-		end
-		lastWPressTime = now
-		return
-	end
-
+	-- 3. LeftShift: 2-Stage Qi Dash
 	if input.KeyCode == Enum.KeyCode.LeftShift then
 		InputController.TriggerDash()
 		return
 	end
 
+	-- 4. C: Meditation
 	if input.KeyCode == Enum.KeyCode.C then
 		local now = os.clock()
 		if now - lastCPress < 0.8 then return end
@@ -315,6 +353,7 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
+	-- 5. R: Sheath Toggle
 	if input.KeyCode == Enum.KeyCode.R then
 		if isMeditating then return end
 		local now = os.clock()
@@ -326,30 +365,31 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 
 	if not enabled or isMeditating or isBlocking then return end
 
+	-- 6. B: Breakthrough Request
 	if input.KeyCode == Enum.KeyCode.B then
 		combatActionRemote:FireServer({ RequestBreakthrough = true })
 		return
 	end
 
+	-- 7. MouseButton1: M1 Combo
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		InputController.TriggerM1()
 		return
 	end
 
+	-- 8. Skills: Q, E, F (Falling Sky Slam)
 	if input.KeyCode == Enum.KeyCode.Q then
 		InputController.TriggerSkill("Q")
 	elseif input.KeyCode == Enum.KeyCode.E then
 		InputController.TriggerSkill("E")
+	elseif input.KeyCode == Enum.KeyCode.F then
+		InputController.TriggerSkill("F")
 	end
 end
 
 function InputController.OnInputEnded(input: InputObject, gameProcessed: boolean)
-	if input.KeyCode == Enum.KeyCode.F then
+	if input.KeyCode == Enum.KeyCode.T then
 		InputController.StopBlock()
-	elseif input.KeyCode == Enum.KeyCode.W then
-		if isSprinting then
-			InputController.StopSprint()
-		end
 	end
 end
 
