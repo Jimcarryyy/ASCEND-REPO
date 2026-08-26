@@ -2,7 +2,7 @@
 --[[
     MarketController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/MarketController.luau
-    Client UI controller for the Azure Cloud Sect Market and Quest Pavilion.
+    Client UI controller for the Azure Cloud Sect Market (Trading Goods & Selling Loot).
     Theme: Dark Obsidian (#111827), Antique Gold (#8B6B32), and Jade Cultivation (#10B981).
 ]]
 
@@ -25,23 +25,21 @@ local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 local UI_FONT = Enum.Font.FredokaOne
 local T = UIAssets.Theme
 
--- UNIFIED DARK OBSIDIAN & ANTIQUE GOLD PALETTE
-local COLOR_LIGHT_MAIN   = T.DeepBackground   -- Color3.fromHex("#111827")
-local COLOR_LIGHT_PANEL  = T.SecondarySurface -- Color3.fromHex("#1C2638")
-local COLOR_LIGHT_CARD   = T.RaisedSurface    -- Color3.fromHex("#273246")
-local COLOR_LIGHT_BORDER = T.MainBorder       -- Color3.fromHex("#8B6B32")
+local COLOR_LIGHT_MAIN   = T.DeepBackground
+local COLOR_LIGHT_PANEL  = T.SecondarySurface
+local COLOR_LIGHT_CARD   = T.RaisedSurface
+local COLOR_LIGHT_BORDER = T.MainBorder
 
-local COLOR_TEXT_MAIN    = T.PrimaryText      -- Color3.fromHex("#F1E8D2")
-local COLOR_TEXT_SUB     = T.SecondaryText    -- Color3.fromHex("#A9A99F")
-local COLOR_AZURE_BLUE   = T.SpiritBlue       -- Color3.fromHex("#3B82F6")
-local COLOR_HP_GREEN     = T.JadeAccent       -- Color3.fromHex("#10B981")
-local COLOR_ACTION_GOLD  = T.HighlightBorder  -- Color3.fromHex("#C49A4A")
-local COLOR_DANGER_RED   = T.Vermilion        -- Color3.fromHex("#E63946")
+local COLOR_TEXT_MAIN    = T.PrimaryText
+local COLOR_TEXT_SUB     = T.SecondaryText
+local COLOR_AZURE_BLUE   = T.SpiritBlue
+local COLOR_HP_GREEN     = T.JadeAccent
+local COLOR_ACTION_GOLD  = T.HighlightBorder
+local COLOR_DANGER_RED   = T.Vermilion
 
-local CLICK_SOUND_ID = "rbxassetid://6895079853"
+local CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
 
 local marketRemote: RemoteEvent
-local sectRemote: RemoteEvent
 
 -- UI Instances
 local screenGui: ScreenGui
@@ -58,21 +56,19 @@ local toastContainer: Frame
 
 -- State
 local isOpen = false
-local viewMode: "Market" | "SectDuties" = "Market"
-local currentTab: "Buy" | "Sell" | "Duties" = "Buy"
+local currentTab: "Buy" | "Sell" = "Buy"
 local currentStones = 250
 local currentRank: SectConfig.DiscipleRank = "OuterDisciple"
 local currentContribution = 0
 local playerInventoryList: { [number]: { ItemId: string, Count: number, Quality: string? } } = {}
-local activeQuests: { [string]: any } = {}
 
 local function PlayClickAudio()
 	local sound = Instance.new("Sound")
 	sound.SoundId = CLICK_SOUND_ID
-	sound.Volume = 0.5
+	sound.Volume = 0.55
 	sound.Parent = SoundService
 	sound:Play()
-	game:GetService("Debris"):AddItem(sound, 1)
+	game:GetService("Debris"):AddItem(sound, 1.2)
 end
 
 function MarketController.ShowToast(message: string, isError: boolean?)
@@ -126,7 +122,6 @@ end
 
 function MarketController.Init()
 	marketRemote = RemoteEvents.GetRemote("MarketAction")
-	sectRemote = RemoteEvents.GetRemote("SectAction")
 
 	MarketController.BuildUI()
 
@@ -136,7 +131,6 @@ function MarketController.Init()
 
 		local action = payload.Action
 		if action == "OpenShop" then
-			viewMode = "Market"
 			currentTab = "Buy"
 			currentStones = payload.SpiritStones or currentStones
 			currentRank = payload.SectRank or currentRank
@@ -164,40 +158,6 @@ function MarketController.Init()
 		end
 	end)
 
-	sectRemote.OnClientEvent:Connect(function(payload: any)
-		if type(payload) ~= "table" or type(payload.Action) ~= "string" then return end
-
-		local action = payload.Action
-		if action == "OpenSectMenu" then
-			viewMode = "SectDuties"
-			currentTab = "Duties"
-			MarketController.Open()
-		elseif action == "SyncSectData" then
-			currentRank = payload.Rank or currentRank
-			currentContribution = payload.ContributionPoints or currentContribution
-			currentStones = payload.SpiritStones or currentStones
-			activeQuests = payload.Quests or activeQuests
-			MarketController.UpdateHeader()
-			if isOpen and currentTab == "Duties" then
-				MarketController.RenderDutiesTab()
-			end
-		elseif action == "QuestCompleted" then
-			MarketController.ShowToast(string.format("Duty Completed! (+%d CP, +%d Stones, +%d Qi)", payload.RewardContribution, payload.RewardSpiritStones, payload.RewardQi))
-			MarketController.UpdateHeader()
-			if isOpen and currentTab == "Duties" then
-				MarketController.RenderDutiesTab()
-			end
-		elseif action == "PromotionSuccess" then
-			MarketController.ShowToast(string.format("Promoted to %s!", payload.DisplayName))
-			MarketController.UpdateHeader()
-		elseif action == "PromotionFailed" or action == "QuestError" or action == "StipendFailed" then
-			MarketController.ShowToast(payload.Message or "Action Failed!", true)
-		elseif action == "StipendClaimed" then
-			MarketController.ShowToast(string.format("Claimed Daily Stipend (+%d Stones)!", payload.Amount))
-			MarketController.UpdateHeader()
-		end
-	end)
-
 	local updateInvRemote = RemoteEvents.GetRemote("UpdateInventory")
 	updateInvRemote.OnClientEvent:Connect(function(invTable)
 		if type(invTable) == "table" then
@@ -215,7 +175,7 @@ function MarketController.Init()
 		end
 	end)
 
-	print("[ASCEND] MarketController Initialized with Dark Obsidian Palette & UIAssets Cards.")
+	print("[ASCEND] MarketController Initialized (Sect Market & Trading Active).")
 end
 
 function MarketController.BuildUI()
@@ -264,7 +224,6 @@ function MarketController.BuildUI()
 	mStroke.Thickness = 2
 	mStroke.Parent = mainModal
 
-	-- Header Title
 	headerTitle = Instance.new("TextLabel")
 	headerTitle.Size = UDim2.new(1, 0, 0, 48)
 	headerTitle.BackgroundTransparency = 1
@@ -289,7 +248,6 @@ function MarketController.BuildUI()
 		MarketController.Close()
 	end)
 
-	-- Status Bar (Stones, Rank, Contribution)
 	local statusBar = Instance.new("Frame")
 	statusBar.Name = "StatusBar"
 	statusBar.Size = UDim2.new(1, -24, 0, 32)
@@ -343,7 +301,6 @@ function MarketController.BuildUI()
 	contributionLabel.TextXAlignment = Enum.TextXAlignment.Left
 	contributionLabel.Parent = statusBar
 
-	-- Tab Navigation Bar
 	navBar = Instance.new("Frame")
 	navBar.Name = "NavBar"
 	navBar.Size = UDim2.new(1, -24, 0, 38)
@@ -351,7 +308,6 @@ function MarketController.BuildUI()
 	navBar.BackgroundTransparency = 1
 	navBar.Parent = mainModal
 
-	-- Content Container
 	contentContainer = Instance.new("Frame")
 	contentContainer.Name = "ContentContainer"
 	contentContainer.Size = UDim2.new(1, -24, 1, -136)
@@ -378,11 +334,7 @@ function MarketController.UpdateHeader()
 		contributionLabel.Text = string.format("CONTRIBUTION: %d CP", currentContribution)
 	end
 	if headerTitle then
-		if viewMode == "Market" then
-			headerTitle.Text = "SECT MERCHANT MARKET"
-		else
-			headerTitle.Text = "SECT ELDER PAVILION"
-		end
+		headerTitle.Text = "SECT MERCHANT MARKET"
 	end
 end
 
@@ -393,7 +345,7 @@ function MarketController.RenderNavBar()
 	navLayout.Padding = UDim.new(0, 8)
 	navLayout.Parent = navBar
 
-	local function AddTab(text: string, tabKey: "Buy" | "Sell" | "Duties")
+	local function AddTab(text: string, tabKey: "Buy" | "Sell")
 		local isSelected = (currentTab == tabKey)
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(0, 140, 1, 0)
@@ -417,12 +369,8 @@ function MarketController.RenderNavBar()
 		end)
 	end
 
-	if viewMode == "Market" then
-		AddTab("BUY GOODS", "Buy")
-		AddTab("SELL ITEMS", "Sell")
-	else
-		AddTab("SECT DUTIES", "Duties")
-	end
+	AddTab("BUY GOODS", "Buy")
+	AddTab("SELL ITEMS", "Sell")
 end
 
 function MarketController.RenderCurrentTab()
@@ -432,8 +380,6 @@ function MarketController.RenderCurrentTab()
 		MarketController.RenderBuyTab()
 	elseif currentTab == "Sell" then
 		MarketController.RenderSellTab()
-	elseif currentTab == "Duties" then
-		MarketController.RenderDutiesTab()
 	end
 end
 
@@ -468,7 +414,6 @@ function MarketController.RenderBuyTab()
 			cStroke.Thickness = 1.5
 			cStroke.Parent = card
 
-			-- 2D PNG Icon
 			local iconAsset = UIAssets.Icons[itemDef.ItemId] or (itemInfo and itemInfo.Icon)
 			if iconAsset and iconAsset ~= "" then
 				local icon = Instance.new("ImageLabel")
@@ -621,129 +566,6 @@ function MarketController.RenderSellTab()
 		emptyLabel.Font = UI_FONT
 		emptyLabel.TextSize = 14
 		emptyLabel.Parent = scroll
-	end
-end
-
-function MarketController.RenderDutiesTab()
-	local scroll = Instance.new("ScrollingFrame")
-	scroll.Size = UDim2.new(1, -16, 1, -16)
-	scroll.Position = UDim2.new(0, 8, 0, 8)
-	scroll.BackgroundTransparency = 1
-	scroll.ScrollBarThickness = 4
-	scroll.ScrollBarImageColor3 = COLOR_ACTION_GOLD
-	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	scroll.Parent = contentContainer
-
-	local listLayout = Instance.new("UIListLayout")
-	listLayout.Padding = UDim.new(0, 10)
-	listLayout.Parent = scroll
-
-	-- Promotion & Stipend Top Banner
-	local promoCard = Instance.new("Frame")
-	promoCard.Size = UDim2.new(1, -8, 0, 64)
-	promoCard.BackgroundColor3 = COLOR_LIGHT_CARD
-	promoCard.BorderSizePixel = 0
-	promoCard.Parent = scroll
-
-	local pStroke = Instance.new("UIStroke")
-	pStroke.Color = COLOR_LIGHT_BORDER
-	pStroke.Thickness = 1.5
-	pStroke.Parent = promoCard
-
-	local stipendBtn = Instance.new("TextButton")
-	stipendBtn.Size = UDim2.new(0, 180, 0, 38)
-	stipendBtn.Position = UDim2.new(0, 14, 0.5, -19)
-	stipendBtn.BackgroundColor3 = COLOR_HP_GREEN
-	stipendBtn.Text = "CLAIM DAILY STIPEND"
-	stipendBtn.TextColor3 = COLOR_TEXT_MAIN
-	stipendBtn.Font = UI_FONT
-	stipendBtn.TextSize = 12
-	stipendBtn.Parent = promoCard
-
-	stipendBtn.MouseButton1Click:Connect(function()
-		PlayClickAudio()
-		sectRemote:FireServer({ Action = "ClaimDailyStipend" })
-	end)
-
-	local promoteBtn = Instance.new("TextButton")
-	promoteBtn.Size = UDim2.new(0, 180, 0, 38)
-	promoteBtn.Position = UDim2.new(1, -194, 0.5, -19)
-	promoteBtn.BackgroundColor3 = COLOR_ACTION_GOLD
-	promoteBtn.Text = "REQUEST PROMOTION"
-	promoteBtn.TextColor3 = COLOR_TEXT_MAIN
-	promoteBtn.Font = UI_FONT
-	promoteBtn.TextSize = 12
-	promoteBtn.Parent = promoCard
-
-	promoteBtn.MouseButton1Click:Connect(function()
-		PlayClickAudio()
-		sectRemote:FireServer({ Action = "RequestPromotion" })
-	end)
-
-	-- Quests Rows
-	for questId, questDef in pairs(SectConfig.GetAllQuests()) do
-		local progress = activeQuests[questId] or { CurrentAmount = 0, TargetAmount = questDef.TargetAmount, Completed = false }
-
-		local qCard = Instance.new("Frame")
-		qCard.Size = UDim2.new(1, -8, 0, 78)
-		qCard.BackgroundColor3 = COLOR_LIGHT_CARD
-		qCard.BorderSizePixel = 0
-		qCard.Parent = scroll
-
-		local qStroke = Instance.new("UIStroke")
-		qStroke.Color = if progress.Completed then COLOR_HP_GREEN else COLOR_LIGHT_BORDER
-		qStroke.Thickness = 1.5
-		qStroke.Parent = qCard
-
-		local qTitle = Instance.new("TextLabel")
-		qTitle.Size = UDim2.new(0.65, 0, 0, 24)
-		qTitle.Position = UDim2.new(0, 14, 0, 6)
-		qTitle.BackgroundTransparency = 1
-		qTitle.Text = string.format("%s (%d/%d)", questDef.Title:upper(), progress.CurrentAmount, questDef.TargetAmount)
-		qTitle.TextColor3 = COLOR_TEXT_MAIN
-		qTitle.Font = UI_FONT
-		qTitle.TextSize = 14
-		qTitle.TextXAlignment = Enum.TextXAlignment.Left
-		qTitle.Parent = qCard
-
-		local qDesc = Instance.new("TextLabel")
-		qDesc.Size = UDim2.new(0.65, 0, 0, 20)
-		qDesc.Position = UDim2.new(0, 14, 0, 28)
-		qDesc.BackgroundTransparency = 1
-		qDesc.Text = questDef.Description
-		qDesc.TextColor3 = COLOR_TEXT_SUB
-		qDesc.Font = UI_FONT
-		qDesc.TextSize = 12
-		qDesc.TextXAlignment = Enum.TextXAlignment.Left
-		qDesc.Parent = qCard
-
-		local qReward = Instance.new("TextLabel")
-		qReward.Size = UDim2.new(0.65, 0, 0, 20)
-		qReward.Position = UDim2.new(0, 14, 0, 50)
-		qReward.BackgroundTransparency = 1
-		qReward.Text = string.format("REWARDS: +%d CP  |  +%d STONES  |  +%d QI", questDef.RewardContribution, questDef.RewardSpiritStones, questDef.RewardQi)
-		qReward.TextColor3 = COLOR_AZURE_BLUE
-		qReward.Font = UI_FONT
-		qReward.TextSize = 11
-		qReward.TextXAlignment = Enum.TextXAlignment.Left
-		qReward.Parent = qCard
-
-		local submitBtn = Instance.new("TextButton")
-		submitBtn.Size = UDim2.new(0, 100, 0, 36)
-		submitBtn.Position = UDim2.new(1, -114, 0.5, -18)
-		submitBtn.BackgroundColor3 = if progress.Completed then COLOR_HP_GREEN else COLOR_LIGHT_PANEL
-		submitBtn.Text = if progress.Completed then "SUBMIT" else "IN PROGRESS"
-		submitBtn.TextColor3 = if progress.Completed then COLOR_TEXT_MAIN else COLOR_TEXT_SUB
-		submitBtn.Font = UI_FONT
-		submitBtn.TextSize = 12
-		submitBtn.Parent = qCard
-
-		if progress.Completed then
-			submitBtn.MouseButton1Click:Connect(function()
-				PlayClickAudio()
-				sectRemote:FireServer({ Action = "SubmitQuest", QuestId = questId })
-			end)
-		end
 	end
 end
 

@@ -106,3 +106,26 @@ All 12 2D icons are uploaded to Roblox Studio and registered in `UIAssets.luau` 
 | **Sword Slash SFX** | `rbxassetid://79218449800283` | Sound (Audio) | Crisp, authentic heavy blade cutting whoosh. |
 | **Qi Dash SFX** | `rbxassetid://93272068959626` | Sound (Audio) | Ethereal spirit burst dash sound. |
 
+
+## Additive Asset Manifest (2026-08-27) — Audio & 2D Flat UI Tokens
+
+### 1. Universal Audio Registry (`UIAssets.Audio`)
+| Asset Name | Asset ID | Volume | Usage / Trigger |
+| :--- | :--- | :--- | :--- |
+| **Exploration BGM** | `rbxassetid://137280276426447` | `0.35` | Boot-up looping background music in `ReplicatedFirst`. |
+| **Menu Select SFX** | `rbxassetid://101735926591481` | `0.65` | TopMenu navigation clicks (`BAG`, `MEDITATE`, `ARENA`, `SETTINGS`). |
+| **Panel Click SFX** | `rbxassetid://138567614125924` | `0.55` | Internal panel tabs, slot selection, sorting, and action buttons. |
+| **Sword Equip (Draw)** | `rbxassetid://114060318185092` | `0.75` | 3D audio when drawing sword to hand or equipping from bag. |
+| **Sword Unequip (Sheath)** | `rbxassetid://97568182472477` | `0.75` | 3D audio when sheathing sword to back via `R` key. |
+| **Parry Metal Clash** | `rbxassetid://9114223175` | `1.00` | 3D audio on Perfect Parry deflection or sword clashing. |
+| **Hit Impact Sound** | `rbxassetid://140462043853173` | `0.95` | Positional impact audio on confirmed sword hit. |
+
+### 2. 2D Rarity Color Palette (`UIAssets.RarityCardColors`)
+* **Mortal / Common:** `#64748B` (Text: `#FFFFFF`)
+* **Spiritual / Uncommon:** `#10B981` (Text: `#FFFFFF`)
+* **Earth / Rare:** `#3B82F6` (Text: `#FFFFFF`)
+* **Heaven / Epic:** `#A855F7` (Text: `#FFFFFF`)
+* **Legendary:** `#F59E0B` (Text: `#FFFFFF`)
+* **Mythic:** `#E11D48` (Text: `#FFFFFF`)
+* **Sovereign:** `#22D3EE` (Text: `#FFFFFF`)
+* **Celestial:** `#F8FAFC` (Text: `#1E232A` Charcoal Contrast)

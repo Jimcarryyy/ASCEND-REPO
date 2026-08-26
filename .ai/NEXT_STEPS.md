@@ -120,3 +120,25 @@ This file lays out the next planned development milestones and future roadmap. U
   * `VoidStarCleaverDao` (Tier 6 Mythic)
   * `AzurePatriarchHeritageJian` (Sect Prestige)
   * `RadiantImmortalSovereignJian` (VIP / Celestial)
+
+# Immediate Development Roadmap (Updated 2026-08-27)
+
+## Phase 7 Next Objectives:
+
+### 1. Flying Sword Flight Engine (御剑飞行)
+* Dedicated `V` key toggle (and mobile flight action button).
+* Horizontal sword mounting beneath feet (`HumanoidRootPart.FlightSwordMount`).
+* 3D omnidirectional flight controls (`W`/`S` pitch and thrust, `A`/`D` strafe, `Space` ascend, `CTRL`/`C` descend).
+* Dynamic aerodynamic banking into turns.
+* Realm-scaled flight velocity (Base: $65 \rightarrow$ Peak: $140+\text{ studs/s}$).
+
+### 2. Bottom-Center Vital & Sword Intent HUD Integration
+* Assemble the redesigned bottom-center HP, Qi, and Sword Intent gauge in Studio `StarterGui`.
+* Connect live health deltas, catch-up ghost damage bar, and Qi recovery to the new layout.
+
+### 3. Tier 5–8 Sword Model Asset Integration
+* Configure, import, and mount remaining 4 sword assets in `ReplicatedStorage.Weapons`:
+  * `VioletSoulSovereignJian` (Tier 5 Legendary)
+  * `VoidStarCleaverDao` (Tier 6 Mythic)
+  * `AzurePatriarchHeritageJian` (Sect Prestige)
+  * `RadiantImmortalSovereignJian` (VIP / Celestial)

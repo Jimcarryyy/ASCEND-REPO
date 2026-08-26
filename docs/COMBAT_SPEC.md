@@ -87,3 +87,21 @@ $$\text{Final Damage} = \text{Skill Base Damage} \times \text{Cultivator Power M
 #### 3. Arena vs Open-World Speed Scaling
 * **In Arena (`Character:GetAttribute("InArena") == true`):** Walk: `16` | Sprint: `28` (Deepwoken-style balanced combat).
 * **Outside Arena (Open World):** Walk: `18` | Sprint: `52` (High-speed exploration).
+
+## Additive Combat Update (2026-08-27) — Parrying, Posture & Duel Normalization
+
+### 1. Block & Perfect Parry Deflection Engine (`T` Key)
+* **Standard Guard (Hold `T`):** Blocks incoming attacks within the front $180^\circ$ arc, reducing damage by **$80\%$** and knockback by **$70\%$**. Drains Posture based on attack weight ($15\text{ pts}$ for M1 1–4, $40\text{ pts}$ for Finisher, $50\text{ pts}$ for Skills).
+* **Perfect Parry (Tap `T` within $0.22\text{s}$):** **$100\%$ Damage Negation**, breaks attacker's posture with a **$0.5\text{s}$ stun**, restores **$+5\%$ Dantian Qi**, triggers golden deflection sparks, and plays metal clash audio (`rbxassetid://9114223175`). Costs $0$ Posture.
+
+### 2. Posture & Guard-Break Mechanics
+* **Max Posture Pool:** $100\text{ Points}$.
+* **Posture Recovery:** Recovers at $25\text{ pts/s}$ after $1.5\text{s}$ of releasing block.
+* **Guard-Break Penalty:** Hitting $0\text{ Posture}$ inflicts a **$1.2\text{s}$ vulnerability stun** ($+25\%$ bonus damage taken) and shield-shatter visual feedback.
+
+### 3. Anti-Stunlock Hyperarmor Buffer
+* **$0.6\text{s}$ CC-Immunity Window:** Players receive $0.6\text{s}$ of hard hyperarmor immediately upon recovering from any stun (Parry Stun, Guard-Break, or Wall-Splat), preventing infinite stunlock chains.
+
+### 4. Arena Stat Normalization & Clashes
+* **1,000 HP Fair Duels:** Inside the Sector 3 Arena (`InArena == true`), all cultivators receive flat $1{,}000\text{ HP}$ and normalized damage curves for $100\%$ skill parity.
+* **Simultaneous Sword Clashes:** Attacks landing within $\pm 0.08\text{s}$ trigger a Sword Clash ($0\text{ damage}$, spark blast, mutual pushback).

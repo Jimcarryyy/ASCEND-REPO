@@ -109,3 +109,15 @@ All numerical HP and Qi text across HUDs, Overheads, and Damage Numbers format u
   - `DisplayOrder = 18`: Arena In-Match HUD (`ArenaHUDGui`)
   - `DisplayOrder = 10`: Persistent Trackers (`QuestTrackerGui`)
   - `DisplayOrder = 5`: Main HUD & Top Menu (`VitalHUDGui`, `TopMenuGUI`, `SkillsGUI`)
+
+  ## Additive UI/UX Specification (2026-08-27) — Studio Hierarchy Bindings & 3D Viewports
+
+### 1. Studio-Authoritative UI Binding Paradigm
+* Replaced programmatic `Instance.new` modal creation with direct bindings to Studio `StarterGui` instances (`SpiritPouchInventoryGui`, `SectPavilionGui`, `ArenaGUI`, `TopMenuGUI`).
+
+### 2. Spirit Pouch 3D Viewport Engine (`InventoryController.luau`)
+* **3D Sword & Herb Rendering:** Dynamically queries `ReplicatedStorage.Weapons` and `ReplicatedStorage.Herbs` to render a $35^\circ$ martial diagonal in grid slots and a live-spinning 3D mesh in the large inspection window.
+* **Adaptive Grid Sizing:** Dynamically scales from 6 columns on desktop ($100\times 100\text{px}$) down to 4 columns on mobile ($56\times 56\text{px}$).
+
+### 3. 5-Gate Loading Screen Engine (`LoadingScreen.client.luau`)
+* Executes at $t=0$ in `ReplicatedFirst`, synchronizing (1) Engine load, (2) 3D Model/Audio preloading, (3) Character & Sword Rig Mount, (4) DataStore V2 Sync, and (5) Smooth multi-element fade-out.

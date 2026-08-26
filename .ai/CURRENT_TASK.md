@@ -129,3 +129,29 @@ Implementing server-authoritative wild Spirit Beast AI (e.g., *Ironhide Boar*, *
   - Wire Telekinesis Thrust (`E`), Sword Barrage (`R`), and Tempest (`Q`) to unleash along the exact camera-center reticle raycast trajectory.
 - [ ] **Generate Remaining 4 Swords (Tiers 5–8):**
   - Generate, import, pivot, and hook `VioletSoulSovereignJian`, `VoidStarCleaverDao`, `AzurePatriarchHeritageJian`, and `RadiantImmortalSovereignJian`.
+
+
+  ## Active Milestone: Phase 7 — Combat Mechanics, UI/UX Studio Migration & Audio Polish (Completed)
+
+### Completed in this Session:
+- [x] **5-Hit M1 Broadsword Combo & Hitbox Synchronization:** Fixed step-5 finisher desync, added weapon stat scaling, and aim-projected box hitboxes.
+- [x] **Attacker Hit Feedback Loop:** Fixed server replication so the attacker immediately receives damage numbers, camera shake, and impact audio (`140462043853173`).
+- [x] **Sword Cultivator Block & Perfect Parry Engine (`T` Key):** $180^\circ$ front-guard arc ($80\%$ mitigation), $0.22\text{s}$ Perfect Parry ($100\%$ negation, $0.5\text{s}$ stagger, $+5\%$ Qi, spark VFX, and clash audio `9114223175`).
+- [x] **Posture & Guard-Break System:** $100\text{-point}$ Posture pool, $25\text{ pts/s}$ recovery, and $1.2\text{s}$ Guard-Break vulnerability stun ($+25\%$ bonus damage).
+- [x] **Unified CC & Anti-Stunlock Hyperarmor State Machine:** Single `CCState` providing $0.6\text{s}$ hard CC-immunity buffer after recovering from any stun.
+- [x] **Sector 3 1v1 Sparring Arena Overhaul:** Physical dual-pad standing detection (`DuelPad1` & `DuelPad2`), 3s countdown with auto-cancel, 1,000 HP normalization, non-lethal concession, and live streaming protection (`RequestStreamAroundAsync`).
+- [x] **Studio-Bound Spirit Pouch (`InventoryController.luau`):** Direct Studio hierarchy binding, automated 3D sword/herb mesh viewports with live spinning inspection, adaptive 6-to-4 column grid, and UIAssets rarity color coding.
+- [x] **3-Tiered Sect Duties (`SectManager.luau` & `SectConfig.luau`):** Easy $\rightarrow$ Medium $\rightarrow$ Hard progression for Herbal Foraging, Alchemy Refinement, and Sparring Discipline with permanent tier-3 lockouts.
+- [x] **5-Gate Synchronized Loading Screen (`LoadingScreen.client.luau`):** 5-gate sync engine driving Studio `CustomLoadingScreen` with continuous exploration BGM (`137280276426447`).
+- [x] **Audio Suite Integration (`UIAssets.luau`):** Integrated Menu Select SFX (`101735926591481`), Panel Click SFX (`138567614125924`), Sword Equip SFX (`114060318185092`), and Sword Unequip SFX (`97568182472477`).
+
+## Next Immediate Tasks (Next Session):
+- [ ] **Flying Sword Flight Mode (御剑飞行):**
+  - Implement dedicated `V` key (and mobile flight toggle) sword riding.
+  - Horizontal mounting under feet (`HumanoidRootPart.FlightSwordMount`).
+  - Full 3D omnidirectional flight physics with camera pitch/yaw steering and dynamic aerodynamic banking.
+  - Realm-scaled flight speed ($65 \rightarrow 140+\text{ studs/s}$).
+- [ ] **Bottom-Center Vital & Sword Intent Bar Implementation:**
+  - Build the redesigned bottom-center HP, Qi, and Sword Intent HUD frame in Studio.
+- [ ] **Tier 5–8 Sword Model Asset Integration:**
+  - Hook and mount `VioletSoulSovereignJian`, `VoidStarCleaverDao`, `AzurePatriarchHeritageJian`, and `RadiantImmortalSovereignJian`.

@@ -132,3 +132,18 @@ Code
 | **Sparring Arena** | **`P`** | Opens Sector 3 1v1 Sparring Arena registration. |
 | **Focus Target Aim** | **`LeftControl` / `MMB`** | Toggles screen-center reticle and upper-body aim lock. |
 | **Flight Mode** | **`V`** *(Upcoming)* | Mounts sword beneath feet for 3D flight. |
+
+## Additive Game Design Update (2026-08-27) — 3-Tiered Sect Duties & Physical Arena
+
+### 1. 3-Tiered Daily Sect Duties (Easy $\rightarrow$ Medium $\rightarrow$ Hard)
+* **Sect Mission Progression:** Daily duties progress through 3 difficulty tiers with scaling targets and rewards:
+  * **Herbal Foraging Duty:** Tier 1 ($5\text{ stalks}$) $\rightarrow$ Tier 2 ($10\text{ stalks}$) $\rightarrow$ Tier 3 ($20\text{ stalks}$).
+  * **Alchemy Refinement Duty:** Tier 1 ($1\text{ Dan}$) $\rightarrow$ Tier 2 ($3\text{ Dans}$) $\rightarrow$ Tier 3 ($5\text{ Dans}$).
+  * **Sparring Discipline Duty:** Tier 1 ($3\text{ Mobs}$) $\rightarrow$ Tier 2 ($6\text{ Mobs}$) $\rightarrow$ Tier 3 ($10\text{ Mobs}$).
+* **Permanent Daily Lockout:** Completing Tier 3 marks the duty as `AllTiersCompleted = true`, locking the card until the daily reset.
+
+### 2. Sector 3 Physical Duel Platform System
+* Replaced background auto-queue with **Physical Standby Pads (`DuelPad1` & `DuelPad2`)**:
+  * Stepping onto both pads triggers a 3-second countdown.
+  * Stepping off immediately cancels the match countdown.
+  * Completing the countdown teleports both fighters into the battle ring with $1{,}000\text{ HP}$.

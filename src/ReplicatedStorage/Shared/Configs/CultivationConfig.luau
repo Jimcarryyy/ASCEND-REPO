@@ -1,8 +1,10 @@
 --!strict
--- CultivationConfig.luau
--- Location: src/ReplicatedStorage/Shared/Configs/CultivationConfig.luau
--- Central configuration registry for 10 Major Cultivation Realms, 9 Orders each (90 Total Orders),
--- Dantian Capacity scaling, Realm Breakthrough Goals, percentage Qi costs, and unit number formatting.
+--[[
+    CultivationConfig.luau
+    Location: src/ReplicatedStorage/Shared/Configs/CultivationConfig.luau
+    Central configuration registry for 10 Major Cultivation Realms, 9 Orders each (90 Total Orders),
+    Dantian Capacity scaling, Realm Breakthrough Goals, percentage Qi costs, and unit number formatting.
+]]
 
 export type RealmTier = 
 	"QiCondensation" 
@@ -28,16 +30,15 @@ export type RealmInfo = {
 	Name: string,
 	Tier: number,
 	BaseMaxHealth: number,
-	BaseTargetQi: number, -- Realm Order 1 Breakthrough Goal
-	GatherRate: number, -- Dantian Expansion Rate per second
-	RegenMultiplier: number, -- Meditation base multiplier
+	BaseTargetQi: number,
+	GatherRate: number,
+	RegenMultiplier: number,
 	AuraColor: Color3,
 	HealthMultiplier: number,
 	Tribulation: TribulationSpec,
 }
 
 local CultivationConfig = {
-	-- Universal Number Formatting Helper (1k, 1M, 1B, 1T)
 	FormatNumber = function(num: number): string
 		local absolute = math.abs(num)
 		if absolute >= 1e15 then
@@ -55,17 +56,15 @@ local CultivationConfig = {
 		end
 	end,
 
-	-- Strategic Skill Qi Costs as a Percentage of Player's Current CultivatedQi
 	SkillCostPercent = {
-		M1 = 0.00,    -- 0% CultivatedQi
-		Shift = 0.03, -- 3% CultivatedQi
-		F = 0.08,     -- 8% CultivatedQi
-		E = 0.12,     -- 12% CultivatedQi
-		Q = 0.15,     -- 15% CultivatedQi
-		R = 0.30,     -- 30% CultivatedQi (Ultimate)
+		M1 = 0.00,
+		Shift = 0.03,
+		F = 0.08,
+		E = 0.12,
+		Q = 0.15,
+		R = 0.30,
 	},
 
-	-- Tier 1: Qi Condensation ($1,000 -> $12,000)
 	QiCondensation = {
 		Name = "Qi Condensation",
 		Tier = 1,
@@ -78,7 +77,6 @@ local CultivationConfig = {
 		Tribulation = { StrikeCount = 0, DamagePerStrike = 0, StrikeInterval = 0, TelegraphTime = 0, AuraColor = Color3.fromRGB(0, 220, 255) }
 	},
 
-	-- Tier 2: Foundation Establishment ($15,000 -> $120,000)
 	FoundationEstablishment = {
 		Name = "Foundation Establishment",
 		Tier = 2,
@@ -91,7 +89,6 @@ local CultivationConfig = {
 		Tribulation = { StrikeCount = 2, DamagePerStrike = 2000, StrikeInterval = 1.5, TelegraphTime = 1.2, AuraColor = Color3.fromRGB(255, 215, 0) }
 	},
 
-	-- Tier 3: Golden Core ($75,000 -> $850,000)
 	GoldenCore = {
 		Name = "Golden Core",
 		Tier = 3,
@@ -104,7 +101,6 @@ local CultivationConfig = {
 		Tribulation = { StrikeCount = 3, DamagePerStrike = 10000, StrikeInterval = 1.5, TelegraphTime = 1.2, AuraColor = Color3.fromRGB(255, 140, 0) }
 	},
 
-	-- Tier 4: Nascent Soul ($350,000 -> $4.5M)
 	NascentSoul = {
 		Name = "Nascent Soul",
 		Tier = 4,
@@ -117,7 +113,6 @@ local CultivationConfig = {
 		Tribulation = { StrikeCount = 4, DamagePerStrike = 50000, StrikeInterval = 1.5, TelegraphTime = 1.0, AuraColor = Color3.fromRGB(180, 50, 255) }
 	},
 
-	-- Tier 5: Spirit Severing ($1.5M -> $22M)
 	SpiritSevering = {
 		Name = "Spirit Severing",
 		Tier = 5,
@@ -130,7 +125,6 @@ local CultivationConfig = {
 		Tribulation = { StrikeCount = 5, DamagePerStrike = 200000, StrikeInterval = 1.2, TelegraphTime = 1.0, AuraColor = Color3.fromRGB(255, 50, 80) }
 	},
 
-	-- Tier 6: Void Refining ($7.5M -> $90M)
 	VoidRefining = {
 		Name = "Void Refining",
 		Tier = 6,
@@ -143,7 +137,6 @@ local CultivationConfig = {
 		Tribulation = { StrikeCount = 5, DamagePerStrike = 1000000, StrikeInterval = 1.2, TelegraphTime = 0.9, AuraColor = Color3.fromRGB(120, 0, 220) }
 	},
 
-	-- Tier 7: Body Integration ($25M -> $280M)
 	BodyIntegration = {
 		Name = "Body Integration",
 		Tier = 7,
@@ -156,7 +149,6 @@ local CultivationConfig = {
 		Tribulation = { StrikeCount = 6, DamagePerStrike = 3000000, StrikeInterval = 1.0, TelegraphTime = 0.8, AuraColor = Color3.fromRGB(50, 220, 150) }
 	},
 
-	-- Tier 8: Mahayana ($55M -> $650M)
 	Mahayana = {
 		Name = "Mahayana",
 		Tier = 8,
@@ -169,7 +161,6 @@ local CultivationConfig = {
 		Tribulation = { StrikeCount = 7, DamagePerStrike = 7000000, StrikeInterval = 1.0, TelegraphTime = 0.8, AuraColor = Color3.fromRGB(255, 230, 120) }
 	},
 
-	-- Tier 9: Tribulation Transcending ($80M -> $950M)
 	TribulationTranscending = {
 		Name = "Tribulation Transcending",
 		Tier = 9,
@@ -182,7 +173,6 @@ local CultivationConfig = {
 		Tribulation = { StrikeCount = 9, DamagePerStrike = 12000000, StrikeInterval = 0.8, TelegraphTime = 0.7, AuraColor = Color3.fromRGB(255, 255, 255) }
 	},
 
-	-- Tier 10: Immortal Ascension ($100M -> $1.5B V1 Cap)
 	ImmortalAscension = {
 		Name = "Immortal Ascension",
 		Tier = 10,
@@ -196,6 +186,11 @@ local CultivationConfig = {
 	},
 }
 
+function CultivationConfig.GetRealmDisplayName(realmTier: RealmTier): string
+	local info = CultivationConfig[realmTier]
+	return if info and info.Name then info.Name else tostring(realmTier)
+end
+
 function CultivationConfig.GetOrderMaxHealth(realmTier: RealmTier, order: number): number
 	local info = CultivationConfig[realmTier]
 	if not info then return 1000 end
@@ -205,7 +200,6 @@ function CultivationConfig.GetOrderMaxHealth(realmTier: RealmTier, order: number
 	return math.floor(info.BaseMaxHealth * orderScale)
 end
 
--- Realm Breakthrough Goal (MaxQiGoal)
 function CultivationConfig.GetOrderTargetQi(realmTier: RealmTier, order: number): number
 	local info = CultivationConfig[realmTier]
 	if not info then return 1000 end
@@ -215,18 +209,15 @@ function CultivationConfig.GetOrderTargetQi(realmTier: RealmTier, order: number)
 	return math.floor(info.BaseTargetQi * orderScale)
 end
 
--- Alias for GetOrderTargetQi for backward compatibility
 function CultivationConfig.GetOrderMaxQi(realmTier: RealmTier, order: number): number
 	return CultivationConfig.GetOrderTargetQi(realmTier, order)
 end
 
--- Starting CultivatedQi Capacity for a new Order (20% of MaxQiGoal)
 function CultivationConfig.GetOrderStartingMaxQi(realmTier: RealmTier, order: number): number
 	local targetQi = CultivationConfig.GetOrderTargetQi(realmTier, order)
 	return math.floor(targetQi * 0.20)
 end
 
--- Dynamic Power Multiplier based on Realm & Order
 function CultivationConfig.GetPowerMultiplier(realmTier: RealmTier, order: number): number
 	local info = CultivationConfig[realmTier]
 	if not info then return 1.0 end

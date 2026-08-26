@@ -87,3 +87,19 @@ src/
 * **Idle Yaw Pinning:** When `Humanoid.MoveDirection.Magnitude == 0`, `targetIdleYaw` captures the stopping orientation and pins `HumanoidRootPart.CFrame` with `AssemblyAngularVelocity = Vector3.zero`.
 * **Anti-Ragdoll Physics:** Permanently disables `FallingDown`, `Ragdoll`, `PlatformStanding`, and `GettingUp`, enforcing `MaxSlopeAngle = 89` for smooth stair/terrain traversal.
 * **UI Input Sinks:** `InputController.luau` checks `IsAnyMenuOpen()` and `UserInputService:GetFocusedTextBox()` to prevent input bleed into attacks/jumping while interacting with interfaces.
+
+## Additive Architecture Update (2026-08-27) — Unified Combat State & Production Streaming
+
+### 1. Unified Server Combat & CC State Machine (`CombatStateManager.luau`)
+* Centralized player state: `ActionState` (`Idle`, `Windup`, `Active`, `Recovery`, `Blocking`, `Dashing`) and `CCState` (`None`, `Staggered`, `Stunned`, `GuardBroken`, `CCImmune`).
+* **$0.6\text{s}$ Anti-Stunlock Buffer:** Applies hard hyperarmor upon recovering from any stun to prevent infinite stunlock chains.
+* **$100\text{-Point}$ Posture Engine:** Blocking attacks drains posture; reaching $0\text{ Posture}$ inflicts a $1.2\text{s}$ Guard-Break vulnerability stun ($+25\%$ bonus damage).
+* **Anti-Animation Canceling:** Enforces server-side `RecoveryEndTime` lockouts to prevent skipping attack recovery frames with skills.
+
+### 2. Live Production Streaming & Arena Architecture (`ArenaManager.luau`)
+* **Streaming Protection:** Calls `player:RequestStreamAroundAsync()` before teleporting, ensuring terrain and floor colliders load on the client before touchdown (eliminating void-falling).
+* **Physical Dual-Pad Standby:** Monitors `DuelPad1` and `DuelPad2` presence to drive a 3-second match countdown that auto-cancels if either fighter steps off.
+* **Non-Lethal Concession Engine:** Reaching $\le 1\text{ HP}$ in the arena terminates the match cleanly, resetting health without triggering dead-state character respawn corruptions.
+
+### 3. Asynchronous Client Bootstrap (`ClientMain.client.luau`)
+* Initializes all 15 client controllers concurrently via `task.spawn()`, preventing missing/redesigned UI elements from blocking other controllers.

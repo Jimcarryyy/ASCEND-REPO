@@ -92,3 +92,17 @@ $$\mathbf{CurrentQi \le CultivatedQi \le MaxQiGoal}$$
 To maintain early zone relevance while preserving high-realm power fantasy:
 $$\text{Reward} = \text{BaseReward} \times (1 + (\text{RealmIndex} - 1) \times 0.35)$$
 - Applied to Spirit Stones and Condensed Qi awarded from defeating zone mobs and completing daily sect bounties.
+
+## Additive Progression Update (2026-08-27) — Tiered Sect Duties & Promotion Rules
+
+### 1. Server-Authoritative Quest Validation
+* Client submissions are validated against server-computed flags (`ReadyToClaim` and `AllTiersCompleted`).
+* Tier progression resets `CurrentAmount = 0` on Tier 1 and Tier 2 claims, while Tier 3 permanently locks the quest until the next daily cycle.
+
+### 2. Dynamic Disciple Promotion Evaluation
+* Evaluates real-time Cultivation Realm tier and Contribution Point thresholds in DataStore V2:
+  * *Outer $\rightarrow$ Inner:* Foundation Establishment + $500\text{ CP}$
+  * *Inner $\rightarrow$ Core:* Core Formation + $2{,}500\text{ CP}$
+  * *Core $\rightarrow$ Direct:* Nascent Soul + $10{,}000\text{ CP}$
+  * *Direct $\rightarrow$ Elder:* Spirit Severing + $50{,}000\text{ CP}$
+  * *Elder $\rightarrow$ Grand Elder:* Tribulation Transcending + $150{,}000\text{ CP}$

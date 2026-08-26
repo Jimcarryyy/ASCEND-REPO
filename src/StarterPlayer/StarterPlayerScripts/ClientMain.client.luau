@@ -3,7 +3,7 @@
     ClientMain.client.luau
     Location: src/StarterPlayer/StarterPlayerScripts/ClientMain.client.luau
     Master client bootstrap for ASCEND.
-    Initializes all client controllers concurrently so no single controller can ever block another.
+    Initializes all client controllers concurrently in isolated threads.
 ]]
 
 local Players = game:GetService("Players")
@@ -25,6 +25,7 @@ local CONTROLLER_NAMES = {
 	"ArenaController",
 	"SkillBarController",
 	"FocusTargetController",
+	"SectController",
 }
 
 local function InitializeClient()
@@ -45,7 +46,7 @@ local function InitializeClient()
 		end
 	end
 
-	print("[ASCEND] All Client Controllers Initialized Concurrently (Zero Boot Blocking).")
+	print("[ASCEND] All Client Controllers Initialized Concurrently (Including SectController).")
 end
 
 InitializeClient()

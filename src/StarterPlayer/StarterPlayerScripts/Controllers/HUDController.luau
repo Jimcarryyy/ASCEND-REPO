@@ -2,7 +2,10 @@
 --[[
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
-    Client HUD Engine for ASCEND with Menu Select Audio.
+    Client HUD Engine for ASCEND:
+    - Automatically enables & reveals TopMenuGUI and Vital HUDs in-game (safe for hidden editing in Studio)
+    - Hooks TopMenuGUI (Tab_BAG, Tab_MEDITATE, Tab_ARENA, Tab_SETTINGS) with Select Audio
+    - Full Qi, Health, Toast, and Skin lifecycle management
 ]]
 
 local Players = game:GetService("Players")
@@ -137,16 +140,29 @@ function HUDController.Init()
 		end
 	end)
 
-	print("[ASCEND] HUDController Initialized (Menu Select SFX Connected).")
+	print("[ASCEND] HUDController Initialized (Auto-Reveal Enabled & TopMenu Hooked).")
 end
 
--- Binds to TopMenu (Tab_BAG, Tab_MEDITATE, Tab_ARENA, Tab_SETTINGS)
+-- =============================================================================
+-- TOP MENU HOOK (AUTO-REVEALS IN-GAME)
+-- =============================================================================
 function HUDController.HookTopMenu()
-	topMenuGui = playerGui:WaitForChild("TopMenuGUI", 10) :: ScreenGui?
+	topMenuGui = (playerGui:FindFirstChild("TopMenuGUI") or playerGui:WaitForChild("TopMenuGUI", 10)) :: ScreenGui?
 	if not topMenuGui then return end
 
-	local topMenu = topMenuGui:WaitForChild("TopMenu", 5) :: Frame?
+	-- Automatically force-enable ScreenGui in-game
+	topMenuGui.Enabled = true
+
+	local topMenu = (topMenuGui:FindFirstChild("TopMenu") or topMenuGui:WaitForChild("TopMenu", 5)) :: Frame?
 	if not topMenu then return end
+
+	-- Automatically force-reveal TopMenu frame and children
+	topMenu.Visible = true
+	for _, child in ipairs(topMenu:GetChildren()) do
+		if child:IsA("GuiObject") then
+			child.Visible = true
+		end
+	end
 
 	local function BindMenuClick(menuNames: { string }, onClick: () -> ())
 		local menuContainer: Instance? = nil
@@ -216,15 +232,25 @@ function HUDController.HookTopMenu()
 	end)
 end
 
+-- =============================================================================
+-- VITAL HUD HOOK (AUTO-REVEALS IN-GAME)
+-- =============================================================================
 function HUDController.HookExplorerHUD()
-	hudScreenGui = (playerGui:WaitForChild("VitalHUDGui", 8) or playerGui:WaitForChild("AscendMainHUD", 8)) :: ScreenGui?
+	hudScreenGui = (playerGui:FindFirstChild("VitalHUDGui") or playerGui:FindFirstChild("AscendMainHUD")) :: ScreenGui?
 	if not hudScreenGui then
 		hudScreenGui = playerGui:FindFirstChildOfClass("ScreenGui")
 	end
 	if not hudScreenGui then return end
 
-	vitalFrame = (hudScreenGui:WaitForChild("VitalHUDFrame", 5) or hudScreenGui:FindFirstChild("VitalHUDFrame", true)) :: ImageLabel?
-	if not vitalFrame then return end
+	-- Automatically force-enable ScreenGui in-game
+	hudScreenGui.Enabled = true
+
+	vitalFrame = (hudScreenGui:FindFirstChild("VitalHUDFrame") or hudScreenGui:FindFirstChild("VitalHUDFrame", true)) :: ImageLabel?
+	if vitalFrame then
+		vitalFrame.Visible = true
+	else
+		return
+	end
 
 	portraitMaskFrame = FindChildCaseInsensitive(vitalFrame, "PortraitMask") :: Frame?
 	if portraitMaskFrame then
@@ -338,6 +364,7 @@ function HUDController.HookExplorerHUD()
 
 	hotbarFrame = FindChildCaseInsensitive(hudScreenGui, "HotbarFrame") :: Frame?
 	if hotbarFrame then
+		hotbarFrame.Visible = true
 		for i = 1, 6 do
 			local slot = FindChildCaseInsensitive(hotbarFrame, "HotbarSlot_" .. i) :: Frame?
 			if slot then

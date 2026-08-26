@@ -201,3 +201,21 @@ This document tracks released and unreleased changes, feature additions, and arc
 - **Meditation Sheath Bug:** Blocked `R` key draw during meditation and forced sword to remain on the back.
 - **UI Interaction Conflicts:** Blocked mouse attacks and Spacebar jumps when clicking or interacting with game menus.
 - **Zero-Distance Dash Bug:** Corrected `LinearVelocity.ForceLimitMode` to `Enum.ForceLimitMode.PerAxis` with Y-force clamped to 0.
+
+
+## [Phase 7 — Combat Overhaul, 3D Inventory Viewports & 1v1 Arena Polish] - 2026-08-27
+
+### Added
+- **Unified Server Combat & CC State Machine (`CombatStateManager.luau`):** Single authoritative state machine managing Action States, CC States, Posture, Guard-Break, and a $0.6\text{s}$ hard CC-immunity hyperarmor buffer.
+- **Sword Cultivator Block & Perfect Parry (`T` Key):** $180^\circ$ front-guard arc mitigating $80\%$ damage, and a $0.22\text{s}$ Perfect Parry deflection window ($100\%$ damage negation, $0.5\text{s}$ attacker stagger, $+5\%$ Qi restore, spark VFX, and metal clash audio `9114223175`).
+- **Posture & Guard-Break System:** $100\text{-point}$ Posture pool with drain per blocked strike, $25\text{ pts/s}$ out-of-block regen, and a $1.2\text{s}$ Guard-Break vulnerability stun ($+25\%$ bonus damage).
+- **Physical Dual-Pad Sparring Matchmaking (`ArenaManager.luau`):** Standby detection on `DuelPad1` and `DuelPad2`, 3-second countdown with auto-cancellation, 1,000 HP stat normalization, non-lethal defeat resolution, and live streaming protection (`RequestStreamAroundAsync`).
+- **Studio-Bound Spirit Pouch (`InventoryController.luau`):** Replaced hardcoded UI with direct Studio hierarchy bindings, 3D sword/herb viewport previews with real-time spinning inspection, and adaptive 6-to-4 column grid sizing.
+- **3-Tiered Sect Quests (`SectConfig.luau` & `SectManager.luau`):** 3 difficulty tiers (Easy $\rightarrow$ Medium $\rightarrow$ Hard) with server validation and permanent tier-3 lockouts.
+- **5-Gate Synchronized Loading Screen (`LoadingScreen.client.luau`):** Fullscreen Studio-bound loading screen with 3D model preloading, character weapon mounting confirmation, and continuous looping BGM (`137280276426447`).
+- **Complete Audio Suite Integration (`UIAssets.luau`):** Registered Menu Select SFX (`101735926591481`), Panel Click SFX (`138567614125924`), Sword Equip SFX (`114060318185092`), Sword Unequip SFX (`97568182472477`), and Exploration BGM (`137280276426447`).
+
+### Changed
+- **Keybind Schema Update:** Rebound Block/Parry to **`T`**, restored **`F`** as Falling Sky Slam, bound Sprint Toggle to **`CTRL`**, and rebound Focus Target to **`MouseButton3` / `Z`**.
+- **Combat Footwork Gate:** Movement dampens to `WalkSpeed = 8` during M1 swings with `IsAttacking` locking, preventing mobile auto-sprint overrides while attacking.
+- **Asynchronous Client Boot (`ClientMain.client.luau`):** Concurrently boots all client controllers in isolated `task.spawn()` threads, eliminating sequential 10-second boot freezes.
