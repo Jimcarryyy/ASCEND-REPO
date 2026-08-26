@@ -49,6 +49,7 @@ local PlayerDataManager = {}
 local DATA_STORE_NAME = "ASCEND_PlayerData_V2"
 local MAX_RETRIES = 3
 local AUTO_SAVE_INTERVAL = 300
+local SHUTDOWN_SAVE_TIMEOUT = 25
 
 local playerDataStore: DataStore? = nil
 local isLoadedMap: { [Player]: boolean } = {}
@@ -56,9 +57,6 @@ local playerAlchemyData: { [Player]: { Exp: number, Level: number } } = {}
 local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfig.DiscipleRank, ContributionPoints: number } } = {}
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
-
--- Forced reset disabled so your saved progression persists normally
-local FORCE_RESET_HAN_JUEEE = false
 
 local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	Version = 2,
@@ -119,8 +117,26 @@ function PlayerDataManager.Init()
 
 	game:BindToClose(function()
 		print("[PlayerDataManager] Server shutting down... Executing final save for all players.")
-		PlayerDataManager.SaveAllPlayers()
-		task.wait(2)
+		local players = Players:GetPlayers()
+		local remaining = #players
+		if remaining == 0 then return end
+
+		for _, player in ipairs(players) do
+			task.spawn(function()
+				PlayerDataManager.SaveData(player)
+				remaining -= 1
+			end)
+		end
+
+		local waited = 0
+		while remaining > 0 and waited < SHUTDOWN_SAVE_TIMEOUT do
+			task.wait(0.5)
+			waited += 0.5
+		end
+
+		if remaining > 0 then
+			warn(string.format("[PlayerDataManager] Shutdown timeout reached with %d player save(s) still pending.", remaining))
+		end
 	end)
 
 	print("[PlayerDataManager] Engine Initialized with Sect Economy & DataStore V2 Schema.")
@@ -129,17 +145,18 @@ end
 function PlayerDataManager.OnPlayerAdded(player: Player)
 	local dataKey = "Player_" .. player.UserId
 	local loadedData: SavedPlayerData? = nil
+	local loadFailed = false
 
-	if FORCE_RESET_HAN_JUEEE and (player.Name == "Han_jueee" or player.Name == "Han_jue") then
-		loadedData = table.clone(DEFAULT_PLAYER_DATA)
-		print(string.format("[PlayerDataManager] FORCED RESET: Account %s reset to QiCondensation Order 1.", player.Name))
-	elseif playerDataStore then
+	if playerDataStore then
+		local attemptSucceeded = false
+
 		for attempt = 1, MAX_RETRIES do
 			local success, result = pcall(function()
 				return playerDataStore:GetAsync(dataKey)
 			end)
 
 			if success then
+				attemptSucceeded = true
 				if type(result) == "table" then
 					loadedData = result :: SavedPlayerData
 				end
@@ -149,6 +166,16 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 				task.wait(1)
 			end
 		end
+
+		if not attemptSucceeded then
+			loadFailed = true
+		end
+	end
+
+	if loadFailed then
+		warn(string.format("[PlayerDataManager] Could not load data for %s after %d attempts — kicking to prevent overwriting their save.", player.Name, MAX_RETRIES))
+		player:Kick("We couldn't load your save data. Please rejoin in a moment — your progress is safe.")
+		return
 	end
 
 	if not loadedData then
@@ -174,10 +201,10 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			EquippedSkin = "DefaultBronze",
 		}
 	else
-		print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, CultivatedQi: %s, Stones: %d, Rank: %s).", 
-			player.Name, 
-			loadedData.Cultivation.Realm, 
-			loadedData.Cultivation.Order or 1, 
+		print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, CultivatedQi: %s, Stones: %d, Rank: %s).",
+			player.Name,
+			loadedData.Cultivation.Realm,
+			loadedData.Cultivation.Order or 1,
 			CultivationConfig.FormatNumber(loadedData.Cultivation.CultivatedQi or 200),
 			loadedData.SpiritStones or 250,
 			loadedData.SectRank or "OuterDisciple"
@@ -185,7 +212,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 
 	isLoadedMap[player] = true
-	
+
 	playerAlchemyData[player] = {
 		Exp = loadedData.AlchemyExp or 0,
 		Level = loadedData.AlchemyLevel or 1,
@@ -198,20 +225,20 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	}
 
 	playerGamepasses[player] = loadedData.OwnedGamepasses or {}
-	
+
 	playerSkinData[player] = {
 		EquippedSkin = loadedData.EquippedSkin or "DefaultBronze",
 		UnlockedSkins = loadedData.UnlockedSkins or { ["DefaultBronze"] = true },
 	}
 
 	CultivationManager.SetPlayerData(
-		player, 
-		loadedData.Cultivation.Realm, 
-		loadedData.Cultivation.CurrentQi, 
-		loadedData.Cultivation.Order or 1, 
+		player,
+		loadedData.Cultivation.Realm,
+		loadedData.Cultivation.CurrentQi,
+		loadedData.Cultivation.Order or 1,
 		loadedData.Cultivation.CultivatedQi
 	)
-	
+
 	InventoryManager.SetInventory(player, loadedData.Inventory)
 	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "MortalIronJian")
 
