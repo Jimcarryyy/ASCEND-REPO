@@ -9,12 +9,14 @@
     - Dynamic 3D spinning inspection preview for all 3D items
     - 2D Sprite fallback for pills and flat icons
     - Real-time DataStore item population, search, category filtering, and rarity sorting
+    - Integrated Panel Click Audio (rbxassetid://138567614125924)
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
@@ -32,6 +34,19 @@ local itemsFolder = ReplicatedStorage:FindFirstChild("Items") or ReplicatedStora
 
 local inventoryActionRemote: RemoteEvent
 local updateInventoryRemote: RemoteEvent
+
+-- Panel Click Audio
+local PANEL_CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
+
+local function PlayPanelClickSFX()
+	local sound = Instance.new("Sound")
+	sound.SoundId = PANEL_CLICK_SOUND_ID
+	sound.Volume = 0.55
+	sound.PlaybackSpeed = math.random(98, 102) / 100
+	sound.Parent = SoundService
+	sound:Play()
+	game:GetService("Debris"):AddItem(sound, 1.2)
+end
 
 -- UI Element References
 local screenGui: ScreenGui
@@ -182,16 +197,10 @@ local function Setup3DViewport(viewport: ViewportFrame, itemModel: Instance, spi
 	end
 
 	local camera = Instance.new("Camera")
-	-- Narrower FOV wastes fewer of the ViewportFrame's pixels on empty space
-	-- around the item, which is what actually reduces the "pixelated" look
-	-- (a ViewportFrame renders at its real on-screen pixel size, so the more
-	-- of that area the model itself occupies, the sharper it reads).
 	camera.FieldOfView = 30
 
 	local size = if clone:IsA("BasePart") then clone.Size else (clone:IsA("Model") and clone:GetExtentsSize() or Vector3.new(1, 4, 1))
 	local maxDim = math.max(size.X, size.Y, size.Z)
-	-- Tighter framing than before (was maxDim * 1.35, min 3.5) so the model
-	-- fills more of the frame instead of floating in a lot of empty backdrop.
 	local dist = math.max(2.4, maxDim * 1.05)
 
 	camera.CFrame = CFrame.lookAt(Vector3.new(0, 0, dist), Vector3.new(0, 0, 0))
@@ -277,9 +286,6 @@ function InventoryController.Init()
 	itemGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	itemGridScroll.ScrollBarThickness = 6
 
-	-- Re-run the responsive column calculation whenever the grid's actual
-	-- available width changes (window resize, orientation change, split-screen,
-	-- etc.) instead of only computing it once at Open().
 	itemGridScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		InventoryController.UpdateGridCellSize()
 	end)
@@ -328,9 +334,10 @@ function InventoryController.Init()
 	dropImageButton = (actionContainer:FindFirstChild("DropImageButton") or actionContainer:FindFirstChild("DropButton") or actionContainer:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
 	dropTextLabel = dropImageButton:FindFirstChild("DropTextLabel") or dropImageButton:FindFirstChildOfClass("TextLabel")
 
-	-- 5. Bind Button Events
+	-- 5. Bind Button Events with Panel Click SFX
 	if closeButton then
 		closeButton.MouseButton1Click:Connect(function()
+			PlayPanelClickSFX()
 			InventoryController.Close()
 		end)
 	end
@@ -340,6 +347,7 @@ function InventoryController.Init()
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				local clickPos = input.Position
 				if not IsPositionInsideGui(mainFrame, clickPos.X, clickPos.Y) then
+					PlayPanelClickSFX()
 					InventoryController.Close()
 				end
 			end
@@ -352,6 +360,7 @@ function InventoryController.Init()
 			local tabName = child.Name:upper()
 			local cleanKey = tabName:gsub("TAB_", "")
 			child.MouseButton1Click:Connect(function()
+				PlayPanelClickSFX()
 				currentCategory = cleanKey
 				InventoryController.RenderGrid()
 			end)
@@ -367,6 +376,7 @@ function InventoryController.Init()
 
 	if sortImageButton then
 		sortImageButton.MouseButton1Click:Connect(function()
+			PlayPanelClickSFX()
 			if currentSortMode == "Rarity" then
 				currentSortMode = "Name"
 				InventoryController.SetSortButtonText("Sort by Name")
@@ -383,6 +393,7 @@ function InventoryController.Init()
 
 	if useImageButton then
 		useImageButton.MouseButton1Click:Connect(function()
+			PlayPanelClickSFX()
 			if not selectedSlotIndex or not inventoryCache[selectedSlotIndex] then return end
 			local slotData = inventoryCache[selectedSlotIndex]
 			local itemDef = ItemConfig.GetItem(slotData.ItemId)
@@ -394,6 +405,7 @@ function InventoryController.Init()
 
 	if dropImageButton then
 		dropImageButton.MouseButton1Click:Connect(function()
+			PlayPanelClickSFX()
 			if not selectedSlotIndex or not inventoryCache[selectedSlotIndex] then return end
 			inventoryActionRemote:FireServer({ Action = "DropItem", SlotIndex = selectedSlotIndex })
 		end)
@@ -433,16 +445,10 @@ function InventoryController.UpdateGridCellSize()
 
 	local containerWidth = itemGridScroll.AbsoluteSize.X
 	if containerWidth <= 0 then
-		-- Layout hasn't resolved yet (e.g. first frame after Open()); retry
-		-- next step instead of computing off a bogus zero width.
 		task.defer(InventoryController.UpdateGridCellSize)
 		return
 	end
 
-	-- Pick the largest column count (6 down to 4) whose resulting cell size
-	-- still meets the minimum readable size, so the grid scales gradually
-	-- with actual available width instead of a hard PC/phone switch, and
-	-- cells stretch to fill the row (no leftover "wasted space" gutter).
 	local chosenColumns = GRID_MIN_COLUMNS
 	local chosenCellSize = GRID_MIN_CELL_SIZE
 
@@ -596,10 +602,7 @@ function InventoryController.RenderGrid()
 		end
 
 		-- 2. Aligned Selected Glow
-		-- The glow asset is drawn slightly larger than the slot on purpose (it's
-		-- meant to sit just outside the slot's own border), so it must be sized
-		-- larger than 100% here, and the slot must not clip the overhang away.
-		local GLOW_OVERSCAN = 0.08 -- 8% larger than the slot on each axis
+		local GLOW_OVERSCAN = 0.08
 		local selectedGlow = slotObj:FindFirstChild("SelectedGlow") :: ImageLabel?
 		if selectedGlow then
 			selectedGlow.Size = UDim2.new(1 + GLOW_OVERSCAN, 0, 1 + GLOW_OVERSCAN, 0)
@@ -658,6 +661,7 @@ function InventoryController.RenderGrid()
 		end
 
 		local function selectSlot()
+			PlayPanelClickSFX()
 			selectedSlotIndex = entry.SlotIndex
 			InventoryController.UpdateInspection(entry.ItemDef, entry.Count, entry.Quality)
 			InventoryController.RenderGrid()
@@ -749,10 +753,9 @@ function InventoryController.UpdateInspection(itemDef: any, count: number, quali
 
 	statLabel.Text = if statSummary ~= "" then statSummary else "STANDARD GRADE"
 
-	local isWeapon = (itemDef.Type == "Weapon" or itemDef.Type == "FlyingSword" or itemDef.Type == "Crest")
 	if useImageButton then
 		useImageButton.Visible = true
-		local actionText = (isWeapon) and "EQUIP" or "USE"
+		local actionText = (itemDef.Type == "Weapon" or itemDef.Type == "FlyingSword" or itemDef.Type == "Crest") and "EQUIP" or "USE"
 		if useTextLabel then
 			useTextLabel.Text = actionText
 		elseif useImageButton:IsA("TextButton") then

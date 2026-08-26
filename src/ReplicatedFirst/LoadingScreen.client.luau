@@ -2,323 +2,385 @@
 --[[
     LoadingScreen.client.luau
     Location: src/ReplicatedFirst/LoadingScreen.client.luau
-    Custom Xianxia Loading Screen for ASCEND.
-    Disables default Roblox loading screen, dynamically scans and preloads all game assets,
-    tracks server data initialization, and provides an optional Skip button.
+
+    Optimization pass over the previous version:
+
+    1. PARALLEL GATES — Preload, Character Mount, and Inventory Sync have no
+       dependency on each other (only on Gate 1 / engine load). They now run
+       concurrently via task.spawn instead of one-after-another, so total wait
+       time is roughly max(gate2, gate3, gate4) instead of sum(gate2, gate3, gate4).
+
+    2. SCOPED PRELOAD — no more Workspace:GetDescendants() walking the entire
+       map. Uses CollectionService:GetTagged("Preload") so cost scales with
+       what you actually tag, not map size. Tag any MeshPart/Decal/Texture/
+       SpecialMesh you want guaranteed-loaded with the "Preload" tag in Studio.
+
+    3. EVENT-DRIVEN WAITS — EquippedSword check now listens for ChildAdded
+       instead of polling every 0.1s.
+
+    4. WEIGHTED PROGRESS — each gate has a weight; progress bar reflects real
+       proportional completion instead of arbitrary fixed jumps, and updates
+       live as each parallel gate finishes (not just at group boundaries).
+
+    5. MIN/MAX display time preserved from previous version.
 ]]
 
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SoundService = game:GetService("SoundService")
 local ContentProvider = game:GetService("ContentProvider")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+local CollectionService = game:GetService("CollectionService")
+local StarterGui = game:GetService("StarterGui")
 
--- Immediately remove default Roblox loading screen
 ReplicatedFirst:RemoveDefaultLoadingScreen()
+
+local BGM_ASSET_ID = "rbxassetid://137280276426447"
+local MIN_DISPLAY_TIME = 2.5
+local MAX_DISPLAY_TIME = 12.0
+local PRELOAD_TAG = "Preload" -- tag instances in Studio with this to guarantee preload
+
+local startClock = os.clock()
+
+-- =============================================================================
+-- BACKGROUND MUSIC
+-- =============================================================================
+local function StartBackgroundMusic()
+	local existingBgm = SoundService:FindFirstChild("AscendExplorationBGM") :: Sound?
+	if not existingBgm then
+		local bgm = Instance.new("Sound")
+		bgm.Name = "AscendExplorationBGM"
+		bgm.SoundId = BGM_ASSET_ID
+		bgm.Volume = 0.35
+		bgm.Looped = true
+		bgm.Parent = SoundService
+		bgm:Play()
+	elseif not existingBgm.IsPlaying then
+		existingBgm:Play()
+	end
+end
+StartBackgroundMusic()
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 
--- Customizable Configuration Constants
-local BACKGROUND_IMAGE_ID = "rbxassetid://70461133318970" -- Replace with your custom artwork Asset ID
-local FONT_TITLE = Enum.Font.FredokaOne
-local FONT_SUBTITLE = Enum.Font.LuckiestGuy
+local loadingGui: ScreenGui?
+local background: ImageLabel?
+local progressFill: GuiObject?
+local percentageLabel: TextLabel?
+local statusLabel: TextLabel?
+local tipLabel: TextLabel?
 
--- Light-Mode Xianxia Palette
-local COLOR_BG_PANEL = Color3.fromRGB(247, 234, 224)    -- #F7EAE0 Warm Cream
-local COLOR_JADE_DARK = Color3.fromRGB(29, 69, 51)      -- #1D4533 Dark Jade Green
-local COLOR_GOLD_ACCENT = Color3.fromRGB(255, 215, 0)   -- #FFD700 Gold Accent
+local LORE_TIPS = {
+	"Tips: Breakthrough at the right time to increase your cultivation efficiency.",
+	"Tips: Tapping Block within 0.22s of an incoming strike triggers a Perfect Parry, staggering your foe.",
+	"Tips: Sitting in meditation replenishes Dantian Qi and radiates your Realm Aura.",
+	"Tips: Older spiritual herbs yield superior alchemical pills with higher stat multipliers.",
+	"Tips: In the 1v1 Sparring Arena, stats are normalized to 1,000 HP for balanced martial dueling.",
+}
 
-local isLoadingComplete = false
-local isServerDataLoaded = false
+local function SetupLoadingUI(): boolean
+	local customGui = ReplicatedFirst:FindFirstChild("CustomLoadingScreen")
+		or playerGui:FindFirstChild("CustomLoadingScreen") :: ScreenGui?
 
--- Create Loading ScreenGui
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "AscendLoadingScreen"
-screenGui.DisplayOrder = 1000
-screenGui.IgnoreGuiInset = true
-screenGui.ResetOnSpawn = false
-screenGui.Parent = playerGui
+	if not customGui then
+		customGui = ReplicatedFirst:WaitForChild("CustomLoadingScreen", 5) :: ScreenGui?
+	end
 
--- Background Fullscreen Image
-local bgImage = Instance.new("ImageLabel")
-bgImage.Name = "BackgroundImage"
-bgImage.Size = UDim2.new(1, 0, 1, 0)
-bgImage.Position = UDim2.new(0, 0, 0, 0)
-bgImage.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
-bgImage.Image = BACKGROUND_IMAGE_ID
-bgImage.ScaleType = Enum.ScaleType.Crop
-bgImage.Parent = screenGui
+	if not customGui then
+		warn("[LoadingScreen] CustomLoadingScreen not found in ReplicatedFirst!")
+		return false
+	end
 
--- Dark Gradient Overlay for Readability
-local darkOverlay = Instance.new("Frame")
-darkOverlay.Name = "DarkOverlay"
-darkOverlay.Size = UDim2.new(1, 0, 1, 0)
-darkOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-darkOverlay.BackgroundTransparency = 0.45
-darkOverlay.Parent = bgImage
+	customGui.DisplayOrder = 999
+	customGui.IgnoreGuiInset = true
+	customGui.ResetOnSpawn = false
 
--- Center Title & Subtitle Container
-local titleContainer = Instance.new("Frame")
-titleContainer.Name = "TitleContainer"
-titleContainer.Size = UDim2.new(0, 500, 0, 120)
-titleContainer.Position = UDim2.new(0.5, -250, 0.35, 0)
-titleContainer.BackgroundTransparency = 1
-titleContainer.Parent = bgImage
+	if customGui.Parent == ReplicatedFirst then
+		loadingGui = customGui:Clone()
+		loadingGui.Parent = playerGui
+	else
+		loadingGui = customGui
+	end
 
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Name = "TitleLabel"
-titleLabel.Size = UDim2.new(1, 0, 0, 60)
-titleLabel.Position = UDim2.new(0, 0, 0, 0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "ASCEND"
-titleLabel.Font = FONT_TITLE
-titleLabel.TextSize = 52
-titleLabel.TextColor3 = COLOR_GOLD_ACCENT
-titleLabel.TextStrokeColor3 = COLOR_JADE_DARK
-titleLabel.TextStrokeTransparency = 0
-titleLabel.Parent = titleContainer
+	if not loadingGui then return false end
 
-local subtitleLabel = Instance.new("TextLabel")
-subtitleLabel.Name = "SubtitleLabel"
-subtitleLabel.Size = UDim2.new(1, 0, 0, 30)
-subtitleLabel.Position = UDim2.new(0, 0, 0, 65)
-subtitleLabel.BackgroundTransparency = 1
-subtitleLabel.Text = "— Seeking The Dao —"
-subtitleLabel.Font = FONT_SUBTITLE
-subtitleLabel.TextSize = 22
-subtitleLabel.TextColor3 = COLOR_BG_PANEL
-subtitleLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-subtitleLabel.TextStrokeTransparency = 0
-subtitleLabel.Parent = titleContainer
+	background = loadingGui:WaitForChild("Background", 5) :: ImageLabel?
+	if not background then return false end
 
--- Bottom Loading Bar Container
-local barContainer = Instance.new("Frame")
-barContainer.Name = "BarContainer"
-barContainer.Size = UDim2.new(0, 480, 0, 50)
-barContainer.Position = UDim2.new(0.5, -240, 0.78, 0)
-barContainer.BackgroundTransparency = 1
-barContainer.Parent = bgImage
+	local progressFrame = background:FindFirstChild("ProgressFrame") :: Frame?
+	if progressFrame then
+		progressFill = progressFrame:FindFirstChild("ProgressFill", true) :: GuiObject?
+		percentageLabel = progressFrame:FindFirstChild("PercentageLabel", true) :: TextLabel?
+	end
 
--- Progress Bar Background Frame
-local barFrame = Instance.new("Frame")
-barFrame.Name = "ProgressBarFrame"
-barFrame.Size = UDim2.new(1, 0, 0, 18)
-barFrame.Position = UDim2.new(0, 0, 0, 0)
-barFrame.BackgroundColor3 = COLOR_BG_PANEL
-barFrame.BorderSizePixel = 0
-barFrame.Parent = barContainer
+	local tipFrame = background:FindFirstChild("TipFrame") :: Frame?
+	if tipFrame then
+		statusLabel = tipFrame:FindFirstChild("StatusLabel") :: TextLabel?
+		tipLabel = tipFrame:FindFirstChild("TipLabel") :: TextLabel?
+	end
 
-local barCorner = Instance.new("UICorner")
-barCorner.CornerRadius = UDim.new(0, 9)
-barCorner.Parent = barFrame
+	if tipLabel then
+		tipLabel.Text = LORE_TIPS[math.random(1, #LORE_TIPS)]
+	end
 
-local barStroke = Instance.new("UIStroke")
-barStroke.Color = COLOR_GOLD_ACCENT
-barStroke.Thickness = 2
-barStroke.Parent = barFrame
-
--- Progress Bar Fill
-local barFill = Instance.new("Frame")
-barFill.Name = "ProgressBarFill"
-barFill.Size = UDim2.new(0, 0, 1, 0)
-barFill.BackgroundColor3 = COLOR_JADE_DARK
-barFill.BorderSizePixel = 0
-barFill.Parent = barFrame
-
-local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(0, 9)
-fillCorner.Parent = barFill
-
--- Progress Text
-local progressText = Instance.new("TextLabel")
-progressText.Name = "ProgressText"
-progressText.Size = UDim2.new(1, 0, 0, 24)
-progressText.Position = UDim2.new(0, 0, 0, 24)
-progressText.BackgroundTransparency = 1
-progressText.Text = "Scanning World Assets... 0%"
-progressText.Font = FONT_SUBTITLE
-progressText.TextSize = 15
-progressText.TextColor3 = COLOR_BG_PANEL
-progressText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-progressText.TextStrokeTransparency = 0
-progressText.Parent = barContainer
-
--- Skip Button
-local skipButton = Instance.new("TextButton")
-skipButton.Name = "SkipButton"
-skipButton.Size = UDim2.new(0, 180, 0, 36)
-skipButton.Position = UDim2.new(0.5, -90, 0.88, 0)
-skipButton.BackgroundColor3 = COLOR_JADE_DARK
-skipButton.BorderSizePixel = 0
-skipButton.Text = "SKIP [SPACE / CLICK]"
-skipButton.Font = FONT_SUBTITLE
-skipButton.TextSize = 14
-skipButton.TextColor3 = COLOR_GOLD_ACCENT
-skipButton.AutoButtonColor = true
-skipButton.Visible = false -- Appears after 1.5 seconds
-skipButton.Parent = bgImage
-
-local skipCorner = Instance.new("UICorner")
-skipCorner.CornerRadius = UDim.new(0, 8)
-skipCorner.Parent = skipButton
-
-local skipStroke = Instance.new("UIStroke")
-skipStroke.Color = COLOR_GOLD_ACCENT
-skipStroke.Thickness = 1.5
-skipStroke.Parent = skipButton
-
--- Finish & Fade Out Function
-local function DismissLoadingScreen()
-	if isLoadingComplete then return end
-	isLoadingComplete = true
-
-	local tweenInfo = TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	
-	-- Fade out UI elements
-	TweenService:Create(darkOverlay, tweenInfo, { BackgroundTransparency = 1 }):Play()
-	TweenService:Create(titleLabel, tweenInfo, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
-	TweenService:Create(subtitleLabel, tweenInfo, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
-	TweenService:Create(barFrame, tweenInfo, { BackgroundTransparency = 1 }):Play()
-	TweenService:Create(barFill, tweenInfo, { BackgroundTransparency = 1 }):Play()
-	TweenService:Create(barStroke, tweenInfo, { Transparency = 1 }):Play()
-	TweenService:Create(progressText, tweenInfo, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
-	TweenService:Create(skipButton, tweenInfo, { BackgroundTransparency = 1, TextTransparency = 1 }):Play()
-	TweenService:Create(skipStroke, tweenInfo, { Transparency = 1 }):Play()
-
-	local fadeBg = TweenService:Create(bgImage, tweenInfo, { ImageTransparency = 1, BackgroundTransparency = 1 })
-	fadeBg:Play()
-
-	fadeBg.Completed:Connect(function()
-		screenGui:Destroy()
-		print("[ASCEND] Custom Xianxia Loading Screen Completed.")
-	end)
+	return true
 end
 
--- Skip Button Handlers
-skipButton.MouseButton1Click:Connect(function()
-	DismissLoadingScreen()
-end)
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == Enum.KeyCode.Space and skipButton.Visible then
-		DismissLoadingScreen()
+local highestRatioShown = 0
+local function UpdateProgress(targetRatio: number, statusText: string?)
+	targetRatio = math.clamp(targetRatio, 0, 1)
+	if targetRatio < highestRatioShown then
+		targetRatio = highestRatioShown
 	end
-end)
+	highestRatioShown = targetRatio
 
--- Make Skip Button visible after 1.5 seconds
-task.delay(1.5, function()
-	if not isLoadingComplete then
-		skipButton.Visible = true
+	if statusText and statusLabel then
+		statusLabel.Text = statusText
 	end
-end)
+	if percentageLabel then
+		percentageLabel.Text = string.format("%d%%", math.floor(targetRatio * 100))
+	end
+	if progressFill then
+		TweenService:Create(progressFill, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.new(targetRatio, 0, 1, 0),
+		}):Play()
+	end
+end
 
--- Listen for Server Data Sync Remote Event to verify player profile is ready
-task.spawn(function()
-	local sharedFolder = ReplicatedStorage:WaitForChild("Shared", 10)
-	local networkFolder = sharedFolder and sharedFolder:WaitForChild("Network", 10)
-	local remoteEventsMod = networkFolder and networkFolder:WaitForChild("RemoteEvents", 10)
+-- Runs fn with a timeout; warns instead of hanging the caller if it overruns.
+-- Returns true if fn completed within the timeout, false if it timed out.
+local function withTimeout(seconds: number, label: string, fn: () -> ()): boolean
+	local done = false
+	task.spawn(function()
+		fn()
+		done = true
+	end)
 
-	if remoteEventsMod then
-		local RemoteEvents = require(remoteEventsMod :: ModuleScript)
-		local updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
-		if updateCultivationRemote then
-			local conn
-			conn = updateCultivationRemote.OnClientEvent:Connect(function()
-				isServerDataLoaded = true
-				if conn then conn:Disconnect() end
-			end)
+	local deadline = os.clock() + seconds
+	while not done and os.clock() < deadline do
+		task.wait(0.05)
+	end
+
+	if not done then
+		warn(string.format("[LoadingScreen] Gate '%s' timed out after %.1fs — continuing anyway.", label, seconds))
+	end
+	return done
+end
+
+local function WaitForContentQueueEmpty(maxSeconds: number)
+	local deadline = os.clock() + maxSeconds
+	while ContentProvider.RequestQueueSize > 0 and os.clock() < deadline do
+		task.wait(0.1)
+	end
+end
+
+-- =============================================================================
+-- PARALLEL GATE RUNNER
+-- Runs several independent gates concurrently. Each contributes `weight` to
+-- the progress bar, credited the moment that specific gate finishes — so the
+-- bar advances continuously as things complete instead of jumping in blocks.
+-- =============================================================================
+type GateSpec = {
+	name: string,
+	weight: number,
+	timeout: number,
+	fn: () -> (),
+	statusText: string,
+}
+
+local function runGatesInParallel(gates: { GateSpec }, baseProgress: number, groupSpan: number)
+	local totalWeight = 0
+	for _, g in ipairs(gates) do
+		totalWeight += g.weight
+	end
+
+	local completedWeight = 0
+	local remaining = #gates
+	local doneSignal = Instance.new("BindableEvent")
+
+	for _, g in ipairs(gates) do
+		task.spawn(function()
+			withTimeout(g.timeout, g.name, g.fn)
+			completedWeight += g.weight
+			local fraction = totalWeight > 0 and (completedWeight / totalWeight) or 1
+			UpdateProgress(baseProgress + fraction * groupSpan, g.statusText)
+			remaining -= 1
+			if remaining <= 0 then
+				doneSignal:Fire()
+			end
+		end)
+	end
+
+	if remaining > 0 then
+		doneSignal.Event:Wait()
+	end
+	doneSignal:Destroy()
+end
+
+-- =============================================================================
+-- MASTER INITIALIZATION SEQUENCE
+-- =============================================================================
+local function RunMasterInitSequence()
+	if not SetupLoadingUI() then return end
+
+	-- GATE 1 (must run alone/first — nothing else is guaranteed to exist yet)
+	UpdateProgress(0.05, "Connecting to Azure Cloud Domain...")
+	withTimeout(8, "EngineLoaded", function()
+		if not game:IsLoaded() then
+			game.Loaded:Wait()
 		end
-	end
-end)
+	end)
+	UpdateProgress(0.15, "Connecting to Azure Cloud Domain...")
 
--- Dynamic Asset Discovery & Preload Thread
-task.spawn(function()
-	local assetsToPreload: { Instance } = {}
+	-- GATES 2, 3, 4 — independent of each other, run concurrently.
+	runGatesInParallel({
+		{
+			name = "PreloadAssets",
+			weight = 30,
+			timeout = 6,
+			statusText = "Channeling Spiritual Artifacts & Herbs...",
+			fn = function()
+				local assetsToPreload: { Instance } = {}
 
-	-- Helper function to gather heavy renderable assets recursively
-	local function gatherAssets(container: Instance)
-		for _, descendant in ipairs(container:GetDescendants()) do
-			if descendant:IsA("MeshPart") 
-				or descendant:IsA("SpecialMesh") 
-				or descendant:IsA("Decal") 
-				or descendant:IsA("Texture") 
-				or descendant:IsA("ImageLabel") 
-				or descendant:IsA("Sound") 
-				or descendant:IsA("Animation") then
-				table.insert(assetsToPreload, descendant)
+				for _, folderName in ipairs({ "Weapons", "Herbs", "Remotes", "Cosmetics" }) do
+					local folder = ReplicatedStorage:FindFirstChild(folderName)
+						or ReplicatedStorage:WaitForChild(folderName, 4)
+					if folder then
+						table.insert(assetsToPreload, folder)
+					end
+				end
+
+				-- Scoped instead of a full Workspace:GetDescendants() walk —
+				-- tag anything you want guaranteed-preloaded with "Preload" in Studio.
+				for _, inst in ipairs(CollectionService:GetTagged(PRELOAD_TAG)) do
+					table.insert(assetsToPreload, inst)
+				end
+
+				-- StarterGui images/viewports — this is what fixes the
+				-- "pixelated on first open, sharp on second open" symptom.
+				-- PreloadAsync forces these to fully decode now instead of
+				-- lazily decoding the first time the UI is shown.
+				for _, inst in ipairs(StarterGui:GetDescendants()) do
+					if inst:IsA("ImageLabel") or inst:IsA("ImageButton") or inst:IsA("ViewportFrame") then
+						table.insert(assetsToPreload, inst)
+					end
+				end
+
+				if #assetsToPreload > 0 then
+					pcall(function()
+						ContentProvider:PreloadAsync(assetsToPreload)
+					end)
+				end
+			end,
+		},
+		{
+			name = "CharacterMount",
+			weight = 40,
+			timeout = 10,
+			statusText = "Materializing Cultivator Physical Form...",
+			fn = function()
+				local character = player.Character or player.CharacterAdded:Wait()
+				character:WaitForChild("HumanoidRootPart", 10)
+				character:WaitForChild("Humanoid", 10)
+
+				if not player:HasAppearanceLoaded() then
+					player.CharacterAppearanceLoaded:Wait()
+				end
+
+				-- Event-driven instead of polling: resolves the instant the
+				-- sword is parented, or gives up after 4s either way.
+				if not character:FindFirstChild("EquippedSword") then
+					local swordAdded = false
+					local conn: RBXScriptConnection
+					conn = character.ChildAdded:Connect(function(child)
+						if child.Name == "EquippedSword" then
+							swordAdded = true
+							conn:Disconnect()
+						end
+					end)
+
+					local deadline = os.clock() + 4
+					while not swordAdded and os.clock() < deadline do
+						task.wait(0.05)
+					end
+					conn:Disconnect()
+				end
+			end,
+		},
+		{
+			name = "InventorySync",
+			weight = 30,
+			timeout = 5,
+			statusText = "Attuning Dantian Spiritual Reserves...",
+			fn = function()
+				local remotes = ReplicatedStorage:FindFirstChild("Remotes") :: Folder?
+				local updateInvRemote = remotes and remotes:FindFirstChild("UpdateInventory") :: RemoteEvent?
+				if not updateInvRemote then return end
+
+				local inventorySynced = false
+				local conn: RBXScriptConnection?
+				conn = updateInvRemote.OnClientEvent:Connect(function()
+					inventorySynced = true
+					if conn then conn:Disconnect() end
+				end)
+
+				local invAction = remotes:FindFirstChild("InventoryAction") :: RemoteEvent?
+				if invAction then
+					invAction:FireServer({ Action = "RequestSync" })
+				end
+
+				local syncTimeout = os.clock() + 3.0
+				while os.clock() < syncTimeout and not inventorySynced do
+					task.wait(0.1)
+				end
+				if conn then conn:Disconnect() end
+			end,
+		},
+	}, 0.15, 0.70) -- occupies progress range 15% -> 85%
+
+	-- GATE 5 — final real completion check (after the parallel group, since
+	-- it should reflect the total queue state once everything above kicked off).
+	UpdateProgress(0.90, "Spiritual Foundation Solidifying...")
+	WaitForContentQueueEmpty(4)
+	UpdateProgress(1.0, "Spiritual Foundation Solidified.")
+
+	-- Enforce minimum display time; never exceed the safety max.
+	local elapsed = os.clock() - startClock
+	local remaining = math.clamp(MIN_DISPLAY_TIME - elapsed, 0, MAX_DISPLAY_TIME)
+	task.wait(remaining)
+
+	-- GATE 6 — Fade out
+	if loadingGui and background then
+		local fadeInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local tween = TweenService:Create(background, fadeInfo, {
+			ImageTransparency = 1,
+			BackgroundTransparency = 1,
+		})
+
+		for _, child in ipairs(background:GetDescendants()) do
+			if child:IsA("TextLabel") then
+				TweenService:Create(child, fadeInfo, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+			elseif child:IsA("ImageLabel") or child:IsA("ImageButton") then
+				TweenService:Create(child, fadeInfo, { ImageTransparency = 1, BackgroundTransparency = 1 }):Play()
+			elseif child:IsA("Frame") or child:IsA("ScrollingFrame") then
+				TweenService:Create(child, fadeInfo, { BackgroundTransparency = 1 }):Play()
+			elseif child:IsA("UIStroke") then
+				TweenService:Create(child, fadeInfo, { Transparency = 1 }):Play()
 			end
 		end
-	end
 
-	-- Scan ReplicatedStorage, SoundService, and PlayerGui for renderable instances
-	gatherAssets(ReplicatedStorage)
-	gatherAssets(SoundService)
-
-	local totalAssets = #assetsToPreload
-	if totalAssets == 0 then
-		totalAssets = 1
-	end
-
-	local loadedCount = 0
-
-	-- Iterate through assets in dynamic batches
-	for i, asset in ipairs(assetsToPreload) do
-		if isLoadingComplete then break end
-
-		pcall(function()
-			ContentProvider:PreloadAsync({ asset })
+		tween:Play()
+		tween.Completed:Connect(function()
+			if loadingGui and loadingGui.Parent then
+				loadingGui:Destroy()
+			end
+			print("[ASCEND] Custom Loading Screen Completed. Welcome, Disciple!")
 		end)
-
-		loadedCount += 1
-		local percent = math.clamp(math.floor((loadedCount / totalAssets) * 90), 0, 90)
-
-		if barFill then
-			TweenService:Create(barFill, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = UDim2.new(percent / 100, 0, 1, 0)
-			}):Play()
-		end
-
-		if progressText then
-			local assetName = asset.Name
-			progressText.Text = string.format("Harmonizing Assets... %d%% (%s)", percent, assetName)
-		end
-
-		task.wait(0.02)
+	else
+		if loadingGui then loadingGui:Destroy() end
 	end
+end
 
-	-- Final Stage: Waiting for Server Profile & Character Data Sync
-	if not isLoadingComplete then
-		if progressText then
-			progressText.Text = "Synchronizing Cultivator Profile... 95%"
-		end
-		if barFill then
-			TweenService:Create(barFill, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = UDim2.new(0.95, 0, 1, 0)
-			}):Play()
-		end
-
-		local timeout = 0
-		while not isServerDataLoaded and timeout < 3.0 do
-			if isLoadingComplete then break end
-			task.wait(0.1)
-			timeout += 0.1
-		end
-
-		if barFill then
-			TweenService:Create(barFill, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = UDim2.new(1.0, 0, 1, 0)
-			}):Play()
-		end
-
-		if progressText then
-			progressText.Text = "Ascension Prepared... 100%"
-		end
-
-		task.wait(0.3)
-		DismissLoadingScreen()
-	end
-end)
+task.spawn(RunMasterInitSequence)

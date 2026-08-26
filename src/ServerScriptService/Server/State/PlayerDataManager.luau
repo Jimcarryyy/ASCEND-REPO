@@ -57,8 +57,8 @@ local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfi
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
 
--- Set to true to reset Han_jueee back to Qi Condensation Order 1 for fair sparring tests
-local FORCE_RESET_HAN_JUEEE = true
+-- Forced reset disabled so your saved progression persists normally
+local FORCE_RESET_HAN_JUEEE = false
 
 local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	Version = 2,
@@ -98,7 +98,7 @@ function PlayerDataManager.Init()
 		playerDataStore = result
 		print("[PlayerDataManager] DataStore V2 initialized successfully.")
 	else
-		warn("[PlayerDataManager] Could not access DataStoreService. API access may be disabled in Studio settings. Running with local session memory.")
+		warn("[PlayerDataManager] Could not access DataStoreService. Running with local session memory.")
 	end
 
 	Players.PlayerAdded:Connect(PlayerDataManager.OnPlayerAdded)
@@ -152,7 +152,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 
 	if not loadedData then
-		print(string.format("[PlayerDataManager] No saved data found for %s. Applying default starter profile.", player.Name))
+		print(string.format("[PlayerDataManager] Applying starter profile for %s.", player.Name))
 		loadedData = {
 			Version = DEFAULT_PLAYER_DATA.Version,
 			Cultivation = {

@@ -2,8 +2,7 @@
 --[[
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
-    Client HUD Engine for ASCEND.
-    Features: Hooks into StarterGui.TopMenuGUI and VitalHUDGui (Zero hardcoded dock creation).
+    Client HUD Engine for ASCEND with Menu Select Audio.
 ]]
 
 local Players = game:GetService("Players")
@@ -26,7 +25,8 @@ local UI_FONT   = Enum.Font.FredokaOne
 local UI_FONT_2 = Enum.Font.LuckiestGuy
 local T         = UIAssets.Theme
 
-local CLICK_SOUND_ID = "rbxassetid://6895079853"
+-- Select Menu Sound Effect
+local SELECT_MENU_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.MenuSelect) or "rbxassetid://101735926591481"
 
 local hudScreenGui: ScreenGui?
 local topMenuGui: ScreenGui?
@@ -62,13 +62,13 @@ local updateInventoryRemote: RemoteEvent
 local updateCultivationRemote: RemoteEvent
 local combatActionRemote: RemoteEvent
 
-local function PlayClickAudio()
+local function PlayMenuSelectAudio()
 	local sound = Instance.new("Sound")
-	sound.SoundId = CLICK_SOUND_ID
-	sound.Volume = 0.5
+	sound.SoundId = SELECT_MENU_SOUND_ID
+	sound.Volume = 0.65
 	sound.Parent = SoundService
 	sound:Play()
-	game:GetService("Debris"):AddItem(sound, 1)
+	game:GetService("Debris"):AddItem(sound, 1.5)
 end
 
 local function FindChildCaseInsensitive(parent: Instance, targetName: string): Instance?
@@ -137,10 +137,10 @@ function HUDController.Init()
 		end
 	end)
 
-	print("[ASCEND] HUDController Initialized (Hooked to Studio TopMenuGUI & VitalHUDGui).")
+	print("[ASCEND] HUDController Initialized (Menu Select SFX Connected).")
 end
 
--- Binds to your Studio TopMenuGUI Frame
+-- Binds to TopMenu (Tab_BAG, Tab_MEDITATE, Tab_ARENA, Tab_SETTINGS)
 function HUDController.HookTopMenu()
 	topMenuGui = playerGui:WaitForChild("TopMenuGUI", 10) :: ScreenGui?
 	if not topMenuGui then return end
@@ -148,19 +148,22 @@ function HUDController.HookTopMenu()
 	local topMenu = topMenuGui:WaitForChild("TopMenu", 5) :: Frame?
 	if not topMenu then return end
 
-	local function BindMenuClick(menuName: string, onClick: () -> ())
-		local menuContainer = topMenu:FindFirstChild(menuName)
+	local function BindMenuClick(menuNames: { string }, onClick: () -> ())
+		local menuContainer: Instance? = nil
+		for _, name in ipairs(menuNames) do
+			menuContainer = topMenu:FindFirstChild(name)
+			if menuContainer then break end
+		end
 		if not menuContainer then return end
 
 		local function trigger()
-			PlayClickAudio()
+			PlayMenuSelectAudio()
 			onClick()
 		end
 
 		if menuContainer:IsA("GuiButton") then
 			menuContainer.MouseButton1Click:Connect(trigger)
 		else
-			-- If container is a Frame, bind to click/touch anywhere inside it
 			menuContainer.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 					trigger()
@@ -170,7 +173,7 @@ function HUDController.HookTopMenu()
 	end
 
 	-- 1. Bag Menu
-	BindMenuClick("BagMenu", function()
+	BindMenuClick({ "Tab_BAG", "BagMenu", "BagButton" }, function()
 		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
 		if controllers then
 			local invCtrl = controllers:FindFirstChild("InventoryController")
@@ -182,25 +185,34 @@ function HUDController.HookTopMenu()
 	end)
 
 	-- 2. Meditate Menu
-	BindMenuClick("MeditateMenu", function()
+	BindMenuClick({ "Tab_MEDITATE", "MeditateMenu", "MeditateButton" }, function()
 		combatActionRemote:FireServer({ ToggleMeditation = true })
 	end)
 
 	-- 3. Arena Menu
-	BindMenuClick("ArenaMenu", function()
+	BindMenuClick({ "Tab_ARENA", "ArenaMenu", "ArenaButton" }, function()
 		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
 		if controllers then
 			local arenaCtrl = controllers:FindFirstChild("ArenaController")
 			if arenaCtrl then
 				local req = require(arenaCtrl) :: any
-				if req.OpenRegistrationModal then req.OpenRegistrationModal() end
+				if req.OpenRegistrationModal then
+					req.OpenRegistrationModal()
+				elseif req.ToggleModal then
+					req.ToggleModal()
+				end
 			end
 		end
 	end)
 
-	-- 4. Settings Menu (Placeholder ready)
-	BindMenuClick("SettingsMenu", function()
-		print("[HUDController] Settings Menu clicked.")
+	-- 4. Settings Menu
+	BindMenuClick({ "Tab_SETTINGS", "SettingsMenu", "SettingsButton" }, function()
+		local settingsGui = playerGui:FindFirstChild("SettingsGui") or playerGui:FindFirstChild("GameSettingsGui")
+		if settingsGui and settingsGui:IsA("ScreenGui") then
+			settingsGui.Enabled = not settingsGui.Enabled
+		else
+			print("[HUDController] Settings Menu clicked.")
+		end
 	end)
 end
 

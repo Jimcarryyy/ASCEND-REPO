@@ -2,54 +2,50 @@
 --[[
     ClientMain.client.luau
     Location: src/StarterPlayer/StarterPlayerScripts/ClientMain.client.luau
-    Master client-side initialization script for ASCEND.
+    Master client bootstrap for ASCEND.
+    Initializes all client controllers concurrently so no single controller can ever block another.
 ]]
 
 local Players = game:GetService("Players")
-local StarterPlayerScripts = script.Parent
-local Controllers = StarterPlayerScripts:WaitForChild("Controllers")
+local player = Players.LocalPlayer
+local controllersFolder = player:WaitForChild("PlayerScripts"):WaitForChild("Controllers") :: Folder
 
-local localPlayer = Players.LocalPlayer
+local CONTROLLER_NAMES = {
+	"AnimationController",
+	"InputController",
+	"CombatVFXController",
+	"HUDController",
+	"InventoryController",
+	"AlchemyController",
+	"OverheadUIController",
+	"GatheringController",
+	"WindEnvironmentController",
+	"MarketController",
+	"QuestTrackerController",
+	"ArenaController",
+	"SkillBarController",
+	"FocusTargetController",
+}
 
--- Camera Limits
-localPlayer.CameraMinZoomDistance = 0.5
-localPlayer.CameraMaxZoomDistance = 30
+local function InitializeClient()
+	for _, name in ipairs(CONTROLLER_NAMES) do
+		local moduleScript = controllersFolder:FindFirstChild(name) :: ModuleScript?
+		if moduleScript then
+			task.spawn(function()
+				local success, controller = pcall(require, moduleScript)
+				if success and type(controller) == "table" and type(controller.Init) == "function" then
+					local initSuccess, initErr = pcall(controller.Init)
+					if not initSuccess then
+						warn(string.format("[ClientMain] Controller '%s' Init error: %s", name, tostring(initErr)))
+					end
+				else
+					warn(string.format("[ClientMain] Failed to require controller '%s'", name))
+				end
+			end)
+		end
+	end
 
--- Core Controllers
-local HUDController = require(Controllers:WaitForChild("HUDController"))
-local InputController = require(Controllers:WaitForChild("InputController"))
-local CombatVFXController = require(Controllers:WaitForChild("CombatVFXController"))
-local AnimationController = require(Controllers:WaitForChild("AnimationController"))
-local InventoryController = require(Controllers:WaitForChild("InventoryController"))
-local AlchemyController = require(Controllers:WaitForChild("AlchemyController"))
-local GatheringController = require(Controllers:WaitForChild("GatheringController"))
-local WindEnvironmentController = require(Controllers:WaitForChild("WindEnvironmentController"))
-local MarketController = require(Controllers:WaitForChild("MarketController"))
-local QuestTrackerController = require(Controllers:WaitForChild("QuestTrackerController"))
-local ArenaController = require(Controllers:WaitForChild("ArenaController"))
-local SkillBarController = require(Controllers:WaitForChild("SkillBarController"))
+	print("[ASCEND] All Client Controllers Initialized Concurrently (Zero Boot Blocking).")
+end
 
-
--- Overhead UI Controller
-local ClientFolder = StarterPlayerScripts:WaitForChild("Client")
-local FocusTargetController = require(script.Parent.Controllers.FocusTargetController)
-local UIFolder = ClientFolder:WaitForChild("UI")
-local OverheadUIController = require(UIFolder:WaitForChild("OverheadUIController"))
-
--- Initialize All Client Controllers
-HUDController.Init()
-InputController.Init()
-CombatVFXController.Init()
-AnimationController.Init()
-InventoryController.Init()
-AlchemyController.Init()
-OverheadUIController.Init()
-GatheringController.Init()
-WindEnvironmentController.Init()
-MarketController.Init()
-QuestTrackerController.Init()
-ArenaController.Init()
-SkillBarController.Init()
-FocusTargetController.Init()
-
-print("[ASCEND] All Client Controllers Initialized Successfully with Quest Tracker & Sparring Arena HUD!")
+InitializeClient()

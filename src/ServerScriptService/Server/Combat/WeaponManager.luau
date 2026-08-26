@@ -2,19 +2,38 @@
 --[[
     WeaponManager.luau
     Location: src/ServerScriptService/Server/Combat/WeaponManager.luau
-    Server-authoritative weapon lifecycle manager.
-    Guarantees trails are disabled on spawn/equip and handles Hand/Back/Hidden states.
+    Server-authoritative weapon lifecycle manager with 3D Draw/Sheath/Equip Audio.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local Debris = game:GetService("Debris")
 
 local WeaponManager = {}
 local weaponsFolder = ReplicatedStorage:WaitForChild("Weapons") :: Folder
 
+-- Audio IDs
+local SWORD_EQUIP_SOUND_ID   = "rbxassetid://114060318185092" -- Draw to Hand / Equip
+local SWORD_UNEQUIP_SOUND_ID = "rbxassetid://97568182472477"  -- Sheath to Back / Unequip
+
 -- Cache active sword per player
 local activeWeapons: { [Player]: { Model: MeshPart?, CurrentState: "Hand" | "Back" | "Hidden", WeaponId: string } } = {}
+
+local function Play3DWeaponSound(character: Model, soundId: string)
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return end
+
+	local sound = Instance.new("Sound")
+	sound.SoundId = soundId
+	sound.Volume = 0.75
+	sound.RollOffMaxDistance = 60
+	sound.RollOffMinDistance = 5
+	sound.Parent = hrp
+	sound:Play()
+
+	Debris:AddItem(sound, 2.0)
+end
 
 -- Snap Sword to Hand (Right Arm.RightGripAttachment -> Sword.SwordAttachment)
 local function SnapToHand(character: Model, sword: MeshPart)
@@ -74,8 +93,8 @@ local function SnapToBack(character: Model, sword: MeshPart)
 	constraint.Parent = sword
 end
 
--- Set Weapon State: "Hand" | "Back" | "Hidden"
-function WeaponManager.SetWeaponState(player: Player, state: "Hand" | "Back" | "Hidden")
+-- Set Weapon State: "Hand" | "Back" | "Hidden" (Triggers 3D Audio)
+function WeaponManager.SetWeaponState(player: Player, state: "Hand" | "Back" | "Hidden", suppressAudio: boolean?)
 	local character = player.Character
 	if not character then return end
 
@@ -94,10 +113,16 @@ function WeaponManager.SetWeaponState(player: Player, state: "Hand" | "Back" | "
 		sword.Transparency = 0
 		if trail then trail.Enabled = false end
 		SnapToHand(character, sword)
+		if not suppressAudio then
+			Play3DWeaponSound(character, SWORD_EQUIP_SOUND_ID)
+		end
 	elseif state == "Back" then
 		sword.Transparency = 0
 		if trail then trail.Enabled = false end
 		SnapToBack(character, sword)
+		if not suppressAudio then
+			Play3DWeaponSound(character, SWORD_UNEQUIP_SOUND_ID)
+		end
 	end
 end
 
@@ -105,7 +130,7 @@ function WeaponManager.ToggleSheath(player: Player)
 	local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 	local pData = CultivationManager.GetPlayerData(player)
 	if pData and pData.IsMeditating then
-		return -- Block sheath toggling during meditation
+		return
 	end
 
 	local weaponData = activeWeapons[player]
@@ -118,24 +143,20 @@ function WeaponManager.ToggleSheath(player: Player)
 	end
 end
 
--- Get current equipped weapon ID
 function WeaponManager.GetEquippedWeapon(player: Player): string
 	local weaponData = activeWeapons[player]
 	return (weaponData and weaponData.WeaponId) or "MortalIronJian"
 end
 
--- Get current weapon state ("Hand", "Back", "Hidden")
 function WeaponManager.GetWeaponState(player: Player): string
 	local weaponData = activeWeapons[player]
 	return (weaponData and weaponData.CurrentState) or "Hand"
 end
 
--- Equip Sword by ID from ReplicatedStorage.Weapons
 function WeaponManager.EquipWeapon(player: Player, weaponId: string, initialState: ("Hand" | "Back")?)
 	local character = player.Character
 	if not character then return end
 
-	-- Cleanup existing sword
 	if activeWeapons[player] and activeWeapons[player].Model then
 		activeWeapons[player].Model:Destroy()
 		activeWeapons[player] = nil
@@ -159,7 +180,6 @@ function WeaponManager.EquipWeapon(player: Player, weaponId: string, initialStat
 	swordClone.CanQuery = false
 	swordClone.Massless = true
 
-	-- Guarantee trail is turned OFF upon spawning/equipping
 	local trail = swordClone:FindFirstChildOfClass("Trail")
 	if trail then
 		trail.Enabled = false
@@ -174,20 +194,16 @@ function WeaponManager.EquipWeapon(player: Player, weaponId: string, initialStat
 		WeaponId = weaponId,
 	}
 
-	if targetState == "Hand" then
-		SnapToHand(character, swordClone)
-	else
-		SnapToBack(character, swordClone)
-	end
+	WeaponManager.SetWeaponState(player, targetState)
 end
 
 function WeaponManager.SetWeaponVisibility(player: Player, isVisible: boolean)
 	if isVisible then
 		local lastState = (activeWeapons[player] and activeWeapons[player].CurrentState) or "Hand"
 		if lastState == "Hidden" then lastState = "Hand" end
-		WeaponManager.SetWeaponState(player, lastState)
+		WeaponManager.SetWeaponState(player, lastState, true)
 	else
-		WeaponManager.SetWeaponState(player, "Hidden")
+		WeaponManager.SetWeaponState(player, "Hidden", true)
 	end
 end
 
@@ -206,6 +222,8 @@ function WeaponManager.Init()
 	Players.PlayerRemoving:Connect(function(player)
 		activeWeapons[player] = nil
 	end)
+
+	print("[ASCEND] WeaponManager Initialized (3D Equip/Unequip SFX Connected).")
 end
 
 return WeaponManager

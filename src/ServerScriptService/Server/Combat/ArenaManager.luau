@@ -2,9 +2,12 @@
 --[[
     ArenaManager.luau
     Location: src/ServerScriptService/Server/Combat/ArenaManager.luau
-    Server-authoritative 1v1 Balanced Sparring Arena for the Azure Cloud Sect.
-    Features: Unified Instant Matchmaking, 1,000 HP Stat Normalization, 90s countdown,
-    Non-Lethal Concessions, and Top Duel HUD replication.
+    Server-authoritative 1v1 Sparring Arena Manager:
+    - Production StreamingEnabled protection (RequestStreamAroundAsync prevents void-falling)
+    - Zeroed physics velocities on teleport
+    - Physical Dual-Pad Standing Detection (DuelPad1 & DuelPad2)
+    - 3-Second Visual Countdown with Instant Step-off Cancellation
+    - 1,000 HP Normalized Combat with clean non-lethal defeat resolution
 ]]
 
 local Players = game:GetService("Players")
@@ -12,48 +15,51 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Workspace = game:GetService("Workspace")
 
-local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
-
 local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
 local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 
 type ActiveDuel = {
 	Player1: Player,
 	Player2: Player,
-	Realm: string,
 	StartTime: number,
 	Duration: number,
-	P1Spawn: Vector3,
-	P2Spawn: Vector3,
-	SpectatorSpawn: Vector3,
+	P1Spawn: CFrame,
+	P2Spawn: CFrame,
+	SpectatorSpawn: CFrame,
 	IsActive: boolean,
 }
 
 local ArenaManager = {}
-
 local arenaRemote: RemoteEvent
-local unifiedQueue: { Player } = {}
 local activeDuels: { [Player]: ActiveDuel } = {}
 
-local ARENA_TIME_LIMIT = 90 -- seconds
+-- Pad Standby & Countdown State
+local pad1Player: Player? = nil
+local pad2Player: Player? = nil
+local countdownActive: boolean = false
+local countdownTask: thread? = nil
+
+local ARENA_TIME_LIMIT = 90
 
 function ArenaManager.Init()
 	arenaRemote = RemoteEvents.GetRemote("ArenaAction")
 
+	ArenaManager.EnsureAnchoredArenaParts()
+
 	arenaRemote.OnServerEvent:Connect(function(player: Player, payload: any)
 		if type(payload) ~= "table" or type(payload.Action) ~= "string" then return end
 
-		local action = payload.Action
-		if action == "JoinQueue" then
-			ArenaManager.AddToQueue(player)
-		elseif action == "LeaveQueue" then
-			ArenaManager.RemoveFromQueue(player)
+		if payload.Action == "TeleportToLobby" then
+			ArenaManager.TeleportToLobby(player)
 		end
 	end)
 
 	Players.PlayerRemoving:Connect(function(player: Player)
-		ArenaManager.RemoveFromQueue(player)
+		if pad1Player == player then pad1Player = nil end
+		if pad2Player == player then pad2Player = nil end
+		if countdownActive then ArenaManager.CancelCountdown() end
+
 		local duel = activeDuels[player]
 		if duel and duel.IsActive then
 			local winner = (duel.Player1 == player) and duel.Player2 or duel.Player1
@@ -61,128 +67,208 @@ function ArenaManager.Init()
 		end
 	end)
 
-	task.spawn(ArenaManager.SetupArenaPrompt)
-
-	-- Heartbeat monitor for HP <= 1 and 90s timer
+	-- 10Hz Monitor Loop
 	task.spawn(function()
 		while true do
-			task.wait(0.5)
+			task.wait(0.2)
+			ArenaManager.CheckDuelPads()
 			ArenaManager.MonitorDuels()
 		end
 	end)
 
-	print("[ASCEND] ArenaManager Initialized (Unified Instant Queue & 1,000 HP Normalization Active).")
+	print("[ASCEND] ArenaManager Initialized (Live Streaming Protection Active).")
 end
 
-function ArenaManager.SetupArenaPrompt()
-	local arena = Workspace:FindFirstChild("SparringArena", true) or Workspace:FindFirstChild("ArenaRing", true)
-	if not arena then
-		arena = Instance.new("Folder")
-		arena.Name = "SparringArena"
-		arena.Parent = Workspace
+function ArenaManager.GetArenaFolder(): Folder?
+	return (Workspace:FindFirstChild("SparringArena", true) or Workspace:FindFirstChild("Arena", true)) :: Folder?
+end
+
+function ArenaManager.EnsureAnchoredArenaParts()
+	local folder = ArenaManager.GetArenaFolder()
+	if not folder then return end
+
+	for _, child in ipairs(folder:GetChildren()) do
+		if child:IsA("BasePart") then
+			child.Anchored = true
+		elseif child:IsA("Model") then
+			for _, part in ipairs(child:GetDescendants()) do
+				if part:IsA("BasePart") then part.Anchored = true end
+			end
+		end
 	end
+end
 
-	local function BindPrompt(part: Instance)
-		if not (part:IsA("BasePart") or part:IsA("Model")) then return end
-		local targetPart = if part:IsA("Model") then (part.PrimaryPart or part:FindFirstChildWhichIsA("BasePart")) else (part :: BasePart)
-		if not targetPart or targetPart:FindFirstChild("ArenaPrompt") then return end
+function ArenaManager.GetTargetCFrame(partName: string, fallbackCFrame: CFrame): CFrame
+	local folder = ArenaManager.GetArenaFolder()
+	if folder then
+		local part = folder:FindFirstChild(partName, true) :: BasePart?
+		if part then
+			return part.CFrame + Vector3.new(0, 3.5, 0)
+		end
+	end
+	return fallbackCFrame
+end
 
-		local prompt = Instance.new("ProximityPrompt")
-		prompt.Name = "ArenaPrompt"
-		prompt.ObjectText = "Elder Wu — Sparring Master"
-		prompt.ActionText = "Register for 1v1 Sparring"
-		prompt.HoldDuration = 0
-		prompt.MaxActivationDistance = 14
-		prompt.RequiresLineOfSight = false
-		prompt.Parent = targetPart
+function ArenaManager.TeleportToLobby(player: Player)
+	local char = player.Character
+	if not char then return end
 
-		prompt.Triggered:Connect(function(player: Player)
-			arenaRemote:FireClient(player, { Action = "OpenArenaMenu" })
+	local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hrp and hum and hum.Health > 0 then
+		local folder = ArenaManager.GetArenaFolder()
+		local lobbyPart = folder and folder:FindFirstChild("LobbySpawn", true) :: BasePart?
+
+		local targetCFrame = if lobbyPart 
+			then lobbyPart.CFrame + Vector3.new(0, 3.5, 0) 
+			else hrp.CFrame + Vector3.new(0, 5, 0)
+
+		-- Production Streaming Protection
+		pcall(function()
+			player:RequestStreamAroundAsync(targetCFrame.Position, 2)
 		end)
-	end
 
-	for _, child in ipairs(arena:GetChildren()) do
-		BindPrompt(child)
-	end
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		char:PivotTo(targetCFrame)
 
-	arena.ChildAdded:Connect(BindPrompt)
+		print(string.format("[ArenaManager] Teleported %s safely to LobbySpawn.", player.Name))
+	end
 end
 
-function ArenaManager.GetArenaSpawns(): (Vector3, Vector3, Vector3)
-	local arena = Workspace:FindFirstChild("SparringArena", true) or Workspace:FindFirstChild("ArenaRing", true)
-	if arena then
-		local s1 = arena:FindFirstChild("Spawn1", true) :: BasePart?
-		local s2 = arena:FindFirstChild("Spawn2", true) :: BasePart?
-		local spec = arena:FindFirstChild("SpectatorSpawn", true) :: BasePart?
+-- =============================================================================
+-- DUAL-PAD DETECTION & COUNTDOWN
+-- =============================================================================
+local function IsPlayerOnPad(player: Player, padPart: BasePart): boolean
+	local char = player.Character
+	local hrp = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+	if not hrp then return false end
 
-		if s1 and s2 and spec then
-			return s1.Position + Vector3.new(0, 3, 0), s2.Position + Vector3.new(0, 3, 0), spec.Position + Vector3.new(0, 3, 0)
+	local padPos = padPart.Position
+	local padSize = padPart.Size
+	local playerPos = hrp.Position
+
+	local xDiff = math.abs(playerPos.X - padPos.X)
+	local zDiff = math.abs(playerPos.Z - padPos.Z)
+	local yDiff = math.abs(playerPos.Y - padPos.Y)
+
+	return (xDiff <= (padSize.X / 2 + 1.5)) and (zDiff <= (padSize.Z / 2 + 1.5)) and (yDiff <= 8)
+end
+
+function ArenaManager.CheckDuelPads()
+	local folder = ArenaManager.GetArenaFolder()
+	if not folder then return end
+
+	local pad1 = folder:FindFirstChild("DuelPad1", true) :: BasePart?
+	local pad2 = folder:FindFirstChild("DuelPad2", true) :: BasePart?
+	if not pad1 or not pad2 then return end
+
+	local currentP1: Player? = nil
+	local currentP2: Player? = nil
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if not activeDuels[player] then
+			if IsPlayerOnPad(player, pad1) then
+				currentP1 = player
+			elseif IsPlayerOnPad(player, pad2) then
+				currentP2 = player
+			end
 		end
 	end
 
-	-- Default Sector 3 Arena Coordinates
-	return Vector3.new(-120, 14, 280), Vector3.new(-120, 14, 340), Vector3.new(-160, 14, 310)
-end
+	pad1Player = currentP1
+	pad2Player = currentP2
 
-function ArenaManager.AddToQueue(player: Player)
-	if activeDuels[player] then return end
+	pad1.Color = if currentP1 then Color3.fromRGB(0, 220, 255) else Color3.fromRGB(40, 40, 50)
+	pad2.Color = if currentP2 then Color3.fromRGB(0, 220, 255) else Color3.fromRGB(40, 40, 50)
 
-	for _, p in ipairs(unifiedQueue) do
-		if p == player then return end
-	end
-
-	local cultivation = CultivationManager.GetPlayerData(player)
-	local realmName = if cultivation then tostring(cultivation.Realm) else "Qi Condensation"
-
-	table.insert(unifiedQueue, player)
-	arenaRemote:FireClient(player, { Action = "QueueJoined", Realm = realmName })
-	print(string.format("[ArenaManager] %s joined the 1v1 Sparring Queue.", player.Name))
-
-	-- Match as soon as 2 players are in queue
-	if #unifiedQueue >= 2 then
-		local p1 = table.remove(unifiedQueue, 1) :: Player
-		local p2 = table.remove(unifiedQueue, 1) :: Player
-		ArenaManager.StartDuel(p1, p2, realmName)
-	end
-end
-
-function ArenaManager.RemoveFromQueue(player: Player)
-	for i, p in ipairs(unifiedQueue) do
-		if p == player then
-			table.remove(unifiedQueue, i)
-			arenaRemote:FireClient(player, { Action = "QueueLeft" })
-			print(string.format("[ArenaManager] %s left the Sparring Queue.", player.Name))
-			return
+	if currentP1 and currentP2 and currentP1 ~= currentP2 then
+		if not countdownActive then
+			ArenaManager.StartCountdown(currentP1, currentP2)
+		end
+	else
+		if countdownActive then
+			ArenaManager.CancelCountdown()
 		end
 	end
 end
 
-function ArenaManager.StartDuel(p1: Player, p2: Player, realm: string)
-	local p1Spawn, p2Spawn, specSpawn = ArenaManager.GetArenaSpawns()
+function ArenaManager.StartCountdown(p1: Player, p2: Player)
+	countdownActive = true
+
+	countdownTask = task.spawn(function()
+		for sec = 3, 1, -1 do
+			if not countdownActive then return end
+			arenaRemote:FireClient(p1, { Action = "CountdownTick", Seconds = sec })
+			arenaRemote:FireClient(p2, { Action = "CountdownTick", Seconds = sec })
+			task.wait(1.0)
+		end
+
+		if countdownActive and pad1Player == p1 and pad2Player == p2 then
+			countdownActive = false
+			ArenaManager.StartDuel(p1, p2)
+		else
+			ArenaManager.CancelCountdown()
+		end
+	end)
+end
+
+function ArenaManager.CancelCountdown()
+	countdownActive = false
+	if countdownTask then
+		task.cancel(countdownTask)
+		countdownTask = nil
+	end
+
+	if pad1Player then
+		arenaRemote:FireClient(pad1Player, { Action = "CountdownCancelled" })
+	end
+	if pad2Player then
+		arenaRemote:FireClient(pad2Player, { Action = "CountdownCancelled" })
+	end
+end
+
+-- =============================================================================
+-- IN-RING 1v1 DUEL EXECUTION (STREAMING SAFE)
+-- =============================================================================
+function ArenaManager.StartDuel(p1: Player, p2: Player)
+	local p1SpawnCF = ArenaManager.GetTargetCFrame("Spawn1", CFrame.new(-120, 14, 280))
+	local p2SpawnCF = ArenaManager.GetTargetCFrame("Spawn2", CFrame.new(-120, 14, 340))
+	local specSpawnCF = ArenaManager.GetTargetCFrame("SpectatorSpawn", CFrame.new(-160, 14, 310))
 
 	local duel: ActiveDuel = {
 		Player1 = p1,
 		Player2 = p2,
-		Realm = realm,
 		StartTime = os.clock(),
 		Duration = ARENA_TIME_LIMIT,
-		P1Spawn = p1Spawn,
-		P2Spawn = p2Spawn,
-		SpectatorSpawn = specSpawn,
+		P1Spawn = p1SpawnCF,
+		P2Spawn = p2SpawnCF,
+		SpectatorSpawn = specSpawnCF,
 		IsActive = true,
 	}
 
 	activeDuels[p1] = duel
 	activeDuels[p2] = duel
 
-	local function PreparePlayer(p: Player, spawnPos: Vector3, opponent: Player)
+	local function SetupFighter(p: Player, spawnCF: CFrame, oppCF: CFrame)
 		local char = p.Character
 		if char then
-			char:SetAttribute("InArena", true)
-			char:PivotTo(CFrame.new(spawnPos, opponent.Character and opponent.Character:GetPivot().Position or spawnPos))
-
+			local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 			local hum = char:FindFirstChildOfClass("Humanoid")
-			if hum then
+			if hrp and hum and hum.Health > 0 then
+				char:SetAttribute("InArena", true)
+
+				-- Request map streaming before teleport
+				pcall(function()
+					p:RequestStreamAroundAsync(spawnCF.Position, 2)
+				end)
+
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				hrp.AssemblyAngularVelocity = Vector3.zero
+
+				local lookAtCF = CFrame.lookAt(spawnCF.Position, Vector3.new(oppCF.Position.X, spawnCF.Position.Y, oppCF.Position.Z))
+				char:PivotTo(lookAtCF)
+
 				hum.MaxHealth = 1000
 				hum.Health = 1000
 				hum.WalkSpeed = 16
@@ -191,16 +277,14 @@ function ArenaManager.StartDuel(p1: Player, p2: Player, realm: string)
 
 		arenaRemote:FireClient(p, {
 			Action = "DuelStarting",
-			OpponentName = opponent.Name,
-			Realm = realm,
 			Duration = ARENA_TIME_LIMIT,
 		})
 	end
 
-	PreparePlayer(p1, p1Spawn, p2)
-	PreparePlayer(p2, p2Spawn, p1)
+	SetupFighter(p1, p1SpawnCF, p2SpawnCF)
+	SetupFighter(p2, p2SpawnCF, p1SpawnCF)
 
-	print(string.format("[ArenaManager] ⚔️ 1v1 Duel Commenced: %s vs %s!", p1.Name, p2.Name))
+	print(string.format("[ArenaManager] ⚔️ Physical Duel Commenced: %s vs %s!", p1.Name, p2.Name))
 end
 
 function ArenaManager.MonitorDuels()
@@ -211,26 +295,23 @@ function ArenaManager.MonitorDuels()
 		if evaluated[duel] or not duel.IsActive then continue end
 		evaluated[duel] = true
 
-		local p1 = duel.Player1
-		local p2 = duel.Player2
-		local p1Hum = p1.Character and p1.Character:FindFirstChildOfClass("Humanoid")
-		local p2Hum = p2.Character and p2.Character:FindFirstChildOfClass("Humanoid")
+		local p1Hum = duel.Player1.Character and duel.Player1.Character:FindFirstChildOfClass("Humanoid")
+		local p2Hum = duel.Player2.Character and duel.Player2.Character:FindFirstChildOfClass("Humanoid")
 
 		local p1Health = if p1Hum then p1Hum.Health else 0
 		local p2Health = if p2Hum then p2Hum.Health else 0
 
-		-- Simultaneous zero HP -> Draw
 		if p1Health <= 1 and p2Health <= 1 then
 			ArenaManager.EndDuel(duel, nil, "Simultaneous Double Knockout")
 		elseif p1Health <= 1 then
-			ArenaManager.EndDuel(duel, p2, "Knockdown Victory")
+			ArenaManager.EndDuel(duel, duel.Player2, "Knockdown Victory")
 		elseif p2Health <= 1 then
-			ArenaManager.EndDuel(duel, p1, "Knockdown Victory")
+			ArenaManager.EndDuel(duel, duel.Player1, "Knockdown Victory")
 		elseif (now - duel.StartTime) >= duel.Duration then
 			if p1Health > p2Health then
-				ArenaManager.EndDuel(duel, p1, "Time Limit Exceeded (Higher HP)")
+				ArenaManager.EndDuel(duel, duel.Player1, "Time Limit Exceeded (Higher HP)")
 			elseif p2Health > p1Health then
-				ArenaManager.EndDuel(duel, p2, "Time Limit Exceeded (Higher HP)")
+				ArenaManager.EndDuel(duel, duel.Player2, "Time Limit Exceeded (Higher HP)")
 			else
 				ArenaManager.EndDuel(duel, nil, "Time Limit Draw")
 			end
@@ -245,14 +326,22 @@ function ArenaManager.EndDuel(duel: ActiveDuel, winner: Player?, reason: string)
 	activeDuels[duel.Player1] = nil
 	activeDuels[duel.Player2] = nil
 
-	local function ResolveFighter(p: Player, isWinner: boolean, isDraw: boolean)
+	local function ResetFighter(p: Player, isWinner: boolean, isDraw: boolean)
 		local char = p.Character
 		if char then
 			char:SetAttribute("InArena", false)
-			char:PivotTo(CFrame.new(duel.SpectatorSpawn))
-
 			local hum = char:FindFirstChildOfClass("Humanoid")
-			if hum then
+			local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+
+			if hum and hum.Health > 0 and hrp then
+				pcall(function()
+					p:RequestStreamAroundAsync(duel.SpectatorSpawn.Position, 2)
+				end)
+
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				hrp.AssemblyAngularVelocity = Vector3.zero
+				char:PivotTo(duel.SpectatorSpawn)
+
 				hum.MaxHealth = 100
 				hum.Health = 100
 				hum.WalkSpeed = 18
@@ -277,12 +366,12 @@ function ArenaManager.EndDuel(duel: ActiveDuel, winner: Player?, reason: string)
 
 	if winner then
 		local loser = (duel.Player1 == winner) and duel.Player2 or duel.Player1
-		ResolveFighter(winner, true, false)
-		ResolveFighter(loser, false, false)
-		print(string.format("[ArenaManager] 🏆 %s defeated %s in Sparring Arena (%s).", winner.Name, loser.Name, reason))
+		ResetFighter(winner, true, false)
+		ResetFighter(loser, false, false)
+		print(string.format("[ArenaManager] 🏆 %s defeated %s (%s).", winner.Name, loser.Name, reason))
 	else
-		ResolveFighter(duel.Player1, false, true)
-		ResolveFighter(duel.Player2, false, true)
+		ResetFighter(duel.Player1, false, true)
+		ResetFighter(duel.Player2, false, true)
 		print(string.format("[ArenaManager] 🤝 Duel between %s and %s resulted in a Draw (%s).", duel.Player1.Name, duel.Player2.Name, reason))
 	end
 end
