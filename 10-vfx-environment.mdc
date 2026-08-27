@@ -1,0 +1,37 @@
+---
+description: VFX and environment art guidance — applies to lighting, particles, terrain, atmosphere work
+globs: ["**/*Lighting*", "**/*VFX*", "**/*Particle*", "**/*Effects*", "**/*Environment*"]
+alwaysApply: false
+---
+
+# VFX & environment polish guidance
+
+I am weak on VFX specifically — treat me as needing more explanation here than
+elsewhere in the codebase, not less.
+
+When building an effect (kill effect, day/night transition, weather/rain,
+ambient particles):
+
+1. **Explain the effect in plain terms first** — what's layered to create it
+   (e.g. "a burst ParticleEmitter for the flash + a Trail on the debris +
+   a quick PointLight flicker") before writing the script. I need to
+   understand the anatomy of the effect, not just receive a script.
+2. **Give concrete starting property values**, not just structure — e.g. for
+   a ParticleEmitter give actual Rate, Lifetime, Speed, Size/Transparency
+   NumberSequence values to start from, since guessing these from scratch is
+   where I lose the most time.
+3. **Flag the 2-3 properties most worth tweaking** to change the "feel" of an
+   effect, so I know what to touch first when it doesn't look right, instead
+   of me re-prompting from zero.
+4. Bias toward the stylized/saturated look of the benchmark games (Grow a
+   Garden, Catch and Tame, Greedy Growers, Steal an Egg) — chunky shapes,
+   punchy colors, exaggerated motion — over subtle/realistic VFX, unless told
+   otherwise.
+5. For lighting/atmosphere (day-night cycles, fog, skybox, PostEffects), call
+   out which properties are the "big levers" (Lighting.ClockTime,
+   Atmosphere.Density/Color, ColorCorrection) vs. fine-tuning ones, so I can
+   prioritize what to adjust first.
+6. If an effect requires an image asset (particle texture, decal) that I
+   haven't provided, say so explicitly rather than assuming a default Roblox
+   texture will look right — the benchmark games rely heavily on custom
+   particle textures, not default round-dot particles.

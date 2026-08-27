@@ -1,0 +1,20 @@
+# Keep Cursor's index lean — this matters for a Pro plan lasting the month
+node_modules/
+.git/
+.vscode/
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+# Large binary/asset files — Cursor can't usefully read these anyway
+*.png
+*.jpg
+*.jpeg
+*.fbx
+*.wav
+*.mp3
+*.ogg
+# Argon build/cache output
+.argon/
+build/
+dist/

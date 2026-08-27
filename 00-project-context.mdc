@@ -1,0 +1,39 @@
+---
+description: Always-on project context for Roblox Studio work via Argon
+alwaysApply: true
+---
+
+# Project context
+
+This is a Roblox game built in Roblox Studio, synced to this filesystem via the
+Argon extension (Rojo-style project). Code is Luau. Do not assume Node/JS/TS
+tooling applies — this is not a web project even though it lives in a synced
+folder structure.
+
+Two workstreams live in this workspace (check which one a task belongs to
+before writing code):
+
+1. **Sword cultivation game** — my own game project. Core gameplay, sword
+   cultivation progression systems, combat.
+2. **Environment/VFX gig** — client work. Scope is strictly: lighting,
+   atmosphere, terrain, particle effects, general environment polish. Do NOT
+   touch gameplay/backend systems for this workstream unless explicitly asked.
+   Visual benchmark: Grow a Garden, Catch and Tame, Greedy Growers, Steal an
+   Egg — bright, saturated, chunky/stylized, readable-at-a-distance Roblox
+   art style. Not realistic/PBR-heavy, not muted/gritty.
+
+# General rules
+
+- Luau conventions: PascalCase for services/instances, camelCase for local
+  vars/functions, `local` everything, avoid globals.
+- Prefer editing/creating instances via scripts that Argon will sync, not
+  by asking me to manually click around Studio — unless the task is genuinely
+  easier done by hand (e.g. tweaking a Beam curve visually).
+- When writing anything Studio-facing (ParticleEmitter, Beam, Trail, Lighting
+  properties, PostEffects), always give me the exact property names/values to
+  set, since you cannot see the render output — I'll eyeball it in Studio and
+  report back what needs adjusting.
+- Don't invent Roblox API members. If unsure an API/property exists, say so
+  rather than guessing — Luau/Roblox API hallucinations are expensive to
+  debug inside Studio.
+- Keep responses focused. Don't refactor unrelated code unless asked.

@@ -62,7 +62,7 @@ function InputController.GetLocomotionSpeeds(): (number, number)
 	if inArena then
 		return 16, 28
 	else
-		return 18, 52
+		return 18, 35
 	end
 end
 
