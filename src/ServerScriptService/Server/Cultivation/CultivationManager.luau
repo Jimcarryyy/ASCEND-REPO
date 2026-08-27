@@ -170,6 +170,13 @@ function CultivationManager.AddInternalQi(player: Player, amount: number)
 	CultivationManager.SyncClient(player)
 end
 
+-- Alias for AddInternalQi. MobAIManager (kill rewards) and MarketplaceManager
+-- (auto-meditation gamepass ticks) both call this name; kept as a separate
+-- entry point in case its growth curve needs to diverge from AddInternalQi later.
+function CultivationManager.AddCultivatedQi(player: Player, amount: number)
+	CultivationManager.AddInternalQi(player, amount)
+end
+
 function CultivationManager.SetPlayerData(player: Player, realm: CultivationConfig.RealmTier, currentQi: number, order: number?, cultivatedQi: number?)
 	local orderNum = math.clamp(order or 1, 1, 9)
 	local targetGoal = CultivationConfig.GetOrderTargetQi(realm, orderNum)
