@@ -60,6 +60,17 @@ UIAssets.RarityCardColors = {
 	Common    = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#64748B"), Text = Color3.fromHex("#E2E8F0") },
 }
 
+-- Alchemy Pill Quality Grade Colors
+-- Keys match the exact strings returned by AlchemyConfig.CalculateCombinationMetrics,
+-- used by MarketController, HUDController, and AlchemyController to color pill/item
+-- cards by the quality grade rolled at crafting time (driven by herb age).
+UIAssets.GradeCardColors = {
+	["Sovereign Immortal Quality"] = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#F8FAFC"), Text = Color3.fromHex("#1E232A") },
+	["Century Superior Quality"]   = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#F59E0B"), Text = Color3.fromHex("#FDE68A") },
+	["Refined Medium Quality"]     = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#3B82F6"), Text = Color3.fromHex("#BFDBFE") },
+	["Standard Quality"]           = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#64748B"), Text = Color3.fromHex("#E2E8F0") },
+}
+
 -- Fonts
 UIAssets.Fonts = {
 	Header = Enum.Font.LuckiestGuy,
