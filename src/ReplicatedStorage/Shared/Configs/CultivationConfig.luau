@@ -38,6 +38,10 @@ export type RealmInfo = {
 	Tribulation: TribulationSpec,
 }
 
+export type OrderRequirements = {
+	MaxQi: number,
+}
+
 local CultivationConfig = {
 	FormatNumber = function(num: number): string
 		local absolute = math.abs(num)
@@ -191,6 +195,14 @@ function CultivationConfig.GetRealmDisplayName(realmTier: RealmTier): string
 	return if info and info.Name then info.Name else tostring(realmTier)
 end
 
+-- Returns this realm's ordinal position (1 = QiCondensation ... 10 = ImmortalAscension).
+-- Used for reward/difficulty scaling that needs to know "how far along" a realm is,
+-- e.g. MobAIManager's kill-reward multiplier.
+function CultivationConfig.GetRealmIndex(realmTier: RealmTier): number
+	local info = CultivationConfig[realmTier]
+	return if info and info.Tier then info.Tier else 1
+end
+
 function CultivationConfig.GetOrderMaxHealth(realmTier: RealmTier, order: number): number
 	local info = CultivationConfig[realmTier]
 	if not info then return 1000 end
@@ -216,6 +228,15 @@ end
 function CultivationConfig.GetOrderStartingMaxQi(realmTier: RealmTier, order: number): number
 	local targetQi = CultivationConfig.GetOrderTargetQi(realmTier, order)
 	return math.floor(targetQi * 0.20)
+end
+
+-- Returns the full breakthrough requirement bundle for a given realm+order.
+-- Currently just wraps GetOrderTargetQi as MaxQi; used by MarketplaceManager's
+-- "InstantQi" dev-product reward to fully cap out a player's current Qi.
+function CultivationConfig.GetOrderRequirements(realmTier: RealmTier, order: number): OrderRequirements
+	return {
+		MaxQi = CultivationConfig.GetOrderTargetQi(realmTier, order),
+	}
 end
 
 function CultivationConfig.GetPowerMultiplier(realmTier: RealmTier, order: number): number
