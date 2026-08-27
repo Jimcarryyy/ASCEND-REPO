@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContentProvider = game:GetService("ContentProvider")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
@@ -30,6 +31,14 @@ local PARRY_CLASH_SOUND_ID = "rbxassetid://9114223175"
 local MEDITATION_ANIM_ID = (AnimationConfig.Movement and (AnimationConfig.Movement :: any).Meditation) or "rbxassetid://129333803961409"
 local meditationTrack: AnimationTrack? = nil
 local isCurrentlyMeditating = false
+local meditationRequestId = 0 -- Guards against a stale (superseded) meditation toggle resolving late
+
+-- Dash tuning. DASH_BURST_DURATION and DASH_SPEED are tunable to taste —
+-- these are a first-pass fix, not final balance numbers.
+local DASH_BURST_DURATION = 0.22 -- seconds of full-speed dash before decay (was ~0.15s effective)
+local DASH_SPEED = 78
+local DASH_WALL_SLOW_SPEED = 12
+local DASH_WALL_CHECK_DISTANCE = 4
 
 local function PlayLocalSFX(soundId: string, volume: number?)
 	local character = player.Character
@@ -49,6 +58,23 @@ local function PlayLocalSFX(soundId: string, volume: number?)
 	end)
 end
 
+-- Waits (bounded) for both Humanoid and its Animator child to exist. Fixes the
+-- race where a cultivation/meditation update arrives before Animator has
+-- finished loading on a freshly spawned character, which previously caused
+-- the first meditation toggle after joining to silently do nothing.
+local function WaitForAnimator(character: Model, timeout: number): (Humanoid?, Animator?)
+	local startTime = os.clock()
+	repeat
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
+		if humanoid and animator then
+			return humanoid, animator
+		end
+		task.wait(0.05)
+	until os.clock() - startTime >= timeout or not character.Parent
+	return nil, nil
+end
+
 function AnimationController.Init()
 	local combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	local updateSkillStateRemote = RemoteEvents.GetRemote("UpdateSkillState")
@@ -66,14 +92,27 @@ function AnimationController.Init()
 	updateCultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		local character = player.Character
 		if not character then return end
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
-		if not humanoid or not animator then return end
 
 		local newMeditatingState = (data.IsMeditating == true)
 		character:SetAttribute("IsMeditating", newMeditatingState)
 
-		if newMeditatingState ~= isCurrentlyMeditating then
+		if newMeditatingState == isCurrentlyMeditating then
+			return -- No actual change; avoid replaying/re-stopping the same track
+		end
+
+		meditationRequestId += 1
+		local thisRequestId = meditationRequestId
+
+		task.spawn(function()
+			local humanoid, animator = WaitForAnimator(character, 3)
+			if not humanoid or not animator then
+				warn("[AnimationController] Meditation animation skipped — Animator not ready within timeout.")
+				return
+			end
+
+			-- If the state changed again while we were waiting, this request is stale — drop it.
+			if thisRequestId ~= meditationRequestId then return end
+
 			isCurrentlyMeditating = newMeditatingState
 
 			if isCurrentlyMeditating then
@@ -116,7 +155,7 @@ function AnimationController.Init()
 					meditationTrack = nil
 				end
 			end
-		end
+		end)
 	end)
 
 	updateSkillStateRemote.OnClientEvent:Connect(function(weaponType: string)
@@ -234,8 +273,8 @@ function AnimationController.PerformDash(dashStep: number)
 	character:SetAttribute("IsDashing", true)
 	PlayLocalSFX(DASH_SOUND_ID, 1.0)
 
-	local animId = if dashStep == 1 
-		then ((AnimationConfig.Movement :: any).Dash_1 or "rbxassetid://118004062849712") 
+	local animId = if dashStep == 1
+		then ((AnimationConfig.Movement :: any).Dash_1 or "rbxassetid://118004062849712")
 		else ((AnimationConfig.Movement :: any).Dash_2 or "rbxassetid://87494050060721")
 
 	local trackKey = "Dash_" .. tostring(dashStep)
@@ -260,9 +299,9 @@ function AnimationController.PerformDash(dashStep: number)
 	local rayParams = RaycastParams.new()
 	rayParams.FilterType = Enum.RaycastFilterType.Exclude
 	rayParams.FilterDescendantsInstances = { character }
-	local hitWall = Workspace:Raycast(hrp.Position, dashDir * 3.5, rayParams)
+	local hitWall = Workspace:Raycast(hrp.Position, dashDir * DASH_WALL_CHECK_DISTANCE, rayParams)
 
-	local dashVelocity = if hitWall then dashDir * 15 else dashDir * 78
+	local dashVelocity = if hitWall then dashDir * DASH_WALL_SLOW_SPEED else dashDir * DASH_SPEED
 
 	local attach = hrp:FindFirstChild("DashAttachment") :: Attachment?
 	if not attach then
@@ -282,7 +321,42 @@ function AnimationController.PerformDash(dashStep: number)
 
 	hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, math.clamp(hrp.AssemblyLinearVelocity.Y, -20, 2), hrp.AssemblyLinearVelocity.Z)
 
-	task.delay(0.15, function()
+	-- CRITICAL FIX: Humanoid's own movement force was fighting the dash impulse the
+	-- entire time (WalkSpeed kept trying to push the character at run/sprint speed
+	-- simultaneously), which is why the dash previously looked like "still running
+	-- with a dash animation layered on top" instead of an actual burst. Silencing
+	-- WalkSpeed and AutoRotate for the duration of the burst lets the LinearVelocity
+	-- actually control the character.
+	local previousAutoRotate = humanoid.AutoRotate
+	humanoid.WalkSpeed = 0
+	humanoid.AutoRotate = false
+
+	-- CRITICAL FIX: the original wall check only raycast once, at the very start of
+	-- the dash. At 78 studs/sec the character could still reach a wall mid-burst with
+	-- full force. This loop re-checks every frame for the burst's duration and softens
+	-- velocity if a wall is imminent, instead of slamming into it uncontrolled.
+	local startTime = os.clock()
+	local dashHeartbeatConn: RBXScriptConnection? = nil
+	dashHeartbeatConn = RunService.Heartbeat:Connect(function()
+		if not hrp.Parent or not linearVel.Parent then
+			if dashHeartbeatConn then dashHeartbeatConn:Disconnect() end
+			return
+		end
+
+		if os.clock() - startTime >= DASH_BURST_DURATION then
+			if dashHeartbeatConn then dashHeartbeatConn:Disconnect() end
+			return
+		end
+
+		local wallAhead = Workspace:Raycast(hrp.Position, dashDir * DASH_WALL_CHECK_DISTANCE, rayParams)
+		if wallAhead then
+			linearVel.VectorVelocity = dashDir * DASH_WALL_SLOW_SPEED
+		end
+	end)
+
+	task.delay(DASH_BURST_DURATION, function()
+		if dashHeartbeatConn then dashHeartbeatConn:Disconnect() end
+
 		if linearVel and linearVel.Parent then
 			local decayTween = TweenService:Create(linearVel, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				VectorVelocity = dashDir * 10,
@@ -292,7 +366,25 @@ function AnimationController.PerformDash(dashStep: number)
 				if linearVel and linearVel.Parent then linearVel:Destroy() end
 				character:SetAttribute("IsDashing", false)
 				if track and track.IsPlaying then track:Stop(0.08) end
+
+				if humanoid and humanoid.Parent then
+					humanoid.AutoRotate = previousAutoRotate
+					local InputController = require(player.PlayerScripts.Controllers.InputController)
+					local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
+					local isSprinting = InputController.IsSprinting()
+					humanoid.WalkSpeed = isSprinting and sprintSpeed or walkSpeed
+				end
 			end)
+		else
+			-- Safety: if linearVel was already destroyed some other way, still restore movement
+			if humanoid and humanoid.Parent then
+				humanoid.AutoRotate = previousAutoRotate
+				local InputController = require(player.PlayerScripts.Controllers.InputController)
+				local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
+				local isSprinting = InputController.IsSprinting()
+				humanoid.WalkSpeed = isSprinting and sprintSpeed or walkSpeed
+			end
+			character:SetAttribute("IsDashing", false)
 		end
 	end)
 end

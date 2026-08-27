@@ -27,6 +27,16 @@ local function GetEquippedWeaponBaseDamage(player: Player): number
 	return 15
 end
 
+-- Safely resolves an aim direction from a client payload. Never trusts the
+-- payload's shape: falls back to the character's facing if AimDirection is
+-- missing, malformed, or a zero vector.
+local function ResolveAimDirection(payload: any?, fallback: Vector3): Vector3
+	if payload and typeof(payload.AimDirection) == "Vector3" and payload.AimDirection.Magnitude > 0 then
+		return payload.AimDirection
+	end
+	return fallback
+end
+
 function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, payload: any?): any?
 	local pData = CultivationManager.GetPlayerData(player)
 	if pData and pData.IsMeditating then return payload end
@@ -106,10 +116,8 @@ function FlyingSwordServer.ExecuteM1Combo(player: Player, hrp: BasePart, inArena
 		finalDamage = math.floor((weaponBaseDmg + currentStepData.Damage) * powerMult * critMult)
 	end
 
-	-- Aim Orientation
-	local aimDir = if payload and payload.AimDirection and payload.AimDirection.Magnitude > 0 
-		then payload.AimDirection 
-		else hrp.CFrame.LookVector
+	-- Aim Orientation (safely resolved — never trusts payload shape)
+	local aimDir = ResolveAimDirection(payload, hrp.CFrame.LookVector)
 	local flatAimDir = Vector3.new(aimDir.X, 0, aimDir.Z).Unit
 	local orientationCFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatAimDir)
 	local hitboxCFrame = orientationCFrame * CFrame.new(currentStepData.Offset)
@@ -151,9 +159,8 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 		finalDamage = math.floor((weaponBaseDmg + skillData.Damage) * powerMult * critMult)
 	end
 
-	local aimDir = if payload and payload.AimDirection and payload.AimDirection.Magnitude > 0 
-		then payload.AimDirection 
-		else hrp.CFrame.LookVector
+	-- Aim Orientation (safely resolved — never trusts payload shape)
+	local aimDir = ResolveAimDirection(payload, hrp.CFrame.LookVector)
 	local flatAimDir = Vector3.new(aimDir.X, 0, aimDir.Z).Unit
 	local orientationCFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatAimDir)
 	local hitboxCFrame = orientationCFrame * CFrame.new(skillData.Offset)

@@ -46,15 +46,13 @@ function GatheringManager.Init()
 		GatheringManager.SetupNodeModel(instance)
 	end)
 
-	gatheringActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
-		if type(payload) ~= "table" or not payload.Action then return end
+	-- NOTE: Harvest completion is no longer driven by a client-fired RemoteEvent.
+	-- ProximityPrompt.Triggered (connected server-side in SetupNodeModel) is the
+	-- sole trigger path, since it's the only one the server can trust — a client
+	-- can call FireServer() on demand, but cannot forge the engine's own
+	-- server-side Triggered signal or shorten its HoldDuration.
 
-		if payload.Action == "CompleteHarvest" and payload.NodeInstance then
-			GatheringManager.ProcessHarvest(player, payload.NodeInstance)
-		end
-	end)
-
-	print("[ASCEND] GatheringManager Engine Initialized (Randomized Herb Ages & Quest Sync Enabled).")
+	print("[ASCEND] GatheringManager Engine Initialized (Server-Authoritative Prompt Triggers, Randomized Herb Ages & Quest Sync Enabled).")
 end
 
 function GatheringManager.SetupNodeModel(nodeInstance: Instance)
@@ -68,9 +66,9 @@ function GatheringManager.SetupNodeModel(nodeInstance: Instance)
 		nodeInstance.PrimaryPart = nodeInstance:FindFirstChildWhichIsA("BasePart")
 	end
 
-	local existingPrompt = nodeInstance:FindFirstChildOfClass("ProximityPrompt")
-	if not existingPrompt then
-		local prompt = Instance.new("ProximityPrompt")
+	local prompt = nodeInstance:FindFirstChildOfClass("ProximityPrompt")
+	if not prompt then
+		prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "GatherPrompt"
 		prompt.ObjectText = config.NodeName
 		prompt.ActionText = config.PromptText
@@ -78,6 +76,15 @@ function GatheringManager.SetupNodeModel(nodeInstance: Instance)
 		prompt.MaxActivationDistance = config.MaxDistance
 		prompt.RequiresLineOfSight = false
 		prompt.Parent = nodeInstance
+	end
+
+	-- Guard against double-connecting if SetupNodeModel ever runs twice for the same node
+	-- (e.g. re-fired ChildAdded/tag signal), and connect the server-authoritative trigger.
+	if not prompt:GetAttribute("_GatheringServerConnected") then
+		prompt:SetAttribute("_GatheringServerConnected", true)
+		prompt.Triggered:Connect(function(playerWhoTriggered: Player)
+			GatheringManager.ProcessHarvest(playerWhoTriggered, nodeInstance)
+		end)
 	end
 end
 

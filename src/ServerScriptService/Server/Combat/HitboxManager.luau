@@ -221,6 +221,11 @@ function HitboxManager.ApplyCombatResolution(
 		CombatStateManager.TagInCombat(attackerPlayer)
 		if targetPlayer then
 			CombatStateManager.TagInCombat(targetPlayer)
+		else
+			-- Target has no controlling player (a mob/NPC) — record who actually damaged it
+			-- so MobAIManager can credit the correct killer instead of guessing.
+			local MobAIManager = require(ServerScriptService.Server.Combat.MobAIManager)
+			MobAIManager.RegisterDamage(targetChar, attackerPlayer, finalDamage)
 		end
 	end
 

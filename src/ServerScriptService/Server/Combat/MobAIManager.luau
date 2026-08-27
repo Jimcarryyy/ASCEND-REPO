@@ -3,7 +3,8 @@
     MobAIManager.luau
     Location: src/ServerScriptService/Server/Combat/MobAIManager.luau
     Server-authoritative R6 Zone Mob Spawner & AI Combat Manager.
-    Features: Simple pathfinding, aggro/leash cycles, dynamic realm reward scaling, and quest kill sync.
+    Features: PathfindingService-driven movement, aggro/leash cycles,
+    damage-attributed kill credit, dynamic realm reward scaling, and quest kill sync.
 ]]
 
 local Debris = game:GetService("Debris")
@@ -11,6 +12,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Workspace = game:GetService("Workspace")
+local PathfindingService = game:GetService("PathfindingService")
 
 local MobConfig = require(ReplicatedStorage.Shared.Configs.MobConfig)
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
@@ -32,12 +34,34 @@ type ActiveMob = {
 	TargetPlayer: Player?,
 	LastAttackTime: number,
 	LastPatrolTime: number,
+	-- Pathfinding
+	PathWaypoints: { PathWaypoint }?,
+	PathWaypointIndex: number,
+	PathTargetPos: Vector3?,
+	LastPathComputeTime: number,
+	-- Damage attribution (for correct kill credit)
+	LastDamagePlayer: Player?,
+	LastDamageTime: number,
 }
 
 local MobAIManager = {}
 
 local activeMobs: { [Model]: ActiveMob } = {}
 local mobFolder: Folder
+
+-- Pathfinding tuning
+local PATH_RECOMPUTE_INTERVAL = 1.0 -- seconds between path recomputes per mob while chasing
+local PATH_TARGET_MOVE_THRESHOLD = 4 -- studs; recompute early if target moved this far from last computed target
+local PATH_WAYPOINT_REACH_DIST = 4 -- studs; distance to consider a waypoint "reached"
+local PATH_AGENT_PARAMS = {
+	AgentRadius = 3,
+	AgentHeight = 5,
+	AgentCanJump = false,
+	WaypointSpacing = 4,
+}
+
+-- Kill-credit attribution window
+local DAMAGE_ATTRIBUTION_WINDOW = 15 -- seconds; last hit must be this recent to count for kill credit
 
 function MobAIManager.Init()
 	mobFolder = Workspace:FindFirstChild("ActiveMobs") :: Folder
@@ -57,7 +81,7 @@ function MobAIManager.Init()
 		end
 	end)
 
-	print("[ASCEND] MobAIManager Initialized (R6 Zone Mobs & Scaled Drops Active).")
+	print("[ASCEND] MobAIManager Initialized (PathfindingService Movement & Attributed Kill Credit Active).")
 end
 
 function MobAIManager.SetupSpawners()
@@ -194,6 +218,12 @@ function MobAIManager.SpawnMob(mobId: string, spawnAnchor: BasePart, spawnRadius
 		TargetPlayer = nil,
 		LastAttackTime = 0,
 		LastPatrolTime = 0,
+		PathWaypoints = nil,
+		PathWaypointIndex = 1,
+		PathTargetPos = nil,
+		LastPathComputeTime = 0,
+		LastDamagePlayer = nil,
+		LastDamageTime = 0,
 	}
 
 	activeMobs[model] = activeMobData
@@ -201,6 +231,78 @@ function MobAIManager.SpawnMob(mobId: string, spawnAnchor: BasePart, spawnRadius
 	humanoid.Died:Connect(function()
 		MobAIManager.OnMobDied(activeMobData)
 	end)
+end
+
+-- Called by HitboxManager whenever a mob takes damage from a player, so kill credit
+-- reflects who actually fought the mob instead of whoever happened to have aggro.
+function MobAIManager.RegisterDamage(mobModel: Model, player: Player, damage: number)
+	local mob = activeMobs[mobModel]
+	if not mob then return end
+	mob.LastDamagePlayer = player
+	mob.LastDamageTime = os.time()
+end
+
+-- Computes (or reuses) a path to `destination` for this mob, throttled to avoid
+-- calling PathfindingService every 0.25s tick per mob.
+function MobAIManager.ComputePathTo(mob: ActiveMob, destination: Vector3)
+	local now = os.clock()
+
+	local recentlyComputed = (now - mob.LastPathComputeTime) < PATH_RECOMPUTE_INTERVAL
+	local targetBarelyMoved = mob.PathTargetPos and (mob.PathTargetPos - destination).Magnitude < PATH_TARGET_MOVE_THRESHOLD
+
+	if recentlyComputed and targetBarelyMoved and mob.PathWaypoints then
+		return -- Reuse the existing path; nothing meaningful has changed
+	end
+
+	mob.LastPathComputeTime = now
+	mob.PathTargetPos = destination
+
+	local path = PathfindingService:CreatePath(PATH_AGENT_PARAMS)
+	local ok = pcall(function()
+		path:ComputeAsync(mob.RootPart.Position, destination)
+	end)
+
+	if ok and path.Status == Enum.PathStatus.Success then
+		mob.PathWaypoints = path:GetWaypoints()
+		mob.PathWaypointIndex = 2 -- Waypoint 1 is always the mob's current position
+	else
+		mob.PathWaypoints = nil
+		mob.PathWaypointIndex = 1
+	end
+end
+
+-- Advances the mob one step along its currently computed path.
+-- Returns false if there's no usable path (caller should fall back to direct MoveTo).
+function MobAIManager.FollowPath(mob: ActiveMob): boolean
+	local waypoints = mob.PathWaypoints
+	if not waypoints or #waypoints == 0 then
+		return false
+	end
+
+	if mob.PathWaypointIndex > #waypoints then
+		mob.PathWaypoints = nil
+		return false
+	end
+
+	local mobPos = mob.RootPart.Position
+	local waypoint = waypoints[mob.PathWaypointIndex]
+	local flatDist = (Vector3.new(waypoint.Position.X, mobPos.Y, waypoint.Position.Z) - mobPos).Magnitude
+
+	if flatDist <= PATH_WAYPOINT_REACH_DIST then
+		mob.PathWaypointIndex += 1
+		if mob.PathWaypointIndex > #waypoints then
+			mob.PathWaypoints = nil
+			return false
+		end
+		waypoint = waypoints[mob.PathWaypointIndex]
+	end
+
+	if waypoint.Action == Enum.PathWaypointAction.Jump then
+		mob.Humanoid.Jump = true
+	end
+
+	mob.Humanoid:MoveTo(waypoint.Position)
+	return true
 end
 
 function MobAIManager.UpdateAI()
@@ -217,6 +319,7 @@ function MobAIManager.UpdateAI()
 		if distFromAnchor > mob.SpawnRadius * 2.2 then
 			mob.State = "Leash"
 			mob.TargetPlayer = nil
+			mob.PathWaypoints = nil
 			mob.Humanoid.WalkSpeed = mob.MobDef.WalkSpeed * 1.5
 			mob.Humanoid:MoveTo(anchorPos)
 			mob.Humanoid.Health = math.min(mob.Humanoid.MaxHealth, mob.Humanoid.Health + 20)
@@ -255,6 +358,7 @@ function MobAIManager.UpdateAI()
 				if distToPlayer <= mob.MobDef.AttackRange then
 					-- Attack State
 					mob.State = "Attack"
+					mob.PathWaypoints = nil
 					mob.Humanoid:MoveTo(mobPos) -- Stop moving to attack
 
 					if now - mob.LastAttackTime >= mob.MobDef.AttackCooldown then
@@ -265,14 +369,17 @@ function MobAIManager.UpdateAI()
 						end
 					end
 				else
-					-- Chase State
+					-- Chase State (PathfindingService-driven, with direct-MoveTo fallback)
 					mob.State = "Chase"
 					mob.Humanoid.WalkSpeed = mob.MobDef.WalkSpeed
-					mob.Humanoid:MoveTo(playerHrp.Position)
+					MobAIManager.ComputePathTo(mob, playerHrp.Position)
+					if not MobAIManager.FollowPath(mob) then
+						mob.Humanoid:MoveTo(playerHrp.Position)
+					end
 				end
 			end
 		else
-			-- Patrol State
+			-- Patrol State (PathfindingService-driven, with direct-MoveTo fallback)
 			mob.State = "Patrol"
 			if now - mob.LastPatrolTime > 5 then
 				mob.LastPatrolTime = now
@@ -280,7 +387,10 @@ function MobAIManager.UpdateAI()
 				local dist = math.random() * (mob.SpawnRadius * 0.7)
 				local targetPos = anchorPos + Vector3.new(math.cos(angle) * dist, 0, math.sin(angle) * dist)
 				mob.Humanoid.WalkSpeed = mob.MobDef.WalkSpeed * 0.7
-				mob.Humanoid:MoveTo(targetPos)
+				MobAIManager.ComputePathTo(mob, targetPos)
+			end
+			if not MobAIManager.FollowPath(mob) and mob.PathTargetPos then
+				mob.Humanoid:MoveTo(mob.PathTargetPos)
 			end
 		end
 	end
@@ -290,7 +400,11 @@ function MobAIManager.OnMobDied(mob: ActiveMob)
 	mob.State = "Dead"
 	activeMobs[mob.Model] = nil
 
-	local killer = mob.TargetPlayer or Players:GetPlayers()[1]
+	local killer: Player? = nil
+	if mob.LastDamagePlayer and (os.time() - mob.LastDamageTime) <= DAMAGE_ATTRIBUTION_WINDOW then
+		killer = mob.LastDamagePlayer
+	end
+
 	if killer then
 		local cultivation = CultivationManager.GetPlayerData(killer)
 		local realmIndex = cultivation and CultivationConfig.GetRealmIndex(cultivation.Realm) or 1
@@ -314,8 +428,10 @@ function MobAIManager.OnMobDied(mob: ActiveMob)
 		-- Sync Quest Kill Progress
 		SectManager.AddQuestProgress(killer, "DefeatMob", mob.MobDef.MobId, 1)
 
-		print(string.format("[MobAIManager] %s defeated %s (+%d Stones, +%d Qi [Mult: %.2f]).", 
+		print(string.format("[MobAIManager] %s defeated %s (+%d Stones, +%d Qi [Mult: %.2f]).",
 			killer.Name, mob.MobDef.DisplayName, scaledStones, scaledQi, multiplier))
+	else
+		print(string.format("[MobAIManager] %s died with no valid recent damager on record — no rewards granted.", mob.MobDef.DisplayName))
 	end
 
 	Debris:AddItem(mob.Model, 2)
