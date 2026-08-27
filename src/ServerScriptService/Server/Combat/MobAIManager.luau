@@ -4,7 +4,8 @@
     Location: src/ServerScriptService/Server/Combat/MobAIManager.luau
     Server-authoritative R6 Zone Mob Spawner & AI Combat Manager.
     Features: PathfindingService-driven movement, aggro/leash cycles,
-    damage-attributed kill credit, dynamic realm reward scaling, and quest kill sync.
+    damage-attributed kill credit, dynamic realm reward scaling, quest kill sync,
+    and grid-based spatial culling for multi-player scalability.
 ]]
 
 local Debris = game:GetService("Debris")
@@ -44,6 +45,11 @@ type ActiveMob = {
 	LastDamageTime: number,
 }
 
+type PlayerSnapshot = {
+	Player: Player,
+	Position: Vector3,
+}
+
 local MobAIManager = {}
 
 local activeMobs: { [Model]: ActiveMob } = {}
@@ -63,6 +69,68 @@ local PATH_AGENT_PARAMS = {
 -- Kill-credit attribution window
 local DAMAGE_ATTRIBUTION_WINDOW = 15 -- seconds; last hit must be this recent to count for kill credit
 
+-- Spatial culling tuning.
+-- Cell size must be >= the largest MobDefinition.AggroRadius in MobConfig (currently max 40)
+-- so a 3x3 cell neighborhood around a mob always fully covers its aggro range, even for a
+-- player sitting right at a cell boundary. Bump this up if any future mob's AggroRadius exceeds it.
+local GRID_CELL_SIZE = 50
+
+local function GetCellKey(x: number, z: number): string
+	return math.floor(x / GRID_CELL_SIZE) .. ":" .. math.floor(z / GRID_CELL_SIZE)
+end
+
+-- Builds a spatial hash of all currently-alive players, once per AI tick, instead of every
+-- mob independently scanning the full player list. Turns target detection from
+-- O(mobs x players) into O(players) [grid build] + O(mobs x players-in-nearby-cells].
+local function BuildPlayerGrid(): { [string]: { PlayerSnapshot } }
+	local grid: { [string]: { PlayerSnapshot } } = {}
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+		if hrp and hum and hum.Health > 0 then
+			local key = GetCellKey(hrp.Position.X, hrp.Position.Z)
+			local bucket = grid[key]
+			if not bucket then
+				bucket = {}
+				grid[key] = bucket
+			end
+			table.insert(bucket, { Player = player, Position = hrp.Position })
+		end
+	end
+
+	return grid
+end
+
+-- Returns the closest player to `position` found in the 3x3 cell neighborhood around it,
+-- within `maxDist`. Only checks players in nearby cells rather than the entire server.
+local function FindClosestPlayerInGrid(grid: { [string]: { PlayerSnapshot } }, position: Vector3, maxDist: number): (Player?, number)
+	local baseX = math.floor(position.X / GRID_CELL_SIZE)
+	local baseZ = math.floor(position.Z / GRID_CELL_SIZE)
+
+	local closestPlayer: Player? = nil
+	local closestDist = maxDist
+
+	for dx = -1, 1 do
+		for dz = -1, 1 do
+			local bucket = grid[(baseX + dx) .. ":" .. (baseZ + dz)]
+			if bucket then
+				for _, snapshot in ipairs(bucket) do
+					local dist = (snapshot.Position - position).Magnitude
+					if dist < closestDist then
+						closestDist = dist
+						closestPlayer = snapshot.Player
+					end
+				end
+			end
+		end
+	end
+
+	return closestPlayer, closestDist
+end
+
 function MobAIManager.Init()
 	mobFolder = Workspace:FindFirstChild("ActiveMobs") :: Folder
 	if not mobFolder then
@@ -81,7 +149,7 @@ function MobAIManager.Init()
 		end
 	end)
 
-	print("[ASCEND] MobAIManager Initialized (PathfindingService Movement & Attributed Kill Credit Active).")
+	print("[ASCEND] MobAIManager Initialized (PathfindingService Movement, Spatial Culling & Attributed Kill Credit Active).")
 end
 
 function MobAIManager.SetupSpawners()
@@ -308,6 +376,9 @@ end
 function MobAIManager.UpdateAI()
 	local now = os.time()
 
+	-- Build the spatial grid once per tick, not once per mob.
+	local playerGrid = BuildPlayerGrid()
+
 	for model, mob in pairs(activeMobs) do
 		if mob.State == "Dead" or mob.Humanoid.Health <= 0 then continue end
 
@@ -330,24 +401,9 @@ function MobAIManager.UpdateAI()
 			continue
 		end
 
-		-- Target detection
-		local targetPlayer: Player? = nil
-		local closestDist = mob.MobDef.AggroRadius
-
-		for _, player in ipairs(Players:GetPlayers()) do
-			local char = player.Character
-			local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
-			local hum = char and char:FindFirstChild("Humanoid") :: Humanoid?
-
-			if hrp and hum and hum.Health > 0 then
-				local dist = (hrp.Position - mobPos).Magnitude
-				if dist < closestDist then
-					closestDist = dist
-					targetPlayer = player
-				end
-			end
-		end
-
+		-- Target detection (grid-culled: only scans players in the 3x3 cell
+		-- neighborhood around this mob, not the full server player list)
+		local targetPlayer = FindClosestPlayerInGrid(playerGrid, mobPos, mob.MobDef.AggroRadius)
 		mob.TargetPlayer = targetPlayer
 
 		if targetPlayer and targetPlayer.Character then

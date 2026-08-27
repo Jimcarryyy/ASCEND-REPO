@@ -22,19 +22,85 @@ local CultivationManager = require(ServerScriptService.Server.Cultivation.Cultiv
 local MarketplaceManager = {}
 
 local monetizationRemote: RemoteEvent
-local purchaseHistoryStore: DataStore? = nil
+
+-- Persisted purchase-receipt ledger so a redelivered receipt (server crash,
+-- slow ProcessReceipt response, Roblox retry) can never grant rewards twice.
+local RECEIPT_STORE_NAME = "ASCEND_ProcessedReceipts_V1"
+local MAX_STORED_RECEIPTS_PER_PLAYER = 60
+local receiptStore: DataStore? = nil
+
+local function GetReceiptStoreKey(userId: number): string
+	return "Receipts_" .. userId
+end
+
+-- Returns true if this PurchaseId was already granted for this player.
+-- On DataStore failure, returns true (fail-safe: never double-grant) and
+-- the caller should return NotProcessedYet so Roblox retries later.
+local function IsReceiptAlreadyGranted(userId: number, purchaseId: string): (boolean, boolean)
+	if not receiptStore then
+		return false, false
+	end
+
+	local key = GetReceiptStoreKey(userId)
+	local success, result = pcall(function()
+		return receiptStore:GetAsync(key)
+	end)
+
+	if not success then
+		warn(string.format("[MarketplaceManager] Failed to read receipt ledger for UserId %d: %s", userId, tostring(result)))
+		return false, true
+	end
+
+	local grantedList = (type(result) == "table") and result or {}
+	for _, id in ipairs(grantedList) do
+		if id == purchaseId then
+			return true, false
+		end
+	end
+
+	return false, false
+end
+
+-- Records that this PurchaseId has now been granted. Returns true on success.
+local function RecordReceiptGranted(userId: number, purchaseId: string): boolean
+	if not receiptStore then
+		return false
+	end
+
+	local key = GetReceiptStoreKey(userId)
+	local success, err = pcall(function()
+		receiptStore:UpdateAsync(key, function(oldList)
+			local list = (type(oldList) == "table") and oldList or {}
+			table.insert(list, purchaseId)
+
+			-- Cap stored history so the ledger doesn't grow unbounded per player.
+			while #list > MAX_STORED_RECEIPTS_PER_PLAYER do
+				table.remove(list, 1)
+			end
+
+			return list
+		end)
+	end)
+
+	if not success then
+		warn(string.format("[MarketplaceManager] Failed to record receipt for UserId %d: %s", userId, tostring(err)))
+		return false
+	end
+
+	return true
+end
 
 function MarketplaceManager.Init()
 	monetizationRemote = RemoteEvents.GetRemote("MonetizationAction")
 
-	-- 0. Purchase History Store (idempotent receipt processing)
 	local success, result = pcall(function()
-		return DataStoreService:GetDataStore("ASCEND_PurchaseHistory_V1")
+		return DataStoreService:GetDataStore(RECEIPT_STORE_NAME)
 	end)
 	if success and result then
-		purchaseHistoryStore = result
+		receiptStore = result
+		print("[MarketplaceManager] Receipt ledger DataStore initialized successfully.")
 	else
-		warn("[MarketplaceManager] Could not access PurchaseHistory DataStore — ProcessReceipt will not be idempotent this session.")
+		warn("[MarketplaceManager] Could not access receipt ledger DataStore. Receipt dedup will be skipped this session.")
 	end
 
 	-- 1. Configure ProcessReceipt for Developer Products
@@ -159,23 +225,22 @@ function MarketplaceManager.ProcessReceipt(receiptInfo: any): Enum.ProductPurcha
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	local purchaseKey = "Purchase_" .. tostring(receiptInfo.PurchaseId)
+	local purchaseId = receiptInfo.PurchaseId
+	if type(purchaseId) ~= "string" then
+		warn("[MarketplaceManager] Receipt missing PurchaseId, cannot safely dedup. Rejecting for retry.")
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
 
-	-- Idempotency check: has this exact receipt already been granted?
-	if purchaseHistoryStore then
-		local checkSuccess, alreadyGranted = pcall(function()
-			return purchaseHistoryStore:GetAsync(purchaseKey)
-		end)
-
-		if not checkSuccess then
-			warn(string.format("[MarketplaceManager] Could not verify purchase history for %s (PurchaseId %s): %s", player.Name, tostring(receiptInfo.PurchaseId), tostring(alreadyGranted)))
-			return Enum.ProductPurchaseDecision.NotProcessedYet
-		end
-
-		if alreadyGranted then
-			-- Already processed this receipt in a prior attempt; confirm without re-granting.
-			return Enum.ProductPurchaseDecision.PurchaseGranted
-		end
+	-- Idempotency check: never grant the same PurchaseId twice.
+	local alreadyGranted, ledgerReadFailed = IsReceiptAlreadyGranted(receiptInfo.PlayerId, purchaseId)
+	if ledgerReadFailed then
+		-- Can't confirm this is safe to grant right now — ask Roblox to retry later
+		-- rather than risk a double-grant.
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	if alreadyGranted then
+		print(string.format("[MarketplaceManager] Duplicate receipt %s for %s ignored (already granted).", purchaseId, player.Name))
+		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
 	local prodDef = MonetizationConfig.GetDevProductByRobloxId(receiptInfo.ProductId)
@@ -204,24 +269,12 @@ function MarketplaceManager.ProcessReceipt(receiptInfo: any): Enum.ProductPurcha
 		print(string.format("[MarketplaceManager] %s used Celestial Cleansing Spring (Toxicity Purged)!", player.Name))
 	end
 
-	-- Persist the grant record BEFORE confirming, so a save failure causes a safe retry, not a silent double-grant risk.
-	if purchaseHistoryStore then
-		local saveSuccess = false
-		for attempt = 1, 3 do
-			local ok = pcall(function()
-				purchaseHistoryStore:SetAsync(purchaseKey, true)
-			end)
-			if ok then
-				saveSuccess = true
-				break
-			end
-			task.wait(1)
-		end
-
-		if not saveSuccess then
-			warn(string.format("[MarketplaceManager] Failed to persist purchase record for %s (PurchaseId %s) — will retry on next ProcessReceipt call.", player.Name, tostring(receiptInfo.PurchaseId)))
-			return Enum.ProductPurchaseDecision.NotProcessedYet
-		end
+	-- Persist the grant BEFORE telling Roblox we're done. If this fails, ask
+	-- for a retry rather than risk the same receipt granting again silently
+	-- with no record it already happened.
+	local recorded = RecordReceiptGranted(receiptInfo.PlayerId, purchaseId)
+	if not recorded then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
 	monetizationRemote:FireClient(player, {
