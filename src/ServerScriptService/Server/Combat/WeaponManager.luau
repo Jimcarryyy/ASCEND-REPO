@@ -3,6 +3,7 @@
     WeaponManager.luau
     Location: src/ServerScriptService/Server/Combat/WeaponManager.luau
     Server-authoritative weapon lifecycle manager with 3D Draw/Sheath/Equip Audio.
+    Supports Hand / Back / Hidden / Flight (standing on the sword) mount states.
 ]]
 
 local Players = game:GetService("Players")
@@ -17,8 +18,14 @@ local weaponsFolder = ReplicatedStorage:WaitForChild("Weapons") :: Folder
 local SWORD_EQUIP_SOUND_ID   = "rbxassetid://114060318185092" -- Draw to Hand / Equip
 local SWORD_UNEQUIP_SOUND_ID = "rbxassetid://97568182472477"  -- Sheath to Back / Unequip
 
+-- Flight mount tuning. This vertical offset is a STARTING ESTIMATE for a standard R6
+-- rig (HumanoidRootPart sits roughly at hip height, ~3 studs above the feet) — not
+-- pulled from any confirmed rig measurement. Nudge FLIGHT_MOUNT_OFFSET_Y if the
+-- character sits inside the blade or floats above it once you test in Studio.
+local FLIGHT_MOUNT_OFFSET_Y = -3
+
 -- Cache active sword per player
-local activeWeapons: { [Player]: { Model: MeshPart?, CurrentState: "Hand" | "Back" | "Hidden", WeaponId: string } } = {}
+local activeWeapons: { [Player]: { Model: MeshPart?, CurrentState: "Hand" | "Back" | "Hidden" | "Flight", WeaponId: string } } = {}
 
 local function Play3DWeaponSound(character: Model, soundId: string)
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -33,6 +40,11 @@ local function Play3DWeaponSound(character: Model, soundId: string)
 	sound:Play()
 
 	Debris:AddItem(sound, 2.0)
+end
+
+local function ClearExistingConstraint(sword: MeshPart)
+	local existingConstraint = sword:FindFirstChildOfClass("RigidConstraint")
+	if existingConstraint then existingConstraint:Destroy() end
 end
 
 -- Snap Sword to Hand (Right Arm.RightGripAttachment -> Sword.SwordAttachment)
@@ -50,8 +62,7 @@ local function SnapToHand(character: Model, sword: MeshPart)
 		sword.CanQuery = false
 		sword.Massless = true
 
-		local existingConstraint = sword:FindFirstChildOfClass("RigidConstraint")
-		if existingConstraint then existingConstraint:Destroy() end
+		ClearExistingConstraint(sword)
 
 		local constraint = Instance.new("RigidConstraint")
 		constraint.Name = "WeaponGripConstraint"
@@ -83,8 +94,7 @@ local function SnapToBack(character: Model, sword: MeshPart)
 	sword.CanQuery = false
 	sword.Massless = true
 
-	local existingConstraint = sword:FindFirstChildOfClass("RigidConstraint")
-	if existingConstraint then existingConstraint:Destroy() end
+	ClearExistingConstraint(sword)
 
 	local constraint = Instance.new("RigidConstraint")
 	constraint.Name = "WeaponGripConstraint"
@@ -93,8 +103,47 @@ local function SnapToBack(character: Model, sword: MeshPart)
 	constraint.Parent = sword
 end
 
--- Set Weapon State: "Hand" | "Back" | "Hidden" (Triggers 3D Audio)
-function WeaponManager.SetWeaponState(player: Player, state: "Hand" | "Back" | "Hidden", suppressAudio: boolean?)
+-- Snap Sword to Feet (HumanoidRootPart.FlightMount -> Sword.FeetAttachment)
+-- Sword is still massless and follows the character rigidly, same topology as
+-- Hand/Back — the character's own Humanoid drives movement, the sword just
+-- visually trails beneath the feet. FeetAttachment's position AND rotation
+-- (set by hand in Studio, on the sword mesh) fully determine how the character
+-- is oriented relative to the blade once constrained.
+local function SnapToFeet(character: Model, sword: MeshPart)
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return end
+
+	local flightMountAtt = hrp:FindFirstChild("FlightMount") :: Attachment?
+	if not flightMountAtt then
+		flightMountAtt = Instance.new("Attachment")
+		flightMountAtt.Name = "FlightMount"
+		flightMountAtt.CFrame = CFrame.new(0, FLIGHT_MOUNT_OFFSET_Y, 0)
+		flightMountAtt.Parent = hrp
+	end
+
+	local swordFeetAtt = sword:FindFirstChild("FeetAttachment") :: Attachment?
+	if not swordFeetAtt then
+		warn("[WeaponManager] No FeetAttachment found on sword:", sword.Name, "— cannot enter Flight state.")
+		return
+	end
+
+	sword.Anchored = false
+	sword.CanCollide = false
+	sword.CanTouch = false
+	sword.CanQuery = false
+	sword.Massless = true
+
+	ClearExistingConstraint(sword)
+
+	local constraint = Instance.new("RigidConstraint")
+	constraint.Name = "WeaponGripConstraint"
+	constraint.Attachment0 = flightMountAtt
+	constraint.Attachment1 = swordFeetAtt
+	constraint.Parent = sword
+end
+
+-- Set Weapon State: "Hand" | "Back" | "Hidden" | "Flight" (Triggers 3D Audio where applicable)
+function WeaponManager.SetWeaponState(player: Player, state: "Hand" | "Back" | "Hidden" | "Flight", suppressAudio: boolean?)
 	local character = player.Character
 	if not character then return end
 
@@ -123,6 +172,11 @@ function WeaponManager.SetWeaponState(player: Player, state: "Hand" | "Back" | "
 		if not suppressAudio then
 			Play3DWeaponSound(character, SWORD_UNEQUIP_SOUND_ID)
 		end
+	elseif state == "Flight" then
+		sword.Transparency = 0
+		if trail then trail.Enabled = true end -- Flight trail effect; disable here if you don't want it yet
+		SnapToFeet(character, sword)
+		-- No dedicated flight SFX exists yet — add one to SetWeaponState here once you have an asset ID.
 	end
 end
 
@@ -136,6 +190,9 @@ function WeaponManager.ToggleSheath(player: Player)
 	local weaponData = activeWeapons[player]
 	if not weaponData then return end
 
+	-- Flight is a separate mode from the Hand/Back sheath toggle — R while flying
+	-- currently falls through to "not Hand" -> Hand. Revisit this once the V-key
+	-- flight toggle exists, so R has defined behavior while flying.
 	if weaponData.CurrentState == "Hand" then
 		WeaponManager.SetWeaponState(player, "Back")
 	else
@@ -223,7 +280,7 @@ function WeaponManager.Init()
 		activeWeapons[player] = nil
 	end)
 
-	print("[ASCEND] WeaponManager Initialized (3D Equip/Unequip SFX Connected).")
+	print("[ASCEND] WeaponManager Initialized (3D Equip/Unequip SFX, Hand/Back/Flight Mounts Connected).")
 end
 
 return WeaponManager
