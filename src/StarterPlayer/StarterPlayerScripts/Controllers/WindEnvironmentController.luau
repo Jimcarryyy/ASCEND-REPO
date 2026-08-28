@@ -76,6 +76,63 @@ function WindEnvironmentController.ScanEnvironment()
 	end
 end
 
+-- Add this helper function inside WindEnvironmentController.luau
+
+local function SetupWindLines(character: Model)
+	local root = character:WaitForChild("HumanoidRootPart", 5)
+	if not root then return end
+
+	-- Clean up previous emitter if respawned
+	local existing = root:FindFirstChild("MurimWindEmitter")
+	if existing then existing:Destroy() end
+
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "MurimWindEmitter"
+	attachment.Position = Vector3.new(0, 4, 0)
+	attachment.Parent = root
+
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "WindRibbons"
+	particles.Texture = "rbxassetid://6454399793" -- Soft streak line texture
+	particles.Orientation = Enum.ParticleOrientation.VelocityParallel
+	particles.Rate = 6
+	particles.Lifetime = NumberRange.new(1.8, 2.8)
+	particles.Speed = NumberRange.new(18, 32)
+	particles.SpreadAngle = Vector2.new(15, 10)
+	particles.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.1),
+		NumberSequenceKeypoint.new(0.3, 0.45),
+		NumberSequenceKeypoint.new(0.8, 0.3),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	particles.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.15, 0.65),
+		NumberSequenceKeypoint.new(0.7, 0.75),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	particles.Color = ColorSequence.new(Color3.fromRGB(225, 235, 245))
+	particles.LightEmission = 0.4
+	particles.EmissionDirection = Enum.NormalId.Back
+	particles.Parent = attachment
+
+	-- Sync particle velocity with GlobalWind every frame
+	task.spawn(function()
+		while attachment and attachment.Parent do
+			local currentWind = workspace.GlobalWind
+			if currentWind.Magnitude > 1 then
+				particles.EmissionDirection = Enum.NormalId.Front
+				attachment.CFrame = CFrame.lookAt(Vector3.zero, currentWind.Unit)
+				particles.Speed = NumberRange.new(currentWind.Magnitude * 0.8, currentWind.Magnitude * 1.3)
+				particles.Rate = math.clamp(currentWind.Magnitude * 0.5, 4, 18)
+			else
+				particles.Rate = 2
+			end
+			task.wait(0.2)
+		end
+	end)
+end
+
 function WindEnvironmentController.Init()
 	WindEnvironmentController.ScanEnvironment()
 
@@ -100,6 +157,18 @@ function WindEnvironmentController.Init()
 			end
 		end
 	end)
+
+	local Players = game:GetService("Players")
+	local localPlayer = Players.LocalPlayer
+
+	local function OnCharacterAdded(char)
+		SetupWindLines(char)
+	end
+
+	if localPlayer.Character then
+		OnCharacterAdded(localPlayer.Character)
+	end
+	localPlayer.CharacterAdded:Connect(OnCharacterAdded)
 
 	-- Single Centralized Render Loop for Organic Gusting Wind
 	local clock = 0
