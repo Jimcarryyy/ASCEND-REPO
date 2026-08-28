@@ -5,10 +5,12 @@
     Unified Input Controller for ASCEND:
     - CTRL: Toggle Run/Sprint ON/OFF on PC/Desktop
     - T: Block & Perfect Parry (Hold to Guard, Tap for Parry)
-    - F: Falling Sky Slam (Heavy Slam Skill)
-    - Q, E: Sword Skills
     - LeftShift: 2-Stage Qi Dash
-    - Mobile: Dynamic Thumbstick Auto-Run
+    - C / M: Meditation Toggle
+    - R: Sheath / Draw Toggle
+    - B: Breakthrough Request
+    - M1: 5-Hit Combo Attack Sequence
+    - Mobile: Dynamic Thumbstick Auto-Run + Direct Touch Triggers
 ]]
 
 local Players = game:GetService("Players")
@@ -132,13 +134,12 @@ function InputController.Init()
 			or character:GetAttribute("CCState") == "GuardBroken"
 
 		if isAttacking or isBlocking or isMeditating or isStunned or isDashing then
-			return -- Footwork / Stun lockouts handle their own WalkSpeed
+			return
 		end
 
 		local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
 
 		if IsTouchDevice() then
-			-- Mobile Touch: Dynamic thumbstick magnitude
 			local moveMag = humanoid.MoveDirection.Magnitude
 			if moveMag > 0.85 and not isSprinting then
 				isSprinting = true
@@ -148,7 +149,6 @@ function InputController.Init()
 				humanoid.WalkSpeed = walkSpeed
 			end
 		else
-			-- Desktop/PC: Enforce speed based on isSprinting toggle
 			if isSprinting then
 				if humanoid.WalkSpeed ~= sprintSpeed then
 					humanoid.WalkSpeed = sprintSpeed
@@ -172,9 +172,6 @@ function InputController.SetEnabled(state: boolean)
 	end
 end
 
--- =============================================================================
--- SPRINT ON / OFF TOGGLE
--- =============================================================================
 function InputController.ToggleSprint()
 	if isMeditating or not enabled or isBlocking then return end
 	local character = player.Character
@@ -220,7 +217,7 @@ function InputController.StartBlock()
 
 	isBlocking = true
 	if isSprinting then
-		isSprinting = false -- Block cancels sprint
+		isSprinting = false
 	end
 
 	local AnimationController = require(script.Parent.AnimationController)
@@ -228,7 +225,9 @@ function InputController.StartBlock()
 	combatActionRemote:FireServer({ Action = "BlockStart", Timestamp = os.clock() })
 
 	local SkillBarController = require(script.Parent.SkillBarController)
-	SkillBarController.TriggerCooldown("T")
+	if SkillBarController.TriggerCooldown then
+		SkillBarController.TriggerCooldown("T")
+	end
 end
 
 function InputController.StopBlock()
@@ -245,8 +244,16 @@ function InputController.GetTargetPayload(skillKey: string, comboIndex: number?,
 	local hrp = if character then character:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 
 	local origin = if hrp then hrp.Position else Vector3.zero
-	local targetPos = mouse.Hit.Position
-	local aimDir = if (targetPos - origin).Magnitude > 0 then (targetPos - origin).Unit else Vector3.new(0, 0, -1)
+	local aimDir = Vector3.new(0, 0, -1)
+
+	if not IsTouchDevice() and mouse then
+		local targetPos = mouse.Hit.Position
+		if (targetPos - origin).Magnitude > 0 then
+			aimDir = (targetPos - origin).Unit
+		end
+	elseif hrp then
+		aimDir = hrp.CFrame.LookVector
+	end
 
 	return {
 		SkillKey = skillKey,
@@ -273,7 +280,9 @@ function InputController.TriggerDash()
 	combatActionRemote:FireServer(payload)
 
 	local SkillBarController = require(script.Parent.SkillBarController)
-	SkillBarController.TriggerCooldown("Dash")
+	if SkillBarController.TriggerCooldown then
+		SkillBarController.TriggerCooldown("Dash", DASH_COOLDOWN)
+	end
 end
 
 function InputController.TriggerM1()
@@ -304,7 +313,9 @@ function InputController.TriggerM1()
 	combatActionRemote:FireServer(payload)
 
 	local SkillBarController = require(script.Parent.SkillBarController)
-	SkillBarController.TriggerCooldown("M1")
+	if SkillBarController.TriggerCooldown then
+		SkillBarController.TriggerCooldown("M1", currentAttackLockout)
+	end
 end
 
 function InputController.TriggerSkill(skillKey: string)
@@ -317,7 +328,9 @@ function InputController.TriggerSkill(skillKey: string)
 	combatActionRemote:FireServer(payload)
 
 	local SkillBarController = require(script.Parent.SkillBarController)
-	SkillBarController.TriggerCooldown(skillKey)
+	if SkillBarController.TriggerCooldown then
+		SkillBarController.TriggerCooldown(skillKey)
+	end
 end
 
 function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean)
@@ -344,8 +357,8 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	-- 4. C: Meditation
-	if input.KeyCode == Enum.KeyCode.C then
+	-- 4. C or M: Meditation
+	if input.KeyCode == Enum.KeyCode.C or input.KeyCode == Enum.KeyCode.M then
 		local now = os.clock()
 		if now - lastCPress < 0.8 then return end
 		lastCPress = now
@@ -375,15 +388,6 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		InputController.TriggerM1()
 		return
-	end
-
-	-- 8. Skills: Q, E, F (Falling Sky Slam)
-	if input.KeyCode == Enum.KeyCode.Q then
-		InputController.TriggerSkill("Q")
-	elseif input.KeyCode == Enum.KeyCode.E then
-		InputController.TriggerSkill("E")
-	elseif input.KeyCode == Enum.KeyCode.F then
-		InputController.TriggerSkill("F")
 	end
 end
 

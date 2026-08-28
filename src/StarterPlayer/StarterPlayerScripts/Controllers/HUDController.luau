@@ -4,7 +4,7 @@
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
     Client HUD Engine for ASCEND:
     - Automatically enables & reveals TopMenuGUI and Vital HUDs in-game (safe for hidden editing in Studio)
-    - Hooks TopMenuGUI (Tab_BAG, Tab_MEDITATE, Tab_ARENA, Tab_SETTINGS) with Select Audio
+    - Hooks TopMenuGUI (Tab_BAG / Pouch, Tab_ARENA, Tab_SETTINGS) with Hover Zoom Animations, Pointer Cursor, & Audio
     - Full Qi, Health, Toast, and Skin lifecycle management
 ]]
 
@@ -30,6 +30,12 @@ local T         = UIAssets.Theme
 
 -- Select Menu Sound Effect
 local SELECT_MENU_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.MenuSelect) or "rbxassetid://101735926591481"
+
+-- Button Hover Animation Constants
+local HOVER_TWEEN_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local DEFAULT_SCALE = 1.0
+local HOVER_SCALE   = 1.10
+local PRESS_SCALE   = 0.95
 
 local hudScreenGui: ScreenGui?
 local topMenuGui: ScreenGui?
@@ -144,7 +150,7 @@ function HUDController.Init()
 end
 
 -- =============================================================================
--- TOP MENU HOOK (AUTO-REVEALS IN-GAME)
+-- TOP MENU HOOK (AUTO-REVEALS IN-GAME WITH HOVER ZOOM & HAND CURSOR)
 -- =============================================================================
 function HUDController.HookTopMenu()
 	topMenuGui = (playerGui:FindFirstChild("TopMenuGUI") or playerGui:WaitForChild("TopMenuGUI", 10)) :: ScreenGui?
@@ -164,23 +170,59 @@ function HUDController.HookTopMenu()
 		end
 	end
 
-	local function BindMenuClick(menuNames: { string }, onClick: () -> ())
+	-- Remove old Meditate button if still present in hierarchy
+	local oldMeditate = topMenu:FindFirstChild("Tab_MEDITATE") 
+		or topMenu:FindFirstChild("MeditateMenu") 
+		or topMenu:FindFirstChild("MeditateButton")
+	if oldMeditate then
+		oldMeditate:Destroy()
+	end
+
+	-- Helper to bind click + responsive zoom hover animation
+	local function BindMenuIconButton(menuNames: { string }, onClick: () -> ())
 		local menuContainer: Instance? = nil
 		for _, name in ipairs(menuNames) do
 			menuContainer = topMenu:FindFirstChild(name)
 			if menuContainer then break end
 		end
-		if not menuContainer then return end
+		if not menuContainer or not menuContainer:IsA("GuiObject") then return end
+
+		local guiObj = menuContainer :: GuiObject
+		guiObj.Active = true
+		guiObj.Selectable = true
+
+		-- Attach UIScale for clean proportional zoom
+		local uiScale = guiObj:FindFirstChildOfClass("UIScale")
+		if not uiScale then
+			uiScale = Instance.new("UIScale")
+			uiScale.Scale = DEFAULT_SCALE
+			uiScale.Parent = guiObj
+		end
+
+		-- Hover Animations
+		guiObj.MouseEnter:Connect(function()
+			TweenService:Create(uiScale, HOVER_TWEEN_INFO, { Scale = HOVER_SCALE }):Play()
+		end)
+
+		guiObj.MouseLeave:Connect(function()
+			TweenService:Create(uiScale, HOVER_TWEEN_INFO, { Scale = DEFAULT_SCALE }):Play()
+		end)
 
 		local function trigger()
 			PlayMenuSelectAudio()
+			TweenService:Create(uiScale, HOVER_TWEEN_INFO, { Scale = PRESS_SCALE }):Play()
+			task.delay(0.12, function()
+				if uiScale and uiScale.Parent then
+					TweenService:Create(uiScale, HOVER_TWEEN_INFO, { Scale = DEFAULT_SCALE }):Play()
+				end
+			end)
 			onClick()
 		end
 
-		if menuContainer:IsA("GuiButton") then
-			menuContainer.MouseButton1Click:Connect(trigger)
+		if guiObj:IsA("GuiButton") then
+			guiObj.MouseButton1Click:Connect(trigger)
 		else
-			menuContainer.InputBegan:Connect(function(input)
+			guiObj.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 					trigger()
 				end
@@ -188,8 +230,8 @@ function HUDController.HookTopMenu()
 		end
 	end
 
-	-- 1. Bag Menu
-	BindMenuClick({ "Tab_BAG", "BagMenu", "BagButton" }, function()
+	-- 1. Bag / Pouch Menu
+	BindMenuIconButton({ "Tab_BAG", "BagMenu", "BagButton", "PouchButton", "PouchMenu" }, function()
 		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
 		if controllers then
 			local invCtrl = controllers:FindFirstChild("InventoryController")
@@ -200,13 +242,8 @@ function HUDController.HookTopMenu()
 		end
 	end)
 
-	-- 2. Meditate Menu
-	BindMenuClick({ "Tab_MEDITATE", "MeditateMenu", "MeditateButton" }, function()
-		combatActionRemote:FireServer({ ToggleMeditation = true })
-	end)
-
-	-- 3. Arena Menu
-	BindMenuClick({ "Tab_ARENA", "ArenaMenu", "ArenaButton" }, function()
+	-- 2. Arena Menu
+	BindMenuIconButton({ "Tab_ARENA", "ArenaMenu", "ArenaButton" }, function()
 		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
 		if controllers then
 			local arenaCtrl = controllers:FindFirstChild("ArenaController")
@@ -221,8 +258,8 @@ function HUDController.HookTopMenu()
 		end
 	end)
 
-	-- 4. Settings Menu
-	BindMenuClick({ "Tab_SETTINGS", "SettingsMenu", "SettingsButton" }, function()
+	-- 3. Settings Menu
+	BindMenuIconButton({ "Tab_SETTINGS", "SettingsMenu", "SettingsButton" }, function()
 		local settingsGui = playerGui:FindFirstChild("SettingsGui") or playerGui:FindFirstChild("GameSettingsGui")
 		if settingsGui and settingsGui:IsA("ScreenGui") then
 			settingsGui.Enabled = not settingsGui.Enabled
