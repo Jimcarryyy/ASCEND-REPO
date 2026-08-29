@@ -24,6 +24,13 @@ export type SavedInventorySlot = {
 	Quality: string?,
 }
 
+export type SavedQuestState = {
+	QuestId: string,
+	Tier: number,
+	CurrentAmount: number,
+	AllTiersCompleted: boolean,
+}
+
 export type SavedPlayerData = {
 	Version: number,
 	Cultivation: {
@@ -43,6 +50,8 @@ export type SavedPlayerData = {
 	OwnedGamepasses: { [string]: boolean }?,
 	UnlockedSkins: { [string]: boolean }?,
 	EquippedSkin: string?,
+	QuestProgress: { [string]: SavedQuestState }?,
+	LastStipendClaim: number?,
 }
 
 local PlayerDataManager = {}
@@ -59,6 +68,14 @@ local playerAlchemyData: { [Player]: { Exp: number, Level: number } } = {}
 local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfig.DiscipleRank, ContributionPoints: number } } = {}
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
+
+local sectManagerRef: any = nil
+local function getSectManager(): any
+	if not sectManagerRef then
+		sectManagerRef = require(ServerScriptService.Server.Cultivation.SectManager)
+	end
+	return sectManagerRef
+end
 
 -- Starter Inventory: Only the free MortalIronJian is given
 local DEFAULT_PLAYER_DATA: SavedPlayerData = {
@@ -213,6 +230,8 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			OwnedGamepasses = {},
 			UnlockedSkins = { ["DefaultBronze"] = true },
 			EquippedSkin = "DefaultBronze",
+			QuestProgress = nil,
+			LastStipendClaim = nil,
 		}
 	else
 		print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, CultivatedQi: %s, Stones: %d, Rank: %s).",
@@ -260,6 +279,14 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 
 	InventoryManager.SetInventory(player, loadedData.Inventory)
 	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "MortalIronJian")
+
+	local SectManager = getSectManager()
+	if SectManager.SetQuestState then
+		SectManager.SetQuestState(player, loadedData.QuestProgress)
+	end
+	if SectManager.SetLastStipendClaim then
+		SectManager.SetLastStipendClaim(player, loadedData.LastStipendClaim)
+	end
 
 	-- Sync Player Attributes
 	player:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
@@ -402,6 +429,10 @@ function PlayerDataManager.SaveData(player: Player): boolean
 	local gamepasses = playerGamepasses[player] or {}
 	local skinData = playerSkinData[player] or { EquippedSkin = "DefaultBronze", UnlockedSkins = { ["DefaultBronze"] = true } }
 
+	local SectManager = getSectManager()
+	local questProgress = SectManager.GetQuestState and SectManager.GetQuestState(player) or nil
+	local lastStipendClaim = SectManager.GetLastStipendClaim and SectManager.GetLastStipendClaim(player) or nil
+
 	if not cultivation then return false end
 
 	local serializedInventory: { [number]: SavedInventorySlot } = {}
@@ -434,6 +465,8 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		OwnedGamepasses = gamepasses,
 		UnlockedSkins = skinData.UnlockedSkins,
 		EquippedSkin = skinData.EquippedSkin,
+		QuestProgress = questProgress,
+		LastStipendClaim = lastStipendClaim,
 	}
 
 	local dataKey = "Player_" .. player.UserId

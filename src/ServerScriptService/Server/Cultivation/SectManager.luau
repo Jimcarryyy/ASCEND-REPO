@@ -23,6 +23,11 @@
       instead of a generic Luau stack trace pointing at a line number.
       Once you've confirmed all of these are correct against your actual
       PlayerDataManager.luau, feel free to strip SafeGet back out.
+    - OnPlayerAdded now guards playerQuests[player] with an existence check
+      (was unconditional), and lastStipendClaim/playerQuests are exposed via
+      Get/SetQuestState and Get/SetLastStipendClaim so PlayerDataManager can
+      persist them. Previously both lived only in server RAM and reset on
+      every join regardless of DataStore state.
 ]]
 
 local Players = game:GetService("Players")
@@ -134,16 +139,41 @@ function SectManager.Init()
 end
 
 function SectManager.OnPlayerAdded(player: Player)
-	playerQuests[player] = {
-		["Quest_GatherSpiritGrass"] = { QuestId = "Quest_GatherSpiritGrass", Tier = 1, CurrentAmount = 0, AllTiersCompleted = false },
-		["Quest_RefineDan"]          = { QuestId = "Quest_RefineDan", Tier = 1, CurrentAmount = 0, AllTiersCompleted = false },
-		["Quest_SparringTrial"]       = { QuestId = "Quest_SparringTrial", Tier = 1, CurrentAmount = 0, AllTiersCompleted = false },
-	}
+	-- Guarded: PlayerDataManager.OnPlayerAdded runs first (see ServerMain init
+	-- order) and calls SectManager.SetQuestState with the loaded save, if any.
+	-- Without this guard, this unconditional reset was overwriting that load
+	-- back to Tier 1 / 0 progress on every single join.
+	if not playerQuests[player] then
+		playerQuests[player] = {
+			["Quest_GatherSpiritGrass"] = { QuestId = "Quest_GatherSpiritGrass", Tier = 1, CurrentAmount = 0, AllTiersCompleted = false },
+			["Quest_RefineDan"]          = { QuestId = "Quest_RefineDan", Tier = 1, CurrentAmount = 0, AllTiersCompleted = false },
+			["Quest_SparringTrial"]       = { QuestId = "Quest_SparringTrial", Tier = 1, CurrentAmount = 0, AllTiersCompleted = false },
+		}
+	end
 
 	task.spawn(function()
 		task.wait(1.5)
 		SectManager.SyncSectData(player)
 	end)
+end
+
+-- Called by PlayerDataManager.OnPlayerAdded after a DataStore load.
+function SectManager.GetQuestState(player: Player): { [string]: ServerQuestState }?
+	return playerQuests[player]
+end
+
+function SectManager.SetQuestState(player: Player, savedQuests: { [string]: ServerQuestState }?)
+	if savedQuests then
+		playerQuests[player] = savedQuests
+	end
+end
+
+function SectManager.GetLastStipendClaim(player: Player): number?
+	return lastStipendClaim[player]
+end
+
+function SectManager.SetLastStipendClaim(player: Player, timestamp: number?)
+	lastStipendClaim[player] = timestamp
 end
 
 function SectManager.SetupQuestElderPrompt()
@@ -369,7 +399,7 @@ end
 function SectManager.ProcessClaimStipend(player: Player)
 	local lastClaim = lastStipendClaim[player] or 0
 	local now = os.time()
-	local COOLDOWN = 72000 -- 20 hours (Daily reset)
+	local COOLDOWN = 72000 -- 20 hours (Daily reset) -- flagged: not true 24h, confirm intentional
 
 	if now - lastClaim < COOLDOWN then
 		local remainingSecs = COOLDOWN - (now - lastClaim)

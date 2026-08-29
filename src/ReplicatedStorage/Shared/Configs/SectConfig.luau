@@ -104,6 +104,16 @@ local RANKS: { [DiscipleRank]: RankDefinition } = {
 	},
 }
 
+-- Rank ordering used for market/purchase gating (Outer -> Grand Elder).
+local RANK_ORDER: { [DiscipleRank]: number } = {
+	OuterDisciple = 1,
+	InnerDisciple = 2,
+	CoreDisciple = 3,
+	DirectDisciple = 4,
+	SectElder = 5,
+	GrandElder = 6,
+}
+
 -- 2. 3-TIERED DAILY SECT QUESTS (Easy -> Medium -> Hard)
 local TIERED_QUESTS: { [string]: { [number]: SectQuestDefinition } } = {
 	["Quest_GatherSpiritGrass"] = {
@@ -240,6 +250,11 @@ local MARKET_ITEMS: { [string]: VendorItemDefinition } = {
 	["CelestialDew"]           = { ItemId = "CelestialDew", BuyPrice = 50, SellPrice = 20, RequiredRank = "OuterDisciple" },
 	["DemonBeastCore"]         = { ItemId = "DemonBeastCore", BuyPrice = 400, SellPrice = 180, RequiredRank = "InnerDisciple" },
 	["SpiritAsh"]              = { ItemId = "SpiritAsh", BuyPrice = nil, SellPrice = 2, RequiredRank = "OuterDisciple" },
+
+	-- WEAPONS (MortalIronJian intentionally excluded -- free starter only, not sold)
+	["AzureCloudDiscipleJian"] = { ItemId = "AzureCloudDiscipleJian", BuyPrice = 800, SellPrice = 300, RequiredRank = "InnerDisciple" },
+	["FlowingQiSpiritSword"]   = { ItemId = "FlowingQiSpiritSword", BuyPrice = 2500, SellPrice = 1000, RequiredRank = "CoreDisciple" },
+	["VerdantJadeFlyingSword"] = { ItemId = "VerdantJadeFlyingSword", BuyPrice = 6000, SellPrice = 2500, RequiredRank = "DirectDisciple" },
 }
 
 function SectConfig.GetRank(rank: DiscipleRank): RankDefinition
@@ -248,6 +263,12 @@ end
 
 function SectConfig.GetAllRanks(): { [DiscipleRank]: RankDefinition }
 	return RANKS
+end
+
+function SectConfig.CanPurchase(playerRank: DiscipleRank, requiredRank: DiscipleRank): boolean
+	local playerLevel = RANK_ORDER[playerRank] or 1
+	local requiredLevel = RANK_ORDER[requiredRank] or 1
+	return playerLevel >= requiredLevel
 end
 
 function SectConfig.GetQuest(questId: string, tier: number?): SectQuestDefinition?

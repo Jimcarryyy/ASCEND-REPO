@@ -11,6 +11,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Workspace = game:GetService("Workspace")
 
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
+local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
@@ -138,6 +139,18 @@ function VendorManager.ProcessBuy(player: Player, itemId: any, amount: any)
 			Message = string.format("Requires rank: %s", rankDef.DisplayName) 
 		})
 		return
+	end
+
+	-- Server-side uniqueness guard: weapons are unique equipment, never stackable.
+	-- Client already enforces qty=1 for weapons, but that's cosmetic only --
+	-- this is the actual authority so a bypassed/modified client can't stack swords.
+	local catalogDef = ItemConfig.GetItem(itemId)
+	if catalogDef and catalogDef.Type == "Weapon" then
+		amount = 1
+		if InventoryManager.HasItem(player, itemId, 1) then
+			marketRemote:FireClient(player, { Action = "TransactionFailed", Message = "You already own this sword." })
+			return
+		end
 	end
 
 	local totalCost = itemDef.BuyPrice * amount
