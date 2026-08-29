@@ -7,6 +7,8 @@
     - Enforces Sect Rank Requirements per Sword (Outer, Inner, Core, Elder, Patriarch)
     - Live synced Spirit Stones, Sect Rank, CP, and Dynamic Item Inspect Panel
     - Integrated Top-Center Bangers Toast Notifications
+    - Fixed 3-Column Responsive Grid (Always 3/row, auto-growing scroll canvas)
+    - Dynamic SelectedGlow activation on selected SlotFrame
 ]]
 
 local Players = game:GetService("Players")
@@ -55,6 +57,8 @@ local filterSwords: ImageButton?
 -- TertiaryFrame -> InnerFrame1 (Item Catalog Grid)
 local itemGridScroll: ScrollingFrame?
 local templateSlotFrame: ImageLabel?
+local gridLayout: UIGridLayout?
+local gridResizeConnected: boolean = false
 
 -- TertiaryFrame -> InnerFrame2 (Inspect & Checkout Panel)
 local inspectTopTitle: TextLabel?
@@ -77,6 +81,75 @@ local selectedItemId: string? = nil
 local selectedQuantity: number = 1
 local currentInventory: { [number]: { ItemId: string, Count: number, Quality: any? } } = {}
 local activeSlotClones: { Instance } = {}
+
+-- =============================================================================
+-- FIXED 3-COLUMN RESPONSIVE GRID
+-- =============================================================================
+local MARKET_GRID_COLUMNS = 3
+local MARKET_GRID_PADDING = 5
+local MARKET_MIN_CELL_SIZE = 60
+local MARKET_MAX_CELL_SIZE = 200
+
+local function UpdateMarketGridCellSize()
+	if not gridLayout or not itemGridScroll then return end
+
+	local containerWidth = itemGridScroll.AbsoluteSize.X
+	if containerWidth <= 0 then
+		task.defer(UpdateMarketGridCellSize)
+		return
+	end
+
+	local totalPadding = MARKET_GRID_PADDING * (MARKET_GRID_COLUMNS - 1)
+	local cellSize = math.clamp((containerWidth - totalPadding) / MARKET_GRID_COLUMNS, MARKET_MIN_CELL_SIZE, MARKET_MAX_CELL_SIZE)
+
+	gridLayout.FillDirectionMaxCells = MARKET_GRID_COLUMNS
+	gridLayout.CellPadding = UDim2.new(0, MARKET_GRID_PADDING, 0, MARKET_GRID_PADDING)
+	gridLayout.CellSize = UDim2.new(0, cellSize, 0, cellSize)
+end
+
+-- =============================================================================
+-- BUTTON GRADIENT STYLING
+-- =============================================================================
+local function ApplyGradient(button: GuiButton?, colorA: Color3, colorB: Color3, rotation: number?)
+	if not button then return end
+
+	local gradient = button:FindFirstChildOfClass("UIGradient")
+	if not gradient then
+		gradient = Instance.new("UIGradient")
+		gradient.Parent = button
+	end
+
+	gradient.Color = ColorSequence.new(colorA, colorB)
+	gradient.Rotation = rotation or 90
+end
+
+local GRADIENT_GOLD_TOP = Color3.fromHex("#F5D06B")
+local GRADIENT_GOLD_BOTTOM = Color3.fromHex("#B8860B")
+local GRADIENT_NAVY_TOP = Color3.fromHex("#2A3752")
+local GRADIENT_NAVY_BOTTOM = Color3.fromHex("#141B29")
+local GRADIENT_SLATE_TOP = Color3.fromHex("#6A7BA3")
+local GRADIENT_SLATE_BOTTOM = Color3.fromHex("#3D4866")
+local GRADIENT_MAROON_TOP = Color3.fromHex("#A8493F")
+local GRADIENT_MAROON_BOTTOM = Color3.fromHex("#5C2420")
+local GRADIENT_GREY_TOP = Color3.fromHex("#9AA3B0")
+local GRADIENT_GREY_BOTTOM = Color3.fromHex("#5C6470")
+
+local function ApplyMarketButtonGradients()
+	ApplyGradient(tabBuyGoods, GRADIENT_NAVY_TOP, GRADIENT_NAVY_BOTTOM)
+	ApplyGradient(tabSellLoot, GRADIENT_NAVY_TOP, GRADIENT_NAVY_BOTTOM)
+
+	ApplyGradient(filterAll, GRADIENT_SLATE_TOP, GRADIENT_SLATE_BOTTOM)
+	ApplyGradient(filterCores, GRADIENT_SLATE_TOP, GRADIENT_SLATE_BOTTOM)
+	ApplyGradient(filterElixirs, GRADIENT_SLATE_TOP, GRADIENT_SLATE_BOTTOM)
+	ApplyGradient(filterHerbs, GRADIENT_SLATE_TOP, GRADIENT_SLATE_BOTTOM)
+	ApplyGradient(filterSwords, GRADIENT_SLATE_TOP, GRADIENT_SLATE_BOTTOM)
+
+	ApplyGradient(confirmExchangeBtn, GRADIENT_MAROON_TOP, GRADIENT_MAROON_BOTTOM)
+
+	ApplyGradient(minusBtn, GRADIENT_GOLD_TOP, GRADIENT_GOLD_BOTTOM)
+	ApplyGradient(plusBtn, GRADIENT_GOLD_TOP, GRADIENT_GOLD_BOTTOM)
+	ApplyGradient(maxBtn, GRADIENT_GREY_TOP, GRADIENT_GREY_BOTTOM)
+end
 
 -- Toast Helper
 local function ShowToast(message: string, toastType: string?)
@@ -180,8 +253,7 @@ local function BindHierarchy(): boolean
 			filterElixirs = tabFrame2:FindFirstChild("Tab_ELIXIRS") :: ImageButton?
 			filterHerbs = tabFrame2:FindFirstChild("Tab_HERBS") :: ImageButton?
 			filterSwords = (tabFrame2:FindFirstChild("Tab_SWORDS") or tabFrame2:FindFirstChild("Tab_TALISMANS")) :: ImageButton?
-			
-			-- Rename Tab_TALISMANS to SWORDS visually
+
 			if filterSwords then
 				local lbl = filterSwords:FindFirstChildOfClass("TextLabel")
 				if lbl then lbl.Text = "SWORDS" end
@@ -200,6 +272,19 @@ local function BindHierarchy(): boolean
 				if templateSlotFrame then
 					templateSlotFrame.Visible = false
 				end
+
+				itemGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+				itemGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+				itemGridScroll.ScrollBarThickness = 6
+
+				gridLayout = itemGridScroll:FindFirstChildOfClass("UIGridLayout")
+
+				if gridLayout and not gridResizeConnected then
+					gridResizeConnected = true
+					itemGridScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateMarketGridCellSize)
+				end
+
+				UpdateMarketGridCellSize()
 			end
 		end
 
@@ -246,25 +331,29 @@ local function BindHierarchy(): boolean
 	end
 
 	-- Format and enlarge Minus, Plus, and MAX button labels
-	if minusBtn then
-		local lbl = minusBtn:FindFirstChildOfClass("TextLabel")
+	local function StyleQuantityGlyph(btn: ImageButton?, glyph: string)
+		if not btn then return end
+
+		local lbl = btn:FindFirstChildOfClass("TextLabel")
 		if lbl then
-			lbl.Text = "-"
+			lbl.Text = glyph
 			lbl.Font = Enum.Font.Bangers
-			lbl.TextSize = 24
+			lbl.TextSize = 34
+			lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
 			lbl.Active = false
+
+			local stroke = lbl:FindFirstChildOfClass("UIStroke") :: UIStroke?
+			if not stroke then
+				stroke = Instance.new("UIStroke")
+				stroke.Parent = lbl
+			end
+			stroke.Thickness = 2
+			stroke.Color = Color3.fromRGB(60, 40, 5)
 		end
 	end
 
-	if plusBtn then
-		local lbl = plusBtn:FindFirstChildOfClass("TextLabel")
-		if lbl then
-			lbl.Text = "+"
-			lbl.Font = Enum.Font.Bangers
-			lbl.TextSize = 24
-			lbl.Active = false
-		end
-	end
+	StyleQuantityGlyph(minusBtn, "-")
+	StyleQuantityGlyph(plusBtn, "+")
 
 	if maxBtn then
 		local lbl = maxBtn:FindFirstChildOfClass("TextLabel")
@@ -274,6 +363,8 @@ local function BindHierarchy(): boolean
 			lbl.Active = false
 		end
 	end
+
+	ApplyMarketButtonGradients()
 
 	return true
 end
@@ -296,7 +387,6 @@ end
 
 local function GetMaxAllowedQuantity(unitPrice: number): number
 	if currentMode == "Buy" then
-		-- Swords are unique equipment (Limit to 1 per purchase)
 		if selectedItemId and ItemConfig.GetItem(selectedItemId) and ItemConfig.GetItem(selectedItemId).Type == "Weapon" then
 			return 1
 		end
@@ -376,6 +466,8 @@ end
 local function PopulateGrid()
 	if not itemGridScroll or not templateSlotFrame then return end
 
+	UpdateMarketGridCellSize()
+
 	-- Snap scrollbar to the top
 	itemGridScroll.CanvasPosition = Vector2.new(0, 0)
 
@@ -440,6 +532,12 @@ local function PopulateGrid()
 		slot.Parent = itemGridScroll
 		table.insert(activeSlotClones, slot)
 
+		-- SelectedGlow initial state
+		local selectedGlow = slot:FindFirstChild("SelectedGlow") :: ImageLabel?
+		if selectedGlow then
+			selectedGlow.Visible = (itemInfo.ItemId == selectedItemId)
+		end
+
 		local iconImg = slot:FindFirstChild("ItemImage") :: ImageLabel?
 		if iconImg then iconImg.Image = itemDef.Icon or "" end
 
@@ -459,6 +557,15 @@ local function PopulateGrid()
 			PlayClickSound()
 			selectedItemId = itemInfo.ItemId
 			selectedQuantity = 1
+
+			-- Dynamically toggle SelectedGlow on all active slot clones
+			for _, s in ipairs(activeSlotClones) do
+				local glow = s:FindFirstChild("SelectedGlow") :: ImageLabel?
+				if glow then
+					glow.Visible = (s.Name == "Slot_" .. itemInfo.ItemId)
+				end
+			end
+
 			UpdateInspectPanel()
 		end
 
@@ -492,6 +599,14 @@ local function PopulateGrid()
 		selectedQuantity = 0
 	end
 
+	-- Update SelectedGlow visibility across all slots
+	for _, s in ipairs(activeSlotClones) do
+		local glow = s:FindFirstChild("SelectedGlow") :: ImageLabel?
+		if glow then
+			glow.Visible = (s.Name == "Slot_" .. (selectedItemId or ""))
+		end
+	end
+
 	UpdateInspectPanel()
 end
 
@@ -514,8 +629,9 @@ function MarketController.Open()
 
 	MarketController.SyncPlayerData()
 	marketActionRemote:FireServer({ Action = "RequestMarketData" })
-	
+
 	selectedQuantity = 1
+	UpdateMarketGridCellSize()
 	PopulateGrid()
 	mainFrame.Visible = true
 	marketGui.Enabled = true
@@ -657,14 +773,12 @@ function MarketController.Init()
 					return
 				end
 
-				-- Check Sect Rank Requirement
 				local playerRank = GetPlayerRank()
 				if not SectConfig.CanPurchase(playerRank :: any, vendorDef.RequiredRank) then
 					ShowToast(string.format("REQUIRES %s RANK!", FormatRank(vendorDef.RequiredRank)), "Warning")
 					return
 				end
 
-				-- Check Spirit Stones
 				local totalCost = vendorDef.BuyPrice * selectedQuantity
 				if GetPlayerStones() < totalCost then
 					ShowToast("INSUFFICIENT SPIRIT STONES!", "Warning")
@@ -733,7 +847,9 @@ function MarketController.Init()
 	LocalPlayer:GetAttributeChangedSignal("SectRank"):Connect(MarketController.SyncPlayerData)
 	LocalPlayer:GetAttributeChangedSignal("ContributionPoints"):Connect(MarketController.SyncPlayerData)
 
-	print("[ASCEND] MarketController Initialized (Swords Category & Sect Rank Gate Active).")
+	UpdateMarketGridCellSize()
+
+	print("[ASCEND] MarketController Initialized (Swords Category & Sect Rank Gate Active, Fixed 3-Col Grid).")
 end
 
 return MarketController
