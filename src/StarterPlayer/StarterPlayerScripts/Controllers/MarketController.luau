@@ -3,14 +3,14 @@
     MarketController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/MarketController.luau
     Bound directly to Studio StarterGui.SectMerchantMarketGui hierarchy:
-    - Zero hardcoded UI elements / positions
-    - Binds to HeaderFrame, UpperFrame, SecondaryFrame, and TertiaryFrame
-    - Real-time sync with ItemConfig, SectConfig, VendorManager, and PlayerDataManager
+    - SWORDS Category Tab replaces Talismans (Displays Tier 2-8 Flying Swords)
+    - Enforces Sect Rank Requirements per Sword (Outer, Inner, Core, Elder, Patriarch)
+    - Live synced Spirit Stones, Sect Rank, CP, and Dynamic Item Inspect Panel
+    - Integrated Top-Center Bangers Toast Notifications
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
@@ -26,7 +26,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local marketActionRemote: RemoteEvent
 local updateInventoryRemote: RemoteEvent
 
--- GUI Root & Frames (from SectMerchantMarketGui hierarchy)
+-- GUI Root & Frames
 local marketGui: ScreenGui?
 local mainFrame: ImageLabel?
 local headerFrame: Frame?
@@ -38,7 +38,7 @@ local tertiaryFrame: Frame?
 local closeBtn: ImageButton?
 local titleLabel: TextLabel?
 
--- UpperFrame Stats (Left = Stones, Center = Rank, Right = CP)
+-- UpperFrame Stats
 local stonesLabel: TextLabel?
 local rankLabel: TextLabel?
 local cpLabel: TextLabel?
@@ -50,15 +50,15 @@ local filterAll: ImageButton?
 local filterCores: ImageButton?
 local filterElixirs: ImageButton?
 local filterHerbs: ImageButton?
-local filterTalismans: ImageButton?
+local filterSwords: ImageButton?
 
 -- TertiaryFrame -> InnerFrame1 (Item Catalog Grid)
 local itemGridScroll: ScrollingFrame?
 local templateSlotFrame: ImageLabel?
 
 -- TertiaryFrame -> InnerFrame2 (Inspect & Checkout Panel)
+local inspectTopTitle: TextLabel?
 local inspectItemImage: ImageLabel?
-local inspectPillName: TextLabel?
 local inspectGrade: TextLabel?
 local inspectSpiritAge: TextLabel?
 local inspectEffectsDesc: TextLabel?
@@ -72,11 +72,26 @@ local confirmBtnText: TextLabel?
 
 -- Controller State
 local currentMode: "Buy" | "Sell" = "Buy"
-local currentCategory: "ALL" | "CORES" | "ELIXIRS" | "HERBS" | "TALISMANS" = "ALL"
+local currentCategory: "ALL" | "CORES" | "ELIXIRS" | "HERBS" | "SWORDS" = "ALL"
 local selectedItemId: string? = nil
 local selectedQuantity: number = 1
 local currentInventory: { [number]: { ItemId: string, Count: number, Quality: any? } } = {}
 local activeSlotClones: { Instance } = {}
+
+-- Toast Helper
+local function ShowToast(message: string, toastType: string?)
+	local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
+	if controllers then
+		local hudCtrl = controllers:FindFirstChild("HUDController")
+		if hudCtrl then
+			local req = require(hudCtrl) :: any
+			if req.ShowGlobalToast then
+				req.ShowGlobalToast(message, toastType or "Success", 3.0)
+				return
+			end
+		end
+	end
+end
 
 local function PlayClickSound()
 	local sound = Instance.new("Sound")
@@ -96,6 +111,29 @@ local function FormatRank(rawRank: any): string
 	return if rankDef then rankDef.DisplayName:upper() else tostring(rawRank or "OUTER DISCIPLE"):upper()
 end
 
+local function GetPlayerStones(): number
+	local stones = LocalPlayer:GetAttribute("SpiritStones")
+	if stones == nil and LocalPlayer.Character then
+		stones = LocalPlayer.Character:GetAttribute("SpiritStones")
+	end
+	return tonumber(stones) or 0
+end
+
+local function GetPlayerRank(): string
+	local r = LocalPlayer:GetAttribute("SectRank") or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("SectRank")) or "OuterDisciple"
+	return tostring(r)
+end
+
+local function GetOwnedCount(itemId: string): number
+	local total = 0
+	for _, slotData in pairs(currentInventory) do
+		if slotData and slotData.ItemId == itemId then
+			total += (slotData.Count or 1)
+		end
+	end
+	return total
+end
+
 -- =============================================================================
 -- HIERARCHY LOCATOR & BINDING
 -- =============================================================================
@@ -113,7 +151,7 @@ local function BindHierarchy(): boolean
 		titleLabel = headerFrame:FindFirstChild("TitleLabel") :: TextLabel?
 	end
 
-	-- 2. UpperFrame (Left = Stones, Center = Rank, Right = CP)
+	-- 2. UpperFrame
 	upperFrame = mainFrame:FindFirstChild("UpperFrame") :: Frame?
 	if upperFrame then
 		local leftFrame = upperFrame:FindFirstChild("Left")
@@ -126,7 +164,7 @@ local function BindHierarchy(): boolean
 		if rightFrame then cpLabel = rightFrame:FindFirstChild("TextLabel") :: TextLabel? end
 	end
 
-	-- 3. SecondaryFrame (TabFrame & TabFrame2)
+	-- 3. SecondaryFrame
 	secondaryFrame = mainFrame:FindFirstChild("SecondaryFrame") :: Frame?
 	if secondaryFrame then
 		local tabFrame = secondaryFrame:FindFirstChild("TabFrame")
@@ -141,28 +179,34 @@ local function BindHierarchy(): boolean
 			filterCores = tabFrame2:FindFirstChild("Tab_CORES") :: ImageButton?
 			filterElixirs = tabFrame2:FindFirstChild("Tab_ELIXIRS") :: ImageButton?
 			filterHerbs = tabFrame2:FindFirstChild("Tab_HERBS") :: ImageButton?
-			filterTalismans = tabFrame2:FindFirstChild("Tab_TALISMANS") :: ImageButton?
+			filterSwords = (tabFrame2:FindFirstChild("Tab_SWORDS") or tabFrame2:FindFirstChild("Tab_TALISMANS")) :: ImageButton?
+			
+			-- Rename Tab_TALISMANS to SWORDS visually
+			if filterSwords then
+				local lbl = filterSwords:FindFirstChildOfClass("TextLabel")
+				if lbl then lbl.Text = "SWORDS" end
+			end
 		end
 	end
 
-	-- 4. TertiaryFrame (InnerFrame1 = Grid, InnerFrame2 = Inspect)
+	-- 4. TertiaryFrame
 	tertiaryFrame = mainFrame:FindFirstChild("TertiaryFrame") :: Frame?
 	if tertiaryFrame then
-		-- InnerFrame1
 		local inner1 = tertiaryFrame:FindFirstChild("InnerFrame1")
 		if inner1 then
 			itemGridScroll = inner1:FindFirstChild("ItemGridScroll") :: ScrollingFrame?
 			if itemGridScroll then
 				templateSlotFrame = itemGridScroll:FindFirstChild("SlotFrame") :: ImageLabel?
 				if templateSlotFrame then
-					templateSlotFrame.Visible = false -- Hide template from display
+					templateSlotFrame.Visible = false
 				end
 			end
 		end
 
-		-- InnerFrame2
 		local inner2 = tertiaryFrame:FindFirstChild("InnerFrame2")
 		if inner2 then
+			inspectTopTitle = inner2:FindFirstChild("PillDescription", true) :: TextLabel?
+
 			local totalFrame = inner2:FindFirstChild("TotalFrame")
 			if totalFrame then
 				totalValueLabel = totalFrame:FindFirstChild("TotalValue") :: TextLabel?
@@ -188,16 +232,46 @@ local function BindHierarchy(): boolean
 
 				local secondInner = specsFrame:FindFirstChild("SecondInnerFrame")
 				if secondInner then
-					inspectPillName = secondInner:FindFirstChild("PillDescription") :: TextLabel?
 					minusBtn = secondInner:FindFirstChild("MinusBtn") :: ImageButton?
 					plusBtn = secondInner:FindFirstChild("PlusBtn") :: ImageButton?
 					maxBtn = secondInner:FindFirstChild("MAXBtn") :: ImageButton?
+
 					local countFrame = secondInner:FindFirstChild("Count")
 					if countFrame then
 						countLabel = countFrame:FindFirstChild("TextLabel") :: TextLabel?
 					end
 				end
 			end
+		end
+	end
+
+	-- Format and enlarge Minus, Plus, and MAX button labels
+	if minusBtn then
+		local lbl = minusBtn:FindFirstChildOfClass("TextLabel")
+		if lbl then
+			lbl.Text = "-"
+			lbl.Font = Enum.Font.Bangers
+			lbl.TextSize = 24
+			lbl.Active = false
+		end
+	end
+
+	if plusBtn then
+		local lbl = plusBtn:FindFirstChildOfClass("TextLabel")
+		if lbl then
+			lbl.Text = "+"
+			lbl.Font = Enum.Font.Bangers
+			lbl.TextSize = 24
+			lbl.Active = false
+		end
+	end
+
+	if maxBtn then
+		local lbl = maxBtn:FindFirstChildOfClass("TextLabel")
+		if lbl then
+			lbl.Text = "MAX"
+			lbl.Font = Enum.Font.Bangers
+			lbl.Active = false
 		end
 	end
 
@@ -208,31 +282,38 @@ end
 -- DATA REFRESH & INSPECT LOGIC
 -- =============================================================================
 local function GetItemCategory(itemDef: ItemConfig.ItemDefinition): string
-	if itemDef.Id == "DemonBeastCore" or itemDef.Type == "Crest" then
+	if itemDef.Type == "Weapon" then
+		return "SWORDS"
+	elseif itemDef.Id == "DemonBeastCore" or itemDef.Type == "Crest" then
 		return "CORES"
 	elseif itemDef.Type == "Consumable" or itemDef.Id:match("Dan$") or itemDef.Id:match("Pill$") then
 		return "ELIXIRS"
 	elseif itemDef.Type == "Material" then
 		return "HERBS"
-	elseif itemDef.Type == ("Talisman" :: any) then
-		return "TALISMANS"
 	end
 	return "HERBS"
 end
 
-local function GetMaxAffordableCount(unitPrice: number, ownedAmount: number): number
+local function GetMaxAllowedQuantity(unitPrice: number): number
 	if currentMode == "Buy" then
-		local stones = tonumber(LocalPlayer:GetAttribute("SpiritStones")) or 0
+		-- Swords are unique equipment (Limit to 1 per purchase)
+		if selectedItemId and ItemConfig.GetItem(selectedItemId) and ItemConfig.GetItem(selectedItemId).Type == "Weapon" then
+			return 1
+		end
+		local stones = GetPlayerStones()
 		if unitPrice <= 0 then return 99 end
-		return math.clamp(math.floor(stones / unitPrice), 1, 99)
+		local affordable = math.floor(stones / unitPrice)
+		return math.clamp(affordable, 1, 99)
 	else
-		return math.max(1, ownedAmount)
+		if not selectedItemId then return 1 end
+		local owned = GetOwnedCount(selectedItemId)
+		return math.max(1, owned)
 	end
 end
 
 local function UpdateInspectPanel()
 	if not selectedItemId then
-		if inspectPillName then inspectPillName.Text = "SELECT AN ITEM" end
+		if inspectTopTitle then inspectTopTitle.Text = "SELECT AN ITEM" end
 		if inspectGrade then inspectGrade.Text = "Grade: ---" end
 		if inspectSpiritAge then inspectSpiritAge.Text = "Spirit Age: ---" end
 		if inspectEffectsDesc then inspectEffectsDesc.Text = "Select an item to view effects." end
@@ -247,30 +328,37 @@ local function UpdateInspectPanel()
 
 	local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
 
-	-- 1. Display Details
+	-- 1. Dynamic Titles & Specs
+	if inspectTopTitle then
+		inspectTopTitle.Text = itemDef.Name
+	end
 	if inspectItemImage then
 		inspectItemImage.Image = itemDef.Icon or ""
-	end
-	if inspectPillName then
-		inspectPillName.Text = itemDef.Name
 	end
 	if inspectGrade then
 		inspectGrade.Text = string.format("Grade: %s-Rank", itemDef.Rarity)
 	end
 	if inspectSpiritAge then
-		inspectSpiritAge.Text = if itemDef.AgeYears then string.format("Spirit Age: %d-Yr", itemDef.AgeYears) else "Spirit Age: Immortal"
+		if itemDef.Type == "Weapon" then
+			local reqRank = vendorDef and vendorDef.RequiredRank or "OuterDisciple"
+			inspectSpiritAge.Text = string.format("Req: %s", FormatRank(reqRank))
+		else
+			inspectSpiritAge.Text = if itemDef.AgeYears then string.format("Spirit Age: %d-Yr", itemDef.AgeYears) else "Spirit Age: Immortal"
+		end
 	end
 	if inspectEffectsDesc then
-		if itemDef.Stats and itemDef.Stats.QiGrant then
-			inspectEffectsDesc.Text = string.format("+%s Usable Qi", FormatNum(itemDef.Stats.QiGrant))
+		if itemDef.Type == "Weapon" then
+			inspectEffectsDesc.Text = string.format("+%d Physical Attack\n%s", itemDef.Damage or 20, itemDef.Description)
+		elseif itemDef.Stats and itemDef.Stats.QiGrant then
+			inspectEffectsDesc.Text = string.format("+%s Usable Qi\n%s", FormatNum(itemDef.Stats.QiGrant), itemDef.Description)
 		elseif itemDef.Stats and itemDef.Stats.HealAmount then
-			inspectEffectsDesc.Text = string.format("+%s Health Recovery", FormatNum(itemDef.Stats.HealAmount))
+			inspectEffectsDesc.Text = string.format("+%s Health Recovery\n%s", FormatNum(itemDef.Stats.HealAmount), itemDef.Description)
 		else
 			inspectEffectsDesc.Text = itemDef.Description
 		end
 	end
 
-	-- 2. Quantity & Total Cost
+	-- 2. Quantity & Total Stones Counter
 	if countLabel then
 		countLabel.Text = tostring(selectedQuantity)
 	end
@@ -288,7 +376,9 @@ end
 local function PopulateGrid()
 	if not itemGridScroll or not templateSlotFrame then return end
 
-	-- Clean up previous cloned tiles
+	-- Snap scrollbar to the top
+	itemGridScroll.CanvasPosition = Vector2.new(0, 0)
+
 	for _, clone in ipairs(activeSlotClones) do
 		clone:Destroy()
 	end
@@ -307,7 +397,7 @@ local function PopulateGrid()
 						table.insert(candidateItems, {
 							ItemId = itemId,
 							UnitPrice = vendorItem.BuyPrice,
-							StockOrOwned = string.format("Rank: %s", vendorItem.RequiredRank:gsub("Disciple", "")),
+							StockOrOwned = string.format("Rank: %s", vendorItem.RequiredRank:gsub("Disciple", ""):gsub("Sect", "")),
 							Count = 99,
 						})
 					end
@@ -315,7 +405,6 @@ local function PopulateGrid()
 			end
 		end
 	else
-		-- Sell Mode: Group inventory by ItemId
 		local inventoryCounts: { [string]: number } = {}
 		for _, slotData in pairs(currentInventory) do
 			if slotData and slotData.ItemId then
@@ -340,7 +429,7 @@ local function PopulateGrid()
 		end
 	end
 
-	-- Create Clones
+	-- Create Grid Slots
 	for _, itemInfo in ipairs(candidateItems) do
 		local itemDef = ItemConfig.GetItem(itemInfo.ItemId)
 		if not itemDef then continue end
@@ -366,33 +455,41 @@ local function PopulateGrid()
 			if priceLbl then priceLbl.Text = tostring(itemInfo.UnitPrice) end
 		end
 
-		-- Click selection
+		local function selectThis()
+			PlayClickSound()
+			selectedItemId = itemInfo.ItemId
+			selectedQuantity = 1
+			UpdateInspectPanel()
+		end
+
 		local clickTrigger = slot:FindFirstChildWhichIsA("GuiButton") or slot
 		if clickTrigger:IsA("GuiButton") then
-			clickTrigger.MouseButton1Click:Connect(function()
-				PlayClickSound()
-				selectedItemId = itemInfo.ItemId
-				selectedQuantity = 1
-				UpdateInspectPanel()
-			end)
+			clickTrigger.MouseButton1Click:Connect(selectThis)
 		else
 			slot.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-					PlayClickSound()
-					selectedItemId = itemInfo.ItemId
-					selectedQuantity = 1
-					UpdateInspectPanel()
+					selectThis()
 				end
 			end)
 		end
 	end
 
-	-- Auto-select first item if current selection is invalid
-	if #candidateItems > 0 and (not selectedItemId or not ItemConfig.GetItem(selectedItemId)) then
-		selectedItemId = candidateItems[1].ItemId
-		selectedQuantity = 1
-	elseif #candidateItems == 0 then
+	-- Auto-select first item or preserve valid selection
+	if #candidateItems > 0 then
+		local found = false
+		for _, info in ipairs(candidateItems) do
+			if info.ItemId == selectedItemId then
+				found = true
+				break
+			end
+		end
+		if not found then
+			selectedItemId = candidateItems[1].ItemId
+			selectedQuantity = 1
+		end
+	else
 		selectedItemId = nil
+		selectedQuantity = 0
 	end
 
 	UpdateInspectPanel()
@@ -402,13 +499,13 @@ end
 -- EVENT LISTENERS & LIFECYCLE
 -- =============================================================================
 function MarketController.SyncPlayerData()
-	local stones = tonumber(LocalPlayer:GetAttribute("SpiritStones")) or 0
-	local rank = LocalPlayer:GetAttribute("SectRank") or LocalPlayer:GetAttribute("Rank") or "OuterDisciple"
-	local cp = tonumber(LocalPlayer:GetAttribute("ContributionPoints")) or 0
+	local stones = GetPlayerStones()
+	local rank = GetPlayerRank()
+	local cp = LocalPlayer:GetAttribute("ContributionPoints") or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("ContributionPoints")) or 0
 
 	if stonesLabel then stonesLabel.Text = FormatNum(stones) end
 	if rankLabel then rankLabel.Text = FormatRank(rank) end
-	if cpLabel then cpLabel.Text = string.format("%s CP", FormatNum(cp)) end
+	if cpLabel then cpLabel.Text = string.format("%s CP", FormatNum(tonumber(cp) or 0)) end
 end
 
 function MarketController.Open()
@@ -416,6 +513,8 @@ function MarketController.Open()
 	if not marketGui or not mainFrame then return end
 
 	MarketController.SyncPlayerData()
+	marketActionRemote:FireServer({ Action = "RequestMarketData" })
+	
 	selectedQuantity = 1
 	PopulateGrid()
 	mainFrame.Visible = true
@@ -489,75 +588,137 @@ function MarketController.Init()
 	BindFilter(filterCores, "CORES")
 	BindFilter(filterElixirs, "ELIXIRS")
 	BindFilter(filterHerbs, "HERBS")
-	BindFilter(filterTalismans, "TALISMANS")
+	BindFilter(filterSwords, "SWORDS")
 
 	-- 4. Quantity Adjusters (- / + / MAX)
+	local function AdjustMinus()
+		PlayClickSound()
+		selectedQuantity = math.max(1, selectedQuantity - 1)
+		UpdateInspectPanel()
+	end
+
+	local function AdjustPlus()
+		PlayClickSound()
+		local isWeapon = selectedItemId and ItemConfig.GetItem(selectedItemId) and ItemConfig.GetItem(selectedItemId).Type == "Weapon"
+		if isWeapon then
+			selectedQuantity = 1
+			ShowToast("SWORDS ARE UNIQUE ARTIFACTS (MAX 1)", "Warning")
+			return
+		end
+		local limit = if currentMode == "Buy" then 99 else GetOwnedCount(selectedItemId or "")
+		selectedQuantity = math.min(math.max(1, limit), selectedQuantity + 1)
+		UpdateInspectPanel()
+	end
+
+	local function AdjustMax()
+		PlayClickSound()
+		if selectedItemId then
+			local vendorDef = SectConfig.GetMarketItem(selectedItemId)
+			local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
+			selectedQuantity = GetMaxAllowedQuantity(unitPrice)
+		end
+		UpdateInspectPanel()
+	end
+
 	if minusBtn then
-		minusBtn.MouseButton1Click:Connect(function()
-			PlayClickSound()
-			selectedQuantity = math.max(1, selectedQuantity - 1)
-			UpdateInspectPanel()
+		minusBtn.MouseButton1Click:Connect(AdjustMinus)
+		minusBtn.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then AdjustMinus() end
 		end)
 	end
 
 	if plusBtn then
-		plusBtn.MouseButton1Click:Connect(function()
-			PlayClickSound()
-			if selectedItemId then
-				local vendorDef = SectConfig.GetMarketItem(selectedItemId)
-				local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
-				local maxCap = GetMaxAffordableCount(unitPrice, 99)
-				selectedQuantity = math.min(maxCap, selectedQuantity + 1)
-			else
-				selectedQuantity = selectedQuantity + 1
-			end
-			UpdateInspectPanel()
+		plusBtn.MouseButton1Click:Connect(AdjustPlus)
+		plusBtn.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then AdjustPlus() end
 		end)
 	end
 
 	if maxBtn then
-		maxBtn.MouseButton1Click:Connect(function()
-			PlayClickSound()
-			if selectedItemId then
-				local vendorDef = SectConfig.GetMarketItem(selectedItemId)
-				local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
-				selectedQuantity = GetMaxAffordableCount(unitPrice, 99)
-			end
-			UpdateInspectPanel()
+		maxBtn.MouseButton1Click:Connect(AdjustMax)
+		maxBtn.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then AdjustMax() end
 		end)
 	end
 
-	-- 5. Confirm Exchange Button (Fires real VendorManager remotes)
+	-- 5. Confirm Exchange Action
 	if confirmExchangeBtn then
-		confirmExchangeBtn.MouseButton1Click:Connect(function()
+		local function ExecuteExchange()
 			PlayClickSound()
-			if not selectedItemId or selectedQuantity <= 0 then return end
+			if not selectedItemId or selectedQuantity <= 0 then
+				ShowToast("PLEASE SELECT AN ITEM", "Warning")
+				return
+			end
 
+			local vendorDef = SectConfig.GetMarketItem(selectedItemId)
 			if currentMode == "Buy" then
+				if not vendorDef or not vendorDef.BuyPrice then
+					ShowToast("ITEM NOT FOR SALE!", "Warning")
+					return
+				end
+
+				-- Check Sect Rank Requirement
+				local playerRank = GetPlayerRank()
+				if not SectConfig.CanPurchase(playerRank :: any, vendorDef.RequiredRank) then
+					ShowToast(string.format("REQUIRES %s RANK!", FormatRank(vendorDef.RequiredRank)), "Warning")
+					return
+				end
+
+				-- Check Spirit Stones
+				local totalCost = vendorDef.BuyPrice * selectedQuantity
+				if GetPlayerStones() < totalCost then
+					ShowToast("INSUFFICIENT SPIRIT STONES!", "Warning")
+					return
+				end
+
 				marketActionRemote:FireServer({
 					Action = "BuyItem",
 					ItemId = selectedItemId,
 					Amount = selectedQuantity,
 				})
 			else
+				local owned = GetOwnedCount(selectedItemId)
+				if owned < selectedQuantity then
+					ShowToast("NOT ENOUGH ITEMS TO SELL!", "Warning")
+					return
+				end
+
 				marketActionRemote:FireServer({
 					Action = "SellItem",
 					ItemId = selectedItemId,
 					Amount = selectedQuantity,
 				})
 			end
-		end)
+		end
+
+		confirmExchangeBtn.MouseButton1Click:Connect(ExecuteExchange)
 	end
 
-	-- 6. Server Response & Inventory Listeners
+	-- 6. Server Payloads & Toast Feedback
 	marketActionRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" then return end
+
 		if payload.Action == "OpenShop" then
 			MarketController.Open()
+		elseif payload.Action == "SyncBalance" then
+			MarketController.SyncPlayerData()
 		elseif payload.Action == "TransactionSuccess" then
+			local itemDef = ItemConfig.GetItem(payload.ItemId or selectedItemId or "")
+			local itemName = if itemDef then itemDef.Name else (payload.ItemId or "ITEM")
+			local amount = payload.Amount or selectedQuantity
+
+			if payload.Type == "Buy" then
+				ShowToast(string.format("PURCHASED +%d %s!", amount, itemName:upper()), "Success")
+			else
+				local payout = payload.TotalPayout or 0
+				ShowToast(string.format("SOLD %d %s (+%s STONES)!", amount, itemName:upper(), FormatNum(payout)), "Reward")
+			end
+
 			MarketController.SyncPlayerData()
 			selectedQuantity = 1
 			PopulateGrid()
+		elseif payload.Action == "TransactionFailed" then
+			ShowToast(payload.Message or "TRANSACTION FAILED!", "Warning")
 		end
 	end)
 
@@ -572,7 +733,7 @@ function MarketController.Init()
 	LocalPlayer:GetAttributeChangedSignal("SectRank"):Connect(MarketController.SyncPlayerData)
 	LocalPlayer:GetAttributeChangedSignal("ContributionPoints"):Connect(MarketController.SyncPlayerData)
 
-	print("[ASCEND] MarketController Initialized (Bound to SectMerchantMarketGui hierarchy).")
+	print("[ASCEND] MarketController Initialized (Swords Category & Sect Rank Gate Active).")
 end
 
 return MarketController

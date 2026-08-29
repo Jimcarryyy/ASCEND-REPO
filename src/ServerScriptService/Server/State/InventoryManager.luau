@@ -3,16 +3,12 @@
     InventoryManager.luau
     Location: src/ServerScriptService/Server/State/InventoryManager.luau
     Server-authoritative inventory engine for ASCEND.
-    Capped at 60 slots with dynamic testing items injection, weapon equipping,
-    and physical world-pickup drops.
+    Capped at 60 slots with dynamic testing items injection and weapon equipping.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local Debris = game:GetService("Debris")
 
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -26,13 +22,7 @@ export type InventorySlot = {
 local InventoryManager = {}
 local MAX_SLOTS = 60
 
--- World drop tuning
-local DROP_DESPAWN_TIME = 180 -- seconds before an unclaimed drop is cleaned up
-local DROP_OWNER_LOCK_DURATION = 10 -- seconds only the dropper can claim it before it's free-for-all
-local DROP_PICKUP_DISTANCE = 8
-
 local playerInventories: { [Player]: { [number]: InventorySlot? } } = {}
-local worldDropsFolder: Folder? = nil
 
 local updateInventoryRemote: RemoteEvent
 local inventoryActionRemote: RemoteEvent
@@ -63,7 +53,7 @@ function InventoryManager.Init()
 		end
 	end)
 
-	print("[ASCEND] InventoryManager Engine Initialized with 60 Slots, Dynamic Sword Equipping & World Pickups.")
+	print("[ASCEND] InventoryManager Engine Initialized with 60 Slots & Dynamic Sword Equipping.")
 end
 
 function InventoryManager.OnPlayerAdded(player: Player)
@@ -73,13 +63,7 @@ function InventoryManager.OnPlayerAdded(player: Player)
 	end
 end
 
--- STUDIO-ONLY TEST SCAFFOLDING
--- Grants free swords/consumables for testing. Must never run in the published/live game.
 function InventoryManager.EnsureTestItems(player: Player)
-	if not RunService:IsStudio() then
-		return
-	end
-
 	local inv = playerInventories[player]
 	if not inv then
 		inv = {}
@@ -91,20 +75,6 @@ function InventoryManager.EnsureTestItems(player: Player)
 		InventoryManager.AddItem(player, "SpiritHealingDan", 5, "Standard Quality")
 		InventoryManager.AddItem(player, "FoundationGatheringDan", 3, "Standard Quality")
 		InventoryManager.AddItem(player, "SpiritGrass_10Yr", 12)
-	end
-
-	-- Inject all 4 swords into Spirit Pouch for testing
-	local testSwords = {
-		"MortalIronJian",
-		"AzureCloudDiscipleJian",
-		"FlowingQiSpiritSword",
-		"VerdantJadeFlyingSword",
-	}
-
-	for _, swordId in ipairs(testSwords) do
-		if not InventoryManager.HasItem(player, swordId, 1) then
-			InventoryManager.AddItem(player, swordId, 1)
-		end
 	end
 end
 
@@ -287,93 +257,6 @@ function InventoryManager.RemoveItem(player: Player, itemId: string, countToRemo
 	return true
 end
 
-local function GetWorldDropsFolder(): Folder
-	if not worldDropsFolder or not worldDropsFolder.Parent then
-		local existing = Workspace:FindFirstChild("WorldDrops")
-		if existing and existing:IsA("Folder") then
-			worldDropsFolder = existing
-		else
-			local folder = Instance.new("Folder")
-			folder.Name = "WorldDrops"
-			folder.Parent = Workspace
-			worldDropsFolder = folder
-		end
-	end
-	return worldDropsFolder :: Folder
-end
-
--- Spawns a physical, server-authoritative pickup in the world for a dropped item.
--- Pickup is granted via ProximityPrompt.Triggered (server-side, same trusted
--- pattern as GatheringManager) so it can't be forged by a client RemoteEvent call.
-local function SpawnWorldPickup(player: Player, itemId: string, count: number, quality: string?)
-	local character = player.Character
-	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not hrp then return end
-
-	local itemDef = ItemConfig.GetItem(itemId)
-	local displayName = (itemDef and itemDef.DisplayName) or itemId
-
-	local dropPos = hrp.Position + (hrp.CFrame.LookVector * 3)
-
-	-- Raycast down to place the drop on the ground; fall back to the raw offset if nothing's hit
-	local rayParams = RaycastParams.new()
-	rayParams.FilterType = Enum.RaycastFilterType.Exclude
-	rayParams.FilterDescendantsInstances = { character :: Instance }
-	local rayResult = Workspace:Raycast(dropPos + Vector3.new(0, 5, 0), Vector3.new(0, -20, 0), rayParams)
-	local finalPos = if rayResult then rayResult.Position + Vector3.new(0, 1, 0) else dropPos
-
-	local part = Instance.new("Part")
-	part.Name = "WorldDrop_" .. itemId
-	part.Size = Vector3.new(1.2, 1.2, 1.2)
-	part.Shape = Enum.PartType.Ball
-	part.Material = Enum.Material.Neon
-	part.BrickColor = BrickColor.new("New Yeller")
-	part.Anchored = true
-	part.CanCollide = false
-	part.Position = finalPos
-	part:SetAttribute("ItemId", itemId)
-	part:SetAttribute("Count", count)
-	if quality then
-		part:SetAttribute("Quality", quality)
-	end
-	part:SetAttribute("OwnerUserId", player.UserId)
-	part:SetAttribute("OwnerLockUntil", os.time() + DROP_OWNER_LOCK_DURATION)
-	part.Parent = GetWorldDropsFolder()
-
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "PickupPrompt"
-	prompt.ObjectText = displayName
-	prompt.ActionText = "Pick Up"
-	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = DROP_PICKUP_DISTANCE
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = part
-
-	local pickedUp = false
-
-	prompt.Triggered:Connect(function(playerWhoTriggered: Player)
-		if pickedUp then return end
-
-		local ownerUserId = part:GetAttribute("OwnerUserId") :: number?
-		local lockUntil = part:GetAttribute("OwnerLockUntil") :: number?
-		if ownerUserId and lockUntil and os.time() < lockUntil and playerWhoTriggered.UserId ~= ownerUserId then
-			return -- Still owner-locked; other players can't claim it yet
-		end
-
-		pickedUp = true
-		prompt.Enabled = false
-
-		local dropItemId = part:GetAttribute("ItemId") :: string
-		local dropCount = part:GetAttribute("Count") :: number
-		local dropQuality = part:GetAttribute("Quality") :: string?
-
-		InventoryManager.AddItem(playerWhoTriggered, dropItemId, dropCount, dropQuality)
-		part:Destroy()
-	end)
-
-	Debris:AddItem(part, DROP_DESPAWN_TIME)
-end
-
 function InventoryManager.DropItem(player: Player, slotIndex: number)
 	local inv = playerInventories[player]
 	if not inv or slotIndex < 1 or slotIndex > MAX_SLOTS then return end
@@ -381,7 +264,6 @@ function InventoryManager.DropItem(player: Player, slotIndex: number)
 	local slot = inv[slotIndex]
 	if slot then
 		inv[slotIndex] = nil
-		SpawnWorldPickup(player, slot.ItemId, slot.Count, slot.Quality)
 		InventoryManager.SyncClient(player)
 	end
 end

@@ -13,6 +13,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
+local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
@@ -50,6 +51,7 @@ local DATA_STORE_NAME = "ASCEND_PlayerData_V2"
 local MAX_RETRIES = 3
 local AUTO_SAVE_INTERVAL = 300
 local SHUTDOWN_SAVE_TIMEOUT = 25
+local STARTER_WEAPON = "MortalIronJian"
 
 local playerDataStore: DataStore? = nil
 local isLoadedMap: { [Player]: boolean } = {}
@@ -58,6 +60,7 @@ local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfi
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
 
+-- Starter Inventory: Only the free MortalIronJian is given
 local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	Version = 2,
 	Cultivation = {
@@ -72,9 +75,6 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 		[2] = { ItemId = "FoundationGatheringDan", Count = 3 },
 		[3] = { ItemId = "SpiritGrass_10Yr", Count = 12 },
 		[4] = { ItemId = "MortalIronJian", Count = 1 },
-		[5] = { ItemId = "AzureCloudDiscipleJian", Count = 1 },
-		[6] = { ItemId = "FlowingQiSpiritSword", Count = 1 },
-		[7] = { ItemId = "VerdantJadeFlyingSword", Count = 1 },
 	},
 	Sect = "Azure Cloud Sect",
 	SectRank = "OuterDisciple",
@@ -86,6 +86,20 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	UnlockedSkins = { ["DefaultBronze"] = true },
 	EquippedSkin = "DefaultBronze",
 }
+
+-- Strips any weapon that isn't the free starter sword. Non-Weapon items are untouched.
+-- NOTE: once exploration/shop acquisition is live, this will strip those legitimately
+-- earned weapons too unless it's revisited (see caveat discussed with the dev).
+local function stripNonStarterWeapons(inventory: { [number]: SavedInventorySlot })
+	for slotIdx, slot in pairs(inventory) do
+		if slot and slot.ItemId ~= STARTER_WEAPON then
+			local itemDef = ItemConfig.GetItem(slot.ItemId)
+			if itemDef and itemDef.Type == "Weapon" then
+				inventory[slotIdx] = nil
+			end
+		end
+	end
+end
 
 function PlayerDataManager.Init()
 	local success, result = pcall(function()
@@ -211,6 +225,11 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		))
 	end
 
+	stripNonStarterWeapons(loadedData.Inventory)
+	if loadedData.EquippedWeapon ~= STARTER_WEAPON then
+		loadedData.EquippedWeapon = STARTER_WEAPON
+	end
+
 	isLoadedMap[player] = true
 
 	playerAlchemyData[player] = {
@@ -242,10 +261,25 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	InventoryManager.SetInventory(player, loadedData.Inventory)
 	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "MortalIronJian")
 
-	local character = player.Character or player.CharacterAdded:Wait()
-	character:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
-	character:SetAttribute("SectRank", playerEconomyData[player].SectRank)
-	character:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
+	-- Sync Player Attributes
+	player:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
+	player:SetAttribute("SectRank", playerEconomyData[player].SectRank)
+	player:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
+	player:SetAttribute("ContributionPoints", playerEconomyData[player].ContributionPoints)
+	player:SetAttribute("EquippedHUDSkin", loadedData.EquippedSkin or "DefaultBronze")
+
+	-- Sync Character Attributes when character spawns
+	local function bindChar(character: Model)
+		character:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
+		character:SetAttribute("SectRank", playerEconomyData[player].SectRank)
+		character:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
+		character:SetAttribute("ContributionPoints", playerEconomyData[player].ContributionPoints)
+	end
+
+	if player.Character then
+		bindChar(player.Character)
+	end
+	player.CharacterAdded:Connect(bindChar)
 end
 
 function PlayerDataManager.OnPlayerRemoving(player: Player)
@@ -266,6 +300,7 @@ function PlayerDataManager.AddSpiritStones(player: Player, amount: number): numb
 	local data = playerEconomyData[player]
 	if not data then return 0 end
 	data.SpiritStones = math.max(0, data.SpiritStones + amount)
+	player:SetAttribute("SpiritStones", data.SpiritStones)
 	if player.Character then
 		player.Character:SetAttribute("SpiritStones", data.SpiritStones)
 	end
@@ -276,6 +311,7 @@ function PlayerDataManager.RemoveSpiritStones(player: Player, amount: number): b
 	local data = playerEconomyData[player]
 	if not data or data.SpiritStones < amount then return false end
 	data.SpiritStones -= amount
+	player:SetAttribute("SpiritStones", data.SpiritStones)
 	if player.Character then
 		player.Character:SetAttribute("SpiritStones", data.SpiritStones)
 	end
@@ -291,6 +327,7 @@ function PlayerDataManager.SetSectRank(player: Player, rank: SectConfig.Disciple
 	local data = playerEconomyData[player]
 	if not data then return end
 	data.SectRank = rank
+	player:SetAttribute("SectRank", rank)
 	if player.Character then
 		player.Character:SetAttribute("SectRank", rank)
 	end
@@ -305,6 +342,10 @@ function PlayerDataManager.AddContributionPoints(player: Player, amount: number)
 	local data = playerEconomyData[player]
 	if not data then return 0 end
 	data.ContributionPoints = math.max(0, data.ContributionPoints + amount)
+	player:SetAttribute("ContributionPoints", data.ContributionPoints)
+	if player.Character then
+		player.Character:SetAttribute("ContributionPoints", data.ContributionPoints)
+	end
 	return data.ContributionPoints
 end
 
