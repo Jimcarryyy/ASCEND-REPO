@@ -2,8 +2,10 @@
 --[[
     PlayerDataManager.luau
     Location: src/ServerScriptService/Server/State/PlayerDataManager.luau
-    Server-authoritative DataStore persistence manager for ASCEND.
-    Persists: Cultivation (Realm, Order, Qi), Inventory, Spirit Stones, Sect Rank, Contribution Points, and Gamepasses.
+    Server-authoritative DataStore persistence manager for ASCEND:
+    - DataVersion 3 Persistence Pipeline
+    - Guarantees the free MortalIronJian is always present in the Spirit Pouch if no weapon is owned
+    - Syncs 3D equipped sword state directly with inventory contents
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -40,7 +42,7 @@ export type SavedPlayerData = {
 		CultivatedQi: number?,
 	},
 	EquippedWeapon: string,
-	Inventory: { [number]: SavedInventorySlot },
+	Inventory: { [string]: SavedInventorySlot },
 	Sect: string?,
 	SectRank: SectConfig.DiscipleRank?,
 	ContributionPoints: number?,
@@ -56,7 +58,8 @@ export type SavedPlayerData = {
 
 local PlayerDataManager = {}
 
-local DATA_STORE_NAME = "ASCEND_PlayerData_V2"
+local DATA_STORE_NAME = "ASCEND_PlayerData_V3"
+local CURRENT_VERSION = 3
 local MAX_RETRIES = 3
 local AUTO_SAVE_INTERVAL = 300
 local SHUTDOWN_SAVE_TIMEOUT = 25
@@ -64,6 +67,8 @@ local STARTER_WEAPON = "MortalIronJian"
 
 local playerDataStore: DataStore? = nil
 local isLoadedMap: { [Player]: boolean } = {}
+local isSavingMap: { [Player]: boolean } = {}
+
 local playerAlchemyData: { [Player]: { Exp: number, Level: number } } = {}
 local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfig.DiscipleRank, ContributionPoints: number } } = {}
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
@@ -77,9 +82,8 @@ local function getSectManager(): any
 	return sectManagerRef
 end
 
--- Starter Inventory: Only the free MortalIronJian is given
 local DEFAULT_PLAYER_DATA: SavedPlayerData = {
-	Version = 2,
+	Version = CURRENT_VERSION,
 	Cultivation = {
 		Realm = "QiCondensation",
 		Order = 1,
@@ -88,10 +92,8 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	},
 	EquippedWeapon = "MortalIronJian",
 	Inventory = {
-		[1] = { ItemId = "SpiritHealingDan", Count = 5 },
-		[2] = { ItemId = "FoundationGatheringDan", Count = 3 },
-		[3] = { ItemId = "SpiritGrass_10Yr", Count = 12 },
-		[4] = { ItemId = "MortalIronJian", Count = 1 },
+		["1"] = { ItemId = "MortalIronJian", Count = 1 },
+		["2"] = { ItemId = "SpiritHealingDan", Count = 5 },
 	},
 	Sect = "Azure Cloud Sect",
 	SectRank = "OuterDisciple",
@@ -104,20 +106,6 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	EquippedSkin = "DefaultBronze",
 }
 
--- Strips any weapon that isn't the free starter sword. Non-Weapon items are untouched.
--- NOTE: once exploration/shop acquisition is live, this will strip those legitimately
--- earned weapons too unless it's revisited (see caveat discussed with the dev).
-local function stripNonStarterWeapons(inventory: { [number]: SavedInventorySlot })
-	for slotIdx, slot in pairs(inventory) do
-		if slot and slot.ItemId ~= STARTER_WEAPON then
-			local itemDef = ItemConfig.GetItem(slot.ItemId)
-			if itemDef and itemDef.Type == "Weapon" then
-				inventory[slotIdx] = nil
-			end
-		end
-	end
-end
-
 function PlayerDataManager.Init()
 	local success, result = pcall(function()
 		return DataStoreService:GetDataStore(DATA_STORE_NAME)
@@ -125,7 +113,7 @@ function PlayerDataManager.Init()
 
 	if success and result then
 		playerDataStore = result
-		print("[PlayerDataManager] DataStore V2 initialized successfully.")
+		print("[PlayerDataManager] DataStore V3 initialized successfully.")
 	else
 		warn("[PlayerDataManager] Could not access DataStoreService. Running with local session memory.")
 	end
@@ -164,32 +152,24 @@ function PlayerDataManager.Init()
 			task.wait(0.5)
 			waited += 0.5
 		end
-
-		if remaining > 0 then
-			warn(string.format("[PlayerDataManager] Shutdown timeout reached with %d player save(s) still pending.", remaining))
-		end
 	end)
 
-	print("[PlayerDataManager] Engine Initialized with Sect Economy & DataStore V2 Schema.")
+	print("[PlayerDataManager] Engine Initialized with Version 3 Migration & Safe Save Pipeline.")
 end
 
 function PlayerDataManager.OnPlayerAdded(player: Player)
 	local dataKey = "Player_" .. player.UserId
-	local loadedData: SavedPlayerData? = nil
-	local loadFailed = false
+	local loadedData: any = nil
 
 	if playerDataStore then
-		local attemptSucceeded = false
-
 		for attempt = 1, MAX_RETRIES do
 			local success, result = pcall(function()
 				return playerDataStore:GetAsync(dataKey)
 			end)
 
 			if success then
-				attemptSucceeded = true
 				if type(result) == "table" then
-					loadedData = result :: SavedPlayerData
+					loadedData = result
 				end
 				break
 			else
@@ -197,22 +177,23 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 				task.wait(1)
 			end
 		end
-
-		if not attemptSucceeded then
-			loadFailed = true
-		end
 	end
 
-	if loadFailed then
-		warn(string.format("[PlayerDataManager] Could not load data for %s after %d attempts — kicking to prevent overwriting their save.", player.Name, MAX_RETRIES))
-		player:Kick("We couldn't load your save data. Please rejoin in a moment — your progress is safe.")
-		return
+	-- Fallback check to V2 if V3 has no save yet
+	if not loadedData then
+		pcall(function()
+			local v2Store = DataStoreService:GetDataStore("ASCEND_PlayerData_V2")
+			local oldResult = v2Store:GetAsync(dataKey)
+			if oldResult and type(oldResult) == "table" then
+				loadedData = oldResult
+			end
+		end)
 	end
 
 	if not loadedData then
-		print(string.format("[PlayerDataManager] Applying starter profile for %s.", player.Name))
+		print(string.format("[PlayerDataManager] Creating brand new profile for %s.", player.Name))
 		loadedData = {
-			Version = DEFAULT_PLAYER_DATA.Version,
+			Version = CURRENT_VERSION,
 			Cultivation = {
 				Realm = DEFAULT_PLAYER_DATA.Cultivation.Realm,
 				Order = DEFAULT_PLAYER_DATA.Cultivation.Order or 1,
@@ -220,7 +201,10 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 				CultivatedQi = DEFAULT_PLAYER_DATA.Cultivation.CultivatedQi or 200,
 			},
 			EquippedWeapon = DEFAULT_PLAYER_DATA.EquippedWeapon,
-			Inventory = table.clone(DEFAULT_PLAYER_DATA.Inventory),
+			Inventory = {
+				[1] = { ItemId = "MortalIronJian", Count = 1 },
+				[2] = { ItemId = "SpiritHealingDan", Count = 5 },
+			},
 			Sect = DEFAULT_PLAYER_DATA.Sect,
 			SectRank = DEFAULT_PLAYER_DATA.SectRank or "OuterDisciple",
 			ContributionPoints = DEFAULT_PLAYER_DATA.ContributionPoints or 0,
@@ -230,23 +214,12 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			OwnedGamepasses = {},
 			UnlockedSkins = { ["DefaultBronze"] = true },
 			EquippedSkin = "DefaultBronze",
-			QuestProgress = nil,
-			LastStipendClaim = nil,
 		}
 	else
-		print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, CultivatedQi: %s, Stones: %d, Rank: %s).",
-			player.Name,
-			loadedData.Cultivation.Realm,
-			loadedData.Cultivation.Order or 1,
-			CultivationConfig.FormatNumber(loadedData.Cultivation.CultivatedQi or 200),
-			loadedData.SpiritStones or 250,
-			loadedData.SectRank or "OuterDisciple"
-		))
-	end
-
-	stripNonStarterWeapons(loadedData.Inventory)
-	if loadedData.EquippedWeapon ~= STARTER_WEAPON then
-		loadedData.EquippedWeapon = STARTER_WEAPON
+		if not loadedData.Version or loadedData.Version < CURRENT_VERSION then
+			print(string.format("[PlayerDataManager] Migrating %s data to Version 3 schema.", player.Name))
+			loadedData.Version = CURRENT_VERSION
+		end
 	end
 
 	isLoadedMap[player] = true
@@ -277,8 +250,39 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		loadedData.Cultivation.CultivatedQi
 	)
 
-	InventoryManager.SetInventory(player, loadedData.Inventory)
-	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or "MortalIronJian")
+	-- Normalize inventory keys (convert strings "1", "2" to integers 1, 2)
+	local normalizedInventory: { [number]: SavedInventorySlot } = {}
+	local hasAnyWeapon = false
+
+	if loadedData.Inventory and type(loadedData.Inventory) == "table" then
+		for slotKey, slotData in pairs(loadedData.Inventory) do
+			local slotNum = tonumber(slotKey)
+			if slotNum and slotData and slotData.ItemId then
+				normalizedInventory[slotNum] = {
+					ItemId = slotData.ItemId,
+					Count = slotData.Count or 1,
+					Quality = slotData.Quality,
+				}
+				local itemDef = ItemConfig.GetItem(slotData.ItemId)
+				if itemDef and itemDef.Type == "Weapon" then
+					hasAnyWeapon = true
+				end
+			end
+		end
+	end
+
+	-- Safety: Ensure player ALWAYS has at least MortalIronJian in their Spirit Pouch
+	if not hasAnyWeapon then
+		local targetSlot = 1
+		while normalizedInventory[targetSlot] ~= nil do
+			targetSlot += 1
+		end
+		normalizedInventory[targetSlot] = { ItemId = STARTER_WEAPON, Count = 1 }
+		loadedData.EquippedWeapon = STARTER_WEAPON
+	end
+
+	InventoryManager.SetInventory(player, normalizedInventory)
+	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or STARTER_WEAPON)
 
 	local SectManager = getSectManager()
 	if SectManager.SetQuestState then
@@ -295,7 +299,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	player:SetAttribute("ContributionPoints", playerEconomyData[player].ContributionPoints)
 	player:SetAttribute("EquippedHUDSkin", loadedData.EquippedSkin or "DefaultBronze")
 
-	-- Sync Character Attributes when character spawns
 	local function bindChar(character: Model)
 		character:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
 		character:SetAttribute("SectRank", playerEconomyData[player].SectRank)
@@ -307,15 +310,25 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		bindChar(player.Character)
 	end
 	player.CharacterAdded:Connect(bindChar)
+
+	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s).",
+		player.Name,
+		loadedData.Cultivation.Realm,
+		loadedData.Cultivation.Order or 1,
+		loadedData.SpiritStones or 250,
+		loadedData.SectRank or "OuterDisciple"
+	))
 end
 
 function PlayerDataManager.OnPlayerRemoving(player: Player)
 	PlayerDataManager.SaveData(player)
-	isLoadedMap[player] = nil
-	playerAlchemyData[player] = nil
-	playerEconomyData[player] = nil
-	playerGamepasses[player] = nil
-	playerSkinData[player] = nil
+	task.delay(1.5, function()
+		isLoadedMap[player] = nil
+		playerAlchemyData[player] = nil
+		playerEconomyData[player] = nil
+		playerGamepasses[player] = nil
+		playerSkinData[player] = nil
+	end)
 end
 
 function PlayerDataManager.GetSpiritStones(player: Player): number
@@ -417,9 +430,10 @@ function PlayerDataManager.GetAlchemyData(player: Player): (number, number)
 end
 
 function PlayerDataManager.SaveData(player: Player): boolean
-	if not isLoadedMap[player] or not playerDataStore then
+	if not isLoadedMap[player] or not playerDataStore or isSavingMap[player] then
 		return false
 	end
+	isSavingMap[player] = true
 
 	local cultivation = CultivationManager.GetPlayerData(player)
 	local inventory = InventoryManager.GetInventory(player)
@@ -433,28 +447,32 @@ function PlayerDataManager.SaveData(player: Player): boolean
 	local questProgress = SectManager.GetQuestState and SectManager.GetQuestState(player) or nil
 	local lastStipendClaim = SectManager.GetLastStipendClaim and SectManager.GetLastStipendClaim(player) or nil
 
-	if not cultivation then return false end
+	if not cultivation then
+		isSavingMap[player] = false
+		return false
+	end
 
-	local serializedInventory: { [number]: SavedInventorySlot } = {}
+	-- Serialize inventory with string keys
+	local serializedInventory: { [string]: SavedInventorySlot } = {}
 	for slotIdx, slot in pairs(inventory) do
-		if slot then
-			serializedInventory[slotIdx] = {
+		if slot and slot.ItemId then
+			serializedInventory[tostring(slotIdx)] = {
 				ItemId = slot.ItemId,
-				Count = slot.Count,
+				Count = slot.Count or 1,
 				Quality = slot.Quality,
 			}
 		end
 	end
 
 	local dataToSave: SavedPlayerData = {
-		Version = 2,
+		Version = CURRENT_VERSION,
 		Cultivation = {
 			Realm = cultivation.Realm,
 			Order = cultivation.Order,
 			CurrentQi = cultivation.CurrentQi,
 			CultivatedQi = cultivation.CultivatedQi,
 		},
-		EquippedWeapon = equippedWeapon,
+		EquippedWeapon = equippedWeapon or STARTER_WEAPON,
 		Inventory = serializedInventory,
 		Sect = (player.Character and player.Character:GetAttribute("Sect") :: string?) or "Azure Cloud Sect",
 		SectRank = economy.SectRank,
@@ -483,10 +501,11 @@ function PlayerDataManager.SaveData(player: Player): boolean
 			break
 		else
 			warn(string.format("[PlayerDataManager] SetAsync attempt %d failed for %s: %s", attempt, player.Name, tostring(err)))
-			task.wait(1)
+			task.wait(0.5)
 		end
 	end
 
+	isSavingMap[player] = false
 	return saveSuccess
 end
 

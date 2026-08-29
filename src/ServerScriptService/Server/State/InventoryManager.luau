@@ -2,8 +2,10 @@
 --[[
     InventoryManager.luau
     Location: src/ServerScriptService/Server/State/InventoryManager.luau
-    Server-authoritative inventory engine for ASCEND.
-    Capped at 60 slots with dynamic testing items injection and weapon equipping.
+    Server-authoritative inventory engine for ASCEND:
+    - 60 Inventory Slots with Dynamic Weapon Equipping & 3D Sync
+    - Safe PlayerRemoving Sequence for DataStore Saves
+    - Item Stacking, Consuming, and Dropping
 ]]
 
 local Players = game:GetService("Players")
@@ -27,6 +29,10 @@ local playerInventories: { [Player]: { [number]: InventorySlot? } } = {}
 local updateInventoryRemote: RemoteEvent
 local inventoryActionRemote: RemoteEvent
 
+local function getWeaponManager(): any
+	return require(ServerScriptService.Server.Combat.WeaponManager)
+end
+
 function InventoryManager.Init()
 	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
 	inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
@@ -42,7 +48,6 @@ function InventoryManager.Init()
 		if type(payload) ~= "table" or not payload.Action then return end
 
 		if payload.Action == "RequestSync" then
-			InventoryManager.EnsureTestItems(player)
 			InventoryManager.SyncClient(player)
 		elseif payload.Action == "UseItem" and type(payload.SlotIndex) == "number" then
 			InventoryManager.UseItem(player, payload.SlotIndex)
@@ -53,33 +58,19 @@ function InventoryManager.Init()
 		end
 	end)
 
-	print("[ASCEND] InventoryManager Engine Initialized with 60 Slots & Dynamic Sword Equipping.")
+	print("[ASCEND] InventoryManager Engine Initialized with 60 Slots & Persistence Fix.")
 end
 
 function InventoryManager.OnPlayerAdded(player: Player)
 	if not playerInventories[player] then
 		playerInventories[player] = {}
-		InventoryManager.EnsureTestItems(player)
-	end
-end
-
-function InventoryManager.EnsureTestItems(player: Player)
-	local inv = playerInventories[player]
-	if not inv then
-		inv = {}
-		playerInventories[player] = inv
-	end
-
-	-- Inject consumable pills & herbs
-	if not InventoryManager.HasItem(player, "SpiritHealingDan", 1) then
-		InventoryManager.AddItem(player, "SpiritHealingDan", 5, "Standard Quality")
-		InventoryManager.AddItem(player, "FoundationGatheringDan", 3, "Standard Quality")
-		InventoryManager.AddItem(player, "SpiritGrass_10Yr", 12)
 	end
 end
 
 function InventoryManager.OnPlayerRemoving(player: Player)
-	playerInventories[player] = nil
+	task.delay(2.0, function()
+		playerInventories[player] = nil
+	end)
 end
 
 function InventoryManager.GetInventory(player: Player): { [number]: InventorySlot? }
@@ -133,8 +124,9 @@ function InventoryManager.SetInventory(player: Player, inventoryData: { [number]
 
 	if inventoryData then
 		for slotIdx, slot in pairs(inventoryData) do
-			if slot and type(slot.ItemId) == "string" and type(slot.Count) == "number" then
-				playerInventories[player][slotIdx] = {
+			local numIdx = tonumber(slotIdx)
+			if numIdx and slot and type(slot.ItemId) == "string" and type(slot.Count) == "number" then
+				playerInventories[player][numIdx] = {
 					ItemId = slot.ItemId,
 					Count = slot.Count,
 					Quality = slot.Quality,
@@ -143,7 +135,6 @@ function InventoryManager.SetInventory(player: Player, inventoryData: { [number]
 		end
 	end
 
-	InventoryManager.EnsureTestItems(player)
 	task.wait(0.2)
 	InventoryManager.SyncClient(player)
 end
@@ -190,8 +181,7 @@ function InventoryManager.UseItem(player: Player, slotIndex: number)
 		end
 
 	elseif itemDef.Type == "Weapon" or itemDef.Type == "Crest" then
-		-- Dynamically equip weapon on character
-		local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+		local WeaponManager = getWeaponManager()
 		WeaponManager.EquipWeapon(player, itemDef.Id)
 	end
 
@@ -263,7 +253,17 @@ function InventoryManager.DropItem(player: Player, slotIndex: number)
 
 	local slot = inv[slotIndex]
 	if slot then
+		local itemDef = ItemConfig.GetItem(slot.ItemId)
 		inv[slotIndex] = nil
+
+		-- If dropped weapon is currently equipped, unequip 3D model
+		if itemDef and itemDef.Type == "Weapon" then
+			local WeaponManager = getWeaponManager()
+			if WeaponManager.GetEquippedWeapon(player) == slot.ItemId then
+				WeaponManager.EquipWeapon(player, "MortalIronJian")
+			end
+		end
+
 		InventoryManager.SyncClient(player)
 	end
 end

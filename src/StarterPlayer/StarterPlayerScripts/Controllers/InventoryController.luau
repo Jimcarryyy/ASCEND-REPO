@@ -9,6 +9,7 @@
     - Dynamic 3D spinning inspection preview for all 3D items
     - 2D Sprite fallback for pills and flat icons
     - Real-time DataStore item population, search, category filtering, and rarity sorting
+    - Key Normalization Fix: Guarantees saved DataStore items display immediately on login
     - Integrated Panel Click Audio (rbxassetid://138567614125924)
 ]]
 
@@ -394,11 +395,7 @@ function InventoryController.Init()
 	if useImageButton then
 		useImageButton.MouseButton1Click:Connect(function()
 			PlayPanelClickSFX()
-			if not selectedSlotIndex or not inventoryCache[selectedSlotIndex] then return end
-			local slotData = inventoryCache[selectedSlotIndex]
-			local itemDef = ItemConfig.GetItem(slotData.ItemId)
-			if not itemDef then return end
-
+			if not selectedSlotIndex or not (inventoryCache[selectedSlotIndex] or inventoryCache[tonumber(selectedSlotIndex) or 0]) then return end
 			inventoryActionRemote:FireServer({ Action = "UseItem", SlotIndex = selectedSlotIndex })
 		end)
 	end
@@ -406,18 +403,27 @@ function InventoryController.Init()
 	if dropImageButton then
 		dropImageButton.MouseButton1Click:Connect(function()
 			PlayPanelClickSFX()
-			if not selectedSlotIndex or not inventoryCache[selectedSlotIndex] then return end
+			if not selectedSlotIndex or not (inventoryCache[selectedSlotIndex] or inventoryCache[tonumber(selectedSlotIndex) or 0]) then return end
 			inventoryActionRemote:FireServer({ Action = "DropItem", SlotIndex = selectedSlotIndex })
 		end)
 	end
 
-	updateInventoryRemote.OnClientEvent:Connect(function(newInventory: { [number]: any })
-		inventoryCache = newInventory or {}
+	-- Key Normalization: convert incoming string keys to number keys
+	updateInventoryRemote.OnClientEvent:Connect(function(newInventory: any)
+		inventoryCache = {}
+		if newInventory and type(newInventory) == "table" then
+			for slotKey, slotData in pairs(newInventory) do
+				local numIdx = tonumber(slotKey)
+				if numIdx and slotData and slotData.ItemId then
+					inventoryCache[numIdx] = slotData
+				end
+			end
+		end
 		InventoryController.RenderGrid()
 	end)
 
 	task.defer(function()
-		task.wait(0.5)
+		task.wait(0.3)
 		inventoryActionRemote:FireServer({ Action = "RequestSync" })
 	end)
 
@@ -521,7 +527,7 @@ function InventoryController.RenderGrid()
 	local filteredSlots: { SlotEntry } = {}
 
 	for slotIdx = 1, 60 do
-		local slotData = inventoryCache[slotIdx]
+		local slotData = inventoryCache[slotIdx] or inventoryCache[tostring(slotIdx) :: any]
 		if slotData and slotData.ItemId and slotData.ItemId ~= "" then
 			local itemDef = ItemConfig.GetItem(slotData.ItemId)
 			if itemDef then
