@@ -2,11 +2,10 @@
 --[[
     SkillBarController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
-    Bottom-Center Action HUD & Sword Intent Engine with Non-Overlapping Mobile Layout:
-    - Top: Proportional Sword Intent Bar
-    - PC Center-Bottom: [M1] Strike | [R] Draw/Sheath | [V] Flight | [B] Breakthrough | [M] Meditate
-    - Mobile Layout: Ergonomic Center-Bottom Utility (R, V, B, M) + Clear-of-Jump Combat Cluster (M1, Dash)
-    - Full Cooldown Animation Support for InputController integration
+    Bottom-Center Action HUD & Sword Intent Engine with Responsive Desktop / Mobile Sizing:
+    - Desktop: Up-scaled comfortable layout (58px slots, 13px Intent Bar, Bangers Font)
+    - Mobile: Ergonomic non-intrusive layout avoiding the Jump button
+    - Full Cooldown & Network integration with InputController
 ]]
 
 local Players = game:GetService("Players")
@@ -20,7 +19,7 @@ local SkillBarController = {}
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-local UI_FONT = Enum.Font.FredokaOne
+local UI_FONT = Enum.Font.Bangers
 local TWEEN_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local INTENT_BAR_TWEEN = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
@@ -35,7 +34,6 @@ local function IsTouchDevice(): boolean
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
 
--- Safely trigger M1 attack via InputController
 local function TriggerM1()
 	local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
 	if controllers then
@@ -51,7 +49,6 @@ local function TriggerM1()
 	combatActionRemote:FireServer({ SkillKey = "M1", AimDirection = Vector3.new(0, 0, -1), Timestamp = os.clock() })
 end
 
--- Safely trigger Dash via InputController
 local function TriggerDash()
 	local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
 	if controllers then
@@ -67,7 +64,7 @@ local function TriggerDash()
 	combatActionRemote:FireServer({ SkillKey = "Shift", AimDirection = Vector3.new(0, 0, -1), Timestamp = os.clock() })
 end
 
-local function CreateActionSlot(parent: Instance, keybind: string, actionName: string, size: UDim2, layoutOrder: number): (ImageButton, UIScale, Frame)
+local function CreateActionSlot(parent: Instance, keybind: string, actionName: string, size: UDim2, layoutOrder: number, isTouch: boolean): (ImageButton, UIScale, Frame)
 	local button = Instance.new("ImageButton")
 	button.Name = "Slot_" .. keybind
 	button.LayoutOrder = layoutOrder
@@ -82,12 +79,12 @@ local function CreateActionSlot(parent: Instance, keybind: string, actionName: s
 	button.Parent = parent
 
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
+	corner.CornerRadius = UDim.new(0, if isTouch then 6 else 8)
 	corner.Parent = button
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(160, 180, 205)
-	stroke.Thickness = 1.2
+	stroke.Thickness = if isTouch then 1.2 else 1.5
 	stroke.Transparency = 0.4
 	stroke.Parent = button
 
@@ -108,11 +105,11 @@ local function CreateActionSlot(parent: Instance, keybind: string, actionName: s
 
 	local keyLabel = Instance.new("TextLabel")
 	keyLabel.Name = "KeyLabel"
-	keyLabel.Size = UDim2.new(1, -4, 0, 12)
-	keyLabel.Position = UDim2.new(0, 4, 0, 2)
+	keyLabel.Size = UDim2.new(1, -6, 0, if isTouch then 14 else 18)
+	keyLabel.Position = UDim2.new(0, if isTouch then 4 else 6, 0, 2)
 	keyLabel.BackgroundTransparency = 1
 	keyLabel.Font = UI_FONT
-	keyLabel.TextSize = 9.5
+	keyLabel.TextSize = if isTouch then 11 else 14
 	keyLabel.TextColor3 = Color3.fromRGB(255, 220, 120)
 	keyLabel.TextXAlignment = Enum.TextXAlignment.Left
 	keyLabel.ZIndex = 5
@@ -126,11 +123,11 @@ local function CreateActionSlot(parent: Instance, keybind: string, actionName: s
 
 	local actionLabel = Instance.new("TextLabel")
 	actionLabel.Name = "ActionLabel"
-	actionLabel.Size = UDim2.new(1, -2, 0, 16)
-	actionLabel.Position = UDim2.new(0, 1, 0.5, -1)
+	actionLabel.Size = UDim2.new(1, -4, 0, if isTouch then 18 else 22)
+	actionLabel.Position = UDim2.new(0, 2, 0.5, if isTouch then -1 else 0)
 	actionLabel.BackgroundTransparency = 1
 	actionLabel.Font = UI_FONT
-	actionLabel.TextSize = 8.5
+	actionLabel.TextSize = if isTouch then 10 else 13
 	actionLabel.TextColor3 = Color3.fromRGB(230, 238, 245)
 	actionLabel.TextWrapped = true
 	actionLabel.ZIndex = 5
@@ -176,19 +173,19 @@ local function BuildHUD()
 
 	local isTouch = IsTouchDevice()
 
-	-- 1. Center-Bottom Container
+	-- 1. Center-Bottom Container (Upscaled for Desktop, Proportional on Mobile)
 	local container = Instance.new("Frame")
 	container.Name = "Container"
-	container.Size = if isTouch then UDim2.new(0, 205, 0, 64) else UDim2.new(0, 255, 0, 68)
-	container.Position = UDim2.new(0.5, 0, 1, -12)
+	container.Size = if isTouch then UDim2.new(0, 215, 0, 66) else UDim2.new(0, 335, 0, 88)
+	container.Position = UDim2.new(0.5, 0, 1, if isTouch then -12 else -18)
 	container.AnchorPoint = Vector2.new(0.5, 1)
 	container.BackgroundTransparency = 1
 	container.Parent = screenGui
 
-	-- Sleek Sword Intent Bar
+	-- Sword Intent Bar
 	local intentBg = Instance.new("Frame")
 	intentBg.Name = "SwordIntentBackground"
-	intentBg.Size = UDim2.new(1, 0, 0, 9)
+	intentBg.Size = UDim2.new(1, 0, 0, if isTouch then 10 else 13)
 	intentBg.Position = UDim2.new(0, 0, 0, 0)
 	intentBg.BackgroundColor3 = Color3.fromRGB(12, 16, 22)
 	intentBg.BackgroundTransparency = 0.2
@@ -197,12 +194,12 @@ local function BuildHUD()
 	intentBg.Parent = container
 
 	local intentCorner = Instance.new("UICorner")
-	intentCorner.CornerRadius = UDim.new(0, 3)
+	intentCorner.CornerRadius = UDim.new(0, 4)
 	intentCorner.Parent = intentBg
 
 	local intentStroke = Instance.new("UIStroke")
 	intentStroke.Color = Color3.fromRGB(215, 175, 75)
-	intentStroke.Thickness = 1
+	intentStroke.Thickness = if isTouch then 1 else 1.4
 	intentStroke.Transparency = 0.3
 	intentStroke.Parent = intentBg
 
@@ -214,7 +211,7 @@ local function BuildHUD()
 	swordIntentFill.Parent = intentBg
 
 	local fillCorner = Instance.new("UICorner")
-	fillCorner.CornerRadius = UDim.new(0, 3)
+	fillCorner.CornerRadius = UDim.new(0, 4)
 	fillCorner.Parent = swordIntentFill
 
 	local intentGradient = Instance.new("UIGradient")
@@ -230,7 +227,7 @@ local function BuildHUD()
 	swordIntentText.Size = UDim2.new(1, 0, 1, 0)
 	swordIntentText.BackgroundTransparency = 1
 	swordIntentText.Font = UI_FONT
-	swordIntentText.TextSize = 7.5
+	swordIntentText.TextSize = if isTouch then 9 else 11.5
 	swordIntentText.TextColor3 = Color3.fromRGB(255, 255, 255)
 	swordIntentText.Text = "SWORD INTENT · 100%"
 	swordIntentText.ZIndex = 3
@@ -244,8 +241,8 @@ local function BuildHUD()
 	-- Action Buttons Row
 	local buttonRow = Instance.new("Frame")
 	buttonRow.Name = "ButtonRow"
-	buttonRow.Size = UDim2.new(1, 0, 0, 48)
-	buttonRow.Position = UDim2.new(0, 0, 0, 14)
+	buttonRow.Size = UDim2.new(1, 0, 0, if isTouch then 50 else 64)
+	buttonRow.Position = UDim2.new(0, 0, 0, if isTouch then 14 else 18)
 	buttonRow.BackgroundTransparency = 1
 	buttonRow.Parent = container
 
@@ -253,24 +250,24 @@ local function BuildHUD()
 	listLayout.FillDirection = Enum.FillDirection.Horizontal
 	listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	listLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	listLayout.Padding = UDim.new(0, 6)
+	listLayout.Padding = UDim.new(0, if isTouch then 6 else 8)
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	listLayout.Parent = buttonRow
 
-	local slotSize = if isTouch then UDim2.new(0, 44, 0, 44) else UDim2.new(0, 46, 0, 46)
+	local slotSize = if isTouch then UDim2.new(0, 46, 0, 46) else UDim2.new(0, 58, 0, 58)
 
-	-- On PC: M1 slot is included in center row
+	-- Desktop includes M1 in the center bar
 	if not isTouch then
-		local m1Btn, m1Scale, m1Cd = CreateActionSlot(buttonRow, "M1", "STRIKE", slotSize, 1)
+		local m1Btn, m1Scale, m1Cd = CreateActionSlot(buttonRow, "M1", "STRIKE", slotSize, 1, false)
 		actionButtons["M1"] = { Button = m1Btn, Scale = m1Scale, CooldownOverlay = m1Cd }
 		m1Btn.MouseButton1Click:Connect(TriggerM1)
 	end
 
 	-- Center Utilities: R, V, B, M
-	local rBtn, rScale, rCd = CreateActionSlot(buttonRow, "R", "DRAW", slotSize, 2)
-	local vBtn, vScale, vCd = CreateActionSlot(buttonRow, "V", "FLIGHT", slotSize, 3)
-	local bBtn, bScale, bCd = CreateActionSlot(buttonRow, "B", "BREAK", slotSize, 4)
-	local mBtn, mScale, mCd = CreateActionSlot(buttonRow, "M", "MEDITATE", slotSize, 5)
+	local rBtn, rScale, rCd = CreateActionSlot(buttonRow, "R", "DRAW", slotSize, 2, isTouch)
+	local vBtn, vScale, vCd = CreateActionSlot(buttonRow, "V", "FLIGHT", slotSize, 3, isTouch)
+	local bBtn, bScale, bCd = CreateActionSlot(buttonRow, "B", "BREAK", slotSize, 4, isTouch)
+	local mBtn, mScale, mCd = CreateActionSlot(buttonRow, "M", "MEDITATE", slotSize, 5, isTouch)
 
 	actionButtons["R"] = { Button = rBtn, Scale = rScale, CooldownOverlay = rCd }
 	actionButtons["V"] = { Button = vBtn, Scale = vScale, CooldownOverlay = vCd }
@@ -293,7 +290,7 @@ local function BuildHUD()
 		combatActionRemote:FireServer({ ToggleMeditation = true })
 	end)
 
-	-- 2. Mobile Combat Cluster (Carefully positioned to avoid Roblox Jump Button)
+	-- 2. Mobile Combat Cluster (Right Bottom)
 	if isTouch then
 		local mobileCluster = Instance.new("Frame")
 		mobileCluster.Name = "MobileCombatCluster"
@@ -303,11 +300,10 @@ local function BuildHUD()
 		mobileCluster.BackgroundTransparency = 1
 		mobileCluster.Parent = screenGui
 
-		-- Strike Button (Positioned to the left of the Jump Button area)
 		local m1Mobile = Instance.new("ImageButton")
 		m1Mobile.Name = "Mobile_M1"
 		m1Mobile.Size = UDim2.new(0, 62, 0, 62)
-		m1Mobile.Position = UDim2.new(1, -115, 1, -15) -- Clears the Jump button completely
+		m1Mobile.Position = UDim2.new(1, -115, 1, -15)
 		m1Mobile.AnchorPoint = Vector2.new(1, 1)
 		m1Mobile.BackgroundColor3 = Color3.fromRGB(22, 28, 38)
 		m1Mobile.BackgroundTransparency = 0.2
@@ -344,11 +340,16 @@ local function BuildHUD()
 		m1Text.Size = UDim2.new(1, 0, 1, 0)
 		m1Text.BackgroundTransparency = 1
 		m1Text.Font = UI_FONT
-		m1Text.TextSize = 12
+		m1Text.TextSize = 16
 		m1Text.TextColor3 = Color3.fromRGB(255, 255, 255)
 		m1Text.ZIndex = 5
-		m1Text.Text = "⚔️\nSTRIKE"
+		m1Text.Text = "STRIKE"
 		m1Text.Parent = m1Mobile
+
+		local m1TextStroke = Instance.new("UIStroke")
+		m1TextStroke.Color = Color3.fromRGB(15, 15, 20)
+		m1TextStroke.Thickness = 1.2
+		m1TextStroke.Parent = m1Text
 
 		m1Mobile.MouseButton1Down:Connect(function()
 			TweenService:Create(m1Scale, TWEEN_INFO, { Scale = 0.92 }):Play()
@@ -358,7 +359,6 @@ local function BuildHUD()
 		end)
 		m1Mobile.MouseButton1Click:Connect(TriggerM1)
 
-		-- Dash Button (Positioned above Strike)
 		local dashBtn = Instance.new("ImageButton")
 		dashBtn.Name = "Mobile_Dash"
 		dashBtn.Size = UDim2.new(0, 48, 0, 48)
@@ -400,11 +400,16 @@ local function BuildHUD()
 		dashText.Size = UDim2.new(1, 0, 1, 0)
 		dashText.BackgroundTransparency = 1
 		dashText.Font = UI_FONT
-		dashText.TextSize = 10
+		dashText.TextSize = 13
 		dashText.TextColor3 = Color3.fromRGB(255, 255, 255)
 		dashText.ZIndex = 5
-		dashText.Text = "💨\nDASH"
+		dashText.Text = "DASH"
 		dashText.Parent = dashBtn
+
+		local dashTextStroke = Instance.new("UIStroke")
+		dashTextStroke.Color = Color3.fromRGB(15, 15, 20)
+		dashTextStroke.Thickness = 1.2
+		dashTextStroke.Parent = dashText
 
 		dashBtn.MouseButton1Down:Connect(function()
 			TweenService:Create(dashScale, TWEEN_INFO, { Scale = 0.92 }):Play()
@@ -416,7 +421,6 @@ local function BuildHUD()
 	end
 end
 
--- Triggers cooldown animation (Called directly by InputController)
 function SkillBarController.TriggerCooldown(actionKey: string, customDuration: number?)
 	local slot = actionButtons[actionKey]
 	if not slot or not slot.CooldownOverlay then return end
@@ -497,7 +501,6 @@ function SkillBarController.Init()
 	end
 	LocalPlayer.CharacterAdded:Connect(BindCharacter)
 
-	-- Desktop Keybind Visual Feedback
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 		local keyName = input.KeyCode.Name
@@ -513,7 +516,7 @@ function SkillBarController.Init()
 		end
 	end)
 
-	print("[ASCEND] SkillBarController Initialized (Mobile Attack/Dash Linked & Cooldowns Enabled).")
+	print("[ASCEND] SkillBarController Initialized (Responsive PC/Mobile Sizing Active).")
 end
 
 return SkillBarController

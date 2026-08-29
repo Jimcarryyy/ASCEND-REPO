@@ -1,4 +1,13 @@
 --!strict
+--[[
+    OverheadUIController.luau
+    Location: src/StarterPlayer/StarterPlayerScripts/Controllers/OverheadUIController.luau
+    Real-time Dynamic Overhead HUD Engine for ASCEND:
+    - Font: Bangers across all 4 tiers (Realm, Sect Rank, HP, Qi)
+    - Sizing: Realm (17pt), Sect Rank (14pt), Thicker HP/Qi Bars & Numbers
+    - Live synced Realm & Order directly from Character attributes
+]]
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -7,17 +16,32 @@ local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationCo
 
 local OverheadUIController = {}
 
+local OVERHEAD_FONT = Enum.Font.Bangers
 local BAR_TWEEN_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local MAX_VIEW_DISTANCE = 80
+local MAX_VIEW_DISTANCE = 85
 
-local function FormatRealmText(realm: string?, order: number?): string
-	local realmName = realm or "Qi Condensation"
-	local orderNum = order or 1
-	return string.format("%s · Order %d", realmName, orderNum)
+local function FormatRealmString(rawRealm: any): string
+	if type(rawRealm) == "string" and rawRealm ~= "" then
+		local clean = rawRealm:gsub("·", ""):gsub("—", "-"):gsub("%s*-%s*", " - ")
+		clean = clean:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+		return clean
+	end
+	return "Qi Condensation - Order 1"
 end
 
-local function FormatSectRank(rank: string?): string
-	return rank or "Outer Disciple"
+local function FormatSectRankString(rawRank: any): string
+	if type(rawRank) == "string" and rawRank ~= "" then
+		local rankMap: { [string]: string } = {
+			["OuterDisciple"] = "Outer Disciple",
+			["InnerDisciple"] = "Inner Disciple",
+			["CoreDisciple"] = "Core Disciple",
+			["Elder"] = "Sect Elder",
+			["GrandElder"] = "Grand Elder",
+			["Patriarch"] = "Sect Patriarch",
+		}
+		return rankMap[rawRank] or rawRank
+	end
+	return "Outer Disciple"
 end
 
 local function CreateOverheadGui(character: Model, player: Player): BillboardGui?
@@ -27,11 +51,11 @@ local function CreateOverheadGui(character: Model, player: Player): BillboardGui
 	local existing = head:FindFirstChild("PlayerOverheadUI")
 	if existing then existing:Destroy() end
 
-	-- Master Billboard
+	-- Master Billboard (Upscaled for larger Bangers text)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "PlayerOverheadUI"
-	billboard.Size = UDim2.new(0, 180, 0, 64)
-	billboard.StudsOffset = Vector3.new(0, 3.4, 0)
+	billboard.Size = UDim2.new(0, 205, 0, 74)
+	billboard.StudsOffset = Vector3.new(0, 3.6, 0)
 	billboard.MaxDistance = MAX_VIEW_DISTANCE
 	billboard.AlwaysOnTop = true
 	billboard.ResetOnSpawn = false
@@ -48,20 +72,20 @@ local function CreateOverheadGui(character: Model, player: Player): BillboardGui
 	listLayout.FillDirection = Enum.FillDirection.Vertical
 	listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	listLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-	listLayout.Padding = UDim.new(0, 3)
+	listLayout.Padding = UDim.new(0, 2)
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	listLayout.Parent = container
 
-	-- 1. Tier 1: Realm & Order
+	-- 1. Tier 1: Realm & Order (Font: Bangers, Size: 17)
 	local realmLabel = Instance.new("TextLabel")
 	realmLabel.Name = "RealmLabel"
 	realmLabel.LayoutOrder = 1
-	realmLabel.Size = UDim2.new(1, 0, 0, 16)
+	realmLabel.Size = UDim2.new(1, 0, 0, 20)
 	realmLabel.BackgroundTransparency = 1
-	realmLabel.Font = Enum.Font.Bangers
+	realmLabel.Font = OVERHEAD_FONT
 	realmLabel.TextSize = 17
 	realmLabel.TextColor3 = Color3.fromRGB(255, 220, 115)
-	realmLabel.Text = FormatRealmText(player:GetAttribute("Realm"), player:GetAttribute("Order"))
+	realmLabel.Text = FormatRealmString(character:GetAttribute("Realm") or player:GetAttribute("Realm"))
 	realmLabel.Parent = container
 
 	local realmStroke = Instance.new("UIStroke")
@@ -70,16 +94,16 @@ local function CreateOverheadGui(character: Model, player: Player): BillboardGui
 	realmStroke.Transparency = 0.1
 	realmStroke.Parent = realmLabel
 
-	-- 2. Tier 2: Sect Rank
+	-- 2. Tier 2: Sect Rank (Font: Bangers, Size: 14)
 	local sectLabel = Instance.new("TextLabel")
 	sectLabel.Name = "SectLabel"
 	sectLabel.LayoutOrder = 2
-	sectLabel.Size = UDim2.new(1, 0, 0, 13)
+	sectLabel.Size = UDim2.new(1, 0, 0, 16)
 	sectLabel.BackgroundTransparency = 1
-	sectLabel.Font = Enum.Font.Bangers
+	sectLabel.Font = OVERHEAD_FONT
 	sectLabel.TextSize = 14
-	sectLabel.TextColor3 = Color3.fromRGB(210, 222, 235)
-	sectLabel.Text = FormatSectRank(player:GetAttribute("SectRank") or player:GetAttribute("Rank"))
+	sectLabel.TextColor3 = Color3.fromRGB(215, 225, 235)
+	sectLabel.Text = FormatSectRankString(character:GetAttribute("SectRank") or player:GetAttribute("SectRank"))
 	sectLabel.Parent = container
 
 	local sectStroke = Instance.new("UIStroke")
@@ -88,11 +112,11 @@ local function CreateOverheadGui(character: Model, player: Player): BillboardGui
 	sectStroke.Transparency = 0.2
 	sectStroke.Parent = sectLabel
 
-	-- 3. Tier 3: Thicker Health Bar (10px Height with Centered Numbers)
+	-- 3. Tier 3: Enlarged Health Bar (12px Height)
 	local hpBg = Instance.new("Frame")
 	hpBg.Name = "HPBackground"
 	hpBg.LayoutOrder = 3
-	hpBg.Size = UDim2.new(1, 0, 0, 10)
+	hpBg.Size = UDim2.new(1, 0, 0, 12)
 	hpBg.BackgroundColor3 = Color3.fromRGB(25, 8, 10)
 	hpBg.BorderSizePixel = 0
 	hpBg.ClipsDescendants = true
@@ -130,8 +154,8 @@ local function CreateOverheadGui(character: Model, player: Player): BillboardGui
 	hpNumberLabel.Name = "HPNumberLabel"
 	hpNumberLabel.Size = UDim2.new(1, 0, 1, 0)
 	hpNumberLabel.BackgroundTransparency = 1
-	hpNumberLabel.Font = Enum.Font.Bangers
-	hpNumberLabel.TextSize = 11
+	hpNumberLabel.Font = OVERHEAD_FONT
+	hpNumberLabel.TextSize = 10.5
 	hpNumberLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	hpNumberLabel.Text = "100 / 100"
 	hpNumberLabel.ZIndex = 5
@@ -139,14 +163,14 @@ local function CreateOverheadGui(character: Model, player: Player): BillboardGui
 
 	local hpNumStroke = Instance.new("UIStroke")
 	hpNumStroke.Color = Color3.fromRGB(15, 10, 10)
-	hpNumStroke.Thickness = 1
+	hpNumStroke.Thickness = 1.1
 	hpNumStroke.Parent = hpNumberLabel
 
-	-- 4. Tier 4: Thicker Qi Bar (9px Height with Centered Numbers)
+	-- 4. Tier 4: Enlarged Qi Bar (10px Height)
 	local qiBg = Instance.new("Frame")
 	qiBg.Name = "QiBackground"
 	qiBg.LayoutOrder = 4
-	qiBg.Size = UDim2.new(1, 0, 0, 9)
+	qiBg.Size = UDim2.new(1, 0, 0, 10)
 	qiBg.BackgroundColor3 = Color3.fromRGB(8, 16, 25)
 	qiBg.BorderSizePixel = 0
 	qiBg.ClipsDescendants = true
@@ -184,8 +208,8 @@ local function CreateOverheadGui(character: Model, player: Player): BillboardGui
 	qiNumberLabel.Name = "QINumberLabel"
 	qiNumberLabel.Size = UDim2.new(1, 0, 1, 0)
 	qiNumberLabel.BackgroundTransparency = 1
-	qiNumberLabel.Font = Enum.Font.Bangers
-	qiNumberLabel.TextSize = 11
+	qiNumberLabel.Font = OVERHEAD_FONT
+	qiNumberLabel.TextSize = 9.5
 	qiNumberLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	qiNumberLabel.Text = "100 / 100"
 	qiNumberLabel.ZIndex = 5
@@ -193,7 +217,7 @@ local function CreateOverheadGui(character: Model, player: Player): BillboardGui
 
 	local qiNumStroke = Instance.new("UIStroke")
 	qiNumStroke.Color = Color3.fromRGB(10, 15, 20)
-	qiNumStroke.Thickness = 1
+	qiNumStroke.Thickness = 1.1
 	qiNumStroke.Parent = qiNumberLabel
 
 	return billboard
@@ -253,21 +277,20 @@ local function BindCharacter(character: Model)
 	local qiPlrConn = player:GetAttributeChangedSignal("CultivatedQi"):Connect(UpdateQi)
 
 	local function UpdateRealm()
-		realmLabel.Text = FormatRealmText(
-			player:GetAttribute("Realm") or character:GetAttribute("Realm"),
-			player:GetAttribute("Order") or character:GetAttribute("Order")
-		)
+		local rawRealm = character:GetAttribute("Realm") or player:GetAttribute("Realm")
+		realmLabel.Text = FormatRealmString(rawRealm)
 	end
-	local realmConn = player:GetAttributeChangedSignal("Realm"):Connect(UpdateRealm)
-	local orderConn = player:GetAttributeChangedSignal("Order"):Connect(UpdateRealm)
+	UpdateRealm()
+	local realmConn = character:GetAttributeChangedSignal("Realm"):Connect(UpdateRealm)
+	local playerRealmConn = player:GetAttributeChangedSignal("Realm"):Connect(UpdateRealm)
 
 	local function UpdateSectRank()
-		sectLabel.Text = FormatSectRank(
-			player:GetAttribute("SectRank") or player:GetAttribute("Rank") or character:GetAttribute("SectRank")
-		)
+		local rawRank = character:GetAttribute("SectRank") or player:GetAttribute("SectRank") or player:GetAttribute("Rank")
+		sectLabel.Text = FormatSectRankString(rawRank)
 	end
-	local sectConn = player:GetAttributeChangedSignal("SectRank"):Connect(UpdateSectRank)
-	local rankConn = player:GetAttributeChangedSignal("Rank"):Connect(UpdateSectRank)
+	UpdateSectRank()
+	local sectConn = character:GetAttributeChangedSignal("SectRank"):Connect(UpdateSectRank)
+	local playerSectConn = player:GetAttributeChangedSignal("SectRank"):Connect(UpdateSectRank)
 
 	humanoid.Died:Once(function()
 		hpConn:Disconnect()
@@ -276,9 +299,9 @@ local function BindCharacter(character: Model)
 		qiMaxConn:Disconnect()
 		qiPlrConn:Disconnect()
 		realmConn:Disconnect()
-		orderConn:Disconnect()
+		playerRealmConn:Disconnect()
 		sectConn:Disconnect()
-		rankConn:Disconnect()
+		playerSectConn:Disconnect()
 	end)
 end
 
@@ -297,7 +320,7 @@ function OverheadUIController.Init()
 	end
 	Players.PlayerAdded:Connect(HookPlayer)
 
-	print("[ASCEND] OverheadUIController Initialized (Thick Real-time 4-Tier Player HUD Active).")
+	print("[ASCEND] OverheadUIController Initialized (All Bangers Typography Active).")
 end
 
 return OverheadUIController

@@ -2,10 +2,10 @@
 --[[
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
-    Client HUD Engine for ASCEND:
-    - Automatically enables & reveals TopMenuGUI and Vital HUDs in-game (safe for hidden editing in Studio)
-    - Hooks TopMenuGUI (Tab_BAG / Pouch, Tab_ARENA, Tab_SETTINGS) with Hover Zoom Animations, Pointer Cursor, & Audio
-    - Full Qi, Health, Toast, and Skin lifecycle management
+    Client HUD & Pure-Text Floating Toast Engine for ASCEND:
+    - Master Top-Center Pure-Text Toast Engine (No boxes, no frames, pure floating Bangers words)
+    - TopMenuGUI 3-Icon Setup with Responsive Hover Zoom and Hand Cursor
+    - Vital HUD, Qi, Health, and Skin syncing
 ]]
 
 local Players = game:GetService("Players")
@@ -24,14 +24,11 @@ local HUDController = {}
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local UI_FONT   = Enum.Font.FredokaOne
-local UI_FONT_2 = Enum.Font.LuckiestGuy
-local T         = UIAssets.Theme
+local TOAST_FONT = Enum.Font.Bangers
+local UI_FONT    = Enum.Font.FredokaOne
+local T          = UIAssets.Theme
 
--- Select Menu Sound Effect
 local SELECT_MENU_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.MenuSelect) or "rbxassetid://101735926591481"
-
--- Button Hover Animation Constants
 local HOVER_TWEEN_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local DEFAULT_SCALE = 1.0
 local HOVER_SCALE   = 1.10
@@ -39,6 +36,9 @@ local PRESS_SCALE   = 0.95
 
 local hudScreenGui: ScreenGui?
 local topMenuGui: ScreenGui?
+local toastScreenGui: ScreenGui?
+local topToastContainer: Frame?
+
 local vitalFrame: ImageLabel?
 local portraitMaskFrame: Frame?
 local avatarHeadshot: ImageLabel?
@@ -60,12 +60,10 @@ local qiFillYScale: number = 1
 local qiFillYOffset: number = 0
 
 local hotbarFrame: Frame?
-local toastContainer: Frame?
 local hotbarSlots: { [number]: Frame } = {}
 
 local currentInventoryData: { [number]: any } = {}
 local activeSkinId: string = "DefaultBronze"
-local activeBreakthroughToast: Frame? = nil
 
 local updateInventoryRemote: RemoteEvent
 local updateCultivationRemote: RemoteEvent
@@ -90,11 +88,139 @@ local function FindChildCaseInsensitive(parent: Instance, targetName: string): I
 	return nil
 end
 
+-- =============================================================================
+-- MASTER TOP-CENTER PURE TEXT TOAST ENGINE (Font: Bangers | No Boxes | Float In/Out)
+-- =============================================================================
+local function EnsureToastContainer(): Frame
+	if topToastContainer and topToastContainer.Parent then
+		return topToastContainer
+	end
+
+	if not toastScreenGui or not toastScreenGui.Parent then
+		toastScreenGui = Instance.new("ScreenGui")
+		toastScreenGui.Name = "AscendPureToastGui"
+		toastScreenGui.ResetOnSpawn = false
+		toastScreenGui.DisplayOrder = 100
+		toastScreenGui.IgnoreGuiInset = true
+		toastScreenGui.Parent = playerGui
+	end
+
+	local container = Instance.new("Frame")
+	container.Name = "TopToastContainer"
+	container.Size = UDim2.new(0, 500, 0, 200)
+	container.Position = UDim2.new(0.5, 0, 0, 55)
+	container.AnchorPoint = Vector2.new(0.5, 0)
+	container.BackgroundTransparency = 1
+	container.Parent = toastScreenGui
+
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.FillDirection = Enum.FillDirection.Vertical
+	listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	listLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+	listLayout.Padding = UDim.new(0, 4)
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Parent = container
+
+	topToastContainer = container
+	return container
+end
+
+function HUDController.ShowGlobalToast(message: string, toastType: string?, duration: number?)
+	local container = EnsureToastContainer()
+	local toastDuration = duration or 2.6
+	local kind = toastType or "Success"
+
+	-- Dynamic Color by category
+	local textColor = Color3.fromRGB(255, 225, 120) -- Default Gold
+	if kind == "Item" or kind == "Gather" then
+		textColor = Color3.fromRGB(130, 245, 175) -- Spiritual Jade
+	elseif kind == "Breakthrough" or kind == "Qi" then
+		textColor = Color3.fromRGB(140, 220, 255) -- Celestial Cyan
+	elseif kind == "Reward" or kind == "Sect" then
+		textColor = Color3.fromRGB(255, 215, 80) -- Radiant Gold
+	elseif kind == "Warning" or kind == "Error" then
+		textColor = Color3.fromRGB(255, 95, 95) -- Crimson
+	end
+
+	-- Pure Text Label (No Background Frame)
+	local textLbl = Instance.new("TextLabel")
+	textLbl.Name = "PureToast"
+	textLbl.Size = UDim2.new(1, 0, 0, 28)
+	textLbl.Position = UDim2.new(0, 0, 0, -8) -- Start slightly offset for drop-in
+	textLbl.BackgroundTransparency = 1
+	textLbl.Font = TOAST_FONT
+	textLbl.TextSize = 22
+	textLbl.TextColor3 = textColor
+	textLbl.TextTransparency = 1
+	textLbl.Text = message
+	textLbl.TextXAlignment = Enum.TextXAlignment.Center
+	textLbl.TextYAlignment = Enum.TextYAlignment.Center
+	textLbl.Parent = container
+
+	local textStroke = Instance.new("UIStroke")
+	textStroke.Color = Color3.fromRGB(10, 10, 15)
+	textStroke.Thickness = 1.8
+	textStroke.Transparency = 1
+	textStroke.Parent = textLbl
+
+	-- 1. Fade-in and float down smoothly
+	local fadeInInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(textLbl, fadeInInfo, {
+		TextTransparency = 0,
+		Position = UDim2.new(0, 0, 0, 0)
+	}):Play()
+	TweenService:Create(textStroke, fadeInInfo, {
+		Transparency = 0
+	}):Play()
+
+	-- 2. Hold and then float up and fade out
+	task.delay(toastDuration, function()
+		if textLbl and textLbl.Parent then
+			local fadeOutInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			local fadeText = TweenService:Create(textLbl, fadeOutInfo, {
+				TextTransparency = 1,
+				Position = UDim2.new(0, 0, 0, -14)
+			})
+			TweenService:Create(textStroke, fadeOutInfo, {
+				Transparency = 1
+			}):Play()
+			fadeText:Play()
+
+			fadeText.Completed:Connect(function()
+				if textLbl and textLbl.Parent then
+					textLbl:Destroy()
+				end
+			end)
+		end
+	end)
+end
+
+function HUDController.ShowEncouragingToast(message: string)
+	HUDController.ShowGlobalToast(message, "Breakthrough", 3.0)
+end
+
+function HUDController.ShowItemToast(itemId: string, count: number, qualityText: any?)
+	local itemDef = ItemConfig.GetItem(itemId)
+	local itemName = if itemDef then itemDef.Name else itemId
+
+	local toastText = string.format("+%d %s", count, itemName:upper())
+	if qualityText ~= nil and tostring(qualityText) ~= "" then
+		local cleanQuality = string.gsub(tostring(qualityText), " Quality", "")
+		toastText = string.format("+%d [%s] %s", count, cleanQuality:upper(), itemName:upper())
+	end
+
+	HUDController.ShowGlobalToast(toastText, "Item", 2.6)
+end
+
+-- =============================================================================
+-- CONTROLLER INITIALIZATION
+-- =============================================================================
 function HUDController.Init()
 	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
 	updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 
+	EnsureToastContainer()
 	HUDController.HookExplorerHUD()
 	HUDController.HookTopMenu()
 
@@ -106,8 +232,10 @@ function HUDController.Init()
 	updateCultivationRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) == "table" then
 			if payload.Action == "BreakthroughRejected" and payload.Message then
-				HUDController.ShowEncouragingToast(payload.Message)
+				HUDController.ShowGlobalToast(payload.Message, "Warning", 3.2)
 				return
+			elseif payload.Action == "BreakthroughSuccess" then
+				HUDController.ShowGlobalToast("BREAKTHROUGH ACHIEVED!", "Breakthrough", 3.8)
 			end
 
 			local curQi = payload.CurrentQi or 1000
@@ -134,35 +262,21 @@ function HUDController.Init()
 		HUDController.ListenSkinChanges(player.Character)
 	end
 
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then return end
-		local keyNum = tonumber(input.KeyCode.Name:sub(-1))
-		if keyNum and keyNum >= 1 and keyNum <= 5 then
-			local inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
-			inventoryActionRemote:FireServer({
-				Action = "UseItem",
-				SlotIndex = keyNum,
-			})
-		end
-	end)
-
-	print("[ASCEND] HUDController Initialized (Auto-Reveal Enabled & TopMenu Hooked).")
+	print("[ASCEND] HUDController Initialized (Pure Floating Bangers Toast Active).")
 end
 
 -- =============================================================================
--- TOP MENU HOOK (AUTO-REVEALS IN-GAME WITH HOVER ZOOM & HAND CURSOR)
+-- TOP MENU HOOK
 -- =============================================================================
 function HUDController.HookTopMenu()
 	topMenuGui = (playerGui:FindFirstChild("TopMenuGUI") or playerGui:WaitForChild("TopMenuGUI", 10)) :: ScreenGui?
 	if not topMenuGui then return end
 
-	-- Automatically force-enable ScreenGui in-game
 	topMenuGui.Enabled = true
 
 	local topMenu = (topMenuGui:FindFirstChild("TopMenu") or topMenuGui:WaitForChild("TopMenu", 5)) :: Frame?
 	if not topMenu then return end
 
-	-- Automatically force-reveal TopMenu frame and children
 	topMenu.Visible = true
 	for _, child in ipairs(topMenu:GetChildren()) do
 		if child:IsA("GuiObject") then
@@ -170,7 +284,6 @@ function HUDController.HookTopMenu()
 		end
 	end
 
-	-- Remove old Meditate button if still present in hierarchy
 	local oldMeditate = topMenu:FindFirstChild("Tab_MEDITATE") 
 		or topMenu:FindFirstChild("MeditateMenu") 
 		or topMenu:FindFirstChild("MeditateButton")
@@ -178,7 +291,6 @@ function HUDController.HookTopMenu()
 		oldMeditate:Destroy()
 	end
 
-	-- Helper to bind click + responsive zoom hover animation
 	local function BindMenuIconButton(menuNames: { string }, onClick: () -> ())
 		local menuContainer: Instance? = nil
 		for _, name in ipairs(menuNames) do
@@ -191,7 +303,6 @@ function HUDController.HookTopMenu()
 		guiObj.Active = true
 		guiObj.Selectable = true
 
-		-- Attach UIScale for clean proportional zoom
 		local uiScale = guiObj:FindFirstChildOfClass("UIScale")
 		if not uiScale then
 			uiScale = Instance.new("UIScale")
@@ -199,7 +310,6 @@ function HUDController.HookTopMenu()
 			uiScale.Parent = guiObj
 		end
 
-		-- Hover Animations
 		guiObj.MouseEnter:Connect(function()
 			TweenService:Create(uiScale, HOVER_TWEEN_INFO, { Scale = HOVER_SCALE }):Play()
 		end)
@@ -230,7 +340,6 @@ function HUDController.HookTopMenu()
 		end
 	end
 
-	-- 1. Bag / Pouch Menu
 	BindMenuIconButton({ "Tab_BAG", "BagMenu", "BagButton", "PouchButton", "PouchMenu" }, function()
 		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
 		if controllers then
@@ -242,7 +351,6 @@ function HUDController.HookTopMenu()
 		end
 	end)
 
-	-- 2. Arena Menu
 	BindMenuIconButton({ "Tab_ARENA", "ArenaMenu", "ArenaButton" }, function()
 		local controllers = player.PlayerScripts:FindFirstChild("Controllers")
 		if controllers then
@@ -258,19 +366,18 @@ function HUDController.HookTopMenu()
 		end
 	end)
 
-	-- 3. Settings Menu
 	BindMenuIconButton({ "Tab_SETTINGS", "SettingsMenu", "SettingsButton" }, function()
 		local settingsGui = playerGui:FindFirstChild("SettingsGui") or playerGui:FindFirstChild("GameSettingsGui")
 		if settingsGui and settingsGui:IsA("ScreenGui") then
 			settingsGui.Enabled = not settingsGui.Enabled
 		else
-			print("[HUDController] Settings Menu clicked.")
+			HUDController.ShowGlobalToast("SETTINGS MENU OPENED", "Success", 2.0)
 		end
 	end)
 end
 
 -- =============================================================================
--- VITAL HUD HOOK (AUTO-REVEALS IN-GAME)
+-- VITAL HUD HOOK
 -- =============================================================================
 function HUDController.HookExplorerHUD()
 	hudScreenGui = (playerGui:FindFirstChild("VitalHUDGui") or playerGui:FindFirstChild("AscendMainHUD")) :: ScreenGui?
@@ -279,7 +386,6 @@ function HUDController.HookExplorerHUD()
 	end
 	if not hudScreenGui then return end
 
-	-- Automatically force-enable ScreenGui in-game
 	hudScreenGui.Enabled = true
 
 	vitalFrame = (hudScreenGui:FindFirstChild("VitalHUDFrame") or hudScreenGui:FindFirstChild("VitalHUDFrame", true)) :: ImageLabel?
@@ -331,30 +437,13 @@ function HUDController.HookExplorerHUD()
 		hpBarText = FindChildCaseInsensitive(hpSlotFrame, "HPBarText") :: TextLabel?
 		if hpBarText then
 			hpBarText.BackgroundTransparency = 1
-			hpBarText.Font = UI_FONT_2
+			hpBarText.Font = UI_FONT
 			hpBarText.TextSize = 13
 			hpBarText.Position = UDim2.new(0, 0, 0, 0)
 			hpBarText.Size = UDim2.new(1, -18, 1, 0)
 			hpBarText.TextXAlignment = Enum.TextXAlignment.Right
 			hpBarText.TextYAlignment = Enum.TextYAlignment.Center
 			hpBarText.ZIndex = 8
-		end
-
-		hpLeftLabel = FindChildCaseInsensitive(hpSlotFrame, "HPLabel") :: TextLabel?
-		if not hpLeftLabel then
-			hpLeftLabel = Instance.new("TextLabel")
-			hpLeftLabel.Name = "HPLabel"
-			hpLeftLabel.Size = UDim2.new(0, 40, 1, 0)
-			hpLeftLabel.Position = UDim2.new(0, 14, 0, 0)
-			hpLeftLabel.BackgroundTransparency = 1
-			hpLeftLabel.Text = "HP"
-			hpLeftLabel.TextColor3 = T.PrimaryText
-			hpLeftLabel.Font = UI_FONT_2
-			hpLeftLabel.TextSize = 13
-			hpLeftLabel.TextXAlignment = Enum.TextXAlignment.Left
-			hpLeftLabel.TextYAlignment = Enum.TextYAlignment.Center
-			hpLeftLabel.ZIndex = 10
-			hpLeftLabel.Parent = hpSlotFrame
 		end
 	end
 
@@ -372,30 +461,13 @@ function HUDController.HookExplorerHUD()
 		qiBarText = FindChildCaseInsensitive(qiSlotFrame, "QiBarText") :: TextLabel?
 		if qiBarText then
 			qiBarText.BackgroundTransparency = 1
-			qiBarText.Font = UI_FONT_2
+			qiBarText.Font = UI_FONT
 			qiBarText.TextSize = 13
 			qiBarText.Position = UDim2.new(0, 0, 0, 0)
 			qiBarText.Size = UDim2.new(1, -18, 1, 0)
 			qiBarText.TextXAlignment = Enum.TextXAlignment.Right
 			qiBarText.TextYAlignment = Enum.TextYAlignment.Center
 			qiBarText.ZIndex = 8
-		end
-
-		qiLeftLabel = FindChildCaseInsensitive(qiSlotFrame, "QILabel") :: TextLabel?
-		if not qiLeftLabel then
-			qiLeftLabel = Instance.new("TextLabel")
-			qiLeftLabel.Name = "QILabel"
-			qiLeftLabel.Size = UDim2.new(0, 40, 1, 0)
-			qiLeftLabel.Position = UDim2.new(0, 14, 0, 0)
-			qiLeftLabel.BackgroundTransparency = 1
-			qiLeftLabel.Text = "QI"
-			qiLeftLabel.TextColor3 = T.PrimaryText
-			qiLeftLabel.Font = UI_FONT_2
-			qiLeftLabel.TextSize = 13
-			qiLeftLabel.TextXAlignment = Enum.TextXAlignment.Left
-			qiLeftLabel.TextYAlignment = Enum.TextYAlignment.Center
-			qiLeftLabel.ZIndex = 10
-			qiLeftLabel.Parent = qiSlotFrame
 		end
 	end
 
@@ -409,8 +481,6 @@ function HUDController.HookExplorerHUD()
 			end
 		end
 	end
-
-	toastContainer = FindChildCaseInsensitive(hudScreenGui, "ToastContainer") :: Frame?
 end
 
 function HUDController.ListenSkinChanges(character: Model)
@@ -541,153 +611,6 @@ function HUDController.UpdateHotbar()
 		local countLbl = FindChildCaseInsensitive(slot6, "CountLabel") :: TextLabel?
 		if countLbl then countLbl.Text = "POUCH" end
 	end
-end
-
-function HUDController.ShowEncouragingToast(message: string)
-	if not hudScreenGui then
-		HUDController.HookExplorerHUD()
-	end
-	if not hudScreenGui then return end
-
-	if activeBreakthroughToast and activeBreakthroughToast.Parent then
-		activeBreakthroughToast:Destroy()
-	end
-
-	local toastFrame = Instance.new("Frame")
-	toastFrame.Name = "BreakthroughEncouragingToast"
-	toastFrame.Size = UDim2.new(0, 420, 0, 48)
-	toastFrame.Position = UDim2.new(0.5, -210, 0.65, 0)
-	toastFrame.BackgroundColor3 = T.DeepBackground
-	toastFrame.BackgroundTransparency = 1
-	toastFrame.BorderSizePixel = 0
-	toastFrame.ZIndex = 50
-	toastFrame.Parent = hudScreenGui
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = toastFrame
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = T.HighlightBorder
-	stroke.Thickness = 1.5
-	stroke.Transparency = 1
-	stroke.Parent = toastFrame
-
-	local textLbl = Instance.new("TextLabel")
-	textLbl.Name = "ToastMessage"
-	textLbl.Size = UDim2.new(1, -20, 1, 0)
-	textLbl.Position = UDim2.new(0, 10, 0, 0)
-	textLbl.BackgroundTransparency = 1
-	textLbl.Text = message
-	textLbl.TextColor3 = T.PrimaryText
-	textLbl.TextTransparency = 1
-	textLbl.Font = UI_FONT_2
-	textLbl.TextSize = 15
-	textLbl.TextWrapped = true
-	textLbl.TextXAlignment = Enum.TextXAlignment.Center
-	textLbl.TextYAlignment = Enum.TextYAlignment.Center
-	textLbl.ZIndex = 51
-	textLbl.Parent = toastFrame
-
-	activeBreakthroughToast = toastFrame
-
-	local tweenIn = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	TweenService:Create(toastFrame, tweenIn, { BackgroundTransparency = 0 }):Play()
-	TweenService:Create(stroke, tweenIn, { Transparency = 0 }):Play()
-	TweenService:Create(textLbl, tweenIn, { TextTransparency = 0 }):Play()
-
-	task.delay(2.5, function()
-		if toastFrame and toastFrame.Parent then
-			local tweenOut = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			TweenService:Create(toastFrame, tweenOut, { BackgroundTransparency = 1 }):Play()
-			TweenService:Create(stroke, tweenOut, { Transparency = 1 }):Play()
-			local fadeText = TweenService:Create(textLbl, tweenOut, { TextTransparency = 1 })
-			fadeText:Play()
-
-			fadeText.Completed:Connect(function()
-				if toastFrame and toastFrame.Parent then
-					toastFrame:Destroy()
-				end
-				if activeBreakthroughToast == toastFrame then
-					activeBreakthroughToast = nil
-				end
-			end)
-		end
-	end)
-end
-
-function HUDController.ShowItemToast(itemId: string, count: number, qualityText: any?)
-	if not toastContainer then
-		HUDController.HookExplorerHUD()
-	end
-	if not toastContainer then return end
-
-	local itemDef = ItemConfig.GetItem(itemId)
-	local itemName = if itemDef then itemDef.Name else itemId
-	local iconAsset = if itemDef then itemDef.Icon else nil
-
-	local qualityStr: string? = nil
-	if qualityText ~= nil then
-		qualityStr = tostring(qualityText)
-	end
-
-	local colorData = UIAssets.RarityCardColors[if itemDef then itemDef.Rarity else "Common"]
-	if qualityStr and UIAssets.GradeCardColors[qualityStr] then
-		colorData = UIAssets.GradeCardColors[qualityStr]
-	end
-
-	local cardBg = if colorData then colorData.Background else T.RaisedSurface
-	local borderCol = if colorData then colorData.Border else T.JadeAccent
-
-	local toastText = string.format("+%d  %s", count, itemName)
-	if qualityStr and qualityStr ~= "" then
-		local cleanQuality = string.gsub(qualityStr, " Quality", "")
-		toastText = string.format("+%d  [%s] %s", count, cleanQuality, itemName)
-	end
-
-	local toastFrame = Instance.new("Frame")
-	toastFrame.Name = "ItemToast"
-	toastFrame.Size = UDim2.new(1, 0, 0, 42)
-	toastFrame.BackgroundColor3 = cardBg
-	toastFrame.BackgroundTransparency = 0
-	toastFrame.BorderSizePixel = 0
-	toastFrame.Parent = toastContainer
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = borderCol
-	stroke.Thickness = 1.5
-	stroke.Transparency = 0
-	stroke.Parent = toastFrame
-
-	local iconLabel = Instance.new("ImageLabel")
-	iconLabel.Name = "ToastIcon"
-	iconLabel.Size = UDim2.new(0, 30, 0, 30)
-	iconLabel.Position = UDim2.new(0, 6, 0, 6)
-	iconLabel.BackgroundTransparency = 1
-	iconLabel.ScaleType = Enum.ScaleType.Fit
-	iconLabel.Image = iconAsset or ""
-	iconLabel.ImageTransparency = 0
-	iconLabel.Parent = toastFrame
-
-	local textLbl = Instance.new("TextLabel")
-	textLbl.Name = "ToastText"
-	textLbl.Size = UDim2.new(1, -48, 1, 0)
-	textLbl.Position = UDim2.new(0, 42, 0, 0)
-	textLbl.BackgroundTransparency = 1
-	textLbl.Text = toastText
-	textLbl.TextColor3 = T.PrimaryText
-	textLbl.TextTransparency = 0
-	textLbl.Font = UI_FONT
-	textLbl.TextSize = 13
-	textLbl.TextXAlignment = Enum.TextXAlignment.Left
-	textLbl.TextYAlignment = Enum.TextYAlignment.Center
-	textLbl.Parent = toastFrame
-
-	task.delay(3.0, function()
-		if toastFrame and toastFrame.Parent then
-			toastFrame:Destroy()
-		end
-	end)
 end
 
 return HUDController

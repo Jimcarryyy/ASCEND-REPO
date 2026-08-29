@@ -2,584 +2,577 @@
 --[[
     MarketController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/MarketController.luau
-    Client UI controller for the Azure Cloud Sect Market (Trading Goods & Selling Loot).
-    Theme: Dark Obsidian (#111827), Antique Gold (#8B6B32), and Jade Cultivation (#10B981).
+    Bound directly to Studio StarterGui.SectMerchantMarketGui hierarchy:
+    - Zero hardcoded UI elements / positions
+    - Binds to HeaderFrame, UpperFrame, SecondaryFrame, and TertiaryFrame
+    - Real-time sync with ItemConfig, SectConfig, VendorManager, and PlayerDataManager
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
 local SoundService = game:GetService("SoundService")
 
-local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
-local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
+local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
+local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local MarketController = {}
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-local localPlayer = Players.LocalPlayer
-local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
+-- Network Remotes
+local marketActionRemote: RemoteEvent
+local updateInventoryRemote: RemoteEvent
 
-local UI_FONT = Enum.Font.FredokaOne
-local T = UIAssets.Theme
+-- GUI Root & Frames (from SectMerchantMarketGui hierarchy)
+local marketGui: ScreenGui?
+local mainFrame: ImageLabel?
+local headerFrame: Frame?
+local upperFrame: Frame?
+local secondaryFrame: Frame?
+local tertiaryFrame: Frame?
 
-local COLOR_LIGHT_MAIN   = T.DeepBackground
-local COLOR_LIGHT_PANEL  = T.SecondarySurface
-local COLOR_LIGHT_CARD   = T.RaisedSurface
-local COLOR_LIGHT_BORDER = T.MainBorder
+-- Header & Close
+local closeBtn: ImageButton?
+local titleLabel: TextLabel?
 
-local COLOR_TEXT_MAIN    = T.PrimaryText
-local COLOR_TEXT_SUB     = T.SecondaryText
-local COLOR_AZURE_BLUE   = T.SpiritBlue
-local COLOR_HP_GREEN     = T.JadeAccent
-local COLOR_ACTION_GOLD  = T.HighlightBorder
-local COLOR_DANGER_RED   = T.Vermilion
+-- UpperFrame Stats (Left = Stones, Center = Rank, Right = CP)
+local stonesLabel: TextLabel?
+local rankLabel: TextLabel?
+local cpLabel: TextLabel?
 
-local CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
+-- SecondaryFrame (Tabs & Filters)
+local tabBuyGoods: ImageButton?
+local tabSellLoot: ImageButton?
+local filterAll: ImageButton?
+local filterCores: ImageButton?
+local filterElixirs: ImageButton?
+local filterHerbs: ImageButton?
+local filterTalismans: ImageButton?
 
-local marketRemote: RemoteEvent
+-- TertiaryFrame -> InnerFrame1 (Item Catalog Grid)
+local itemGridScroll: ScrollingFrame?
+local templateSlotFrame: ImageLabel?
 
--- UI Instances
-local screenGui: ScreenGui
-local toastGui: ScreenGui
-local overlayBackdrop: Frame
-local mainModal: Frame
-local headerTitle: TextLabel
-local balanceLabel: TextLabel
-local rankLabel: TextLabel
-local contributionLabel: TextLabel
-local navBar: Frame
-local contentContainer: Frame
-local toastContainer: Frame
+-- TertiaryFrame -> InnerFrame2 (Inspect & Checkout Panel)
+local inspectItemImage: ImageLabel?
+local inspectPillName: TextLabel?
+local inspectGrade: TextLabel?
+local inspectSpiritAge: TextLabel?
+local inspectEffectsDesc: TextLabel?
+local countLabel: TextLabel?
+local minusBtn: ImageButton?
+local plusBtn: ImageButton?
+local maxBtn: ImageButton?
+local totalValueLabel: TextLabel?
+local confirmExchangeBtn: ImageButton?
+local confirmBtnText: TextLabel?
 
--- State
-local isOpen = false
-local currentTab: "Buy" | "Sell" = "Buy"
-local currentStones = 250
-local currentRank: SectConfig.DiscipleRank = "OuterDisciple"
-local currentContribution = 0
-local playerInventoryList: { [number]: { ItemId: string, Count: number, Quality: string? } } = {}
+-- Controller State
+local currentMode: "Buy" | "Sell" = "Buy"
+local currentCategory: "ALL" | "CORES" | "ELIXIRS" | "HERBS" | "TALISMANS" = "ALL"
+local selectedItemId: string? = nil
+local selectedQuantity: number = 1
+local currentInventory: { [number]: { ItemId: string, Count: number, Quality: any? } } = {}
+local activeSlotClones: { Instance } = {}
 
-local function PlayClickAudio()
+local function PlayClickSound()
 	local sound = Instance.new("Sound")
-	sound.SoundId = CLICK_SOUND_ID
-	sound.Volume = 0.55
+	sound.SoundId = "rbxassetid://101735926591481"
+	sound.Volume = 0.5
 	sound.Parent = SoundService
 	sound:Play()
 	game:GetService("Debris"):AddItem(sound, 1.2)
 end
 
-function MarketController.ShowToast(message: string, isError: boolean?)
-	if not toastContainer then return end
+local function FormatNum(val: number): string
+	return CultivationConfig.FormatNumber(val)
+end
 
-	local toast = Instance.new("Frame")
-	toast.Size = UDim2.new(0, 380, 0, 44)
-	toast.Position = UDim2.new(0.5, 0, 0, -60)
-	toast.AnchorPoint = Vector2.new(0.5, 0)
-	toast.BackgroundColor3 = if isError then COLOR_DANGER_RED else COLOR_HP_GREEN
-	toast.BorderSizePixel = 0
-	toast.ZIndex = 100
-	toast.Parent = toastContainer
+local function FormatRank(rawRank: any): string
+	local rankDef = SectConfig.GetRank(tostring(rawRank) :: any)
+	return if rankDef then rankDef.DisplayName:upper() else tostring(rawRank or "OUTER DISCIPLE"):upper()
+end
 
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = COLOR_TEXT_MAIN
-	stroke.Thickness = 1.5
-	stroke.Parent = toast
+-- =============================================================================
+-- HIERARCHY LOCATOR & BINDING
+-- =============================================================================
+local function BindHierarchy(): boolean
+	marketGui = PlayerGui:WaitForChild("SectMerchantMarketGui", 8) :: ScreenGui?
+	if not marketGui then return false end
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -20, 1, 0)
-	label.Position = UDim2.new(0, 10, 0, 0)
-	label.BackgroundTransparency = 1
-	label.Text = message
-	label.TextColor3 = COLOR_TEXT_MAIN
-	label.Font = UI_FONT
-	label.TextSize = 14
-	label.TextScaled = true
-	label.ZIndex = 101
-	label.Parent = toast
+	mainFrame = marketGui:FindFirstChild("MainFrame") :: ImageLabel?
+	if not mainFrame then return false end
 
-	TweenService:Create(toast, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, 0, 0, 25) }):Play()
+	-- 1. HeaderFrame
+	headerFrame = mainFrame:FindFirstChild("HeaderFrame") :: Frame?
+	if headerFrame then
+		closeBtn = headerFrame:FindFirstChild("CloseImageButton") :: ImageButton?
+		titleLabel = headerFrame:FindFirstChild("TitleLabel") :: TextLabel?
+	end
 
-	task.delay(2.8, function()
-		if toast and toast.Parent then
-			local fade = TweenService:Create(toast, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-				Position = UDim2.new(0.5, 0, 0, -60),
-				BackgroundTransparency = 1,
-			})
-			fade:Play()
-			fade.Completed:Connect(function()
-				toast:Destroy()
+	-- 2. UpperFrame (Left = Stones, Center = Rank, Right = CP)
+	upperFrame = mainFrame:FindFirstChild("UpperFrame") :: Frame?
+	if upperFrame then
+		local leftFrame = upperFrame:FindFirstChild("Left")
+		if leftFrame then stonesLabel = leftFrame:FindFirstChild("TextLabel") :: TextLabel? end
+
+		local centerFrame = upperFrame:FindFirstChild("Center")
+		if centerFrame then rankLabel = centerFrame:FindFirstChild("TextLabel") :: TextLabel? end
+
+		local rightFrame = upperFrame:FindFirstChild("Right")
+		if rightFrame then cpLabel = rightFrame:FindFirstChild("TextLabel") :: TextLabel? end
+	end
+
+	-- 3. SecondaryFrame (TabFrame & TabFrame2)
+	secondaryFrame = mainFrame:FindFirstChild("SecondaryFrame") :: Frame?
+	if secondaryFrame then
+		local tabFrame = secondaryFrame:FindFirstChild("TabFrame")
+		if tabFrame then
+			tabBuyGoods = tabFrame:FindFirstChild("Tab_BUYGOODS") :: ImageButton?
+			tabSellLoot = tabFrame:FindFirstChild("Tab_SELLLOOT") :: ImageButton?
+		end
+
+		local tabFrame2 = secondaryFrame:FindFirstChild("TabFrame2")
+		if tabFrame2 then
+			filterAll = tabFrame2:FindFirstChild("Tab_ALL") :: ImageButton?
+			filterCores = tabFrame2:FindFirstChild("Tab_CORES") :: ImageButton?
+			filterElixirs = tabFrame2:FindFirstChild("Tab_ELIXIRS") :: ImageButton?
+			filterHerbs = tabFrame2:FindFirstChild("Tab_HERBS") :: ImageButton?
+			filterTalismans = tabFrame2:FindFirstChild("Tab_TALISMANS") :: ImageButton?
+		end
+	end
+
+	-- 4. TertiaryFrame (InnerFrame1 = Grid, InnerFrame2 = Inspect)
+	tertiaryFrame = mainFrame:FindFirstChild("TertiaryFrame") :: Frame?
+	if tertiaryFrame then
+		-- InnerFrame1
+		local inner1 = tertiaryFrame:FindFirstChild("InnerFrame1")
+		if inner1 then
+			itemGridScroll = inner1:FindFirstChild("ItemGridScroll") :: ScrollingFrame?
+			if itemGridScroll then
+				templateSlotFrame = itemGridScroll:FindFirstChild("SlotFrame") :: ImageLabel?
+				if templateSlotFrame then
+					templateSlotFrame.Visible = false -- Hide template from display
+				end
+			end
+		end
+
+		-- InnerFrame2
+		local inner2 = tertiaryFrame:FindFirstChild("InnerFrame2")
+		if inner2 then
+			local totalFrame = inner2:FindFirstChild("TotalFrame")
+			if totalFrame then
+				totalValueLabel = totalFrame:FindFirstChild("TotalValue") :: TextLabel?
+			end
+
+			confirmExchangeBtn = inner2:FindFirstChild("ConfirmExchangeBtn") :: ImageButton?
+			if confirmExchangeBtn then
+				confirmBtnText = confirmExchangeBtn:FindFirstChild("TextLabel") :: TextLabel?
+			end
+
+			local specsFrame = inner2:FindFirstChild("ItemSpecsFrame")
+			if specsFrame then
+				local firstInner = specsFrame:FindFirstChild("FirstInnerFrame")
+				if firstInner then
+					inspectItemImage = firstInner:FindFirstChild("ItemImage") :: ImageLabel?
+					local descFrame = firstInner:FindFirstChild("DescriptionFrame")
+					if descFrame then
+						inspectGrade = descFrame:FindFirstChild("Grade") :: TextLabel?
+						inspectSpiritAge = descFrame:FindFirstChild("SpiritAge") :: TextLabel?
+						inspectEffectsDesc = descFrame:FindFirstChild("EffectsDescription") :: TextLabel?
+					end
+				end
+
+				local secondInner = specsFrame:FindFirstChild("SecondInnerFrame")
+				if secondInner then
+					inspectPillName = secondInner:FindFirstChild("PillDescription") :: TextLabel?
+					minusBtn = secondInner:FindFirstChild("MinusBtn") :: ImageButton?
+					plusBtn = secondInner:FindFirstChild("PlusBtn") :: ImageButton?
+					maxBtn = secondInner:FindFirstChild("MAXBtn") :: ImageButton?
+					local countFrame = secondInner:FindFirstChild("Count")
+					if countFrame then
+						countLabel = countFrame:FindFirstChild("TextLabel") :: TextLabel?
+					end
+				end
+			end
+		end
+	end
+
+	return true
+end
+
+-- =============================================================================
+-- DATA REFRESH & INSPECT LOGIC
+-- =============================================================================
+local function GetItemCategory(itemDef: ItemConfig.ItemDefinition): string
+	if itemDef.Id == "DemonBeastCore" or itemDef.Type == "Crest" then
+		return "CORES"
+	elseif itemDef.Type == "Consumable" or itemDef.Id:match("Dan$") or itemDef.Id:match("Pill$") then
+		return "ELIXIRS"
+	elseif itemDef.Type == "Material" then
+		return "HERBS"
+	elseif itemDef.Type == ("Talisman" :: any) then
+		return "TALISMANS"
+	end
+	return "HERBS"
+end
+
+local function GetMaxAffordableCount(unitPrice: number, ownedAmount: number): number
+	if currentMode == "Buy" then
+		local stones = tonumber(LocalPlayer:GetAttribute("SpiritStones")) or 0
+		if unitPrice <= 0 then return 99 end
+		return math.clamp(math.floor(stones / unitPrice), 1, 99)
+	else
+		return math.max(1, ownedAmount)
+	end
+end
+
+local function UpdateInspectPanel()
+	if not selectedItemId then
+		if inspectPillName then inspectPillName.Text = "SELECT AN ITEM" end
+		if inspectGrade then inspectGrade.Text = "Grade: ---" end
+		if inspectSpiritAge then inspectSpiritAge.Text = "Spirit Age: ---" end
+		if inspectEffectsDesc then inspectEffectsDesc.Text = "Select an item to view effects." end
+		if totalValueLabel then totalValueLabel.Text = "Total: 0 Stones" end
+		if countLabel then countLabel.Text = "0" end
+		return
+	end
+
+	local itemDef = ItemConfig.GetItem(selectedItemId)
+	local vendorDef = SectConfig.GetMarketItem(selectedItemId)
+	if not itemDef then return end
+
+	local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
+
+	-- 1. Display Details
+	if inspectItemImage then
+		inspectItemImage.Image = itemDef.Icon or ""
+	end
+	if inspectPillName then
+		inspectPillName.Text = itemDef.Name
+	end
+	if inspectGrade then
+		inspectGrade.Text = string.format("Grade: %s-Rank", itemDef.Rarity)
+	end
+	if inspectSpiritAge then
+		inspectSpiritAge.Text = if itemDef.AgeYears then string.format("Spirit Age: %d-Yr", itemDef.AgeYears) else "Spirit Age: Immortal"
+	end
+	if inspectEffectsDesc then
+		if itemDef.Stats and itemDef.Stats.QiGrant then
+			inspectEffectsDesc.Text = string.format("+%s Usable Qi", FormatNum(itemDef.Stats.QiGrant))
+		elseif itemDef.Stats and itemDef.Stats.HealAmount then
+			inspectEffectsDesc.Text = string.format("+%s Health Recovery", FormatNum(itemDef.Stats.HealAmount))
+		else
+			inspectEffectsDesc.Text = itemDef.Description
+		end
+	end
+
+	-- 2. Quantity & Total Cost
+	if countLabel then
+		countLabel.Text = tostring(selectedQuantity)
+	end
+
+	local totalCost = unitPrice * selectedQuantity
+	if totalValueLabel then
+		totalValueLabel.Text = string.format("Total: %s Stones", FormatNum(totalCost))
+	end
+
+	if confirmBtnText then
+		confirmBtnText.Text = if currentMode == "Buy" then "CONFIRM EXCHANGE" else "SELL ITEMS"
+	end
+end
+
+local function PopulateGrid()
+	if not itemGridScroll or not templateSlotFrame then return end
+
+	-- Clean up previous cloned tiles
+	for _, clone in ipairs(activeSlotClones) do
+		clone:Destroy()
+	end
+	table.clear(activeSlotClones)
+
+	local candidateItems: { { ItemId: string, UnitPrice: number, StockOrOwned: string, Count: number } } = {}
+
+	if currentMode == "Buy" then
+		local catalog = SectConfig.GetAllMarketItems()
+		for itemId, vendorItem in pairs(catalog) do
+			if vendorItem.BuyPrice then
+				local itemDef = ItemConfig.GetItem(itemId)
+				if itemDef then
+					local itemCat = GetItemCategory(itemDef)
+					if currentCategory == "ALL" or currentCategory == itemCat then
+						table.insert(candidateItems, {
+							ItemId = itemId,
+							UnitPrice = vendorItem.BuyPrice,
+							StockOrOwned = string.format("Rank: %s", vendorItem.RequiredRank:gsub("Disciple", "")),
+							Count = 99,
+						})
+					end
+				end
+			end
+		end
+	else
+		-- Sell Mode: Group inventory by ItemId
+		local inventoryCounts: { [string]: number } = {}
+		for _, slotData in pairs(currentInventory) do
+			if slotData and slotData.ItemId then
+				inventoryCounts[slotData.ItemId] = (inventoryCounts[slotData.ItemId] or 0) + (slotData.Count or 1)
+			end
+		end
+
+		for itemId, count in pairs(inventoryCounts) do
+			local itemDef = ItemConfig.GetItem(itemId)
+			local vendorItem = SectConfig.GetMarketItem(itemId)
+			if itemDef and vendorItem and vendorItem.SellPrice > 0 then
+				local itemCat = GetItemCategory(itemDef)
+				if currentCategory == "ALL" or currentCategory == itemCat then
+					table.insert(candidateItems, {
+						ItemId = itemId,
+						UnitPrice = vendorItem.SellPrice,
+						StockOrOwned = string.format("Stock: %d", count),
+						Count = count,
+					})
+				end
+			end
+		end
+	end
+
+	-- Create Clones
+	for _, itemInfo in ipairs(candidateItems) do
+		local itemDef = ItemConfig.GetItem(itemInfo.ItemId)
+		if not itemDef then continue end
+
+		local slot = templateSlotFrame:Clone()
+		slot.Name = "Slot_" .. itemInfo.ItemId
+		slot.Visible = true
+		slot.Parent = itemGridScroll
+		table.insert(activeSlotClones, slot)
+
+		local iconImg = slot:FindFirstChild("ItemImage") :: ImageLabel?
+		if iconImg then iconImg.Image = itemDef.Icon or "" end
+
+		local pillDesc = slot:FindFirstChild("PillDescription") :: TextLabel?
+		if pillDesc then pillDesc.Text = itemDef.Name end
+
+		local stockLbl = slot:FindFirstChild("StockValue") :: TextLabel?
+		if stockLbl then stockLbl.Text = itemInfo.StockOrOwned end
+
+		local amountFrame = slot:FindFirstChild("Amount")
+		if amountFrame then
+			local priceLbl = amountFrame:FindFirstChild("TextLabel") :: TextLabel?
+			if priceLbl then priceLbl.Text = tostring(itemInfo.UnitPrice) end
+		end
+
+		-- Click selection
+		local clickTrigger = slot:FindFirstChildWhichIsA("GuiButton") or slot
+		if clickTrigger:IsA("GuiButton") then
+			clickTrigger.MouseButton1Click:Connect(function()
+				PlayClickSound()
+				selectedItemId = itemInfo.ItemId
+				selectedQuantity = 1
+				UpdateInspectPanel()
 			end)
-		end
-	end)
-end
-
-function MarketController.IsOpen(): boolean
-	return isOpen
-end
-
-function MarketController.Init()
-	marketRemote = RemoteEvents.GetRemote("MarketAction")
-
-	MarketController.BuildUI()
-
-	-- Network Listeners
-	marketRemote.OnClientEvent:Connect(function(payload: any)
-		if type(payload) ~= "table" or type(payload.Action) ~= "string" then return end
-
-		local action = payload.Action
-		if action == "OpenShop" then
-			currentTab = "Buy"
-			currentStones = payload.SpiritStones or currentStones
-			currentRank = payload.SectRank or currentRank
-			MarketController.UpdateHeader()
-			MarketController.Open()
-		elseif action == "TransactionSuccess" then
-			currentStones = payload.NewBalance or currentStones
-			MarketController.UpdateHeader()
-			if payload.Type == "Buy" then
-				MarketController.ShowToast(string.format("Purchased %dx %s (-%d Stones)!", payload.Amount, payload.ItemId, payload.TotalCost))
-			else
-				MarketController.ShowToast(string.format("Sold %dx %s (+%d Stones)!", payload.Amount, payload.ItemId, payload.TotalPayout))
-			end
-			if isOpen then
-				MarketController.RenderCurrentTab()
-			end
-		elseif action == "TransactionFailed" then
-			MarketController.ShowToast(payload.Message or "Transaction Failed!", true)
-		elseif action == "SyncBalance" then
-			currentStones = payload.SpiritStones or currentStones
-			MarketController.UpdateHeader()
-			if isOpen then
-				MarketController.RenderCurrentTab()
-			end
-		end
-	end)
-
-	local updateInvRemote = RemoteEvents.GetRemote("UpdateInventory")
-	updateInvRemote.OnClientEvent:Connect(function(invTable)
-		if type(invTable) == "table" then
-			playerInventoryList = invTable
-			if isOpen and currentTab == "Sell" then
-				MarketController.RenderSellTab()
-			end
-		end
-	end)
-
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then return end
-		if input.KeyCode == Enum.KeyCode.Escape and isOpen then
-			MarketController.Close()
-		end
-	end)
-
-	print("[ASCEND] MarketController Initialized (Sect Market & Trading Active).")
-end
-
-function MarketController.BuildUI()
-	screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "SectMarketGui"
-	screenGui.ResetOnSpawn = false
-	screenGui.DisplayOrder = 25
-	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	screenGui.Enabled = true
-	screenGui.Parent = playerGui
-
-	toastGui = Instance.new("ScreenGui")
-	toastGui.Name = "AscendToastGui"
-	toastGui.ResetOnSpawn = false
-	toastGui.DisplayOrder = 99
-	toastGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	toastGui.Parent = playerGui
-
-	toastContainer = Instance.new("Frame")
-	toastContainer.Name = "ToastContainer"
-	toastContainer.Size = UDim2.new(0, 400, 0, 100)
-	toastContainer.Position = UDim2.new(0.5, 0, 0, 10)
-	toastContainer.AnchorPoint = Vector2.new(0.5, 0)
-	toastContainer.BackgroundTransparency = 1
-	toastContainer.Parent = toastGui
-
-	overlayBackdrop = Instance.new("Frame")
-	overlayBackdrop.Name = "OverlayBackdrop"
-	overlayBackdrop.Size = UDim2.new(1, 0, 1, 0)
-	overlayBackdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	overlayBackdrop.BackgroundTransparency = 0.6
-	overlayBackdrop.BorderSizePixel = 0
-	overlayBackdrop.Visible = false
-	overlayBackdrop.Parent = screenGui
-
-	mainModal = Instance.new("Frame")
-	mainModal.Name = "MainModal"
-	mainModal.Size = UDim2.new(0, 1150, 0, 660)
-	mainModal.Position = UDim2.new(0.5, -575, 0.5, -330)
-	mainModal.BackgroundColor3 = COLOR_LIGHT_MAIN
-	mainModal.BorderSizePixel = 0
-	mainModal.Parent = overlayBackdrop
-
-	local mStroke = Instance.new("UIStroke")
-	mStroke.Color = COLOR_LIGHT_BORDER
-	mStroke.Thickness = 2
-	mStroke.Parent = mainModal
-
-	headerTitle = Instance.new("TextLabel")
-	headerTitle.Size = UDim2.new(1, 0, 0, 48)
-	headerTitle.BackgroundTransparency = 1
-	headerTitle.Text = "SECT MERCHANT MARKET"
-	headerTitle.TextColor3 = COLOR_TEXT_MAIN
-	headerTitle.Font = UI_FONT
-	headerTitle.TextSize = 28
-	headerTitle.Parent = mainModal
-
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.new(0, 36, 0, 36)
-	closeBtn.Position = UDim2.new(1, -44, 0, 8)
-	closeBtn.BackgroundColor3 = COLOR_DANGER_RED
-	closeBtn.Text = "X"
-	closeBtn.TextColor3 = COLOR_TEXT_MAIN
-	closeBtn.Font = UI_FONT
-	closeBtn.TextSize = 20
-	closeBtn.Parent = mainModal
-
-	closeBtn.MouseButton1Click:Connect(function()
-		PlayClickAudio()
-		MarketController.Close()
-	end)
-
-	local statusBar = Instance.new("Frame")
-	statusBar.Name = "StatusBar"
-	statusBar.Size = UDim2.new(1, -24, 0, 32)
-	statusBar.Position = UDim2.new(0, 12, 0, 50)
-	statusBar.BackgroundColor3 = COLOR_LIGHT_PANEL
-	statusBar.BorderSizePixel = 0
-	statusBar.Parent = mainModal
-
-	local sbStroke = Instance.new("UIStroke")
-	sbStroke.Color = COLOR_LIGHT_BORDER
-	sbStroke.Thickness = 1
-	sbStroke.Parent = statusBar
-
-	local statusLayout = Instance.new("UIListLayout")
-	statusLayout.FillDirection = Enum.FillDirection.Horizontal
-	statusLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	statusLayout.Padding = UDim.new(0, 30)
-	statusLayout.Parent = statusBar
-
-	local pad = Instance.new("UIPadding")
-	pad.PaddingLeft = UDim.new(0, 14)
-	pad.Parent = statusBar
-
-	balanceLabel = Instance.new("TextLabel")
-	balanceLabel.Size = UDim2.new(0, 180, 1, 0)
-	balanceLabel.BackgroundTransparency = 1
-	balanceLabel.Text = "SPIRIT STONES: 250"
-	balanceLabel.TextColor3 = COLOR_AZURE_BLUE
-	balanceLabel.Font = UI_FONT
-	balanceLabel.TextSize = 13
-	balanceLabel.TextXAlignment = Enum.TextXAlignment.Left
-	balanceLabel.Parent = statusBar
-
-	rankLabel = Instance.new("TextLabel")
-	rankLabel.Size = UDim2.new(0, 220, 1, 0)
-	rankLabel.BackgroundTransparency = 1
-	rankLabel.Text = "RANK: OUTER DISCIPLE"
-	rankLabel.TextColor3 = COLOR_HP_GREEN
-	rankLabel.Font = UI_FONT
-	rankLabel.TextSize = 13
-	rankLabel.TextXAlignment = Enum.TextXAlignment.Left
-	rankLabel.Parent = statusBar
-
-	contributionLabel = Instance.new("TextLabel")
-	contributionLabel.Size = UDim2.new(0, 200, 1, 0)
-	contributionLabel.BackgroundTransparency = 1
-	contributionLabel.Text = "CONTRIBUTION: 0 CP"
-	contributionLabel.TextColor3 = COLOR_ACTION_GOLD
-	contributionLabel.Font = UI_FONT
-	contributionLabel.TextSize = 13
-	contributionLabel.TextXAlignment = Enum.TextXAlignment.Left
-	contributionLabel.Parent = statusBar
-
-	navBar = Instance.new("Frame")
-	navBar.Name = "NavBar"
-	navBar.Size = UDim2.new(1, -24, 0, 38)
-	navBar.Position = UDim2.new(0, 12, 0, 88)
-	navBar.BackgroundTransparency = 1
-	navBar.Parent = mainModal
-
-	contentContainer = Instance.new("Frame")
-	contentContainer.Name = "ContentContainer"
-	contentContainer.Size = UDim2.new(1, -24, 1, -136)
-	contentContainer.Position = UDim2.new(0, 12, 0, 128)
-	contentContainer.BackgroundColor3 = COLOR_LIGHT_PANEL
-	contentContainer.BorderSizePixel = 0
-	contentContainer.Parent = mainModal
-
-	local ccStroke = Instance.new("UIStroke")
-	ccStroke.Color = COLOR_LIGHT_BORDER
-	ccStroke.Thickness = 1.5
-	ccStroke.Parent = contentContainer
-end
-
-function MarketController.UpdateHeader()
-	if balanceLabel then
-		balanceLabel.Text = string.format("SPIRIT STONES: %d", currentStones)
-	end
-	if rankLabel then
-		local rankDef = SectConfig.GetRank(currentRank)
-		rankLabel.Text = string.format("RANK: %s", rankDef.DisplayName:upper())
-	end
-	if contributionLabel then
-		contributionLabel.Text = string.format("CONTRIBUTION: %d CP", currentContribution)
-	end
-	if headerTitle then
-		headerTitle.Text = "SECT MERCHANT MARKET"
-	end
-end
-
-function MarketController.RenderNavBar()
-	navBar:ClearAllChildren()
-	local navLayout = Instance.new("UIListLayout")
-	navLayout.FillDirection = Enum.FillDirection.Horizontal
-	navLayout.Padding = UDim.new(0, 8)
-	navLayout.Parent = navBar
-
-	local function AddTab(text: string, tabKey: "Buy" | "Sell")
-		local isSelected = (currentTab == tabKey)
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(0, 140, 1, 0)
-		btn.BackgroundColor3 = if isSelected then COLOR_LIGHT_CARD else COLOR_LIGHT_PANEL
-		btn.Text = text
-		btn.TextColor3 = if isSelected then COLOR_ACTION_GOLD else COLOR_TEXT_SUB
-		btn.Font = UI_FONT
-		btn.TextSize = 13
-		btn.Parent = navBar
-
-		local btnStroke = Instance.new("UIStroke")
-		btnStroke.Color = COLOR_LIGHT_BORDER
-		btnStroke.Thickness = 1
-		btnStroke.Parent = btn
-
-		btn.MouseButton1Click:Connect(function()
-			PlayClickAudio()
-			currentTab = tabKey
-			MarketController.RenderNavBar()
-			MarketController.RenderCurrentTab()
-		end)
-	end
-
-	AddTab("BUY GOODS", "Buy")
-	AddTab("SELL ITEMS", "Sell")
-end
-
-function MarketController.RenderCurrentTab()
-	contentContainer:ClearAllChildren()
-
-	if currentTab == "Buy" then
-		MarketController.RenderBuyTab()
-	elseif currentTab == "Sell" then
-		MarketController.RenderSellTab()
-	end
-end
-
-function MarketController.RenderBuyTab()
-	local scroll = Instance.new("ScrollingFrame")
-	scroll.Size = UDim2.new(1, -16, 1, -16)
-	scroll.Position = UDim2.new(0, 8, 0, 8)
-	scroll.BackgroundTransparency = 1
-	scroll.ScrollBarThickness = 4
-	scroll.ScrollBarImageColor3 = COLOR_ACTION_GOLD
-	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	scroll.Parent = contentContainer
-
-	local grid = Instance.new("UIGridLayout")
-	grid.CellSize = UDim2.new(0.485, 0, 0, 88)
-	grid.CellPadding = UDim2.new(0.03, 0, 0, 10)
-	grid.Parent = scroll
-
-	for itemId, itemDef in pairs(SectConfig.GetAllMarketItems()) do
-		if itemDef.BuyPrice then
-			local itemInfo = ItemConfig.GetItem(itemDef.ItemId)
-			local colorData = UIAssets.RarityCardColors[if itemInfo then itemInfo.Rarity else "Common"]
-			local borderCol = if colorData then colorData.Border else COLOR_LIGHT_BORDER
-
-			local card = Instance.new("Frame")
-			card.BackgroundColor3 = COLOR_LIGHT_CARD
-			card.BorderSizePixel = 0
-			card.Parent = scroll
-
-			local cStroke = Instance.new("UIStroke")
-			cStroke.Color = borderCol
-			cStroke.Thickness = 1.5
-			cStroke.Parent = card
-
-			local iconAsset = UIAssets.Icons[itemDef.ItemId] or (itemInfo and itemInfo.Icon)
-			if iconAsset and iconAsset ~= "" then
-				local icon = Instance.new("ImageLabel")
-				icon.Size = UDim2.new(0, 54, 0, 54)
-				icon.Position = UDim2.new(0, 10, 0.5, -27)
-				icon.BackgroundTransparency = 1
-				icon.ScaleType = Enum.ScaleType.Fit
-				icon.Image = iconAsset
-				icon.Parent = card
-			end
-
-			local name = Instance.new("TextLabel")
-			name.Size = UDim2.new(0.5, 0, 0, 22)
-			name.Position = UDim2.new(0, 72, 0, 14)
-			name.BackgroundTransparency = 1
-			name.Text = if itemInfo then itemInfo.Name else itemDef.ItemId
-			name.TextColor3 = COLOR_TEXT_MAIN
-			name.Font = UI_FONT
-			name.TextSize = 14
-			name.TextXAlignment = Enum.TextXAlignment.Left
-			name.Parent = card
-
-			local price = Instance.new("TextLabel")
-			price.Size = UDim2.new(0.5, 0, 0, 20)
-			price.Position = UDim2.new(0, 72, 0, 38)
-			price.BackgroundTransparency = 1
-			price.Text = string.format("PRICE: %d STONES", itemDef.BuyPrice)
-			price.TextColor3 = COLOR_AZURE_BLUE
-			price.Font = UI_FONT
-			price.TextSize = 12
-			price.TextXAlignment = Enum.TextXAlignment.Left
-			price.Parent = card
-
-			local buyBtn = Instance.new("TextButton")
-			buyBtn.Size = UDim2.new(0, 80, 0, 38)
-			buyBtn.Position = UDim2.new(1, -92, 0.5, -19)
-			buyBtn.BackgroundColor3 = COLOR_HP_GREEN
-			buyBtn.Text = "BUY"
-			buyBtn.TextColor3 = COLOR_TEXT_MAIN
-			buyBtn.Font = UI_FONT
-			buyBtn.TextSize = 14
-			buyBtn.Parent = card
-
-			buyBtn.MouseButton1Click:Connect(function()
-				PlayClickAudio()
-				marketRemote:FireServer({ Action = "BuyItem", ItemId = itemDef.ItemId, Amount = 1 })
+		else
+			slot.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					PlayClickSound()
+					selectedItemId = itemInfo.ItemId
+					selectedQuantity = 1
+					UpdateInspectPanel()
+				end
 			end)
 		end
 	end
+
+	-- Auto-select first item if current selection is invalid
+	if #candidateItems > 0 and (not selectedItemId or not ItemConfig.GetItem(selectedItemId)) then
+		selectedItemId = candidateItems[1].ItemId
+		selectedQuantity = 1
+	elseif #candidateItems == 0 then
+		selectedItemId = nil
+	end
+
+	UpdateInspectPanel()
 end
 
-function MarketController.RenderSellTab()
-	local scroll = Instance.new("ScrollingFrame")
-	scroll.Size = UDim2.new(1, -16, 1, -16)
-	scroll.Position = UDim2.new(0, 8, 0, 8)
-	scroll.BackgroundTransparency = 1
-	scroll.ScrollBarThickness = 4
-	scroll.ScrollBarImageColor3 = COLOR_ACTION_GOLD
-	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	scroll.Parent = contentContainer
+-- =============================================================================
+-- EVENT LISTENERS & LIFECYCLE
+-- =============================================================================
+function MarketController.SyncPlayerData()
+	local stones = tonumber(LocalPlayer:GetAttribute("SpiritStones")) or 0
+	local rank = LocalPlayer:GetAttribute("SectRank") or LocalPlayer:GetAttribute("Rank") or "OuterDisciple"
+	local cp = tonumber(LocalPlayer:GetAttribute("ContributionPoints")) or 0
 
-	local grid = Instance.new("UIGridLayout")
-	grid.CellSize = UDim2.new(0.485, 0, 0, 88)
-	grid.CellPadding = UDim2.new(0.03, 0, 0, 10)
-	grid.Parent = scroll
-
-	local hasSellable = false
-
-	for _, slot in pairs(playerInventoryList) do
-		if slot and slot.Count > 0 then
-			local itemDef = SectConfig.GetMarketItem(slot.ItemId)
-			if itemDef and itemDef.SellPrice > 0 then
-				hasSellable = true
-
-				local itemInfo = ItemConfig.GetItem(slot.ItemId)
-				local colorData = UIAssets.RarityCardColors[if itemInfo then itemInfo.Rarity else "Common"]
-				if slot.Quality and UIAssets.GradeCardColors[slot.Quality] then
-					colorData = UIAssets.GradeCardColors[slot.Quality]
-				end
-
-				local borderCol = if colorData then colorData.Border else COLOR_LIGHT_BORDER
-
-				local card = Instance.new("Frame")
-				card.BackgroundColor3 = COLOR_LIGHT_CARD
-				card.BorderSizePixel = 0
-				card.Parent = scroll
-
-				local cStroke = Instance.new("UIStroke")
-				cStroke.Color = borderCol
-				cStroke.Thickness = 1.5
-				cStroke.Parent = card
-
-				local iconAsset = UIAssets.Icons[slot.ItemId] or (itemInfo and itemInfo.Icon)
-				if iconAsset and iconAsset ~= "" then
-					local icon = Instance.new("ImageLabel")
-					icon.Size = UDim2.new(0, 54, 0, 54)
-					icon.Position = UDim2.new(0, 10, 0.5, -27)
-					icon.BackgroundTransparency = 1
-					icon.ScaleType = Enum.ScaleType.Fit
-					icon.Image = iconAsset
-					icon.Parent = card
-				end
-
-				local name = Instance.new("TextLabel")
-				name.Size = UDim2.new(0.5, 0, 0, 22)
-				name.Position = UDim2.new(0, 72, 0, 14)
-				name.BackgroundTransparency = 1
-				name.Text = string.format("%s (x%d)", if itemInfo then itemInfo.Name else slot.ItemId, slot.Count)
-				name.TextColor3 = COLOR_TEXT_MAIN
-				name.Font = UI_FONT
-				name.TextSize = 13
-				name.TextXAlignment = Enum.TextXAlignment.Left
-				name.Parent = card
-
-				local payout = Instance.new("TextLabel")
-				payout.Size = UDim2.new(0.5, 0, 0, 20)
-				payout.Position = UDim2.new(0, 72, 0, 38)
-				payout.BackgroundTransparency = 1
-				payout.Text = string.format("SELL: +%d STONES EA", itemDef.SellPrice)
-				payout.TextColor3 = COLOR_ACTION_GOLD
-				payout.Font = UI_FONT
-				payout.TextSize = 12
-				payout.TextXAlignment = Enum.TextXAlignment.Left
-				payout.Parent = card
-
-				local sellBtn = Instance.new("TextButton")
-				sellBtn.Size = UDim2.new(0, 80, 0, 38)
-				sellBtn.Position = UDim2.new(1, -92, 0.5, -19)
-				sellBtn.BackgroundColor3 = COLOR_ACTION_GOLD
-				sellBtn.Text = "SELL 1"
-				sellBtn.TextColor3 = COLOR_TEXT_MAIN
-				sellBtn.Font = UI_FONT
-				sellBtn.TextSize = 13
-				sellBtn.Parent = card
-
-				sellBtn.MouseButton1Click:Connect(function()
-					PlayClickAudio()
-					marketRemote:FireServer({ Action = "SellItem", ItemId = slot.ItemId, Amount = 1 })
-				end)
-			end
-		end
-	end
-
-	if not hasSellable then
-		local emptyLabel = Instance.new("TextLabel")
-		emptyLabel.Size = UDim2.new(1, 0, 0, 60)
-		emptyLabel.BackgroundTransparency = 1
-		emptyLabel.Text = "No sellable herbs or materials in your Spirit Pouch."
-		emptyLabel.TextColor3 = COLOR_TEXT_SUB
-		emptyLabel.Font = UI_FONT
-		emptyLabel.TextSize = 14
-		emptyLabel.Parent = scroll
-	end
+	if stonesLabel then stonesLabel.Text = FormatNum(stones) end
+	if rankLabel then rankLabel.Text = FormatRank(rank) end
+	if cpLabel then cpLabel.Text = string.format("%s CP", FormatNum(cp)) end
 end
 
 function MarketController.Open()
-	isOpen = true
-	overlayBackdrop.Visible = true
-	MarketController.UpdateHeader()
-	MarketController.RenderNavBar()
-	MarketController.RenderCurrentTab()
+	if not marketGui and not BindHierarchy() then return end
+	if not marketGui or not mainFrame then return end
+
+	MarketController.SyncPlayerData()
+	selectedQuantity = 1
+	PopulateGrid()
+	mainFrame.Visible = true
+	marketGui.Enabled = true
 end
 
 function MarketController.Close()
-	isOpen = false
-	overlayBackdrop.Visible = false
+	if mainFrame then mainFrame.Visible = false end
+	if marketGui then marketGui.Enabled = false end
+end
+
+function MarketController.Toggle()
+	if marketGui and marketGui.Enabled and mainFrame and mainFrame.Visible then
+		MarketController.Close()
+	else
+		MarketController.Open()
+	end
+end
+
+function MarketController.Init()
+	marketActionRemote = RemoteEvents.GetRemote("MarketAction")
+	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
+
+	if not BindHierarchy() then
+		PlayerGui.ChildAdded:Connect(function(child)
+			if child.Name == "SectMerchantMarketGui" then
+				BindHierarchy()
+			end
+		end)
+	end
+
+	-- 1. Close Button
+	if closeBtn then
+		closeBtn.MouseButton1Click:Connect(function()
+			PlayClickSound()
+			MarketController.Close()
+		end)
+	end
+
+	-- 2. Buy / Sell Tabs
+	if tabBuyGoods then
+		tabBuyGoods.MouseButton1Click:Connect(function()
+			PlayClickSound()
+			currentMode = "Buy"
+			selectedQuantity = 1
+			PopulateGrid()
+		end)
+	end
+
+	if tabSellLoot then
+		tabSellLoot.MouseButton1Click:Connect(function()
+			PlayClickSound()
+			currentMode = "Sell"
+			selectedQuantity = 1
+			PopulateGrid()
+		end)
+	end
+
+	-- 3. Category Filter Buttons
+	local function BindFilter(btn: ImageButton?, category: any)
+		if not btn then return end
+		btn.MouseButton1Click:Connect(function()
+			PlayClickSound()
+			currentCategory = category
+			selectedQuantity = 1
+			PopulateGrid()
+		end)
+	end
+
+	BindFilter(filterAll, "ALL")
+	BindFilter(filterCores, "CORES")
+	BindFilter(filterElixirs, "ELIXIRS")
+	BindFilter(filterHerbs, "HERBS")
+	BindFilter(filterTalismans, "TALISMANS")
+
+	-- 4. Quantity Adjusters (- / + / MAX)
+	if minusBtn then
+		minusBtn.MouseButton1Click:Connect(function()
+			PlayClickSound()
+			selectedQuantity = math.max(1, selectedQuantity - 1)
+			UpdateInspectPanel()
+		end)
+	end
+
+	if plusBtn then
+		plusBtn.MouseButton1Click:Connect(function()
+			PlayClickSound()
+			if selectedItemId then
+				local vendorDef = SectConfig.GetMarketItem(selectedItemId)
+				local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
+				local maxCap = GetMaxAffordableCount(unitPrice, 99)
+				selectedQuantity = math.min(maxCap, selectedQuantity + 1)
+			else
+				selectedQuantity = selectedQuantity + 1
+			end
+			UpdateInspectPanel()
+		end)
+	end
+
+	if maxBtn then
+		maxBtn.MouseButton1Click:Connect(function()
+			PlayClickSound()
+			if selectedItemId then
+				local vendorDef = SectConfig.GetMarketItem(selectedItemId)
+				local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
+				selectedQuantity = GetMaxAffordableCount(unitPrice, 99)
+			end
+			UpdateInspectPanel()
+		end)
+	end
+
+	-- 5. Confirm Exchange Button (Fires real VendorManager remotes)
+	if confirmExchangeBtn then
+		confirmExchangeBtn.MouseButton1Click:Connect(function()
+			PlayClickSound()
+			if not selectedItemId or selectedQuantity <= 0 then return end
+
+			if currentMode == "Buy" then
+				marketActionRemote:FireServer({
+					Action = "BuyItem",
+					ItemId = selectedItemId,
+					Amount = selectedQuantity,
+				})
+			else
+				marketActionRemote:FireServer({
+					Action = "SellItem",
+					ItemId = selectedItemId,
+					Amount = selectedQuantity,
+				})
+			end
+		end)
+	end
+
+	-- 6. Server Response & Inventory Listeners
+	marketActionRemote.OnClientEvent:Connect(function(payload: any)
+		if type(payload) ~= "table" then return end
+		if payload.Action == "OpenShop" then
+			MarketController.Open()
+		elseif payload.Action == "TransactionSuccess" then
+			MarketController.SyncPlayerData()
+			selectedQuantity = 1
+			PopulateGrid()
+		end
+	end)
+
+	updateInventoryRemote.OnClientEvent:Connect(function(invData: { [number]: any })
+		currentInventory = invData or {}
+		if marketGui and marketGui.Enabled and currentMode == "Sell" then
+			PopulateGrid()
+		end
+	end)
+
+	LocalPlayer:GetAttributeChangedSignal("SpiritStones"):Connect(MarketController.SyncPlayerData)
+	LocalPlayer:GetAttributeChangedSignal("SectRank"):Connect(MarketController.SyncPlayerData)
+	LocalPlayer:GetAttributeChangedSignal("ContributionPoints"):Connect(MarketController.SyncPlayerData)
+
+	print("[ASCEND] MarketController Initialized (Bound to SectMerchantMarketGui hierarchy).")
 end
 
 return MarketController

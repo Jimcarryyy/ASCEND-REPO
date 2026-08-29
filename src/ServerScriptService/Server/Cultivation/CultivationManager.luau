@@ -170,9 +170,6 @@ function CultivationManager.AddInternalQi(player: Player, amount: number)
 	CultivationManager.SyncClient(player)
 end
 
--- Alias for AddInternalQi. MobAIManager (kill rewards) and MarketplaceManager
--- (auto-meditation gamepass ticks) both call this name; kept as a separate
--- entry point in case its growth curve needs to diverge from AddInternalQi later.
 function CultivationManager.AddCultivatedQi(player: Player, amount: number)
 	CultivationManager.AddInternalQi(player, amount)
 end
@@ -222,9 +219,11 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	end
 
 	local realmInfo = CultivationConfig[pData.Realm]
-	if realmInfo then
-		character:SetAttribute("Realm", string.format("%s — Order %d", realmInfo.Name, pData.Order))
-	end
+	local realmText = if realmInfo then string.format("%s — Order %d", realmInfo.Name, pData.Order) else "Qi Condensation — Order 1"
+	
+	character:SetAttribute("Realm", realmText)
+	player:SetAttribute("Realm", realmText)
+	player:SetAttribute("Order", pData.Order)
 	character:SetAttribute("AlchemyRank", character:GetAttribute("AlchemyRank") or "Mortal Alchemist — Rank 1")
 
 	CultivationManager.SyncClient(player)
@@ -259,13 +258,11 @@ function CultivationManager.ToggleMeditation(player: Player)
 	local weaponMgr = getWeaponManager()
 
 	if pData.IsMeditating then
-		-- Automatically sheathe sword to back on meditation
 		if weaponMgr and weaponMgr.SetWeaponState then
 			weaponMgr.SetWeaponState(player, "Back")
 		end
 		CultivationManager.StartGroundedMeditation(player, character, pData.Realm, false)
 	else
-		-- Keep sword on back upon exiting meditation
 		if weaponMgr and weaponMgr.SetWeaponState then
 			weaponMgr.SetWeaponState(player, "Back")
 		end
@@ -290,7 +287,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
 
-	-- 1. Realm Highlight
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "QiMeditationHighlight"
 	highlight.Adornee = character
@@ -301,7 +297,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.Parent = character
 
-	-- Ground Raycast Alignment
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterDescendantsInstances = { character }
 	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -310,7 +305,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	local groundY = if rayResult then rayResult.Position.Y else (hrp.Position.Y - 2.8)
 	hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 1.6, hrp.Position.Z) * hrp.CFrame.Rotation
 
-	-- 2. Dynamic Full Body Aura Cloning & Color Tinting
 	local auraTemplate = ReplicatedStorage:FindFirstChild("Full body aura") or (ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("Full body aura"))
 	if auraTemplate then
 		local auraClone = auraTemplate:Clone()
@@ -378,6 +372,10 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		pData.Order += 1
 		CultivationManager.ApplyRealmStats(player)
 		CultivationManager.SyncClient(player)
+		updateCultivationRemote:FireClient(player, {
+			Action = "BreakthroughSuccess",
+			Order = pData.Order,
+		})
 		return true
 	end
 
@@ -403,6 +401,11 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		pData.Order = 1
 		CultivationManager.ApplyRealmStats(player)
 		CultivationManager.SyncClient(player)
+		updateCultivationRemote:FireClient(player, {
+			Action = "BreakthroughSuccess",
+			Realm = nextRealm,
+			Order = 1,
+		})
 		return true
 	end
 
@@ -477,6 +480,11 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			combatActionRemote:FireAllClients(player, "AscensionBurst", {
 				AuraColor = CultivationConfig[nextRealm].AuraColor,
 			})
+			updateCultivationRemote:FireClient(player, {
+				Action = "BreakthroughSuccess",
+				Realm = nextRealm,
+				Order = 1,
+			})
 		else
 			pData.IsTribulationActive = false
 			pData.TribulationWave = 0
@@ -518,6 +526,7 @@ function CultivationManager.SyncClient(player: Player)
 	if not realmInfo then return end
 
 	local maxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
+	local realmText = string.format("%s — Order %d", realmInfo.Name, pData.Order)
 
 	local character = player.Character
 	if character then
@@ -525,9 +534,15 @@ function CultivationManager.SyncClient(player: Player)
 		character:SetAttribute("Qi", pData.CurrentQi)
 		character:SetAttribute("MaxQi", pData.CultivatedQi)
 		character:SetAttribute("TargetQi", maxQiGoal)
-		character:SetAttribute("Realm", string.format("%s — Order %d", realmInfo.Name, pData.Order))
+		character:SetAttribute("Realm", realmText)
 		character:SetAttribute("Level", totalLevel)
 	end
+
+	player:SetAttribute("Realm", realmText)
+	player:SetAttribute("Order", pData.Order)
+	player:SetAttribute("Qi", pData.CurrentQi)
+	player:SetAttribute("CultivatedQi", pData.CultivatedQi)
+	player:SetAttribute("MaxQi", pData.CultivatedQi)
 
 	updateCultivationRemote:FireClient(player, {
 		RealmName = realmInfo.Name,
