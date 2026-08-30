@@ -3,9 +3,9 @@
     PlayerDataManager.luau
     Location: src/ServerScriptService/Server/State/PlayerDataManager.luau
     Server-authoritative DataStore persistence manager for ASCEND:
-    - DataVersion 3 Persistence Pipeline
-    - Guarantees the free MortalIronJian is always present in the Spirit Pouch if no weapon is owned
-    - Syncs 3D equipped sword state directly with inventory contents
+    - DataVersion 3 Persistence Pipeline with Legacy Test Sword Sanitizer
+    - Developer Exclusive Arsenal Engine (Auto-grants all present & future swords to Han_jueee only)
+    - Normal Player Grind Isolation (Regular players / alts only have MortalIronJian and must buy/earn swords one-by-one)
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -64,6 +64,27 @@ local MAX_RETRIES = 3
 local AUTO_SAVE_INTERVAL = 300
 local SHUTDOWN_SAVE_TIMEOUT = 25
 local STARTER_WEAPON = "MortalIronJian"
+
+-- Developer Whitelist for Exclusive Arsenal Access
+local DEVELOPER_USERNAMES: { [string]: boolean } = {
+	["Han_jueee"] = true,
+}
+
+local function IsDeveloper(player: Player): boolean
+	if DEVELOPER_USERNAMES[player.Name] then return true end
+	if game.CreatorType == Enum.CreatorType.User and player.UserId == game.CreatorId then return true end
+	return false
+end
+
+-- Legacy test swords to purge from regular players migrating from V2
+local LEGACY_TEST_SWORDS: { [string]: boolean } = {
+	["AzureCloudDiscipleJian"] = true,
+	["FlowingQiSpiritSword"] = true,
+	["VerdantJadeFlyingSword"] = true,
+	["BreezeWhisperJian"] = true,
+	["VerdantBambooJian"] = true,
+	["CrimsonFlameDao"] = true,
+}
 
 local playerDataStore: DataStore? = nil
 local isLoadedMap: { [Player]: boolean } = {}
@@ -154,7 +175,7 @@ function PlayerDataManager.Init()
 		end
 	end)
 
-	print("[PlayerDataManager] Engine Initialized with Version 3 Migration & Safe Save Pipeline.")
+	print("[PlayerDataManager] Engine Initialized with Strict Weapon Isolation & Version 3 Schema.")
 end
 
 function PlayerDataManager.OnPlayerAdded(player: Player)
@@ -179,13 +200,15 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end
 	end
 
-	-- Fallback check to V2 if V3 has no save yet
+	-- Fallback to V2 store if V3 has no record yet
+	local isMigratedFromV2 = false
 	if not loadedData then
 		pcall(function()
 			local v2Store = DataStoreService:GetDataStore("ASCEND_PlayerData_V2")
 			local oldResult = v2Store:GetAsync(dataKey)
 			if oldResult and type(oldResult) == "table" then
 				loadedData = oldResult
+				isMigratedFromV2 = true
 			end
 		end)
 	end
@@ -250,35 +273,74 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		loadedData.Cultivation.CultivatedQi
 	)
 
-	-- Normalize inventory keys (convert strings "1", "2" to integers 1, 2)
+	-- Normalize inventory keys
 	local normalizedInventory: { [number]: SavedInventorySlot } = {}
-	local hasAnyWeapon = false
+	local isDev = IsDeveloper(player)
 
 	if loadedData.Inventory and type(loadedData.Inventory) == "table" then
 		for slotKey, slotData in pairs(loadedData.Inventory) do
 			local slotNum = tonumber(slotKey)
 			if slotNum and slotData and slotData.ItemId then
+				-- If regular player migrating from V2, purge the legacy free test swords
+				if not isDev and isMigratedFromV2 and LEGACY_TEST_SWORDS[slotData.ItemId] then
+					continue
+				end
+
 				normalizedInventory[slotNum] = {
 					ItemId = slotData.ItemId,
 					Count = slotData.Count or 1,
 					Quality = slotData.Quality,
 				}
-				local itemDef = ItemConfig.GetItem(slotData.ItemId)
-				if itemDef and itemDef.Type == "Weapon" then
-					hasAnyWeapon = true
-				end
 			end
 		end
 	end
 
-	-- Safety: Ensure player ALWAYS has at least MortalIronJian in their Spirit Pouch
-	if not hasAnyWeapon then
-		local targetSlot = 1
-		while normalizedInventory[targetSlot] ~= nil do
-			targetSlot += 1
+	-- =========================================================================
+	-- WEAPON ACCESS MANAGEMENT
+	-- =========================================================================
+	if isDev then
+		-- Developer: Auto-grant every weapon defined in the game
+		print(string.format("[PlayerDataManager] Developer detected (%s) — injecting full weapon arsenal.", player.Name))
+		local allItems = ItemConfig.GetAllItems()
+
+		for itemId, itemDef in pairs(allItems) do
+			if itemDef.Type == "Weapon" then
+				local alreadyOwned = false
+				for _, slot in pairs(normalizedInventory) do
+					if slot.ItemId == itemId then
+						alreadyOwned = true
+						break
+					end
+				end
+
+				if not alreadyOwned then
+					local targetSlot = 1
+					while normalizedInventory[targetSlot] ~= nil do
+						targetSlot += 1
+					end
+					normalizedInventory[targetSlot] = { ItemId = itemId, Count = 1 }
+				end
+			end
 		end
-		normalizedInventory[targetSlot] = { ItemId = STARTER_WEAPON, Count = 1 }
-		loadedData.EquippedWeapon = STARTER_WEAPON
+	else
+		-- Regular Player / Alt: Ensure ONLY MortalIronJian is given if no weapon is possessed
+		local hasWeapon = false
+		for _, slot in pairs(normalizedInventory) do
+			local itemDef = ItemConfig.GetItem(slot.ItemId)
+			if itemDef and itemDef.Type == "Weapon" then
+				hasWeapon = true
+				break
+			end
+		end
+
+		if not hasWeapon then
+			local targetSlot = 1
+			while normalizedInventory[targetSlot] ~= nil do
+				targetSlot += 1
+			end
+			normalizedInventory[targetSlot] = { ItemId = STARTER_WEAPON, Count = 1 }
+			loadedData.EquippedWeapon = STARTER_WEAPON
+		end
 	end
 
 	InventoryManager.SetInventory(player, normalizedInventory)
@@ -452,7 +514,6 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		return false
 	end
 
-	-- Serialize inventory with string keys
 	local serializedInventory: { [string]: SavedInventorySlot } = {}
 	for slotIdx, slot in pairs(inventory) do
 		if slot and slot.ItemId then

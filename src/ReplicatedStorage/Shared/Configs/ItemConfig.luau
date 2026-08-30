@@ -2,12 +2,14 @@
 --[[
     ItemConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/ItemConfig.luau
-    Central configuration repository for all items in ASCEND.
+    Central configuration repository for all items in ASCEND:
+    - 8 Sword Tiers (Mortal, Azure Cloud, Flowing Qi, Verdant Jade, Violet Soul, Void Star, Azure Patriarch, Radiant Immortal)
+    - Full Alchemy Pills, Herbs & Monster Materials
 ]]
 
 local UIAssets = require(script.Parent.UIAssets)
 
-export type ItemRarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic"
+export type ItemRarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic" | "Divine" | "Immortal" | "Celestial"
 export type ItemType = "Weapon" | "Consumable" | "Material" | "Currency" | "Crest"
 
 export type ItemDefinition = {
@@ -18,6 +20,7 @@ export type ItemDefinition = {
 	Type: ItemType,
 	MaxStack: number,
 	AgeYears: number?,
+	Damage: number?,
 	Stats: { [string]: number }?,
 	Icon: string?,
 }
@@ -188,7 +191,9 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Icon = UIAssets.Icons.SpiritAsh,
 	},
 
-	-- WEAPONS & FLYING SWORDS
+	-- =========================================================================
+	-- WEAPONS & FLYING SWORDS (TIERS 1 - 8)
+	-- =========================================================================
 	["MortalIronJian"] = {
 		Id = "MortalIronJian",
 		Name = "Mortal Iron Jian",
@@ -196,6 +201,7 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Rarity = "Common",
 		Type = "Weapon",
 		MaxStack = 1,
+		Damage = 15,
 		Stats = { Damage = 15, Speed = 1.0 },
 	},
 	["AzureCloudDiscipleJian"] = {
@@ -205,6 +211,7 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Rarity = "Uncommon",
 		Type = "Weapon",
 		MaxStack = 1,
+		Damage = 25,
 		Stats = { Damage = 25, Speed = 1.0 },
 	},
 	["FlowingQiSpiritSword"] = {
@@ -214,6 +221,7 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Rarity = "Rare",
 		Type = "Weapon",
 		MaxStack = 1,
+		Damage = 40,
 		Stats = { Damage = 40, Speed = 1.1 },
 	},
 	["VerdantJadeFlyingSword"] = {
@@ -223,7 +231,48 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Rarity = "Epic",
 		Type = "Weapon",
 		MaxStack = 1,
+		Damage = 60,
 		Stats = { Damage = 60, Speed = 1.15 },
+	},
+	["VioletSoulSovereignJian"] = {
+		Id = "VioletSoulSovereignJian",
+		Name = "Violet Soul Sovereign Jian",
+		Description = "A legendary Jian forged from deep amethyst soul crystal, pulsating with an ethereal purple mist.",
+		Rarity = "Legendary",
+		Type = "Weapon",
+		MaxStack = 1,
+		Damage = 120,
+		Stats = { Damage = 120, Speed = 1.2 },
+	},
+	["VoidStarCleaverDao"] = {
+		Id = "VoidStarCleaverDao",
+		Name = "Void Star Cleaver Dao",
+		Description = "A heavy cosmic saber forged from fallen meteorite, gleaming with stardust constellations.",
+		Rarity = "Mythic",
+		Type = "Weapon",
+		MaxStack = 1,
+		Damage = 220,
+		Stats = { Damage = 220, Speed = 1.25 },
+	},
+	["AzurePatriarchHeritageJian"] = {
+		Id = "AzurePatriarchHeritageJian",
+		Name = "Azure Patriarch Heritage Jian",
+		Description = "An ancient ancestral straight sword handed down across millennia, humming with divine wind intent.",
+		Rarity = "Divine",
+		Type = "Weapon",
+		MaxStack = 1,
+		Damage = 450,
+		Stats = { Damage = 450, Speed = 1.35 },
+	},
+	["RadiantImmortalSovereignJian"] = {
+		Id = "RadiantImmortalSovereignJian",
+		Name = "Radiant Immortal Sovereign Jian",
+		Description = "A supreme celestial blade radiating blinding solar light, pure lightning arcs, and immortal Dao power.",
+		Rarity = "Immortal",
+		Type = "Weapon",
+		MaxStack = 1,
+		Damage = 1000,
+		Stats = { Damage = 1000, Speed = 1.5 },
 	},
 }
 

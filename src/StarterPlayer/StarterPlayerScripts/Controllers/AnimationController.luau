@@ -2,15 +2,15 @@
 --[[
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
-    Handles animations, combat footwork dampening, and seamless sprint resumption.
+    Handles animations, combat footwork, and emits NormalSlashAnimation directly from the equipped sword blade tip.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ContentProvider = game:GetService("ContentProvider")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
@@ -26,16 +26,13 @@ local blockTrack: AnimationTrack? = nil
 
 local SWORD_SLASH_SOUND_ID = "rbxassetid://79218449800283"
 local DASH_SOUND_ID = "rbxassetid://93272068959626"
-local PARRY_CLASH_SOUND_ID = "rbxassetid://9114223175"
-
 local MEDITATION_ANIM_ID = (AnimationConfig.Movement and (AnimationConfig.Movement :: any).Meditation) or "rbxassetid://129333803961409"
+
 local meditationTrack: AnimationTrack? = nil
 local isCurrentlyMeditating = false
-local meditationRequestId = 0 -- Guards against a stale (superseded) meditation toggle resolving late
+local meditationRequestId = 0
 
--- Dash tuning. DASH_BURST_DURATION and DASH_SPEED are tunable to taste —
--- these are a first-pass fix, not final balance numbers.
-local DASH_BURST_DURATION = 0.22 -- seconds of full-speed dash before decay (was ~0.15s effective)
+local DASH_BURST_DURATION = 0.22
 local DASH_SPEED = 78
 local DASH_WALL_SLOW_SPEED = 12
 local DASH_WALL_CHECK_DISTANCE = 4
@@ -53,15 +50,9 @@ local function PlayLocalSFX(soundId: string, volume: number?)
 	sound:Play()
 
 	sound.Ended:Connect(function() sound:Destroy() end)
-	task.delay(1.5, function()
-		if sound and sound.Parent then sound:Destroy() end
-	end)
+	Debris:AddItem(sound, 1.5)
 end
 
--- Waits (bounded) for both Humanoid and its Animator child to exist. Fixes the
--- race where a cultivation/meditation update arrives before Animator has
--- finished loading on a freshly spawned character, which previously caused
--- the first meditation toggle after joining to silently do nothing.
 local function WaitForAnimator(character: Model, timeout: number): (Humanoid?, Animator?)
 	local startTime = os.clock()
 	repeat
@@ -73,6 +64,21 @@ local function WaitForAnimator(character: Model, timeout: number): (Humanoid?, A
 		task.wait(0.05)
 	until os.clock() - startTime >= timeout or not character.Parent
 	return nil, nil
+end
+
+-- Emits the sword-mounted slash VFX directly from the moving blade
+function AnimationController.EmitSwordSlash(character: Model)
+	local equippedSword = character:FindFirstChild("EquippedSword")
+	if not equippedSword then return end
+
+	local slashAtt = equippedSword:FindFirstChild("NormalSlashAnimation", true)
+	if slashAtt then
+		for _, pe in ipairs(slashAtt:GetDescendants()) do
+			if pe:IsA("ParticleEmitter") then
+				pe:Emit(pe:GetAttribute("EmitCount") or 2)
+			end
+		end
+	end
 end
 
 function AnimationController.Init()
@@ -96,21 +102,14 @@ function AnimationController.Init()
 		local newMeditatingState = (data.IsMeditating == true)
 		character:SetAttribute("IsMeditating", newMeditatingState)
 
-		if newMeditatingState == isCurrentlyMeditating then
-			return -- No actual change; avoid replaying/re-stopping the same track
-		end
+		if newMeditatingState == isCurrentlyMeditating then return end
 
 		meditationRequestId += 1
 		local thisRequestId = meditationRequestId
 
 		task.spawn(function()
 			local humanoid, animator = WaitForAnimator(character, 3)
-			if not humanoid or not animator then
-				warn("[AnimationController] Meditation animation skipped — Animator not ready within timeout.")
-				return
-			end
-
-			-- If the state changed again while we were waiting, this request is stale — drop it.
+			if not humanoid or not animator then return end
 			if thisRequestId ~= meditationRequestId then return end
 
 			isCurrentlyMeditating = newMeditatingState
@@ -173,7 +172,7 @@ function AnimationController.Init()
 		end
 	end)
 
-	print("[ASCEND] AnimationController Initialized (Footwork & Anti-Sky Launch Active).")
+	print("[ASCEND] AnimationController Initialized (Sword-Mounted Real-time Slash Active).")
 end
 
 function AnimationController.ClearLoadedTracks()
@@ -321,20 +320,10 @@ function AnimationController.PerformDash(dashStep: number)
 
 	hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, math.clamp(hrp.AssemblyLinearVelocity.Y, -20, 2), hrp.AssemblyLinearVelocity.Z)
 
-	-- CRITICAL FIX: Humanoid's own movement force was fighting the dash impulse the
-	-- entire time (WalkSpeed kept trying to push the character at run/sprint speed
-	-- simultaneously), which is why the dash previously looked like "still running
-	-- with a dash animation layered on top" instead of an actual burst. Silencing
-	-- WalkSpeed and AutoRotate for the duration of the burst lets the LinearVelocity
-	-- actually control the character.
 	local previousAutoRotate = humanoid.AutoRotate
 	humanoid.WalkSpeed = 0
 	humanoid.AutoRotate = false
 
-	-- CRITICAL FIX: the original wall check only raycast once, at the very start of
-	-- the dash. At 78 studs/sec the character could still reach a wall mid-burst with
-	-- full force. This loop re-checks every frame for the burst's duration and softens
-	-- velocity if a wall is imminent, instead of slamming into it uncontrolled.
 	local startTime = os.clock()
 	local dashHeartbeatConn: RBXScriptConnection? = nil
 	dashHeartbeatConn = RunService.Heartbeat:Connect(function()
@@ -376,7 +365,6 @@ function AnimationController.PerformDash(dashStep: number)
 				end
 			end)
 		else
-			-- Safety: if linearVel was already destroyed some other way, still restore movement
 			if humanoid and humanoid.Parent then
 				humanoid.AutoRotate = previousAutoRotate
 				local InputController = require(player.PlayerScripts.Controllers.InputController)
@@ -401,8 +389,9 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 	if not weaponConfig then return end
 
 	local animKey = skillKey
+	local stepNum = comboIndex or 1
 	if skillKey == "M1" then
-		animKey = "M1_" .. tostring(comboIndex or 1)
+		animKey = "M1_" .. tostring(stepNum)
 	end
 
 	local animDef = weaponConfig[animKey] or weaponConfig[skillKey]
@@ -423,11 +412,13 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 
 	PlayLocalSFX(SWORD_SLASH_SOUND_ID, 0.95)
 
+	-- Emits slash VFX directly from the moving sword tip
+	AnimationController.EmitSwordSlash(character)
+
 	local equippedSword = character:FindFirstChild("EquippedSword")
 	local trail = if equippedSword then equippedSword:FindFirstChildOfClass("Trail") else nil
 	if trail then trail.Enabled = true end
 
-	-- Lock combat footwork attribute
 	character:SetAttribute("IsAttacking", true)
 
 	if animDef.WalkSpeedDampen and humanoid then
@@ -447,7 +438,6 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 			character:SetAttribute("IsAttacking", false)
 		end
 
-		-- Restore sprint speed if sprint is toggled on, otherwise walk speed
 		if humanoid and humanoid.Parent and activeAttackTrack == track then
 			local InputController = require(player.PlayerScripts.Controllers.InputController)
 			local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()

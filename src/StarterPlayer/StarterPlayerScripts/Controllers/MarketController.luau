@@ -8,7 +8,6 @@
     - Live synced Spirit Stones, Sect Rank, CP, and Dynamic Item Inspect Panel
     - Integrated Top-Center Bangers Toast Notifications
     - Fixed 3-Column Responsive Grid (Always 3/row, auto-growing scroll canvas)
-    - Dynamic SelectedGlow activation on selected SlotFrame
 ]]
 
 local Players = game:GetService("Players")
@@ -123,6 +122,7 @@ local function ApplyGradient(button: GuiButton?, colorA: Color3, colorB: Color3,
 	gradient.Rotation = rotation or 90
 end
 
+-- Palette pulled from the existing gold/navy/maroon Xianxia theme
 local GRADIENT_GOLD_TOP = Color3.fromHex("#F5D06B")
 local GRADIENT_GOLD_BOTTOM = Color3.fromHex("#B8860B")
 local GRADIENT_NAVY_TOP = Color3.fromHex("#2A3752")
@@ -254,6 +254,7 @@ local function BindHierarchy(): boolean
 			filterHerbs = tabFrame2:FindFirstChild("Tab_HERBS") :: ImageButton?
 			filterSwords = (tabFrame2:FindFirstChild("Tab_SWORDS") or tabFrame2:FindFirstChild("Tab_TALISMANS")) :: ImageButton?
 
+			-- Rename Tab_TALISMANS to SWORDS visually
 			if filterSwords then
 				local lbl = filterSwords:FindFirstChildOfClass("TextLabel")
 				if lbl then lbl.Text = "SWORDS" end
@@ -273,12 +274,14 @@ local function BindHierarchy(): boolean
 					templateSlotFrame.Visible = false
 				end
 
+				-- Auto-growing scroll canvas so the bottom row is never clipped
 				itemGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 				itemGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 				itemGridScroll.ScrollBarThickness = 6
 
 				gridLayout = itemGridScroll:FindFirstChildOfClass("UIGridLayout")
 
+				-- Recompute cell size whenever the container is resized (device/resolution changes)
 				if gridLayout and not gridResizeConnected then
 					gridResizeConnected = true
 					itemGridScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateMarketGridCellSize)
@@ -387,6 +390,7 @@ end
 
 local function GetMaxAllowedQuantity(unitPrice: number): number
 	if currentMode == "Buy" then
+		-- Swords are unique equipment (Limit to 1 per purchase)
 		if selectedItemId and ItemConfig.GetItem(selectedItemId) and ItemConfig.GetItem(selectedItemId).Type == "Weapon" then
 			return 1
 		end
@@ -466,6 +470,7 @@ end
 local function PopulateGrid()
 	if not itemGridScroll or not templateSlotFrame then return end
 
+	-- Force the fixed 3-column layout before laying out slots
 	UpdateMarketGridCellSize()
 
 	-- Snap scrollbar to the top
@@ -532,12 +537,6 @@ local function PopulateGrid()
 		slot.Parent = itemGridScroll
 		table.insert(activeSlotClones, slot)
 
-		-- SelectedGlow initial state
-		local selectedGlow = slot:FindFirstChild("SelectedGlow") :: ImageLabel?
-		if selectedGlow then
-			selectedGlow.Visible = (itemInfo.ItemId == selectedItemId)
-		end
-
 		local iconImg = slot:FindFirstChild("ItemImage") :: ImageLabel?
 		if iconImg then iconImg.Image = itemDef.Icon or "" end
 
@@ -557,15 +556,6 @@ local function PopulateGrid()
 			PlayClickSound()
 			selectedItemId = itemInfo.ItemId
 			selectedQuantity = 1
-
-			-- Dynamically toggle SelectedGlow on all active slot clones
-			for _, s in ipairs(activeSlotClones) do
-				local glow = s:FindFirstChild("SelectedGlow") :: ImageLabel?
-				if glow then
-					glow.Visible = (s.Name == "Slot_" .. itemInfo.ItemId)
-				end
-			end
-
 			UpdateInspectPanel()
 		end
 
@@ -597,14 +587,6 @@ local function PopulateGrid()
 	else
 		selectedItemId = nil
 		selectedQuantity = 0
-	end
-
-	-- Update SelectedGlow visibility across all slots
-	for _, s in ipairs(activeSlotClones) do
-		local glow = s:FindFirstChild("SelectedGlow") :: ImageLabel?
-		if glow then
-			glow.Visible = (s.Name == "Slot_" .. (selectedItemId or ""))
-		end
 	end
 
 	UpdateInspectPanel()
@@ -773,12 +755,14 @@ function MarketController.Init()
 					return
 				end
 
+				-- Check Sect Rank Requirement
 				local playerRank = GetPlayerRank()
 				if not SectConfig.CanPurchase(playerRank :: any, vendorDef.RequiredRank) then
 					ShowToast(string.format("REQUIRES %s RANK!", FormatRank(vendorDef.RequiredRank)), "Warning")
 					return
 				end
 
+				-- Check Spirit Stones
 				local totalCost = vendorDef.BuyPrice * selectedQuantity
 				if GetPlayerStones() < totalCost then
 					ShowToast("INSUFFICIENT SPIRIT STONES!", "Warning")

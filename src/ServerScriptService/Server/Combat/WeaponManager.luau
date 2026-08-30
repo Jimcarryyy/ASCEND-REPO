@@ -3,7 +3,7 @@
     WeaponManager.luau
     Location: src/ServerScriptService/Server/Combat/WeaponManager.luau
     Server-authoritative weapon lifecycle manager with 3D Draw/Sheath/Equip Audio.
-    Supports Hand / Back / Hidden / Flight (standing on the sword) mount states.
+    Supports Hand / Back / Hidden / Flight mount states with fuzzy mesh name resolution.
 ]]
 
 local Players = game:GetService("Players")
@@ -15,17 +15,26 @@ local WeaponManager = {}
 local weaponsFolder = ReplicatedStorage:WaitForChild("Weapons") :: Folder
 
 -- Audio IDs
-local SWORD_EQUIP_SOUND_ID   = "rbxassetid://114060318185092" -- Draw to Hand / Equip
-local SWORD_UNEQUIP_SOUND_ID = "rbxassetid://97568182472477"  -- Sheath to Back / Unequip
-
--- Flight mount tuning. This vertical offset is a STARTING ESTIMATE for a standard R6
--- rig (HumanoidRootPart sits roughly at hip height, ~3 studs above the feet) — not
--- pulled from any confirmed rig measurement. Nudge FLIGHT_MOUNT_OFFSET_Y if the
--- character sits inside the blade or floats above it once you test in Studio.
-local FLIGHT_MOUNT_OFFSET_Y = -3
+local SWORD_EQUIP_SOUND_ID   = "rbxassetid://114060318185092"
+local SWORD_UNEQUIP_SOUND_ID = "rbxassetid://97568182472477"
+local FLIGHT_MOUNT_OFFSET_Y  = -3
 
 -- Cache active sword per player
 local activeWeapons: { [Player]: { Model: MeshPart?, CurrentState: "Hand" | "Back" | "Hidden" | "Flight", WeaponId: string } } = {}
+
+local function FindSwordMeshInFolder(weaponId: string): MeshPart?
+	local exact = weaponsFolder:FindFirstChild(weaponId)
+	if exact and exact:IsA("MeshPart") then return exact end
+
+	-- Fuzzy Match (Ignores spaces, e.g. "VioletSoulSovereignJian" matches "Violet Soul Sovereign Jian")
+	local targetClean = weaponId:gsub("%s+", ""):lower()
+	for _, child in ipairs(weaponsFolder:GetChildren()) do
+		if child:IsA("MeshPart") and child.Name:gsub("%s+", ""):lower() == targetClean then
+			return child
+		end
+	end
+	return nil
+end
 
 local function Play3DWeaponSound(character: Model, soundId: string)
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -47,7 +56,6 @@ local function ClearExistingConstraint(sword: MeshPart)
 	if existingConstraint then existingConstraint:Destroy() end
 end
 
--- Snap Sword to Hand (Right Arm.RightGripAttachment -> Sword.SwordAttachment)
 local function SnapToHand(character: Model, sword: MeshPart)
 	local rightArm = character:FindFirstChild("Right Arm") or character:FindFirstChild("RightHand") :: BasePart?
 	if not rightArm then return end
@@ -72,7 +80,6 @@ local function SnapToHand(character: Model, sword: MeshPart)
 	end
 end
 
--- Snap Sword to Back (Torso.BackSwordMount -> Sword.BackSwordAttachment)
 local function SnapToBack(character: Model, sword: MeshPart)
 	local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso") :: BasePart?
 	if not torso then return end
@@ -103,12 +110,6 @@ local function SnapToBack(character: Model, sword: MeshPart)
 	constraint.Parent = sword
 end
 
--- Snap Sword to Feet (HumanoidRootPart.FlightMount -> Sword.FeetAttachment)
--- Sword is still massless and follows the character rigidly, same topology as
--- Hand/Back — the character's own Humanoid drives movement, the sword just
--- visually trails beneath the feet. FeetAttachment's position AND rotation
--- (set by hand in Studio, on the sword mesh) fully determine how the character
--- is oriented relative to the blade once constrained.
 local function SnapToFeet(character: Model, sword: MeshPart)
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then return end
@@ -123,9 +124,10 @@ local function SnapToFeet(character: Model, sword: MeshPart)
 
 	local swordFeetAtt = sword:FindFirstChild("FeetAttachment") :: Attachment?
 	if not swordFeetAtt then
-		warn("[WeaponManager] No FeetAttachment found on sword:", sword.Name, "— cannot enter Flight state.")
-		return
+		swordFeetAtt = sword:FindFirstChild("SwordAttachment") :: Attachment?
 	end
+
+	if not swordFeetAtt then return end
 
 	sword.Anchored = false
 	sword.CanCollide = false
@@ -142,7 +144,6 @@ local function SnapToFeet(character: Model, sword: MeshPart)
 	constraint.Parent = sword
 end
 
--- Set Weapon State: "Hand" | "Back" | "Hidden" | "Flight" (Triggers 3D Audio where applicable)
 function WeaponManager.SetWeaponState(player: Player, state: "Hand" | "Back" | "Hidden" | "Flight", suppressAudio: boolean?)
 	local character = player.Character
 	if not character then return end
@@ -174,9 +175,8 @@ function WeaponManager.SetWeaponState(player: Player, state: "Hand" | "Back" | "
 		end
 	elseif state == "Flight" then
 		sword.Transparency = 0
-		if trail then trail.Enabled = true end -- Flight trail effect; disable here if you don't want it yet
+		if trail then trail.Enabled = true end
 		SnapToFeet(character, sword)
-		-- No dedicated flight SFX exists yet — add one to SetWeaponState here once you have an asset ID.
 	end
 end
 
@@ -190,9 +190,6 @@ function WeaponManager.ToggleSheath(player: Player)
 	local weaponData = activeWeapons[player]
 	if not weaponData then return end
 
-	-- Flight is a separate mode from the Hand/Back sheath toggle — R while flying
-	-- currently falls through to "not Hand" -> Hand. Revisit this once the V-key
-	-- flight toggle exists, so R has defined behavior while flying.
 	if weaponData.CurrentState == "Hand" then
 		WeaponManager.SetWeaponState(player, "Back")
 	else
@@ -219,9 +216,9 @@ function WeaponManager.EquipWeapon(player: Player, weaponId: string, initialStat
 		activeWeapons[player] = nil
 	end
 
-	local template = weaponsFolder:FindFirstChild(weaponId) :: MeshPart?
+	local template = FindSwordMeshInFolder(weaponId)
 	if not template then
-		template = weaponsFolder:FindFirstChild("MortalIronJian") :: MeshPart?
+		template = FindSwordMeshInFolder("MortalIronJian")
 		if not template then
 			warn("[WeaponManager] No template found in ReplicatedStorage.Weapons for:", weaponId)
 			return

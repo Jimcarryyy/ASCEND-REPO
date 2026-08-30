@@ -3,8 +3,8 @@
     CultivationManager.luau
     Location: src/ServerScriptService/Server/Cultivation/CultivationManager.luau
     Server-authoritative cultivation state engine for ASCEND.
-    Supports 10 Major Realms (90 Orders), Strict CurrentQi <= CultivatedQi <= MaxQiGoal Invariant,
-    Continuous Gradual Meditation Qi Recovery, Dynamic Full Body Aura, and Sword Sheathing to Back.
+    Binds ReplicatedStorage.VFX["Full body aura"] during Meditation & Tribulation breakthroughs.
+    Guarantees clean destruction of all aura parts and attachments upon standing.
 ]]
 
 local Players = game:GetService("Players")
@@ -17,10 +17,10 @@ local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 export type PlayerCultivationData = {
 	Realm: CultivationConfig.RealmTier,
-	Order: number,        -- 1 through 9
-	CurrentQi: number,    -- Active Usable Energy for skills (CurrentQi <= CultivatedQi)
-	CultivatedQi: number, -- Current Cultivated Capacity (CultivatedQi <= MaxQiGoal)
-	MaxQiGoal: number,    -- Internal Breakthrough Goal Threshold
+	Order: number,
+	CurrentQi: number,
+	CultivatedQi: number,
+	MaxQiGoal: number,
 	IsMeditating: boolean,
 	IsTribulationActive: boolean,
 	TribulationWave: number,
@@ -36,6 +36,8 @@ local lastToggleTimestamp: { [Player]: number } = {}
 local updateCultivationRemote: RemoteEvent
 local combatActionRemote: RemoteEvent
 local weaponManagerRef: any = nil
+
+local vfxFolder = ReplicatedStorage:WaitForChild("VFX", 5) :: Folder?
 
 local function getWeaponManager(): any
 	if not weaponManagerRef then
@@ -120,7 +122,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Engine Initialized (Dynamic Aura & Sheath Sync Active).")
+	print("[ASCEND] CultivationManager Engine Initialized (Clean Aura Lifecycle & Sheath Sync Active).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -219,12 +221,12 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	end
 
 	local realmInfo = CultivationConfig[pData.Realm]
-	local realmText = if realmInfo then string.format("%s — Order %d", realmInfo.Name, pData.Order) else "Qi Condensation — Order 1"
+	local realmText = if realmInfo then string.format("%s - Order %d", realmInfo.Name, pData.Order) else "Qi Condensation - Order 1"
 	
 	character:SetAttribute("Realm", realmText)
 	player:SetAttribute("Realm", realmText)
 	player:SetAttribute("Order", pData.Order)
-	character:SetAttribute("AlchemyRank", character:GetAttribute("AlchemyRank") or "Mortal Alchemist — Rank 1")
+	character:SetAttribute("AlchemyRank", character:GetAttribute("AlchemyRank") or "Mortal Alchemist - Rank 1")
 
 	CultivationManager.SyncClient(player)
 end
@@ -305,7 +307,10 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	local groundY = if rayResult then rayResult.Position.Y else (hrp.Position.Y - 2.8)
 	hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 1.6, hrp.Position.Z) * hrp.CFrame.Rotation
 
-	local auraTemplate = ReplicatedStorage:FindFirstChild("Full body aura") or (ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("Full body aura"))
+	-- Locate "Full body aura" from ReplicatedStorage.VFX
+	local auraTemplate = (vfxFolder and vfxFolder:FindFirstChild("Full body aura"))
+		or (ReplicatedStorage:FindFirstChild("Full body aura", true) :: Instance?)
+
 	if auraTemplate then
 		local auraClone = auraTemplate:Clone()
 		auraClone.Name = "QiMeditationAura"
@@ -316,6 +321,7 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 				descendant.Enabled = true
 			elseif descendant:IsA("PointLight") then
 				descendant.Color = auraColor
+				descendant.Enabled = true
 			elseif descendant:IsA("BasePart") then
 				descendant.CanCollide = false
 				descendant.CanTouch = false
@@ -338,16 +344,32 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 end
 
 function CultivationManager.StopGroundedMeditation(player: Player, character: Model)
-	local aura = character:FindFirstChild("QiMeditationAura")
-	if aura then aura:Destroy() end
+	-- 1. Cleanly disable and destroy the entire aura model
+	for _, child in ipairs(character:GetChildren()) do
+		if child.Name == "QiMeditationAura" or child.Name == "QiMeditationHighlight" then
+			for _, emitter in ipairs(child:GetDescendants()) do
+				if emitter:IsA("ParticleEmitter") then
+					emitter.Enabled = false
+				elseif emitter:IsA("PointLight") then
+					emitter.Enabled = false
+				end
+			end
+			child:Destroy()
+		end
+	end
 
-	local highlight = character:FindFirstChild("QiMeditationHighlight")
-	if highlight then highlight:Destroy() end
-
+	-- 2. Destroy any stray attachments that might have been linked to root
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if hrp then
+		for _, child in ipairs(hrp:GetChildren()) do
+			if child.Name == "QiMeditationAura" or child.Name:match("^Aura") then
+				child:Destroy()
+			end
+		end
+		hrp.Anchored = false
+	end
+
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	
-	if hrp then hrp.Anchored = false end
 	if humanoid then
 		humanoid.Sit = false
 		humanoid.WalkSpeed = 18
@@ -526,7 +548,7 @@ function CultivationManager.SyncClient(player: Player)
 	if not realmInfo then return end
 
 	local maxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
-	local realmText = string.format("%s — Order %d", realmInfo.Name, pData.Order)
+	local realmText = string.format("%s - Order %d", realmInfo.Name, pData.Order)
 
 	local character = player.Character
 	if character then

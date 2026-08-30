@@ -2,14 +2,16 @@
 --[[
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
-    Client VFX and Audio engine with Hitstop Micro-Pause, Guard-Break Shatter,
-    Clash Sparks, and Scaled Damage Numbers.
+    Client VFX and Audio engine:
+    - Spawns "SlashHitAnimation" Attachment VFX on targets when struck
+    - Hitstop Micro-Pause, Guard-Break Shatter, Clash Sparks, and Scaled Damage Numbers
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
@@ -19,6 +21,8 @@ local camera = workspace.CurrentCamera
 
 local combatVFXRemote: RemoteEvent
 local combatActionRemote: RemoteEvent
+
+local vfxFolder = ReplicatedStorage:WaitForChild("VFX", 5) :: Folder?
 
 local SWING_AIR_SOUND_ID = "rbxassetid://79218449800283"
 local HIT_IMPACT_SOUND_ID = "rbxassetid://140462043853173"
@@ -50,9 +54,40 @@ local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 		soundPart:Destroy()
 	end)
 
-	task.delay(2.5, function()
-		if soundPart and soundPart.Parent then soundPart:Destroy() end
-	end)
+	Debris:AddItem(soundPart, 2.5)
+end
+
+-- Spawns "SlashHitAnimation" on target position
+function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFrame: CFrame?)
+	local attTemplate = (vfxFolder and vfxFolder:FindFirstChild("SlashHitAnimation"))
+		or (ReplicatedStorage:FindFirstChild("SlashHitAnimation", true) :: Attachment?)
+
+	if not attTemplate then return end
+
+	local hitHolder = Instance.new("Part")
+	hitHolder.Name = "ActiveSlashHit"
+	hitHolder.Size = Vector3.new(1, 1, 1)
+	hitHolder.Transparency = 1
+	hitHolder.Position = position
+	if orientationCFrame then
+		hitHolder.CFrame = CFrame.new(position) * orientationCFrame.Rotation
+	end
+	hitHolder.Anchored = true
+	hitHolder.CanCollide = false
+	hitHolder.CanTouch = false
+	hitHolder.CanQuery = false
+	hitHolder.Parent = workspace
+
+	local attClone = attTemplate:Clone()
+	attClone.Parent = hitHolder
+
+	for _, pe in ipairs(attClone:GetDescendants()) do
+		if pe:IsA("ParticleEmitter") then
+			pe:Emit(pe:GetAttribute("EmitCount") or 1)
+		end
+	end
+
+	Debris:AddItem(hitHolder, 0.6)
 end
 
 function CombatVFXController.Init()
@@ -81,11 +116,15 @@ function CombatVFXController.Init()
 				if attacker == player then CombatVFXController.AddCameraShake(0.15) end
 				CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, false, Color3.fromRGB(175, 195, 220), "🛡️")
 			else
+				-- Clean Strike: Spawn SlashHitAnimation
 				Play3DSound(HIT_IMPACT_SOUND_ID, payload.TargetPosition, 0.95)
+				CombatVFXController.SpawnSlashHitVFX(payload.TargetPosition, hrp and hrp.CFrame)
+
 				if attacker == player then
 					CombatVFXController.AddCameraShake(payload.IsCrit and 0.45 or 0.25)
 					CombatVFXController.ApplyHitstop(0.04)
 				end
+
 				if payload.Damage and payload.Damage > 0 then
 					CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, payload.IsCrit == true)
 				end
@@ -117,10 +156,9 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (Hitstop & Guard-Break VFX Active).")
+	print("[ASCEND] CombatVFXController Initialized (Hitstop & Slash Hit Active).")
 end
 
--- 0.04s - 0.06s Client Animation Hitstop
 function CombatVFXController.ApplyHitstop(duration: number)
 	local character = player.Character
 	if not character then return end
@@ -198,7 +236,7 @@ function CombatVFXController.SpawnBlockSparks(position: Vector3)
 	pe.Parent = sparkPart
 	pe:Emit(15)
 
-	task.delay(0.5, function() sparkPart:Destroy() end)
+	Debris:AddItem(sparkPart, 0.5)
 end
 
 function CombatVFXController.AddCameraShake(intensity: number)
