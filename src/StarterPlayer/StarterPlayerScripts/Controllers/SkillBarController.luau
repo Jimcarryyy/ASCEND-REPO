@@ -3,10 +3,11 @@
     SkillBarController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
     Handles:
-      1. Elevated Action & Sword Intent HUD
-      2. Bottom Vital Cultivation Gauges (HP & Qi Progress Bars)
-      3. Live 360° Cultivator Compass
-      4. Bottom-Left Trigger & Book Menu Drawer (Pouch, Arena, Sect)
+      1. Elevated Action HUD with Contextual State Glows (Breakthrough, Flight, Unsheathed)
+      2. Looping Sword Intent Bar with Continuous Combat Decay Visualization
+      3. Bottom Cultivation Gauges (Emerald HP & Celestial Qi Progress)
+      4. Bagua Cultivator Astrolabe Compass
+      5. Bottom-Left Book Menu Drawer & Legacy Studio Icon Sweeper
 ]]
 
 local Players = game:GetService("Players")
@@ -26,7 +27,7 @@ local Camera = Workspace.CurrentCamera
 
 local UI_FONT = Enum.Font.Bangers
 local TWEEN_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local INTENT_BAR_TWEEN = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local INTENT_BAR_TWEEN = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local DRAWER_TWEEN = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local screenGui: ScreenGui?
@@ -38,7 +39,9 @@ local qiFillBar: Frame?
 local qiValueText: TextLabel?
 local compassHeadingText: TextLabel?
 local compassDegreeText: TextLabel?
-local actionButtons: { [string]: { Button: ImageButton, Scale: UIScale, CooldownOverlay: Frame? } } = {}
+local compassTrigramText: TextLabel?
+
+local actionButtons: { [string]: { Button: ImageButton, Scale: UIScale, Stroke: UIStroke, CooldownOverlay: Frame? } } = {}
 
 local isMenuOpen = false
 local menuDrawerFrame: Frame?
@@ -88,14 +91,20 @@ local function PurgeLegacyTopIcons()
 		end
 	end
 
-	for _, gui in ipairs(PlayerGui:GetChildren()) do
-		if gui ~= screenGui and (gui:IsA("ScreenGui") or gui:IsA("BillboardGui")) then
-			for _, child in ipairs(gui:GetDescendants()) do
-				checkAndPurge(child)
+	task.spawn(function()
+		for _ = 1, 6 do
+			for _, gui in ipairs(PlayerGui:GetChildren()) do
+				if gui ~= screenGui and (gui:IsA("ScreenGui") or gui:IsA("BillboardGui")) then
+					for _, desc in ipairs(gui:GetDescendants()) do
+						checkAndPurge(desc)
+					end
+				end
 			end
-			gui.DescendantAdded:Connect(checkAndPurge)
+			task.wait(0.15)
 		end
-	end
+	end)
+
+	PlayerGui.DescendantAdded:Connect(checkAndPurge)
 end
 
 local function TriggerM1()
@@ -113,7 +122,7 @@ local function TriggerM1()
 	combatActionRemote:FireServer({ SkillKey = "M1", AimDirection = Vector3.new(0, 0, -1), Timestamp = os.clock() })
 end
 
-local function CreateActionSlot(parent: Instance, keybind: string, actionName: string, size: UDim2, layoutOrder: number, isTouch: boolean): (ImageButton, UIScale, Frame)
+local function CreateActionSlot(parent: Instance, keybind: string, actionName: string, size: UDim2, layoutOrder: number, isTouch: boolean): (ImageButton, UIScale, UIStroke, Frame)
 	local button = Instance.new("ImageButton")
 	button.Name = "Slot_" .. keybind
 	button.LayoutOrder = layoutOrder
@@ -165,10 +174,9 @@ local function CreateActionSlot(parent: Instance, keybind: string, actionName: s
 	keyLabel.Text = keybind
 	keyLabel.Parent = button
 
-	local keyStroke = Instance.new("UIStroke")
+	local keyStroke = Instance.new("UIStroke", keyLabel)
 	keyStroke.Color = Color3.fromRGB(10, 10, 15)
 	keyStroke.Thickness = 1
-	keyStroke.Parent = keyLabel
 
 	local actionLabel = Instance.new("TextLabel")
 	actionLabel.Name = "ActionLabel"
@@ -183,10 +191,9 @@ local function CreateActionSlot(parent: Instance, keybind: string, actionName: s
 	actionLabel.Text = actionName
 	actionLabel.Parent = button
 
-	local actionStroke = Instance.new("UIStroke")
+	local actionStroke = Instance.new("UIStroke", actionLabel)
 	actionStroke.Color = Color3.fromRGB(10, 10, 15)
 	actionStroke.Thickness = 1
-	actionStroke.Parent = actionLabel
 
 	button.MouseEnter:Connect(function()
 		TweenService:Create(uiScale, TWEEN_INFO, { Scale = 1.08 }):Play()
@@ -206,11 +213,11 @@ local function CreateActionSlot(parent: Instance, keybind: string, actionName: s
 		TweenService:Create(uiScale, TWEEN_INFO, { Scale = 1.08 }):Play()
 	end)
 
-	return button, uiScale, cdOverlay
+	return button, uiScale, stroke, cdOverlay
 end
 
 -- =============================================================================
--- BOTTOM-LEFT TRIGGER & BOOK MENU DRAWER
+-- BOTTOM-LEFT MENU DRAWER (Book Logic)
 -- =============================================================================
 local function BuildBottomLeftMenu(parentGui: ScreenGui)
 	local menuRoot = Instance.new("Frame")
@@ -221,7 +228,6 @@ local function BuildBottomLeftMenu(parentGui: ScreenGui)
 	menuRoot.BackgroundTransparency = 1
 	menuRoot.Parent = parentGui
 
-	-- 1. Main Clickable Trigger Button (Single button always visible)
 	local triggerBtn = Instance.new("TextButton")
 	triggerBtn.Name = "MenuTriggerBtn"
 	triggerBtn.Size = UDim2.new(0, 72, 0, 36)
@@ -244,7 +250,6 @@ local function BuildBottomLeftMenu(parentGui: ScreenGui)
 	trigStroke.Thickness = 1.2
 	trigStroke.Transparency = 0.4
 
-	-- 2. Expandable Drawer Container (Pops up above the trigger like a book opening)
 	menuDrawerFrame = Instance.new("Frame")
 	menuDrawerFrame.Name = "MenuDrawer"
 	menuDrawerFrame.Size = UDim2.new(0, 210, 0, 42)
@@ -348,7 +353,6 @@ local function BuildBottomLeftMenu(parentGui: ScreenGui)
 		btn.MouseButton1Click:Connect(item.Callback)
 	end
 
-	-- Toggle Drawer on Click
 	local function toggleDrawer()
 		isMenuOpen = not isMenuOpen
 		if not menuDrawerFrame or not menuDrawerScale then return end
@@ -389,14 +393,12 @@ local function BuildHUD()
 
 	local isTouch = IsTouchDevice()
 
-	-- 1. Build Bottom-Left Book Trigger & Drawer
+	-- 1. Build Bottom-Left Menu & Purge Legacy Icons
 	BuildBottomLeftMenu(screenGui)
-
-	-- 2. Purge old top-right Studio buttons
 	PurgeLegacyTopIcons()
 
 	-- =========================================================================
-	-- 3. ELEVATED COMBAT CONTAINER (Sword Intent Bar + Keybind Slots)
+	-- 2. ELEVATED COMBAT CONTAINER (Sword Intent Bar + Keybind Slots)
 	-- =========================================================================
 	local combatContainer = Instance.new("Frame")
 	combatContainer.Name = "ElevatedCombatContainer"
@@ -406,7 +408,7 @@ local function BuildHUD()
 	combatContainer.BackgroundTransparency = 1
 	combatContainer.Parent = screenGui
 
-	-- Sword Intent Bar
+	-- Dynamic Sword Intent Bar
 	local intentBg = Instance.new("Frame")
 	intentBg.Name = "SwordIntentBackground"
 	intentBg.Size = UDim2.new(1, 0, 0, if isTouch then 10 else 13)
@@ -422,6 +424,7 @@ local function BuildHUD()
 	intentCorner.Parent = intentBg
 
 	local intentStroke = Instance.new("UIStroke")
+	intentStroke.Name = "IntentStroke"
 	intentStroke.Color = Color3.fromRGB(215, 175, 75)
 	intentStroke.Thickness = if isTouch then 1 else 1.4
 	intentStroke.Transparency = 0.3
@@ -429,7 +432,7 @@ local function BuildHUD()
 
 	swordIntentFill = Instance.new("Frame")
 	swordIntentFill.Name = "Fill"
-	swordIntentFill.Size = UDim2.new(1, 0, 1, 0)
+	swordIntentFill.Size = UDim2.new(0, 0, 1, 0) -- Starts at 0%
 	swordIntentFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	swordIntentFill.BorderSizePixel = 0
 	swordIntentFill.Parent = intentBg
@@ -453,14 +456,13 @@ local function BuildHUD()
 	swordIntentText.Font = UI_FONT
 	swordIntentText.TextSize = if isTouch then 9 else 11.5
 	swordIntentText.TextColor3 = Color3.fromRGB(255, 255, 255)
-	swordIntentText.Text = "SWORD INTENT · 100%"
+	swordIntentText.Text = "SWORD INTENT · 0%"
 	swordIntentText.ZIndex = 3
 	swordIntentText.Parent = intentBg
 
-	local textStroke = Instance.new("UIStroke")
+	local textStroke = Instance.new("UIStroke", swordIntentText)
 	textStroke.Color = Color3.fromRGB(15, 15, 20)
 	textStroke.Thickness = 1
-	textStroke.Parent = swordIntentText
 
 	-- Action Button Row
 	local buttonRow = Instance.new("Frame")
@@ -481,20 +483,20 @@ local function BuildHUD()
 	local slotSize = if isTouch then UDim2.new(0, 46, 0, 46) else UDim2.new(0, 58, 0, 58)
 
 	if not isTouch then
-		local m1Btn, m1Scale, m1Cd = CreateActionSlot(buttonRow, "M1", "STRIKE", slotSize, 1, false)
-		actionButtons["M1"] = { Button = m1Btn, Scale = m1Scale, CooldownOverlay = m1Cd }
+		local m1Btn, m1Scale, m1Stroke, m1Cd = CreateActionSlot(buttonRow, "M1", "STRIKE", slotSize, 1, false)
+		actionButtons["M1"] = { Button = m1Btn, Scale = m1Scale, Stroke = m1Stroke, CooldownOverlay = m1Cd }
 		m1Btn.MouseButton1Click:Connect(TriggerM1)
 	end
 
-	local rBtn, rScale, rCd = CreateActionSlot(buttonRow, "R", "DRAW", slotSize, 2, isTouch)
-	local vBtn, vScale, vCd = CreateActionSlot(buttonRow, "V", "FLIGHT", slotSize, 3, isTouch)
-	local bBtn, bScale, bCd = CreateActionSlot(buttonRow, "B", "BREAK", slotSize, 4, isTouch)
-	local mBtn, mScale, mCd = CreateActionSlot(buttonRow, "M", "MEDITATE", slotSize, 5, isTouch)
+	local rBtn, rScale, rStroke, rCd = CreateActionSlot(buttonRow, "R", "DRAW", slotSize, 2, isTouch)
+	local vBtn, vScale, vStroke, vCd = CreateActionSlot(buttonRow, "V", "FLIGHT", slotSize, 3, isTouch)
+	local bBtn, bScale, bStroke, bCd = CreateActionSlot(buttonRow, "B", "BREAK", slotSize, 4, isTouch)
+	local mBtn, mScale, mStroke, mCd = CreateActionSlot(buttonRow, "M", "MEDITATE", slotSize, 5, isTouch)
 
-	actionButtons["R"] = { Button = rBtn, Scale = rScale, CooldownOverlay = rCd }
-	actionButtons["V"] = { Button = vBtn, Scale = vScale, CooldownOverlay = vCd }
-	actionButtons["B"] = { Button = bBtn, Scale = bScale, CooldownOverlay = bCd }
-	actionButtons["M"] = { Button = mBtn, Scale = mScale, CooldownOverlay = mCd }
+	actionButtons["R"] = { Button = rBtn, Scale = rScale, Stroke = rStroke, CooldownOverlay = rCd }
+	actionButtons["V"] = { Button = vBtn, Scale = vScale, Stroke = vStroke, CooldownOverlay = vCd }
+	actionButtons["B"] = { Button = bBtn, Scale = bScale, Stroke = bStroke, CooldownOverlay = bCd }
+	actionButtons["M"] = { Button = mBtn, Scale = mScale, Stroke = mStroke, CooldownOverlay = mCd }
 
 	rBtn.MouseButton1Click:Connect(function()
 		combatActionRemote:FireServer({ ToggleSheath = true })
@@ -513,7 +515,7 @@ local function BuildHUD()
 	end)
 
 	-- =========================================================================
-	-- 4. BOTTOM VITAL CULTIVATION GAUGES (HP & QI PROGRESS BARS)
+	-- 3. BOTTOM VITAL CULTIVATION GAUGES (HP & QI PROGRESS BARS)
 	-- =========================================================================
 	local vitalsContainer = Instance.new("Frame")
 	vitalsContainer.Name = "BottomVitalsContainer"
@@ -525,15 +527,13 @@ local function BuildHUD()
 	vitalsContainer.BorderSizePixel = 0
 	vitalsContainer.Parent = screenGui
 
-	local vitalsCorner = Instance.new("UICorner")
+	local vitalsCorner = Instance.new("UICorner", vitalsContainer)
 	vitalsCorner.CornerRadius = UDim.new(0, 6)
-	vitalsCorner.Parent = vitalsContainer
 
-	local vitalsStroke = Instance.new("UIStroke")
+	local vitalsStroke = Instance.new("UIStroke", vitalsContainer)
 	vitalsStroke.Color = Color3.fromRGB(212, 175, 55)
 	vitalsStroke.Thickness = 1.2
 	vitalsStroke.Transparency = 0.45
-	vitalsStroke.Parent = vitalsContainer
 
 	-- HP Gauge (Emerald Gradient)
 	local hpTrack = Instance.new("Frame")
@@ -616,31 +616,29 @@ local function BuildHUD()
 	qiTextStroke.Thickness = 1
 
 	-- =========================================================================
-	-- 5. SIDE CULTIVATOR COMPASS
+	-- 4. BAGUA ASTROLABE COMPASS
 	-- =========================================================================
 	local compassFrame = Instance.new("Frame")
 	compassFrame.Name = "SideCompass"
-	compassFrame.Size = UDim2.new(0, 48, 0, 48)
-	compassFrame.Position = UDim2.new(1, 10, 0, 0)
+	compassFrame.Size = UDim2.new(0, 52, 0, 52)
+	compassFrame.Position = UDim2.new(1, 10, 0, -2)
 	compassFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 28)
 	compassFrame.BackgroundTransparency = 0.25
 	compassFrame.BorderSizePixel = 0
 	compassFrame.Parent = vitalsContainer
 
-	local compCorner = Instance.new("UICorner")
+	local compCorner = Instance.new("UICorner", compassFrame)
 	compCorner.CornerRadius = UDim.new(1, 0)
-	compCorner.Parent = compassFrame
 
-	local compStroke = Instance.new("UIStroke")
+	local compStroke = Instance.new("UIStroke", compassFrame)
 	compStroke.Color = Color3.fromRGB(212, 175, 55)
-	compStroke.Thickness = 1.2
-	compStroke.Transparency = 0.4
-	compStroke.Parent = compassFrame
+	compStroke.Thickness = 1.3
+	compStroke.Transparency = 0.35
 
 	compassHeadingText = Instance.new("TextLabel")
 	compassHeadingText.Name = "Heading"
-	compassHeadingText.Size = UDim2.new(1, 0, 0.52, 0)
-	compassHeadingText.Position = UDim2.new(0, 0, 0.08, 0)
+	compassHeadingText.Size = UDim2.new(1, 0, 0.48, 0)
+	compassHeadingText.Position = UDim2.new(0, 0, 0.06, 0)
 	compassHeadingText.BackgroundTransparency = 1
 	compassHeadingText.Font = UI_FONT
 	compassHeadingText.TextSize = 14
@@ -648,44 +646,74 @@ local function BuildHUD()
 	compassHeadingText.Text = "N"
 	compassHeadingText.Parent = compassFrame
 
+	compassTrigramText = Instance.new("TextLabel")
+	compassTrigramText.Name = "Trigram"
+	compassTrigramText.Size = UDim2.new(1, 0, 0.25, 0)
+	compassTrigramText.Position = UDim2.new(0, 0, 0.48, 0)
+	compassTrigramText.BackgroundTransparency = 1
+	compassTrigramText.Font = Enum.Font.GothamBold
+	compassTrigramText.TextSize = 11
+	compassTrigramText.TextColor3 = Color3.fromRGB(0, 195, 255)
+	compassTrigramText.Text = "☰"
+	compassTrigramText.Parent = compassFrame
+
 	compassDegreeText = Instance.new("TextLabel")
 	compassDegreeText.Name = "Degrees"
-	compassDegreeText.Size = UDim2.new(1, 0, 0.35, 0)
-	compassDegreeText.Position = UDim2.new(0, 0, 0.55, 0)
+	compassDegreeText.Size = UDim2.new(1, 0, 0.25, 0)
+	compassDegreeText.Position = UDim2.new(0, 0, 0.72, 0)
 	compassDegreeText.BackgroundTransparency = 1
 	compassDegreeText.Font = Enum.Font.GothamBold
-	compassDegreeText.TextSize = 9
+	compassDegreeText.TextSize = 8.5
 	compassDegreeText.TextColor3 = Color3.fromRGB(180, 190, 205)
 	compassDegreeText.Text = "0°"
 	compassDegreeText.Parent = compassFrame
 
 	if compassConnection then compassConnection:Disconnect() end
 	local cardinals = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" }
+	local trigrams  = { "☰", "☱", "☲", "☳", "☴", "☵", "☶", "☷" }
+
 	compassConnection = RunService.RenderStepped:Connect(function()
 		local look = Camera.CFrame.LookVector
 		local angle = math.deg(math.atan2(-look.X, -look.Z))
 		if angle < 0 then angle = angle + 360 end
 		local idx = math.floor((angle + 22.5) / 45) % 8 + 1
 		if compassHeadingText then compassHeadingText.Text = cardinals[idx] end
+		if compassTrigramText then compassTrigramText.Text = trigrams[idx] end
 		if compassDegreeText then compassDegreeText.Text = string.format("%d°", math.floor(angle)) end
 	end)
 end
 
 function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: number, maxQi: number)
+	local hMax = math.max(1, maxHp or 100)
+	local hCur = math.clamp(curHp or 0, 0, hMax)
+	local hRatio = hCur / hMax
+
+	local qMax = math.max(1, maxQi or 100)
+	local qCur = math.clamp(curQi or 0, 0, qMax)
+	local qRatio = qCur / qMax
+
 	if hpFillBar and hpValueText then
-		local hMax = math.max(1, maxHp or 100)
-		local hCur = math.clamp(curHp or 0, 0, hMax)
-		local hRatio = hCur / hMax
 		TweenService:Create(hpFillBar, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play()
 		hpValueText.Text = string.format("HP  %s / %s (%d%%)", FormatNum(hCur), FormatNum(hMax), math.floor(hRatio * 100))
 	end
 
 	if qiFillBar and qiValueText then
-		local qMax = math.max(1, maxQi or 100)
-		local qCur = math.clamp(curQi or 0, 0, qMax)
-		local qRatio = qCur / qMax
 		TweenService:Create(qiFillBar, INTENT_BAR_TWEEN, { Size = UDim2.new(qRatio, 0, 1, 0) }):Play()
 		qiValueText.Text = string.format("QI  %s / %s (%d%%)", FormatNum(qCur), FormatNum(qMax), math.floor(qRatio * 100))
+	end
+
+	-- Contextual Breakthrough Glow on [B] slot when Qi is 100%
+	local bData = actionButtons["B"]
+	if bData and bData.Stroke then
+		if qRatio >= 0.999 then
+			bData.Stroke.Color = Color3.fromRGB(255, 215, 0)
+			bData.Stroke.Thickness = 2.2
+			bData.Stroke.Transparency = 0.1
+		else
+			bData.Stroke.Color = Color3.fromRGB(160, 180, 205)
+			bData.Stroke.Thickness = 1.5
+			bData.Stroke.Transparency = 0.4
+		end
 	end
 end
 
@@ -713,7 +741,23 @@ function SkillBarController.UpdateSwordIntent(current: number, max: number)
 		Size = UDim2.new(ratio, 0, 1, 0)
 	}):Play()
 
-	swordIntentText.Text = string.format("SWORD INTENT · %d%%", math.floor(ratio * 100))
+	local stroke = swordIntentFill.Parent and swordIntentFill.Parent:FindFirstChildOfClass("UIStroke")
+
+	if ratio >= 0.999 then
+		swordIntentText.Text = "⚔️ 100% · EMPOWERED SWORD INTENT READY"
+		swordIntentText.TextColor3 = Color3.fromRGB(255, 245, 180)
+		if stroke then
+			stroke.Color = Color3.fromRGB(255, 215, 0)
+			stroke.Thickness = 2.0
+		end
+	else
+		swordIntentText.Text = string.format("SWORD INTENT · %d%%", math.floor(ratio * 100))
+		swordIntentText.TextColor3 = Color3.fromRGB(255, 255, 255)
+		if stroke then
+			stroke.Color = Color3.fromRGB(215, 175, 75)
+			stroke.Thickness = 1.4
+		end
+	end
 end
 
 local function BindCharacter(character: Model)
@@ -729,29 +773,50 @@ local function BindCharacter(character: Model)
 	end
 
 	local function checkIntent()
-		local intent = character:GetAttribute("SwordIntent") or LocalPlayer:GetAttribute("SwordIntent") or 100
+		local intent = character:GetAttribute("SwordIntent") or LocalPlayer:GetAttribute("SwordIntent") or 0
 		local maxIntent = character:GetAttribute("MaxSwordIntent") or LocalPlayer:GetAttribute("MaxSwordIntent") or 100
-		SkillBarController.UpdateSwordIntent(tonumber(intent) or 100, tonumber(maxIntent) or 100)
+		SkillBarController.UpdateSwordIntent(tonumber(intent) or 0, tonumber(maxIntent) or 100)
 	end
 
-	local function checkDrawState()
+	local function checkStanceState()
+		local isDrawn = character:GetAttribute("WeaponDrawn") == true
 		local rData = actionButtons["R"]
+		local m1Data = actionButtons["M1"]
+
 		if rData and rData.Button then
 			local actionLbl = rData.Button:FindFirstChild("ActionLabel") :: TextLabel?
-			local isDrawn = character:GetAttribute("WeaponDrawn") == true
-			if actionLbl then
-				actionLbl.Text = if isDrawn then "SHEATH" else "DRAW"
+			if actionLbl then actionLbl.Text = if isDrawn then "SHEATH" else "DRAW" end
+			if rData.Stroke then
+				rData.Stroke.Color = if isDrawn then Color3.fromRGB(255, 215, 0) else Color3.fromRGB(160, 180, 205)
+				rData.Stroke.Transparency = if isDrawn then 0.2 else 0.4
 			end
+		end
+
+		if m1Data and m1Data.Stroke then
+			m1Data.Stroke.Color = if isDrawn then Color3.fromRGB(255, 215, 0) else Color3.fromRGB(160, 180, 205)
+			m1Data.Stroke.Transparency = if isDrawn then 0.2 else 0.4
+		end
+	end
+
+	local function checkFlightState()
+		local isFlying = character:GetAttribute("IsFlying") == true
+		local vData = actionButtons["V"]
+		if vData and vData.Stroke then
+			vData.Stroke.Color = if isFlying then Color3.fromRGB(0, 195, 255) else Color3.fromRGB(160, 180, 205)
+			vData.Stroke.Thickness = if isFlying then 2.0 else 1.5
+			vData.Stroke.Transparency = if isFlying then 0.1 else 0.4
 		end
 	end
 
 	local function checkMeditateState()
+		local isMeditating = character:GetAttribute("IsMeditating") == true
 		local mData = actionButtons["M"]
 		if mData and mData.Button then
 			local actionLbl = mData.Button:FindFirstChild("ActionLabel") :: TextLabel?
-			local isMeditating = character:GetAttribute("IsMeditating") == true
-			if actionLbl then
-				actionLbl.Text = if isMeditating then "STAND" else "MEDITATE"
+			if actionLbl then actionLbl.Text = if isMeditating then "STAND" else "MEDITATE" end
+			if mData.Stroke then
+				mData.Stroke.Color = if isMeditating then Color3.fromRGB(0, 210, 255) else Color3.fromRGB(160, 180, 205)
+				mData.Stroke.Transparency = if isMeditating then 0.1 else 0.4
 			end
 		end
 	end
@@ -767,13 +832,15 @@ local function BindCharacter(character: Model)
 	LocalPlayer:GetAttributeChangedSignal("MaxQi"):Connect(checkVitals)
 
 	character:GetAttributeChangedSignal("SwordIntent"):Connect(checkIntent)
-	character:GetAttributeChangedSignal("WeaponDrawn"):Connect(checkDrawState)
+	character:GetAttributeChangedSignal("WeaponDrawn"):Connect(checkStanceState)
+	character:GetAttributeChangedSignal("IsFlying"):Connect(checkFlightState)
 	character:GetAttributeChangedSignal("IsMeditating"):Connect(checkMeditateState)
 	LocalPlayer:GetAttributeChangedSignal("SwordIntent"):Connect(checkIntent)
 
 	checkVitals()
 	checkIntent()
-	checkDrawState()
+	checkStanceState()
+	checkFlightState()
 	checkMeditateState()
 end
 
@@ -802,7 +869,7 @@ function SkillBarController.Init()
 		end
 	end)
 
-	print("[ASCEND] SkillBarController Initialized (Bottom-Left Menu Drawer Active).")
+	print("[ASCEND] SkillBarController Initialized (Dynamic Looping Intent & Decay Active).")
 end
 
 return SkillBarController

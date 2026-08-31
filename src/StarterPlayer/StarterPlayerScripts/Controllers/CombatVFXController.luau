@@ -2,9 +2,10 @@
 --[[
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
-    Client VFX and Audio engine:
-    - Spawns "SlashHitAnimation" Attachment VFX on targets when struck
-    - Hitstop Micro-Pause, Guard-Break Shatter, Clash Sparks, and Scaled Damage Numbers
+    Handles:
+      1. Xianxia Floating Damage Numbers
+      2. Floating Sword Intent Combo & Unleashed Text Banners
+      3. Slash VFX, Camera Shake, Hitstop, Parry Clashes & Block Sparks
 ]]
 
 local Players = game:GetService("Players")
@@ -57,7 +58,6 @@ local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 	Debris:AddItem(soundPart, 2.5)
 end
 
--- Spawns "SlashHitAnimation" on target position
 function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFrame: CFrame?)
 	local attTemplate = (vfxFolder and vfxFolder:FindFirstChild("SlashHitAnimation"))
 		or (ReplicatedStorage:FindFirstChild("SlashHitAnimation", true) :: Attachment?)
@@ -90,6 +90,60 @@ function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFra
 	Debris:AddItem(hitHolder, 0.6)
 end
 
+function CombatVFXController.SpawnIntentComboPopup(position: Vector3, comboCount: number, currentIntent: number, isEmpowered: boolean)
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "IntentComboGui"
+	billboard.Size = UDim2.new(0, 220, 0, 45)
+	billboard.StudsOffsetWorldSpace = position + Vector3.new(0, 3.8, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = workspace.Terrain
+	billboard.Parent = workspace
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.Bangers
+
+	local stroke = Instance.new("UIStroke", label)
+
+	if isEmpowered then
+		label.Text = "⚡ SWORD INTENT UNLEASHED (1.75X)"
+		label.TextSize = 24
+		label.TextColor3 = Color3.fromRGB(255, 235, 120)
+		stroke.Color = Color3.fromRGB(200, 50, 0)
+		stroke.Thickness = 2.0
+	elseif currentIntent >= 100 then
+		label.Text = "🌟 INTENT 100% · FULL CHARGE!"
+		label.TextSize = 22
+		label.TextColor3 = Color3.fromRGB(255, 215, 0)
+		stroke.Color = Color3.fromRGB(15, 15, 20)
+		stroke.Thickness = 1.6
+	else
+		label.Text = string.format("⚔️ INTENT +25%% [COMBO x%d]", math.max(1, comboCount))
+		label.TextSize = 18
+		label.TextColor3 = Color3.fromRGB(0, 215, 255)
+		stroke.Color = Color3.fromRGB(10, 20, 35)
+		stroke.Thickness = 1.4
+	end
+
+	label.Parent = billboard
+
+	local floatTween = TweenService:Create(billboard, TweenInfo.new(0.85, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		StudsOffsetWorldSpace = billboard.StudsOffsetWorldSpace + Vector3.new(0, 2.2, 0),
+	})
+
+	local fadeTween = TweenService:Create(label, TweenInfo.new(0.85, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		TextTransparency = 1,
+	})
+
+	floatTween:Play()
+	fadeTween:Play()
+
+	floatTween.Completed:Connect(function()
+		billboard:Destroy()
+	end)
+end
+
 function CombatVFXController.Init()
 	combatVFXRemote = RemoteEvents.GetRemote("CombatVFX")
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
@@ -104,29 +158,39 @@ function CombatVFXController.Init()
 		end
 
 		if type(payload) == "table" and payload.HasHit == true and payload.TargetPosition ~= nil then
+			local targetPos: Vector3 = payload.TargetPosition
+
 			if payload.WasParried then
-				-- Handled by ParryClash
+				CombatVFXController.SpawnParryClash(targetPos)
+				CombatVFXController.SpawnDamageNumber(targetPos, 0, true, Color3.fromRGB(100, 220, 255), "✦ PARRY! ✦")
 			elseif payload.WasGuardBroken then
-				Play3DSound(PARRY_CLASH_SOUND_ID, payload.TargetPosition, 1.0)
+				Play3DSound(PARRY_CLASH_SOUND_ID, targetPos, 1.0)
 				CombatVFXController.AddCameraShake(0.55)
 				CombatVFXController.ApplyHitstop(0.06)
-				CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, true, Color3.fromRGB(255, 60, 60), "💥 GUARD BREAK!")
+				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, true, Color3.fromRGB(255, 60, 60), "💥 GUARD BROKEN!")
 			elseif payload.WasBlocked then
-				Play3DSound(PARRY_CLASH_SOUND_ID, payload.TargetPosition, 0.7)
+				Play3DSound(PARRY_CLASH_SOUND_ID, targetPos, 0.7)
 				if attacker == player then CombatVFXController.AddCameraShake(0.15) end
-				CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, false, Color3.fromRGB(175, 195, 220), "🛡️")
+				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, false, Color3.fromRGB(175, 195, 220), "🛡️ BLOCKED")
 			else
-				-- Clean Strike: Spawn SlashHitAnimation
-				Play3DSound(HIT_IMPACT_SOUND_ID, payload.TargetPosition, 0.95)
-				CombatVFXController.SpawnSlashHitVFX(payload.TargetPosition, hrp and hrp.CFrame)
+				Play3DSound(HIT_IMPACT_SOUND_ID, targetPos, 0.95)
+				CombatVFXController.SpawnSlashHitVFX(targetPos, hrp and hrp.CFrame)
 
 				if attacker == player then
 					CombatVFXController.AddCameraShake(payload.IsCrit and 0.45 or 0.25)
-					CombatVFXController.ApplyHitstop(0.04)
+					CombatVFXController.ApplyHitstop(payload.IsCrit and 0.06 or 0.04)
+
+					-- Spawn Floating Sword Intent Combo Badge
+					CombatVFXController.SpawnIntentComboPopup(
+						targetPos,
+						payload.ComboCount or 1,
+						payload.CurrentIntent or 0,
+						payload.IsCrit == true
+					)
 				end
 
 				if payload.Damage and payload.Damage > 0 then
-					CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, payload.IsCrit == true)
+					CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage, payload.IsCrit == true)
 				end
 			end
 		end
@@ -156,7 +220,7 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (Hitstop & Slash Hit Active).")
+	print("[ASCEND] CombatVFXController Initialized (With Intent Combo Popups).")
 end
 
 function CombatVFXController.ApplyHitstop(duration: number)
@@ -258,26 +322,28 @@ function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number
 
 	local formattedNum = tostring(math.floor(damage))
 	if prefixText then
-		label.Text = string.format("%s %s", prefixText, formattedNum)
+		label.Text = string.format("%s %s", prefixText, (if damage > 0 then formattedNum else ""))
 	elseif isCrit then
 		label.Text = string.format("CRIT! %s", formattedNum)
 	else
 		label.Text = formattedNum
 	end
 
-	label.Font = Enum.Font.LuckiestGuy
+	label.Font = Enum.Font.Bangers
 
 	if isCrit then
 		label.TextSize = 34
 		label.TextColor3 = customColor or Color3.fromRGB(255, 215, 0)
-		label.TextStrokeTransparency = 0
-		label.TextStrokeColor3 = Color3.fromRGB(130, 25, 0)
+		local s = Instance.new("UIStroke", label)
+		s.Color = Color3.fromRGB(130, 25, 0)
+		s.Thickness = 1.8
 	else
 		local baseSize = math.clamp(20 + math.floor(damage / 15), 20, 26)
 		label.TextSize = baseSize
 		label.TextColor3 = customColor or Color3.fromRGB(255, 255, 255)
-		label.TextStrokeTransparency = 0
-		label.TextStrokeColor3 = Color3.fromRGB(20, 20, 20)
+		local s = Instance.new("UIStroke", label)
+		s.Color = Color3.fromRGB(15, 15, 20)
+		s.Thickness = 1.2
 	end
 
 	label.Parent = billboard
@@ -290,7 +356,6 @@ function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number
 
 	local fadeTween = TweenService:Create(label, TweenInfo.new(isCrit and 0.95 or 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 		TextTransparency = 1,
-		TextStrokeTransparency = 1,
 	})
 
 	floatTween:Play()
