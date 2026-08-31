@@ -4,7 +4,7 @@
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
     Handles:
       1. Elevated Action HUD with Contextual State Glows (Breakthrough, Flight, Unsheathed)
-      2. Looping Sword Intent Bar with Continuous Combat Decay Visualization
+      2. Dynamic Looping Sword Intent Bar with Live Event Sync & Continuous Decay
       3. Bottom Cultivation Gauges (Emerald HP & Celestial Qi Progress)
       4. Bagua Cultivator Astrolabe Compass
       5. Bottom-Left Book Menu Drawer & Legacy Studio Icon Sweeper
@@ -30,6 +30,9 @@ local TWEEN_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirecti
 local INTENT_BAR_TWEEN = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local DRAWER_TWEEN = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
+local INTENT_DECAY_DELAY = 2.5 -- Seconds before intent begins decaying
+local INTENT_DECAY_RATE = 8.0   -- Percent decayed per second
+
 local screenGui: ScreenGui?
 local swordIntentFill: Frame?
 local swordIntentText: TextLabel?
@@ -48,6 +51,9 @@ local menuDrawerFrame: Frame?
 local menuDrawerScale: UIScale?
 local combatActionRemote: RemoteEvent
 local compassConnection: RBXScriptConnection?
+
+local currentSwordIntent = 0
+local lastHitLandedTime = os.clock()
 
 local function IsTouchDevice(): boolean
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
@@ -432,7 +438,7 @@ local function BuildHUD()
 
 	swordIntentFill = Instance.new("Frame")
 	swordIntentFill.Name = "Fill"
-	swordIntentFill.Size = UDim2.new(0, 0, 1, 0) -- Starts at 0%
+	swordIntentFill.Size = UDim2.new(0, 0, 1, 0)
 	swordIntentFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	swordIntentFill.BorderSizePixel = 0
 	swordIntentFill.Parent = intentBg
@@ -702,7 +708,6 @@ function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: nu
 		qiValueText.Text = string.format("QI  %s / %s (%d%%)", FormatNum(qCur), FormatNum(qMax), math.floor(qRatio * 100))
 	end
 
-	-- Contextual Breakthrough Glow on [B] slot when Qi is 100%
 	local bData = actionButtons["B"]
 	if bData and bData.Stroke then
 		if qRatio >= 0.999 then
@@ -732,10 +737,11 @@ function SkillBarController.TriggerCooldown(actionKey: string, customDuration: n
 end
 
 function SkillBarController.UpdateSwordIntent(current: number, max: number)
+	currentSwordIntent = math.clamp(current or 0, 0, max or 100)
 	if not swordIntentFill or not swordIntentText then return end
+
 	local maxVal = math.max(1, max or 100)
-	local curVal = math.clamp(current or 0, 0, maxVal)
-	local ratio = curVal / maxVal
+	local ratio = currentSwordIntent / maxVal
 
 	TweenService:Create(swordIntentFill, INTENT_BAR_TWEEN, {
 		Size = UDim2.new(ratio, 0, 1, 0)
@@ -773,7 +779,7 @@ local function BindCharacter(character: Model)
 	end
 
 	local function checkIntent()
-		local intent = character:GetAttribute("SwordIntent") or LocalPlayer:GetAttribute("SwordIntent") or 0
+		local intent = character:GetAttribute("SwordIntent") or LocalPlayer:GetAttribute("SwordIntent") or currentSwordIntent
 		local maxIntent = character:GetAttribute("MaxSwordIntent") or LocalPlayer:GetAttribute("MaxSwordIntent") or 100
 		SkillBarController.UpdateSwordIntent(tonumber(intent) or 0, tonumber(maxIntent) or 100)
 	end
@@ -854,6 +860,39 @@ function SkillBarController.Init()
 	end
 	LocalPlayer.CharacterAdded:Connect(BindCharacter)
 
+	-- =========================================================================
+	-- DIRECT COMBATACTION LISTENER FOR INSTANT INTENT HUD UPDATES
+	-- =========================================================================
+	combatActionRemote.OnClientEvent:Connect(function(attacker: Player, skillKey: string, payload: any)
+		if attacker == LocalPlayer and type(payload) == "table" and payload.HasHit == true then
+			lastHitLandedTime = os.clock()
+
+			if payload.CurrentIntent ~= nil then
+				currentSwordIntent = tonumber(payload.CurrentIntent) or 0
+			else
+				-- If at 100%, empower consumed -> reset to 0
+				if currentSwordIntent >= 99.9 then
+					currentSwordIntent = 0
+				else
+					currentSwordIntent = math.clamp(currentSwordIntent + 25, 0, 100)
+				end
+			end
+
+			SkillBarController.UpdateSwordIntent(currentSwordIntent, 100)
+		end
+	end)
+
+	-- =========================================================================
+	-- CLIENT-SIDE SMOOTH INTENT DECAY HEARTBEAT
+	-- =========================================================================
+	RunService.Heartbeat:Connect(function(dt: number)
+		local now = os.clock()
+		if (now - lastHitLandedTime > INTENT_DECAY_DELAY) and currentSwordIntent > 0 then
+			currentSwordIntent = math.clamp(currentSwordIntent - (INTENT_DECAY_RATE * dt), 0, 100)
+			SkillBarController.UpdateSwordIntent(currentSwordIntent, 100)
+		end
+	end)
+
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 		local keyName = input.KeyCode.Name
@@ -869,7 +908,7 @@ function SkillBarController.Init()
 		end
 	end)
 
-	print("[ASCEND] SkillBarController Initialized (Dynamic Looping Intent & Decay Active).")
+	print("[ASCEND] SkillBarController Initialized (Dynamic Looping Intent & Direct Event Sync Active).")
 end
 
 return SkillBarController
