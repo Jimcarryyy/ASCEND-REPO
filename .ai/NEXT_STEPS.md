@@ -3,6 +3,31 @@
 ## Purpose
 This file lays out the next planned development milestones and future roadmap. Use it after completing current objectives or when planning upcoming phases.
 
+## 🏯 Sect Zone (Zone 1) V1 Additions — Agreed Scope, Not Yet Built (2026-08-31)
+*Per ADR-031. None of the below are confirmed built — verify in Studio before marking complete.*
+
+- [ ] Central Sect Altar / Sword Gacha roll — status unconfirmed, referenced in original MVP doc
+- [ ] Beginner tutorial/onboarding flow (greet → M1 dummy → alchemy demo → gathering intro → mission board intro); requires new `TutorialComplete` save-flag in `PlayerDataManager`
+- [ ] Sect Elder Pavilion — clarify vs. existing Sect shop
+- [ ] Contribution Point display/progress toward next Disciple promotion
+- [ ] Confirmed spawn/respawn point tied to sect plaza
+- [ ] Sect notice board / lore NPCs (optional)
+- [ ] Meditation spot / cultivation garden marker (visual only, ties to `C` meditate)
+- [ ] Portal / zone-transition gateway to Zone 2 (can be visually locked pre-Zone-2)
+- [ ] Optional: storage/bank NPC separate from inventory
+
+*Explicitly deferred: 16 personal mini-houses per server (ADR-032). Do not resurface unless developer brings it back up.*
+
+## 📊 Sect Leaderboards — Designed, Code Drafted, NOT Applied (2026-08-31)
+*Designed in Architect session. Do not treat as implemented until developer confirms each item applied and verified in Studio.*
+
+- [ ] Create `src/ServerScriptService/Server/State/LeaderboardManager.luau` — two `OrderedDataStore`s (`ASCEND_CultivationRank_V1`, `ASCEND_ArenaWins_V1`), auto-building `SurfaceGui` boards on `Workspace.SectZone.Leaderboards.CultivationBoard` / `.ArenaBoard`
+- [ ] Edit `PlayerDataManager.luau` — add `ArenaWins` field + `GetArenaWins`/`AddArenaWin` functions
+- [ ] Edit `ArenaManager.luau` — call `AddArenaWin` on duel win
+- [ ] Edit `ServerMain.server.luau` — require + Init call
+
+---
+
 ## Connectivity
 - Follows `.ai/CURRENT_TASK.md` and `.ai/PROJECT_STATUS.md`.
 - Points to active Phase 7 and future Phase 8 work.

@@ -8,6 +8,9 @@ Defines the active milestone, progress summary, and approved tasks for immediate
 - `.ai/PROJECT_STATUS.md` — subsystem health and completion context.
 - `.ai/DECISIONS.md` — architectural decision records (ADR-001 to ADR-019).
 
+## ⚠️ Flag for Architect Project
+`ServerMain.server.luau` requires three modules not present in the Architect project's saved repo-structure manifest: `EnvironmentTimeManager.luau`, `TreeCollisionManager.luau`, `VendorManager.luau` (all under `src/ServerScriptService/Server/World/`). Fix belongs to whoever next touches the Architect project's manifest — not this project's job, just flagged so it isn't lost. (Logged 2026-08-31.)
+
 ---
 
 ## Active Milestone: Phase 7 — Core Gameplay Loop, World Gathering & Monetization Integration

@@ -170,3 +170,27 @@ This document records key architecture decisions for ASCEND, including accepted 
 
 5. **Anti-Ragdoll Physics Constraint in R6:**
    - Standard Roblox R6 physics introduces severe balance-tipping bugs on stepped terrain. Permanently disabling `Ragdoll`, `FallingDown`, `PlatformStanding`, and `GettingUp` produces a rock-solid, responsive martial arts combat feel.
+
+### ADR-031 — Sect Zone (Zone 1) V1 Scope
+* **Date:** 2026-08-31
+* **Status:** Agreed scope, not yet built or verified as built
+* **Source:** Decided in Architect session
+* **Context:** Zone 1 already has Alchemy shop, Sect shop, mission board, and training dummy built. Remaining V1 scope needed clarification before further work.
+* **Decision:** In-scope additions for V1 (design agreement only — none confirmed built):
+  1. Central Sect Altar / Sword Gacha roll (status unconfirmed — referenced in original MVP doc)
+  2. Beginner tutorial/onboarding flow (linear: greet → M1 on dummy → alchemy demo → gathering intro → mission board intro), gated by a new save-flag (`TutorialComplete` or similar — does not yet exist in `PlayerDataManager`)
+  3. Sect Elder Pavilion — needs clarification on whether distinct from Sect shop or the same structure
+  4. Visible Contribution Point display/progress toward next Disciple promotion
+  5. Confirmed spawn/respawn point tied to sect plaza
+  6. Sect notice board / lore NPCs (optional, low-cost)
+  7. Meditation spot / cultivation garden marker (visual only, ties to existing `C` meditate mechanic)
+  8. Portal / zone-transition gateway to Zone 2 (can be visually locked/teased pre-Zone-2)
+  9. Optional: storage/bank NPC separate from inventory
+* **Consequences:** None of the above should be logged as complete until the developer confirms it in Studio.
+
+### ADR-032 — 16 Personal Mini-Houses Deferred for V1
+* **Date:** 2026-08-31
+* **Status:** Deferred, not cancelled
+* **Source:** Decided directly with developer
+* **Context:** Developer raised a "16 personal mini-houses per server" feature for Zone 1.
+* **Decision:** Cut from V1 scope. Not to be resurfaced as a pending task unless the developer brings it back up.

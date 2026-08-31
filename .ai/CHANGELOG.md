@@ -14,6 +14,14 @@ This document tracks released and unreleased changes, feature additions, and arc
 
 ---
 
+## [Archived Status Snapshots] — consolidated 2026-08-31
+The following are historical `PROJECT_STATUS.md` completion snapshots, preserved here for reference. They were stacked in `PROJECT_STATUS.md` across multiple sessions rather than overwritten. Developer has since confirmed the final "~99%" figure was inaccurate — treat all of these as optimistic self-reports, not verified state.
+
+- **~92%** (undated, Phase 7 in progress, Task 7.1C active) — subsystems through Alchemy/Gathering claimed operational.
+- **~95%** (2026-08-16) — added Day/Night Engine, Loading Screen, Locomotion Engine to claimed-operational list.
+- **~98%** (V1 Core Systems Complete, undated) — added Sect Economy, Arena claimed 100% operational.
+- **~99%** (2026-08-27) — added Combat Overhaul, 3D Inventory, Arena polish; Flying Sword Flight Mode listed as sole remaining task.
+
 ## [Unreleased] - 2026-08-10 — Phase 7 World Gathering & Manual Cauldron Alchemy Engine
 
 ### Added

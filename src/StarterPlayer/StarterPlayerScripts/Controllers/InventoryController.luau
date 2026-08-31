@@ -4,11 +4,9 @@
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
     Directly bound to StarterGui.SpiritPouchInventoryGui:
     - Dual-device adaptive grid: 6 slots/row on PC ({0, 100}, {0, 100}), 4 slots/row on Phone ({0, 56}, {0, 56})
-    - SelectedGlow alignment guarantee (fits slot frame precisely on all resolutions)
-    - Universal 3D Viewport Engine: 3D models for Swords (Weapons) & Herbs (Herbs)
-    - Dynamic 3D spinning inspection preview for all 3D items
-    - 2D Sprite fallback for pills and flat icons
-    - Real-time DataStore item population, search, category filtering, and rarity sorting
+    - Space-Insensitive Universal 3D Viewport Engine: Resolves all 8 Sword Tiers (Tiers 1-8)
+    - Dynamic 3D spinning inspection preview for all swords and materials
+    - Full Support for Divine and Immortal tier rarities
     - Key Normalization Fix: Guarantees saved DataStore items display immediately on login
     - Integrated Panel Click Audio (rbxassetid://138567614125924)
 ]]
@@ -114,6 +112,8 @@ local RARITY_COLORS: { [string]: RarityColorToken } = {
 	["Epic"]      = { Color = Color3.fromHex("#A855F7"), TextColor = Color3.fromHex("#FFFFFF") },
 	["Legendary"] = { Color = Color3.fromHex("#F59E0B"), TextColor = Color3.fromHex("#FFFFFF") },
 	["Mythic"]    = { Color = Color3.fromHex("#E11D48"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Divine"]    = { Color = Color3.fromHex("#06B6D4"), TextColor = Color3.fromHex("#FFFFFF") },
+	["Immortal"]  = { Color = Color3.fromHex("#FBBF24"), TextColor = Color3.fromHex("#1E232A") },
 	["Sovereign"] = { Color = Color3.fromHex("#22D3EE"), TextColor = Color3.fromHex("#FFFFFF") },
 	["Celestial"] = { Color = Color3.fromHex("#F8FAFC"), TextColor = Color3.fromHex("#1E232A") },
 }
@@ -138,31 +138,43 @@ local function IsPositionInsideGui(guiObject: GuiObject, x: number, y: number): 
 end
 
 -- =============================================================================
--- UNIVERSAL 3D MODEL RESOLVER
+-- FUZZY SPACE-INSENSITIVE 3D MODEL RESOLVER
 -- =============================================================================
 local function Find3DItemModel(itemId: string): Instance?
+	local cleanTarget = itemId:gsub("%s+", ""):lower()
+
+	if not weaponsFolder then
+		weaponsFolder = ReplicatedStorage:FindFirstChild("Weapons") :: Folder?
+	end
 	if weaponsFolder then
-		local m = weaponsFolder:FindFirstChild(itemId)
-		if m then return m end
+		for _, child in ipairs(weaponsFolder:GetChildren()) do
+			if child.Name:gsub("%s+", ""):lower() == cleanTarget then
+				return child
+			end
+		end
 	end
 
 	if not herbsFolder then
 		herbsFolder = ReplicatedStorage:FindFirstChild("Herbs") :: Folder?
 	end
 	if herbsFolder then
-		local m = herbsFolder:FindFirstChild(itemId)
-		if m then return m end
-		local baseName = itemId:gsub("_%d+Yr", "")
-		m = herbsFolder:FindFirstChild(baseName)
-		if m then return m end
+		for _, child in ipairs(herbsFolder:GetChildren()) do
+			local cleanChild = child.Name:gsub("%s+", ""):lower()
+			if cleanChild == cleanTarget or cleanChild == cleanTarget:gsub("_%d+yr", "") then
+				return child
+			end
+		end
 	end
 
 	if not itemsFolder then
 		itemsFolder = ReplicatedStorage:FindFirstChild("Items") or ReplicatedStorage:FindFirstChild("Models") :: Folder?
 	end
 	if itemsFolder then
-		local m = itemsFolder:FindFirstChild(itemId)
-		if m then return m end
+		for _, child in ipairs(itemsFolder:GetChildren()) do
+			if child.Name:gsub("%s+", ""):lower() == cleanTarget then
+				return child
+			end
+		end
 	end
 
 	local rootModel = ReplicatedStorage:FindFirstChild(itemId)
@@ -208,7 +220,7 @@ local function Setup3DViewport(viewport: ViewportFrame, itemModel: Instance, spi
 	viewport.CurrentCamera = camera
 	camera.Parent = viewport
 
-	viewport.Ambient = Color3.fromRGB(210, 215, 230)
+	viewport.Ambient = Color3.fromRGB(220, 225, 240)
 	viewport.LightColor = Color3.fromRGB(255, 255, 255)
 	viewport.LightDirection = Vector3.new(-1, -1.2, -1).Unit
 
@@ -408,7 +420,7 @@ function InventoryController.Init()
 		end)
 	end
 
-	-- Key Normalization: convert incoming string keys to number keys
+	-- Key Normalization: converts incoming string keys to number keys
 	updateInventoryRemote.OnClientEvent:Connect(function(newInventory: any)
 		inventoryCache = {}
 		if newInventory and type(newInventory) == "table" then
@@ -434,11 +446,11 @@ function InventoryController.Init()
 		end
 	end)
 
-	print("[ASCEND] InventoryController Initialized (Adaptive 6-Col PC / 4-Col Phone Active).")
+	print("[ASCEND] InventoryController Initialized (8-Tier 3D Sword Viewports Active).")
 end
 
 -- =============================================================================
--- RESPONSIVE GRID ADAPTATION (GRADUAL 6 -> 4 COLUMNS BY AVAILABLE WIDTH)
+-- RESPONSIVE GRID ADAPTATION
 -- =============================================================================
 local GRID_MAX_COLUMNS = 6
 local GRID_MIN_COLUMNS = 4
@@ -548,7 +560,7 @@ function InventoryController.RenderGrid()
 		end
 	end
 
-	-- Sorting
+	-- Sorting with full 8-Tier Rarity coverage
 	local RARITY_RANKS = {
 		["Mortal"]    = 1, ["Common"]    = 1,
 		["Spiritual"] = 2, ["Uncommon"]  = 2,
@@ -556,8 +568,10 @@ function InventoryController.RenderGrid()
 		["Heaven"]    = 4, ["Epic"]      = 4,
 		["Legendary"] = 5,
 		["Mythic"]    = 6,
-		["Sovereign"] = 7,
-		["Celestial"] = 8,
+		["Divine"]    = 7,
+		["Immortal"]  = 8,
+		["Sovereign"] = 9,
+		["Celestial"] = 10,
 	}
 
 	if currentSortMode == "Rarity" then
@@ -721,7 +735,7 @@ function InventoryController.UpdateInspection(itemDef: any, count: number, quali
 	local item3DModel = Find3DItemModel(itemDef.Id or itemDef.Name)
 
 	if item3DModel and inspectionViewport then
-		itemIconLarge.Visible = false
+		if itemIconLarge then itemIconLarge.Visible = false end
 		inspectionViewport.Visible = true
 		activeInspectionSpinCleanup = Setup3DViewport(inspectionViewport, item3DModel, true)
 	else
