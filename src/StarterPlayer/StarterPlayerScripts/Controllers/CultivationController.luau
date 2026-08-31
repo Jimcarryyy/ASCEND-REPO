@@ -3,7 +3,7 @@
     CultivationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CultivationController.luau
     Client controller for meditation camera adjustments, audio, and QiNode Zone Visuals:
-    - Real-time Top-Left Meditation Status Banner (Underneath default Roblox top-bar buttons)
+    - Real-time Top-Left Meditation Status Banner (Stacked directly underneath Sect Mission tracker)
     - Validates whether disciple is currently meditating inside a Qi Multiplier zone
     - Automatically attaches floating Bangers Billboard above QiNode zones
     - Dynamically colors dome mesh & light based on QiMultiplier tier
@@ -73,7 +73,7 @@ local function GetCurrentQiZoneMultiplier(character: Model): (number, string?)
 end
 
 -- =============================================================================
--- TOP-LEFT MEDITATION STATUS BANNER (Underneath Roblox Top-Bar)
+-- TOP-LEFT MEDITATION STATUS BANNER (Stacked Underneath Sect Mission Tracker)
 -- =============================================================================
 local function EnsureStatusBanner()
 	if meditationStatusGui and meditationStatusGui.Parent then return end
@@ -88,7 +88,7 @@ local function EnsureStatusBanner()
 	statusBannerFrame = Instance.new("Frame")
 	statusBannerFrame.Name = "StatusBanner"
 	statusBannerFrame.Size = UDim2.new(0, 230, 0, 30)
-	statusBannerFrame.Position = UDim2.new(0, 16, 0, 52) -- Positioned directly below Roblox top-bar buttons
+	statusBannerFrame.Position = UDim2.new(0, 16, 0, 220) -- Positioned below Sect Mission Tracker
 	statusBannerFrame.BackgroundColor3 = Color3.fromRGB(12, 16, 24)
 	statusBannerFrame.BackgroundTransparency = 1
 	statusBannerFrame.BorderSizePixel = 0
@@ -256,11 +256,11 @@ function CultivationController.StartMeditation(character: Model)
 	if statusBannerFrame and statusTextLabel and statusStroke then
 		UpdateMeditationBanner(character)
 		statusBannerFrame.Visible = true
-		statusBannerFrame.Position = UDim2.new(0, 16, 0, 44)
+		statusBannerFrame.Position = UDim2.new(0, 16, 0, 212)
 
 		TweenService:Create(statusBannerFrame, TWEEN_FAST, {
 			BackgroundTransparency = 0.25,
-			Position = UDim2.new(0, 16, 0, 52)
+			Position = UDim2.new(0, 16, 0, 220),
 		}):Play()
 		TweenService:Create(statusStroke, TWEEN_FAST, { Transparency = 0.2 }):Play()
 		TweenService:Create(statusTextLabel, TWEEN_FAST, { TextTransparency = 0 }):Play()
@@ -306,7 +306,7 @@ function CultivationController.StopMeditation(character: Model)
 	if statusBannerFrame and statusTextLabel and statusStroke then
 		local fadeTween = TweenService:Create(statusBannerFrame, TWEEN_FAST, {
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0, 16, 0, 44)
+			Position = UDim2.new(0, 16, 0, 212),
 		})
 		TweenService:Create(statusStroke, TWEEN_FAST, { Transparency = 1 }):Play()
 		TweenService:Create(statusTextLabel, TWEEN_FAST, { TextTransparency = 1 }):Play()
