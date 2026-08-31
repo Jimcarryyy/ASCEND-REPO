@@ -18,6 +18,7 @@ local CONTROLLER_NAMES = {
 	"InventoryController",
 	"AlchemyController",
 	"OverheadUIController",
+	"CultivationController",
 	"GatheringController",
 	"WindEnvironmentController",
 	"MarketController",
@@ -46,7 +47,7 @@ local function InitializeClient()
 		end
 	end
 
-	print("[ASCEND] All Client Controllers Initialized Concurrently (Including SectController).")
+	print("[ASCEND] All Client Controllers Initialized Concurrently (Including CultivationController).")
 end
 
 InitializeClient()
