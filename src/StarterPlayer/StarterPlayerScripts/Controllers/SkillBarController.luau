@@ -3,11 +3,11 @@
     SkillBarController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
     Handles:
-      1. Elevated Action HUD with Contextual State Glows (Breakthrough, Flight, Unsheathed)
-      2. Dynamic Looping Sword Intent Bar with Live Event Sync & Continuous Decay
-      3. Bottom Cultivation Gauges (Emerald HP & Celestial Qi Progress)
-      4. Bagua Cultivator Astrolabe Compass
-      5. Bottom-Left Book Menu Drawer & Legacy Studio Icon Sweeper
+      - Desktop (SkillsGUI) vs Mobile (LowViewPortSkillsGUI + Styled Mobile Combat Cluster)
+      - Mobile Touch Cluster matching native Roblox Jump button aesthetics (Gray UIStroke, Translucent dark body)
+      - Non-overlapping ergonomic spacing around native Roblox Jump button
+      - Dual-Viewport Vitals & Looping Sword Intent updates
+      - BottomMenuGui & CurrencyGUI Bindings
 ]]
 
 local Players = game:GetService("Players")
@@ -22,41 +22,67 @@ local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationCo
 
 local SkillBarController = {}
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 local Camera = Workspace.CurrentCamera
 
-local UI_FONT = Enum.Font.Bangers
-local TWEEN_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local INTENT_BAR_TWEEN = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local DRAWER_TWEEN = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local INTENT_BAR_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local BUTTON_PRESS_TWEEN = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local INTENT_DECAY_DELAY = 2.5
+local INTENT_DECAY_RATE = 8.0
 
-local INTENT_DECAY_DELAY = 2.5 -- Seconds before intent begins decaying
-local INTENT_DECAY_RATE = 8.0   -- Percent decayed per second
+-- Desktop SkillsGUI
+local desktopSkillsGui: ScreenGui?
+local desktopMainFrame: Frame?
+local desktopIntentFill: Frame?
+local desktopIntentLabel: TextLabel?
+local desktopHpFill: Frame?
+local desktopHpLabel: TextLabel?
+local desktopQiFill: Frame?
+local desktopQiLabel: TextLabel?
 
-local screenGui: ScreenGui?
-local swordIntentFill: Frame?
-local swordIntentText: TextLabel?
-local hpFillBar: Frame?
-local hpValueText: TextLabel?
-local qiFillBar: Frame?
-local qiValueText: TextLabel?
-local compassHeadingText: TextLabel?
-local compassDegreeText: TextLabel?
-local compassTrigramText: TextLabel?
+-- Low Viewport SkillsGUI (Studio: LowViewPortSkillsGUI)
+local lowViewportGui: ScreenGui?
+local lowMainFrame: Frame?
+local lowIntentFill: Frame?
+local lowIntentLabel: TextLabel?
+local lowHpFill: Frame?
+local lowHpLabel: TextLabel?
+local lowQiFill: Frame?
+local lowQiLabel: TextLabel?
 
-local actionButtons: { [string]: { Button: ImageButton, Scale: UIScale, Stroke: UIStroke, CooldownOverlay: Frame? } } = {}
+-- Dynamic Mobile Right-Side Combat Cluster (M1, R, V)
+local mobileCombatGui: ScreenGui?
+local mobileCombatCluster: Frame?
 
-local isMenuOpen = false
-local menuDrawerFrame: Frame?
-local menuDrawerScale: UIScale?
+-- BottomMenuGui
+local bottomMenuGui: ScreenGui?
+local bagButton: ImageButton?
+local arenaButton: ImageButton?
+
+-- CurrencyGUI
+local currencyGui: ScreenGui?
+local cpLabel: TextLabel?
+local spiritStoneLabel: TextLabel?
+
 local combatActionRemote: RemoteEvent
-local compassConnection: RBXScriptConnection?
-
 local currentSwordIntent = 0
 local lastHitLandedTime = os.clock()
 
-local function IsTouchDevice(): boolean
-	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local lastKnownQi = 0
+local lastKnownMaxQi = 100
+
+-- =============================================================================
+-- DEVICE DETECTION (Touch / Mobile Viewport)
+-- =============================================================================
+local function IsMobileOrTouch(): boolean
+	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+		return true
+	end
+	local vp = Camera.ViewportSize
+	if vp.X > 0 and (vp.X < 950 or vp.Y < 560) then
+		return true
+	end
+	return false
 end
 
 local function FormatNum(num: number): string
@@ -72,45 +98,27 @@ local function FormatNum(num: number): string
 	end
 end
 
--- =============================================================================
--- PURGE LEGACY STUDIO TOP-RIGHT ICONS
--- =============================================================================
-local function PurgeLegacyTopIcons()
-	local function checkAndPurge(instance: Instance)
-		if screenGui and instance:IsDescendantOf(screenGui) then return end
-		local nameLower = instance.Name:lower()
+local function FormatCurrency(num: number): string
+	local formatted = tostring(math.floor(num))
+	local k
+	while true do
+		formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+		if k == 0 then break end
+	end
+	return formatted
+end
 
-		if nameLower == "topmenugui" or nameLower == "topmenu" or nameLower == "toprightmenu" or nameLower == "toprighticons" or nameLower == "toprightmenucluster" then
-			instance:Destroy()
-			return
-		end
-
-		if (nameLower:find("settings") or nameLower:find("arena") or nameLower:find("pouch")) 
-			and (instance:IsA("ImageButton") or instance:IsA("ImageLabel") or instance:IsA("Frame") or instance:IsA("TextButton")) then
-			if instance:IsA("GuiObject") then
-				local vp = Camera.ViewportSize
-				if instance.AbsolutePosition.X > vp.X * 0.65 and instance.AbsolutePosition.Y < vp.Y * 0.45 then
-					instance.Visible = false
-					instance:Destroy()
-				end
+local function EmitToast(message: string)
+	local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
+	if controllers then
+		local hudCtrl = controllers:FindFirstChild("HUDController")
+		if hudCtrl then
+			local req = require(hudCtrl) :: any
+			if req and req.ShowToast then
+				req.ShowToast(message)
 			end
 		end
 	end
-
-	task.spawn(function()
-		for _ = 1, 6 do
-			for _, gui in ipairs(PlayerGui:GetChildren()) do
-				if gui ~= screenGui and (gui:IsA("ScreenGui") or gui:IsA("BillboardGui")) then
-					for _, desc in ipairs(gui:GetDescendants()) do
-						checkAndPurge(desc)
-					end
-				end
-			end
-			task.wait(0.15)
-		end
-	end)
-
-	PlayerGui.DescendantAdded:Connect(checkAndPurge)
 end
 
 local function TriggerM1()
@@ -128,165 +136,233 @@ local function TriggerM1()
 	combatActionRemote:FireServer({ SkillKey = "M1", AimDirection = Vector3.new(0, 0, -1), Timestamp = os.clock() })
 end
 
-local function CreateActionSlot(parent: Instance, keybind: string, actionName: string, size: UDim2, layoutOrder: number, isTouch: boolean): (ImageButton, UIScale, UIStroke, Frame)
-	local button = Instance.new("ImageButton")
-	button.Name = "Slot_" .. keybind
-	button.LayoutOrder = layoutOrder
-	button.Size = size
-	button.BackgroundColor3 = Color3.fromRGB(15, 20, 28)
-	button.BackgroundTransparency = 0.35
-	button.BorderSizePixel = 0
-	button.AutoButtonColor = false
-	button.Active = true
-	button.Selectable = true
-	button.ClipsDescendants = true
-	button.Parent = parent
+local function TriggerBreakthrough()
+	if lastKnownQi >= lastKnownMaxQi then
+		EmitToast("Initiating Cultivation Breakthrough...")
+	else
+		EmitToast(string.format("Breakthrough Failed: Qi not condensed (%s/%s)", FormatNum(lastKnownQi), FormatNum(lastKnownMaxQi)))
+	end
+	combatActionRemote:FireServer({ RequestBreakthrough = true })
+end
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, if isTouch then 6 else 8)
-	corner.Parent = button
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(160, 180, 205)
-	stroke.Thickness = if isTouch then 1.2 else 1.5
-	stroke.Transparency = 0.4
-	stroke.Parent = button
-
-	local uiScale = Instance.new("UIScale")
-	uiScale.Scale = 1.0
-	uiScale.Parent = button
-
-	local cdOverlay = Instance.new("Frame")
-	cdOverlay.Name = "CooldownOverlay"
-	cdOverlay.Size = UDim2.new(1, 0, 0, 0)
-	cdOverlay.Position = UDim2.new(0, 0, 1, 0)
-	cdOverlay.AnchorPoint = Vector2.new(0, 1)
-	cdOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	cdOverlay.BackgroundTransparency = 0.55
-	cdOverlay.BorderSizePixel = 0
-	cdOverlay.ZIndex = 4
-	cdOverlay.Parent = button
-
-	local keyLabel = Instance.new("TextLabel")
-	keyLabel.Name = "KeyLabel"
-	keyLabel.Size = UDim2.new(1, -6, 0, if isTouch then 14 else 18)
-	keyLabel.Position = UDim2.new(0, if isTouch then 4 else 6, 0, 2)
-	keyLabel.BackgroundTransparency = 1
-	keyLabel.Font = UI_FONT
-	keyLabel.TextSize = if isTouch then 11 else 14
-	keyLabel.TextColor3 = Color3.fromRGB(255, 220, 120)
-	keyLabel.TextXAlignment = Enum.TextXAlignment.Left
-	keyLabel.ZIndex = 5
-	keyLabel.Text = keybind
-	keyLabel.Parent = button
-
-	local keyStroke = Instance.new("UIStroke", keyLabel)
-	keyStroke.Color = Color3.fromRGB(10, 10, 15)
-	keyStroke.Thickness = 1
-
-	local actionLabel = Instance.new("TextLabel")
-	actionLabel.Name = "ActionLabel"
-	actionLabel.Size = UDim2.new(1, -4, 0, if isTouch then 18 else 22)
-	actionLabel.Position = UDim2.new(0, 2, 0.5, if isTouch then -1 else 0)
-	actionLabel.BackgroundTransparency = 1
-	actionLabel.Font = UI_FONT
-	actionLabel.TextSize = if isTouch then 10 else 13
-	actionLabel.TextColor3 = Color3.fromRGB(230, 238, 245)
-	actionLabel.TextWrapped = true
-	actionLabel.ZIndex = 5
-	actionLabel.Text = actionName
-	actionLabel.Parent = button
-
-	local actionStroke = Instance.new("UIStroke", actionLabel)
-	actionStroke.Color = Color3.fromRGB(10, 10, 15)
-	actionStroke.Thickness = 1
-
-	button.MouseEnter:Connect(function()
-		TweenService:Create(uiScale, TWEEN_INFO, { Scale = 1.08 }):Play()
-		TweenService:Create(stroke, TWEEN_INFO, { Transparency = 0.1, Color = Color3.fromRGB(245, 215, 125) }):Play()
-	end)
-
-	button.MouseLeave:Connect(function()
-		TweenService:Create(uiScale, TWEEN_INFO, { Scale = 1.0 }):Play()
-		TweenService:Create(stroke, TWEEN_INFO, { Transparency = 0.4, Color = Color3.fromRGB(160, 180, 205) }):Play()
-	end)
-
-	button.MouseButton1Down:Connect(function()
-		TweenService:Create(uiScale, TWEEN_INFO, { Scale = 0.92 }):Play()
-	end)
-
-	button.MouseButton1Up:Connect(function()
-		TweenService:Create(uiScale, TWEEN_INFO, { Scale = 1.08 }):Play()
-	end)
-
-	return button, uiScale, stroke, cdOverlay
+local function TriggerMeditation()
+	local char = LocalPlayer.Character
+	local isCurrentlyMeditating = char and char:GetAttribute("IsMeditating") == true
+	if isCurrentlyMeditating then
+		EmitToast("Exited Meditation")
+	else
+		EmitToast("Entered Meditation (Cultivating Qi)")
+	end
+	combatActionRemote:FireServer({ ToggleMeditation = true })
 end
 
 -- =============================================================================
--- BOTTOM-LEFT MENU DRAWER (Book Logic)
+-- BAR FILL HELPER (Maintains exact Studio styling without overlap)
 -- =============================================================================
-local function BuildBottomLeftMenu(parentGui: ScreenGui)
-	local menuRoot = Instance.new("Frame")
-	menuRoot.Name = "BottomLeftMenuRoot"
-	menuRoot.Size = UDim2.new(0, 80, 0, 80)
-	menuRoot.Position = UDim2.new(0, 16, 1, -16)
-	menuRoot.AnchorPoint = Vector2.new(0, 1)
-	menuRoot.BackgroundTransparency = 1
-	menuRoot.Parent = parentGui
+local function SetupBarFill(barFrame: Frame, defaultColor: Color3): (Frame, TextLabel?)
+	barFrame.ClipsDescendants = true
 
-	local triggerBtn = Instance.new("TextButton")
-	triggerBtn.Name = "MenuTriggerBtn"
-	triggerBtn.Size = UDim2.new(0, 72, 0, 36)
-	triggerBtn.Position = UDim2.new(0, 0, 1, 0)
-	triggerBtn.AnchorPoint = Vector2.new(0, 1)
-	triggerBtn.BackgroundColor3 = Color3.fromRGB(15, 20, 28)
-	triggerBtn.BackgroundTransparency = 0.25
-	triggerBtn.Text = "◈ MENU"
-	triggerBtn.TextColor3 = Color3.fromRGB(255, 220, 100)
-	triggerBtn.Font = UI_FONT
-	triggerBtn.TextSize = 13
-	triggerBtn.AutoButtonColor = false
-	triggerBtn.Parent = menuRoot
+	local fill = barFrame:FindFirstChild("BarFill") :: Frame?
+	if not fill then
+		fill = Instance.new("Frame")
+		fill.Name = "BarFill"
+		fill.Size = UDim2.new(1, 0, 1, 0)
+		fill.Position = UDim2.new(0, 0, 0, 0)
+		fill.BackgroundColor3 = defaultColor
+		fill.BorderSizePixel = 0
+		fill.ZIndex = 1
+		fill.Parent = barFrame
 
-	local trigCorner = Instance.new("UICorner", triggerBtn)
-	trigCorner.CornerRadius = UDim.new(0, 6)
+		local parentCorner = barFrame:FindFirstChildOfClass("UICorner")
+		if parentCorner then
+			local c = parentCorner:Clone()
+			c.Parent = fill
+		else
+			local c = Instance.new("UICorner", fill)
+			c.CornerRadius = UDim.new(0, 30)
+		end
 
-	local trigStroke = Instance.new("UIStroke", triggerBtn)
-	trigStroke.Color = Color3.fromRGB(212, 175, 55)
-	trigStroke.Thickness = 1.2
-	trigStroke.Transparency = 0.4
+		local existingGrad = barFrame:FindFirstChildOfClass("UIGradient")
+		if existingGrad then
+			existingGrad.Parent = fill
+		end
+	end
 
-	menuDrawerFrame = Instance.new("Frame")
-	menuDrawerFrame.Name = "MenuDrawer"
-	menuDrawerFrame.Size = UDim2.new(0, 210, 0, 42)
-	menuDrawerFrame.Position = UDim2.new(0, 0, 1, -44)
-	menuDrawerFrame.AnchorPoint = Vector2.new(0, 1)
-	menuDrawerFrame.BackgroundColor3 = Color3.fromRGB(12, 16, 24)
-	menuDrawerFrame.BackgroundTransparency = 0.2
-	menuDrawerFrame.BorderSizePixel = 0
-	menuDrawerFrame.Visible = false
-	menuDrawerFrame.Parent = menuRoot
+	local textLabel = barFrame:FindFirstChildOfClass("TextLabel")
+	if textLabel then
+		textLabel.ZIndex = 3
+	end
 
-	Instance.new("UICorner", menuDrawerFrame).CornerRadius = UDim.new(0, 6)
-	local drawerStroke = Instance.new("UIStroke", menuDrawerFrame)
-	drawerStroke.Color = Color3.fromRGB(212, 175, 55)
-	drawerStroke.Thickness = 1.2
-	drawerStroke.Transparency = 0.45
+	return fill, textLabel
+end
 
-	menuDrawerScale = Instance.new("UIScale", menuDrawerFrame)
-	menuDrawerScale.Scale = 0.8
+local function BindTouchOrClick(inst: Instance, callback: () -> ())
+	if inst:IsA("GuiButton") then
+		inst.MouseButton1Click:Connect(callback)
+	elseif inst:IsA("GuiObject") then
+		inst.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+				callback()
+			end
+		end)
+	end
+	for _, child in ipairs(inst:GetChildren()) do
+		if child:IsA("GuiButton") then
+			child.MouseButton1Click:Connect(callback)
+		end
+	end
+end
 
-	local drawerLayout = Instance.new("UIListLayout", menuDrawerFrame)
-	drawerLayout.FillDirection = Enum.FillDirection.Horizontal
-	drawerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	drawerLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	drawerLayout.Padding = UDim.new(0, 6)
+-- =============================================================================
+-- MOBILE RIGHT-SIDE TOUCH COMBAT CLUSTER (Matches Native Roblox Jump Style)
+-- =============================================================================
+local function CreateRobloxStyleTouchButton(name: string, size: number, position: UDim2, labelText: string, callback: () -> ()): ImageButton
+	local btn = Instance.new("ImageButton")
+	btn.Name = name
+	btn.Size = UDim2.new(0, size, 0, size)
+	btn.Position = position
+	btn.AnchorPoint = Vector2.new(0.5, 0.5)
+	btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	btn.BackgroundTransparency = 0.5
+	btn.BorderSizePixel = 0
+	btn.AutoButtonColor = false
 
-	local drawerItems = {
-		{
-			Id = "Pouch",
-			Label = "POUCH",
-			Callback = function()
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = btn
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(180, 180, 180)
+	stroke.Thickness = 2.0
+	stroke.Transparency = 0.45
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = btn
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, 0, 1, 0)
+	lbl.BackgroundTransparency = 1
+	lbl.Font = Enum.Font.GothamBold
+	lbl.TextSize = if size >= 60 then 11.5 else 10.5
+	lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+	lbl.Text = labelText
+	lbl.Parent = btn
+
+	local scale = Instance.new("UIScale", btn)
+
+	btn.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			TweenService:Create(scale, BUTTON_PRESS_TWEEN, { Scale = 0.9 }):Play()
+			callback()
+		end
+	end)
+
+	btn.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			TweenService:Create(scale, BUTTON_PRESS_TWEEN, { Scale = 1.0 }):Play()
+		end
+	end)
+
+	return btn
+end
+
+local function BuildMobileCombatCluster(parentGui: ScreenGui)
+	mobileCombatCluster = Instance.new("Frame")
+	mobileCombatCluster.Name = "MobileCombatCluster"
+	mobileCombatCluster.Size = UDim2.new(0, 240, 0, 240)
+	mobileCombatCluster.Position = UDim2.new(1, 0, 1, 0)
+	mobileCombatCluster.AnchorPoint = Vector2.new(1, 1)
+	mobileCombatCluster.BackgroundTransparency = 1
+	mobileCombatCluster.Visible = false
+	mobileCombatCluster.Parent = parentGui
+
+	-- 1. [M1 STRIKE] - Placed safely to the left of the Jump button
+	local m1Btn = CreateRobloxStyleTouchButton("MobileM1Button", 64, UDim2.new(1, -160, 1, -50), "M1\nSTRIKE", TriggerM1)
+	m1Btn.Parent = mobileCombatCluster
+
+	-- 2. [R DRAW] - Placed safely to the upper-left of M1
+	local rBtn = CreateRobloxStyleTouchButton("MobileRButton", 48, UDim2.new(1, -160, 1, -125), "R\nDRAW", function()
+		combatActionRemote:FireServer({ ToggleSheath = true })
+	end)
+	rBtn.Parent = mobileCombatCluster
+
+	-- 3. [V FLIGHT] - Placed safely above the Jump button
+	local vBtn = CreateRobloxStyleTouchButton("MobileVButton", 48, UDim2.new(1, -70, 1, -160), "V\nFLIGHT", function()
+		combatActionRemote:FireServer({ ToggleFlight = true })
+	end)
+	vBtn.Parent = mobileCombatCluster
+end
+
+-- =============================================================================
+-- HOOK STUDIO GUIS & RESPONSIVE VIEWPORT TOGGLING
+-- =============================================================================
+function SkillBarController.HookStudioUI()
+	-- 1. Desktop SkillsGUI
+	desktopSkillsGui = PlayerGui:WaitForChild("SkillsGUI", 5) :: ScreenGui?
+	if desktopSkillsGui then
+		desktopMainFrame = desktopSkillsGui:FindFirstChild("BottomCenterFrame", true) :: Frame?
+		if desktopMainFrame then
+			local iFrame = desktopMainFrame:FindFirstChild("IntentBarFrame") :: Frame?
+			if iFrame then desktopIntentFill, desktopIntentLabel = SetupBarFill(iFrame, Color3.fromRGB(245, 140, 0)) end
+
+			local hFrame = desktopMainFrame:FindFirstChild("HPBarFrame") :: Frame?
+			if hFrame then desktopHpFill, desktopHpLabel = SetupBarFill(hFrame, Color3.fromRGB(0, 200, 50)) end
+
+			local qFrame = desktopMainFrame:FindFirstChild("QIBarFrame") :: Frame?
+			if qFrame then desktopQiFill, desktopQiLabel = SetupBarFill(qFrame, Color3.fromRGB(0, 100, 255)) end
+
+			local desktopSlots = {
+				{ Name = "M1_SKILL", Callback = TriggerM1 },
+				{ Name = "R_SKILL",  Callback = function() combatActionRemote:FireServer({ ToggleSheath = true }) end },
+				{ Name = "B_SKILL",  Callback = TriggerBreakthrough },
+				{ Name = "V_SKILL",  Callback = function() combatActionRemote:FireServer({ ToggleFlight = true }) end },
+				{ Name = "M_SKILL",  Callback = TriggerMeditation },
+			}
+			for _, s in ipairs(desktopSlots) do
+				local slotObj = desktopMainFrame:FindFirstChild(s.Name)
+				if slotObj then BindTouchOrClick(slotObj, s.Callback) end
+			end
+		end
+	end
+
+	-- 2. Low Viewport Mobile SkillsGUI (Bottom-Center Intent/HP/QI + B & M Skills)
+	lowViewportGui = (PlayerGui:WaitForChild("LowViewPortSkillsGUI", 5) or PlayerGui:WaitForChild("LowViewPortSkillGUI", 5)) :: ScreenGui?
+	if lowViewportGui then
+		lowMainFrame = lowViewportGui:FindFirstChild("BottomCenterFrame", true) :: Frame?
+		if lowMainFrame then
+			local iFrame = lowMainFrame:FindFirstChild("IntentBarFrame") :: Frame?
+			if iFrame then lowIntentFill, lowIntentLabel = SetupBarFill(iFrame, Color3.fromRGB(245, 140, 0)) end
+
+			local hFrame = lowMainFrame:FindFirstChild("HPBarFrame") :: Frame?
+			if hFrame then lowHpFill, lowHpLabel = SetupBarFill(hFrame, Color3.fromRGB(0, 200, 50)) end
+
+			local qFrame = lowMainFrame:FindFirstChild("QIBarFrame") :: Frame?
+			if qFrame then lowQiFill, lowQiLabel = SetupBarFill(qFrame, Color3.fromRGB(0, 100, 255)) end
+
+			local bSlot = lowMainFrame:FindFirstChild("B_SKILL")
+			if bSlot then BindTouchOrClick(bSlot, TriggerBreakthrough) end
+
+			local mSlot = lowMainFrame:FindFirstChild("M_SKILL")
+			if mSlot then BindTouchOrClick(mSlot, TriggerMeditation) end
+		end
+	end
+
+	-- 3. Dynamic Mobile Right-Side Combat Cluster (Matches Jump Style)
+	mobileCombatGui = Instance.new("ScreenGui")
+	mobileCombatGui.Name = "MobileCombatHUD"
+	mobileCombatGui.ResetOnSpawn = false
+	mobileCombatGui.DisplayOrder = 11
+	mobileCombatGui.IgnoreGuiInset = false
+	mobileCombatGui.Parent = PlayerGui
+	BuildMobileCombatCluster(mobileCombatGui)
+
+	-- 4. BottomMenuGui
+	bottomMenuGui = PlayerGui:WaitForChild("BottomMenuGui", 5) :: ScreenGui?
+	if bottomMenuGui then
+		bagButton = bottomMenuGui:FindFirstChild("BagImageButton", true) :: ImageButton?
+		arenaButton = bottomMenuGui:FindFirstChild("ArenaImageButton", true) :: ImageButton?
+
+		if bagButton then
+			bagButton.MouseButton1Click:Connect(function()
 				local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
 				if controllers then
 					local inv = controllers:FindFirstChild("InventoryController")
@@ -295,12 +371,11 @@ local function BuildBottomLeftMenu(parentGui: ScreenGui)
 						if req.Toggle then req.Toggle() end
 					end
 				end
-			end,
-		},
-		{
-			Id = "Arena",
-			Label = "ARENA",
-			Callback = function()
+			end)
+		end
+
+		if arenaButton then
+			arenaButton.MouseButton1Click:Connect(function()
 				local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
 				if controllers then
 					local arena = controllers:FindFirstChild("ArenaController")
@@ -309,461 +384,104 @@ local function BuildBottomLeftMenu(parentGui: ScreenGui)
 						if req.ToggleModal then req.ToggleModal() end
 					end
 				end
-			end,
-		},
-		{
-			Id = "Sect",
-			Label = "SECT",
-			Callback = function()
-				local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
-				if controllers then
-					local sect = controllers:FindFirstChild("SectController")
-					if sect then
-						local req = require(sect) :: any
-						if req.Open then req.Open() elseif req.Toggle then req.Toggle() end
-					end
-				end
-			end,
-		},
-	}
-
-	for _, item in ipairs(drawerItems) do
-		local btn = Instance.new("TextButton")
-		btn.Name = item.Id .. "Btn"
-		btn.Size = UDim2.new(0, 62, 0, 28)
-		btn.BackgroundColor3 = Color3.fromRGB(20, 26, 36)
-		btn.BackgroundTransparency = 0.3
-		btn.Text = item.Label
-		btn.TextColor3 = Color3.fromRGB(235, 240, 250)
-		btn.Font = UI_FONT
-		btn.TextSize = 12
-		btn.AutoButtonColor = false
-		btn.Parent = menuDrawerFrame
-
-		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-		local bStroke = Instance.new("UIStroke", btn)
-		bStroke.Color = Color3.fromRGB(180, 150, 60)
-		bStroke.Thickness = 1
-		bStroke.Transparency = 0.6
-
-		btn.MouseEnter:Connect(function()
-			TweenService:Create(btn, TWEEN_INFO, { BackgroundColor3 = Color3.fromRGB(38, 48, 65) }):Play()
-			btn.TextColor3 = Color3.fromRGB(255, 220, 100)
-		end)
-
-		btn.MouseLeave:Connect(function()
-			TweenService:Create(btn, TWEEN_INFO, { BackgroundColor3 = Color3.fromRGB(20, 26, 36) }):Play()
-			btn.TextColor3 = Color3.fromRGB(235, 240, 250)
-		end)
-
-		btn.MouseButton1Click:Connect(item.Callback)
-	end
-
-	local function toggleDrawer()
-		isMenuOpen = not isMenuOpen
-		if not menuDrawerFrame or not menuDrawerScale then return end
-
-		if isMenuOpen then
-			menuDrawerFrame.Visible = true
-			triggerBtn.Text = "✕ CLOSE"
-			triggerBtn.TextColor3 = Color3.fromRGB(255, 120, 120)
-			TweenService:Create(menuDrawerScale, DRAWER_TWEEN, { Scale = 1.0 }):Play()
-			TweenService:Create(menuDrawerFrame, DRAWER_TWEEN, { BackgroundTransparency = 0.2 }):Play()
-		else
-			triggerBtn.Text = "◈ MENU"
-			triggerBtn.TextColor3 = Color3.fromRGB(255, 220, 100)
-			local tw = TweenService:Create(menuDrawerScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.8 })
-			TweenService:Create(menuDrawerFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
-			tw:Play()
-			tw.Completed:Connect(function()
-				if not isMenuOpen and menuDrawerFrame then
-					menuDrawerFrame.Visible = false
-				end
 			end)
 		end
 	end
 
-	triggerBtn.MouseButton1Click:Connect(toggleDrawer)
-end
+	-- 5. CurrencyGUI
+	currencyGui = PlayerGui:WaitForChild("CurrencyGUI", 5) :: ScreenGui?
+	if currencyGui then
+		local cpFrame = currencyGui:FindFirstChild("CPFrame", true)
+		if cpFrame then cpLabel = cpFrame:FindFirstChildOfClass("TextLabel") end
 
-local function BuildHUD()
-	local existing = PlayerGui:FindFirstChild("BottomSkillHUD")
-	if existing then existing:Destroy() end
-
-	screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "BottomSkillHUD"
-	screenGui.ResetOnSpawn = false
-	screenGui.DisplayOrder = 10
-	screenGui.IgnoreGuiInset = false
-	screenGui.Parent = PlayerGui
-
-	local isTouch = IsTouchDevice()
-
-	-- 1. Build Bottom-Left Menu & Purge Legacy Icons
-	BuildBottomLeftMenu(screenGui)
-	PurgeLegacyTopIcons()
-
-	-- =========================================================================
-	-- 2. ELEVATED COMBAT CONTAINER (Sword Intent Bar + Keybind Slots)
-	-- =========================================================================
-	local combatContainer = Instance.new("Frame")
-	combatContainer.Name = "ElevatedCombatContainer"
-	combatContainer.Size = if isTouch then UDim2.new(0, 215, 0, 66) else UDim2.new(0, 335, 0, 88)
-	combatContainer.Position = UDim2.new(0.5, 0, 1, if isTouch then -58 else -72)
-	combatContainer.AnchorPoint = Vector2.new(0.5, 1)
-	combatContainer.BackgroundTransparency = 1
-	combatContainer.Parent = screenGui
-
-	-- Dynamic Sword Intent Bar
-	local intentBg = Instance.new("Frame")
-	intentBg.Name = "SwordIntentBackground"
-	intentBg.Size = UDim2.new(1, 0, 0, if isTouch then 10 else 13)
-	intentBg.Position = UDim2.new(0, 0, 0, 0)
-	intentBg.BackgroundColor3 = Color3.fromRGB(12, 16, 22)
-	intentBg.BackgroundTransparency = 0.2
-	intentBg.BorderSizePixel = 0
-	intentBg.ClipsDescendants = true
-	intentBg.Parent = combatContainer
-
-	local intentCorner = Instance.new("UICorner")
-	intentCorner.CornerRadius = UDim.new(0, 4)
-	intentCorner.Parent = intentBg
-
-	local intentStroke = Instance.new("UIStroke")
-	intentStroke.Name = "IntentStroke"
-	intentStroke.Color = Color3.fromRGB(215, 175, 75)
-	intentStroke.Thickness = if isTouch then 1 else 1.4
-	intentStroke.Transparency = 0.3
-	intentStroke.Parent = intentBg
-
-	swordIntentFill = Instance.new("Frame")
-	swordIntentFill.Name = "Fill"
-	swordIntentFill.Size = UDim2.new(0, 0, 1, 0)
-	swordIntentFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	swordIntentFill.BorderSizePixel = 0
-	swordIntentFill.Parent = intentBg
-
-	local fillCorner = Instance.new("UICorner")
-	fillCorner.CornerRadius = UDim.new(0, 4)
-	fillCorner.Parent = swordIntentFill
-
-	local intentGradient = Instance.new("UIGradient")
-	intentGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 235, 120)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(240, 170, 45)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(190, 80, 20)),
-	})
-	intentGradient.Parent = swordIntentFill
-
-	swordIntentText = Instance.new("TextLabel")
-	swordIntentText.Name = "IntentText"
-	swordIntentText.Size = UDim2.new(1, 0, 1, 0)
-	swordIntentText.BackgroundTransparency = 1
-	swordIntentText.Font = UI_FONT
-	swordIntentText.TextSize = if isTouch then 9 else 11.5
-	swordIntentText.TextColor3 = Color3.fromRGB(255, 255, 255)
-	swordIntentText.Text = "SWORD INTENT · 0%"
-	swordIntentText.ZIndex = 3
-	swordIntentText.Parent = intentBg
-
-	local textStroke = Instance.new("UIStroke", swordIntentText)
-	textStroke.Color = Color3.fromRGB(15, 15, 20)
-	textStroke.Thickness = 1
-
-	-- Action Button Row
-	local buttonRow = Instance.new("Frame")
-	buttonRow.Name = "ButtonRow"
-	buttonRow.Size = UDim2.new(1, 0, 0, if isTouch then 50 else 64)
-	buttonRow.Position = UDim2.new(0, 0, 0, if isTouch then 14 else 18)
-	buttonRow.BackgroundTransparency = 1
-	buttonRow.Parent = combatContainer
-
-	local listLayout = Instance.new("UIListLayout")
-	listLayout.FillDirection = Enum.FillDirection.Horizontal
-	listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	listLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	listLayout.Padding = UDim.new(0, if isTouch then 6 else 8)
-	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.Parent = buttonRow
-
-	local slotSize = if isTouch then UDim2.new(0, 46, 0, 46) else UDim2.new(0, 58, 0, 58)
-
-	if not isTouch then
-		local m1Btn, m1Scale, m1Stroke, m1Cd = CreateActionSlot(buttonRow, "M1", "STRIKE", slotSize, 1, false)
-		actionButtons["M1"] = { Button = m1Btn, Scale = m1Scale, Stroke = m1Stroke, CooldownOverlay = m1Cd }
-		m1Btn.MouseButton1Click:Connect(TriggerM1)
+		local spiritFrame = currencyGui:FindFirstChild("SpiritStoneFrame", true)
+		if spiritFrame then spiritStoneLabel = spiritFrame:FindFirstChildOfClass("TextLabel") end
 	end
 
-	local rBtn, rScale, rStroke, rCd = CreateActionSlot(buttonRow, "R", "DRAW", slotSize, 2, isTouch)
-	local vBtn, vScale, vStroke, vCd = CreateActionSlot(buttonRow, "V", "FLIGHT", slotSize, 3, isTouch)
-	local bBtn, bScale, bStroke, bCd = CreateActionSlot(buttonRow, "B", "BREAK", slotSize, 4, isTouch)
-	local mBtn, mScale, mStroke, mCd = CreateActionSlot(buttonRow, "M", "MEDITATE", slotSize, 5, isTouch)
-
-	actionButtons["R"] = { Button = rBtn, Scale = rScale, Stroke = rStroke, CooldownOverlay = rCd }
-	actionButtons["V"] = { Button = vBtn, Scale = vScale, Stroke = vStroke, CooldownOverlay = vCd }
-	actionButtons["B"] = { Button = bBtn, Scale = bScale, Stroke = bStroke, CooldownOverlay = bCd }
-	actionButtons["M"] = { Button = mBtn, Scale = mScale, Stroke = mStroke, CooldownOverlay = mCd }
-
-	rBtn.MouseButton1Click:Connect(function()
-		combatActionRemote:FireServer({ ToggleSheath = true })
-	end)
-
-	vBtn.MouseButton1Click:Connect(function()
-		combatActionRemote:FireServer({ ToggleFlight = true })
-	end)
-
-	bBtn.MouseButton1Click:Connect(function()
-		combatActionRemote:FireServer({ RequestBreakthrough = true })
-	end)
-
-	mBtn.MouseButton1Click:Connect(function()
-		combatActionRemote:FireServer({ ToggleMeditation = true })
-	end)
-
-	-- =========================================================================
-	-- 3. BOTTOM VITAL CULTIVATION GAUGES (HP & QI PROGRESS BARS)
-	-- =========================================================================
-	local vitalsContainer = Instance.new("Frame")
-	vitalsContainer.Name = "BottomVitalsContainer"
-	vitalsContainer.Size = if isTouch then UDim2.new(0, 260, 0, 42) else UDim2.new(0, 390, 0, 48)
-	vitalsContainer.Position = UDim2.new(0.5, 0, 1, -10)
-	vitalsContainer.AnchorPoint = Vector2.new(0.5, 1)
-	vitalsContainer.BackgroundColor3 = Color3.fromRGB(12, 16, 24)
-	vitalsContainer.BackgroundTransparency = 0.25
-	vitalsContainer.BorderSizePixel = 0
-	vitalsContainer.Parent = screenGui
-
-	local vitalsCorner = Instance.new("UICorner", vitalsContainer)
-	vitalsCorner.CornerRadius = UDim.new(0, 6)
-
-	local vitalsStroke = Instance.new("UIStroke", vitalsContainer)
-	vitalsStroke.Color = Color3.fromRGB(212, 175, 55)
-	vitalsStroke.Thickness = 1.2
-	vitalsStroke.Transparency = 0.45
-
-	-- HP Gauge (Emerald Gradient)
-	local hpTrack = Instance.new("Frame")
-	hpTrack.Name = "HPTrack"
-	hpTrack.Size = UDim2.new(1, -16, 0, if isTouch then 14 else 17)
-	hpTrack.Position = UDim2.new(0, 8, 0, 5)
-	hpTrack.BackgroundColor3 = Color3.fromRGB(20, 26, 34)
-	hpTrack.BorderSizePixel = 0
-	hpTrack.ClipsDescendants = true
-	hpTrack.Parent = vitalsContainer
-	Instance.new("UICorner", hpTrack).CornerRadius = UDim.new(0, 4)
-
-	hpFillBar = Instance.new("Frame")
-	hpFillBar.Name = "HPFill"
-	hpFillBar.Size = UDim2.new(1, 0, 1, 0)
-	hpFillBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	hpFillBar.BorderSizePixel = 0
-	hpFillBar.Parent = hpTrack
-	Instance.new("UICorner", hpFillBar).CornerRadius = UDim.new(0, 4)
-
-	local hpGrad = Instance.new("UIGradient")
-	hpGrad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(46, 204, 113)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 130, 76)),
-	})
-	hpGrad.Parent = hpFillBar
-
-	hpValueText = Instance.new("TextLabel")
-	hpValueText.Name = "HPValue"
-	hpValueText.Size = UDim2.new(1, 0, 1, 0)
-	hpValueText.BackgroundTransparency = 1
-	hpValueText.Font = UI_FONT
-	hpValueText.TextSize = if isTouch then 9.5 else 12
-	hpValueText.TextColor3 = Color3.fromRGB(240, 255, 240)
-	hpValueText.Text = "HP  100% (100 / 100)"
-	hpValueText.ZIndex = 3
-	hpValueText.Parent = hpTrack
-	local hpTextStroke = Instance.new("UIStroke", hpValueText)
-	hpTextStroke.Color = Color3.fromRGB(10, 10, 15)
-	hpTextStroke.Thickness = 1
-
-	-- Qi Gauge (Celestial Cyan Gradient)
-	local qiTrack = Instance.new("Frame")
-	qiTrack.Name = "QiTrack"
-	qiTrack.Size = UDim2.new(1, -16, 0, if isTouch then 14 else 17)
-	qiTrack.Position = UDim2.new(0, 8, 0, if isTouch then 22 else 25)
-	qiTrack.BackgroundColor3 = Color3.fromRGB(20, 26, 34)
-	qiTrack.BorderSizePixel = 0
-	qiTrack.ClipsDescendants = true
-	qiTrack.Parent = vitalsContainer
-	Instance.new("UICorner", qiTrack).CornerRadius = UDim.new(0, 4)
-
-	qiFillBar = Instance.new("Frame")
-	qiFillBar.Name = "QiFill"
-	qiFillBar.Size = UDim2.new(1, 0, 1, 0)
-	qiFillBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	qiFillBar.BorderSizePixel = 0
-	qiFillBar.Parent = qiTrack
-	Instance.new("UICorner", qiFillBar).CornerRadius = UDim.new(0, 4)
-
-	local qiGrad = Instance.new("UIGradient")
-	qiGrad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 195, 255)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 110, 210)),
-	})
-	qiGrad.Parent = qiFillBar
-
-	qiValueText = Instance.new("TextLabel")
-	qiValueText.Name = "QiValue"
-	qiValueText.Size = UDim2.new(1, 0, 1, 0)
-	qiValueText.BackgroundTransparency = 1
-	qiValueText.Font = UI_FONT
-	qiValueText.TextSize = if isTouch then 9.5 else 12
-	qiValueText.TextColor3 = Color3.fromRGB(220, 245, 255)
-	qiValueText.Text = "QI  100% (100 / 100)"
-	qiValueText.ZIndex = 3
-	qiValueText.Parent = qiTrack
-	local qiTextStroke = Instance.new("UIStroke", qiValueText)
-	qiTextStroke.Color = Color3.fromRGB(10, 10, 15)
-	qiTextStroke.Thickness = 1
-
-	-- =========================================================================
-	-- 4. BAGUA ASTROLABE COMPASS
-	-- =========================================================================
-	local compassFrame = Instance.new("Frame")
-	compassFrame.Name = "SideCompass"
-	compassFrame.Size = UDim2.new(0, 52, 0, 52)
-	compassFrame.Position = UDim2.new(1, 10, 0, -2)
-	compassFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 28)
-	compassFrame.BackgroundTransparency = 0.25
-	compassFrame.BorderSizePixel = 0
-	compassFrame.Parent = vitalsContainer
-
-	local compCorner = Instance.new("UICorner", compassFrame)
-	compCorner.CornerRadius = UDim.new(1, 0)
-
-	local compStroke = Instance.new("UIStroke", compassFrame)
-	compStroke.Color = Color3.fromRGB(212, 175, 55)
-	compStroke.Thickness = 1.3
-	compStroke.Transparency = 0.35
-
-	compassHeadingText = Instance.new("TextLabel")
-	compassHeadingText.Name = "Heading"
-	compassHeadingText.Size = UDim2.new(1, 0, 0.48, 0)
-	compassHeadingText.Position = UDim2.new(0, 0, 0.06, 0)
-	compassHeadingText.BackgroundTransparency = 1
-	compassHeadingText.Font = UI_FONT
-	compassHeadingText.TextSize = 14
-	compassHeadingText.TextColor3 = Color3.fromRGB(255, 220, 100)
-	compassHeadingText.Text = "N"
-	compassHeadingText.Parent = compassFrame
-
-	compassTrigramText = Instance.new("TextLabel")
-	compassTrigramText.Name = "Trigram"
-	compassTrigramText.Size = UDim2.new(1, 0, 0.25, 0)
-	compassTrigramText.Position = UDim2.new(0, 0, 0.48, 0)
-	compassTrigramText.BackgroundTransparency = 1
-	compassTrigramText.Font = Enum.Font.GothamBold
-	compassTrigramText.TextSize = 11
-	compassTrigramText.TextColor3 = Color3.fromRGB(0, 195, 255)
-	compassTrigramText.Text = "☰"
-	compassTrigramText.Parent = compassFrame
-
-	compassDegreeText = Instance.new("TextLabel")
-	compassDegreeText.Name = "Degrees"
-	compassDegreeText.Size = UDim2.new(1, 0, 0.25, 0)
-	compassDegreeText.Position = UDim2.new(0, 0, 0.72, 0)
-	compassDegreeText.BackgroundTransparency = 1
-	compassDegreeText.Font = Enum.Font.GothamBold
-	compassDegreeText.TextSize = 8.5
-	compassDegreeText.TextColor3 = Color3.fromRGB(180, 190, 205)
-	compassDegreeText.Text = "0°"
-	compassDegreeText.Parent = compassFrame
-
-	if compassConnection then compassConnection:Disconnect() end
-	local cardinals = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" }
-	local trigrams  = { "☰", "☱", "☲", "☳", "☴", "☵", "☶", "☷" }
-
-	compassConnection = RunService.RenderStepped:Connect(function()
-		local look = Camera.CFrame.LookVector
-		local angle = math.deg(math.atan2(-look.X, -look.Z))
-		if angle < 0 then angle = angle + 360 end
-		local idx = math.floor((angle + 22.5) / 45) % 8 + 1
-		if compassHeadingText then compassHeadingText.Text = cardinals[idx] end
-		if compassTrigramText then compassTrigramText.Text = trigrams[idx] end
-		if compassDegreeText then compassDegreeText.Text = string.format("%d°", math.floor(angle)) end
-	end)
+	SkillBarController.UpdateViewportMode()
 end
 
+-- =============================================================================
+-- EXPLICIT VIEWPORT VISIBILITY SWITCHER
+-- =============================================================================
+function SkillBarController.UpdateViewportMode()
+	local isMobile = IsMobileOrTouch()
+
+	-- Desktop GUI Toggle
+	if desktopSkillsGui then
+		desktopSkillsGui.Enabled = not isMobile
+	end
+	if desktopMainFrame then
+		desktopMainFrame.Visible = not isMobile
+	end
+
+	-- Low Viewport Mobile GUI Toggle (Bottom-Center)
+	if lowViewportGui then
+		lowViewportGui.Enabled = isMobile
+	end
+	if lowMainFrame then
+		lowMainFrame.Visible = isMobile
+	end
+
+	-- Mobile Right-Side Combat Cluster (M1, R, V)
+	if mobileCombatGui then
+		mobileCombatGui.Enabled = isMobile
+	end
+	if mobileCombatCluster then
+		mobileCombatCluster.Visible = isMobile
+	end
+end
+
+-- =============================================================================
+-- DUAL-VIEWPORT VITALS & INTENT UPDATES
+-- =============================================================================
 function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: number, maxQi: number)
+	lastKnownQi = curQi or 0
+	lastKnownMaxQi = maxQi or 100
+
 	local hMax = math.max(1, maxHp or 100)
 	local hCur = math.clamp(curHp or 0, 0, hMax)
-	local hRatio = hCur / hMax
+	local hRatio = math.clamp(hCur / hMax, 0, 1)
 
 	local qMax = math.max(1, maxQi or 100)
 	local qCur = math.clamp(curQi or 0, 0, qMax)
-	local qRatio = qCur / qMax
+	local qRatio = math.clamp(qCur / qMax, 0, 1)
 
-	if hpFillBar and hpValueText then
-		TweenService:Create(hpFillBar, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play()
-		hpValueText.Text = string.format("HP  %s / %s (%d%%)", FormatNum(hCur), FormatNum(hMax), math.floor(hRatio * 100))
-	end
+	local hpStr = string.format("HP %s/%s", FormatNum(hCur), FormatNum(hMax))
+	local qiStr = string.format("QI %s/%s", FormatNum(qCur), FormatNum(qMax))
 
-	if qiFillBar and qiValueText then
-		TweenService:Create(qiFillBar, INTENT_BAR_TWEEN, { Size = UDim2.new(qRatio, 0, 1, 0) }):Play()
-		qiValueText.Text = string.format("QI  %s / %s (%d%%)", FormatNum(qCur), FormatNum(qMax), math.floor(qRatio * 100))
-	end
+	-- Desktop Update
+	if desktopHpFill then TweenService:Create(desktopHpFill, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play() end
+	if desktopHpLabel then desktopHpLabel.Text = hpStr end
+	if desktopQiFill then TweenService:Create(desktopQiFill, INTENT_BAR_TWEEN, { Size = UDim2.new(qRatio, 0, 1, 0) }):Play() end
+	if desktopQiLabel then desktopQiLabel.Text = qiStr end
 
-	local bData = actionButtons["B"]
-	if bData and bData.Stroke then
-		if qRatio >= 0.999 then
-			bData.Stroke.Color = Color3.fromRGB(255, 215, 0)
-			bData.Stroke.Thickness = 2.2
-			bData.Stroke.Transparency = 0.1
-		else
-			bData.Stroke.Color = Color3.fromRGB(160, 180, 205)
-			bData.Stroke.Thickness = 1.5
-			bData.Stroke.Transparency = 0.4
-		end
-	end
+	-- Low Viewport Mobile Update
+	if lowHpFill then TweenService:Create(lowHpFill, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play() end
+	if lowHpLabel then lowHpLabel.Text = hpStr end
+	if lowQiFill then TweenService:Create(lowQiFill, INTENT_BAR_TWEEN, { Size = UDim2.new(qRatio, 0, 1, 0) }):Play() end
+	if lowQiLabel then lowQiLabel.Text = qiStr end
 end
 
-function SkillBarController.TriggerCooldown(actionKey: string, customDuration: number?)
-	local slot = actionButtons[actionKey]
-	if not slot or not slot.CooldownOverlay then return end
-
-	local duration = customDuration or (if actionKey == "M1" then 0.38 elseif actionKey == "Dash" or actionKey == "Shift" then 3.0 else 1.0)
-	local overlay = slot.CooldownOverlay
-	overlay.Size = UDim2.new(1, 0, 1, 0)
-
-	local tween = TweenService:Create(overlay, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
-		Size = UDim2.new(1, 0, 0, 0)
-	})
-	tween:Play()
+function SkillBarController.UpdateCurrencies(cp: number, stones: number)
+	if cpLabel then cpLabel.Text = FormatCurrency(cp) end
+	if spiritStoneLabel then spiritStoneLabel.Text = FormatCurrency(stones) end
 end
 
 function SkillBarController.UpdateSwordIntent(current: number, max: number)
 	currentSwordIntent = math.clamp(current or 0, 0, max or 100)
-	if not swordIntentFill or not swordIntentText then return end
-
 	local maxVal = math.max(1, max or 100)
-	local ratio = currentSwordIntent / maxVal
+	local ratio = math.clamp(currentSwordIntent / maxVal, 0, 1)
+	local percent = math.floor(ratio * 100)
+	local intentStr = if percent >= 100 then "SWORD INTENT 100%" else string.format("SWORD INTENT %d%%", percent)
 
-	TweenService:Create(swordIntentFill, INTENT_BAR_TWEEN, {
-		Size = UDim2.new(ratio, 0, 1, 0)
-	}):Play()
+	-- Desktop Intent
+	if desktopIntentFill then TweenService:Create(desktopIntentFill, INTENT_BAR_TWEEN, { Size = UDim2.new(ratio, 0, 1, 0) }):Play() end
+	if desktopIntentLabel then desktopIntentLabel.Text = intentStr end
 
-	local stroke = swordIntentFill.Parent and swordIntentFill.Parent:FindFirstChildOfClass("UIStroke")
-
-	if ratio >= 0.999 then
-		swordIntentText.Text = "⚔️ 100% · EMPOWERED SWORD INTENT READY"
-		swordIntentText.TextColor3 = Color3.fromRGB(255, 245, 180)
-		if stroke then
-			stroke.Color = Color3.fromRGB(255, 215, 0)
-			stroke.Thickness = 2.0
-		end
-	else
-		swordIntentText.Text = string.format("SWORD INTENT · %d%%", math.floor(ratio * 100))
-		swordIntentText.TextColor3 = Color3.fromRGB(255, 255, 255)
-		if stroke then
-			stroke.Color = Color3.fromRGB(215, 175, 75)
-			stroke.Thickness = 1.4
-		end
-	end
+	-- Low Viewport Mobile Intent
+	if lowIntentFill then TweenService:Create(lowIntentFill, INTENT_BAR_TWEEN, { Size = UDim2.new(ratio, 0, 1, 0) }):Play() end
+	if lowIntentLabel then lowIntentLabel.Text = intentStr end
 end
 
 local function BindCharacter(character: Model)
@@ -778,53 +496,17 @@ local function BindCharacter(character: Model)
 		SkillBarController.UpdateVitals(tonumber(curHp) or 100, tonumber(maxHp) or 100, tonumber(curQi) or 100, tonumber(maxQi) or 100)
 	end
 
+	local function checkCurrencies()
+		local stones = character:GetAttribute("SpiritStones") or LocalPlayer:GetAttribute("SpiritStones") or LocalPlayer:GetAttribute("Stones") or 46600
+		local cp = character:GetAttribute("SectContribution") or LocalPlayer:GetAttribute("SectContribution") or LocalPlayer:GetAttribute("CP") or 350
+
+		SkillBarController.UpdateCurrencies(tonumber(cp) or 0, tonumber(stones) or 0)
+	end
+
 	local function checkIntent()
 		local intent = character:GetAttribute("SwordIntent") or LocalPlayer:GetAttribute("SwordIntent") or currentSwordIntent
 		local maxIntent = character:GetAttribute("MaxSwordIntent") or LocalPlayer:GetAttribute("MaxSwordIntent") or 100
 		SkillBarController.UpdateSwordIntent(tonumber(intent) or 0, tonumber(maxIntent) or 100)
-	end
-
-	local function checkStanceState()
-		local isDrawn = character:GetAttribute("WeaponDrawn") == true
-		local rData = actionButtons["R"]
-		local m1Data = actionButtons["M1"]
-
-		if rData and rData.Button then
-			local actionLbl = rData.Button:FindFirstChild("ActionLabel") :: TextLabel?
-			if actionLbl then actionLbl.Text = if isDrawn then "SHEATH" else "DRAW" end
-			if rData.Stroke then
-				rData.Stroke.Color = if isDrawn then Color3.fromRGB(255, 215, 0) else Color3.fromRGB(160, 180, 205)
-				rData.Stroke.Transparency = if isDrawn then 0.2 else 0.4
-			end
-		end
-
-		if m1Data and m1Data.Stroke then
-			m1Data.Stroke.Color = if isDrawn then Color3.fromRGB(255, 215, 0) else Color3.fromRGB(160, 180, 205)
-			m1Data.Stroke.Transparency = if isDrawn then 0.2 else 0.4
-		end
-	end
-
-	local function checkFlightState()
-		local isFlying = character:GetAttribute("IsFlying") == true
-		local vData = actionButtons["V"]
-		if vData and vData.Stroke then
-			vData.Stroke.Color = if isFlying then Color3.fromRGB(0, 195, 255) else Color3.fromRGB(160, 180, 205)
-			vData.Stroke.Thickness = if isFlying then 2.0 else 1.5
-			vData.Stroke.Transparency = if isFlying then 0.1 else 0.4
-		end
-	end
-
-	local function checkMeditateState()
-		local isMeditating = character:GetAttribute("IsMeditating") == true
-		local mData = actionButtons["M"]
-		if mData and mData.Button then
-			local actionLbl = mData.Button:FindFirstChild("ActionLabel") :: TextLabel?
-			if actionLbl then actionLbl.Text = if isMeditating then "STAND" else "MEDITATE" end
-			if mData.Stroke then
-				mData.Stroke.Color = if isMeditating then Color3.fromRGB(0, 210, 255) else Color3.fromRGB(160, 180, 205)
-				mData.Stroke.Transparency = if isMeditating then 0.1 else 0.4
-			end
-		end
 	end
 
 	if humanoid then
@@ -837,32 +519,31 @@ local function BindCharacter(character: Model)
 	LocalPlayer:GetAttributeChangedSignal("Qi"):Connect(checkVitals)
 	LocalPlayer:GetAttributeChangedSignal("MaxQi"):Connect(checkVitals)
 
+	LocalPlayer:GetAttributeChangedSignal("SpiritStones"):Connect(checkCurrencies)
+	LocalPlayer:GetAttributeChangedSignal("Stones"):Connect(checkCurrencies)
+	LocalPlayer:GetAttributeChangedSignal("SectContribution"):Connect(checkCurrencies)
+	LocalPlayer:GetAttributeChangedSignal("CP"):Connect(checkCurrencies)
+	character:GetAttributeChangedSignal("SpiritStones"):Connect(checkCurrencies)
+
 	character:GetAttributeChangedSignal("SwordIntent"):Connect(checkIntent)
-	character:GetAttributeChangedSignal("WeaponDrawn"):Connect(checkStanceState)
-	character:GetAttributeChangedSignal("IsFlying"):Connect(checkFlightState)
-	character:GetAttributeChangedSignal("IsMeditating"):Connect(checkMeditateState)
 	LocalPlayer:GetAttributeChangedSignal("SwordIntent"):Connect(checkIntent)
 
 	checkVitals()
+	checkCurrencies()
 	checkIntent()
-	checkStanceState()
-	checkFlightState()
-	checkMeditateState()
 end
 
 function SkillBarController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 
-	BuildHUD()
+	SkillBarController.HookStudioUI()
 
 	if LocalPlayer.Character then
 		BindCharacter(LocalPlayer.Character)
 	end
 	LocalPlayer.CharacterAdded:Connect(BindCharacter)
 
-	-- =========================================================================
-	-- DIRECT COMBATACTION LISTENER FOR INSTANT INTENT HUD UPDATES
-	-- =========================================================================
+	-- Direct CombatAction sync for instant Sword Intent charge
 	combatActionRemote.OnClientEvent:Connect(function(attacker: Player, skillKey: string, payload: any)
 		if attacker == LocalPlayer and type(payload) == "table" and payload.HasHit == true then
 			lastHitLandedTime = os.clock()
@@ -870,7 +551,6 @@ function SkillBarController.Init()
 			if payload.CurrentIntent ~= nil then
 				currentSwordIntent = tonumber(payload.CurrentIntent) or 0
 			else
-				-- If at 100%, empower consumed -> reset to 0
 				if currentSwordIntent >= 99.9 then
 					currentSwordIntent = 0
 				else
@@ -882,9 +562,7 @@ function SkillBarController.Init()
 		end
 	end)
 
-	-- =========================================================================
-	-- CLIENT-SIDE SMOOTH INTENT DECAY HEARTBEAT
-	-- =========================================================================
+	-- Client-side smooth intent decay
 	RunService.Heartbeat:Connect(function(dt: number)
 		local now = os.clock()
 		if (now - lastHitLandedTime > INTENT_DECAY_DELAY) and currentSwordIntent > 0 then
@@ -893,22 +571,28 @@ function SkillBarController.Init()
 		end
 	end)
 
+	-- Viewport resize listener for Studio device emulation
+	Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+		SkillBarController.UpdateViewportMode()
+	end)
+
+	-- Desktop Keybind triggers
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
-		local keyName = input.KeyCode.Name
-		if actionButtons[keyName] then
-			TweenService:Create(actionButtons[keyName].Scale, TWEEN_INFO, { Scale = 0.92 }):Play()
+		local key = input.KeyCode
+
+		if key == Enum.KeyCode.R then
+			combatActionRemote:FireServer({ ToggleSheath = true })
+		elseif key == Enum.KeyCode.V then
+			combatActionRemote:FireServer({ ToggleFlight = true })
+		elseif key == Enum.KeyCode.B then
+			TriggerBreakthrough()
+		elseif key == Enum.KeyCode.M or key == Enum.KeyCode.C then
+			TriggerMeditation()
 		end
 	end)
 
-	UserInputService.InputEnded:Connect(function(input, _)
-		local keyName = input.KeyCode.Name
-		if actionButtons[keyName] then
-			TweenService:Create(actionButtons[keyName].Scale, TWEEN_INFO, { Scale = 1.0 }):Play()
-		end
-	end)
-
-	print("[ASCEND] SkillBarController Initialized (Dynamic Looping Intent & Direct Event Sync Active).")
+	print("[ASCEND] SkillBarController Initialized (Roblox Jump Style Mobile Controls Active).")
 end
 
 return SkillBarController

@@ -2,11 +2,10 @@
 --[[
     CultivationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CultivationController.luau
-    Client controller for meditation camera adjustments, audio, and QiNode Zone Visuals:
-    - Real-time Top-Left Meditation Status Banner (Stacked directly underneath Sect Mission tracker)
-    - Validates whether disciple is currently meditating inside a Qi Multiplier zone
-    - Automatically attaches floating Bangers Billboard above QiNode zones
-    - Dynamically colors dome mesh & light based on QiMultiplier tier
+    Handles:
+      1. 3D Floating Qi Node Billboards (Fondamento Font + UIStroke)
+      2. 2D Screen QIZoneNotifGui Binding (Pure text, no emojis/icons)
+      3. Meditation FOV adjustments, sound loop, and real-time multiplier detection
 ]]
 
 local Players = game:GetService("Players")
@@ -20,21 +19,19 @@ local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local CultivationController = {}
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 local camera = Workspace.CurrentCamera
 
-local isMeditating = false
+local FONT_QI_NODE = Enum.Font.Fondamento
 local MEDITATION_SOUND_ID = "rbxassetid://124551555247426"
 local meditationSound: Sound? = nil
 
-local FONT_TITLE = Enum.Font.Bangers
-local TWEEN_FAST = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local isMeditating = false
 
--- Top-Left HUD References
-local meditationStatusGui: ScreenGui?
-local statusBannerFrame: Frame?
-local statusTextLabel: TextLabel?
-local statusStroke: UIStroke?
+-- Studio UI Reference: QIZoneNotifGui (2D Screen Banner)
+local qiZoneGui: ScreenGui?
+local zoneFrame: Frame?
+local zoneTextLabel: TextLabel?
 local zoneMonitorThread: thread? = nil
 
 local function GetZoneColor(multiplier: number): Color3
@@ -49,101 +46,8 @@ local function GetZoneColor(multiplier: number): Color3
 	end
 end
 
--- Checks if player's character is inside any QiNode zone
-local function GetCurrentQiZoneMultiplier(character: Model): (number, string?)
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not hrp then return 1.0, nil end
-
-	local qiNodesFolder = Workspace:FindFirstChild("QiNodes")
-	if not qiNodesFolder then return 1.0, nil end
-
-	for _, nodePart in ipairs(qiNodesFolder:GetChildren()) do
-		if nodePart:IsA("BasePart") then
-			local distance = (hrp.Position - nodePart.Position).Magnitude
-			local maxRadius = math.max(nodePart.Size.X, nodePart.Size.Z) / 2 + 3
-			if distance <= maxRadius then
-				local mult = tonumber(nodePart:GetAttribute("QiMultiplier")) or 2.0
-				local name = tostring(nodePart:GetAttribute("NodeName") or "Qi Node")
-				return mult, name
-			end
-		end
-	end
-
-	return 1.0, nil
-end
-
 -- =============================================================================
--- TOP-LEFT MEDITATION STATUS BANNER (Stacked Underneath Sect Mission Tracker)
--- =============================================================================
-local function EnsureStatusBanner()
-	if meditationStatusGui and meditationStatusGui.Parent then return end
-
-	meditationStatusGui = Instance.new("ScreenGui")
-	meditationStatusGui.Name = "MeditationStatusGui"
-	meditationStatusGui.ResetOnSpawn = false
-	meditationStatusGui.DisplayOrder = 15
-	meditationStatusGui.IgnoreGuiInset = false
-	meditationStatusGui.Parent = playerGui
-
-	statusBannerFrame = Instance.new("Frame")
-	statusBannerFrame.Name = "StatusBanner"
-	statusBannerFrame.Size = UDim2.new(0, 230, 0, 30)
-	statusBannerFrame.Position = UDim2.new(0, 16, 0, 220) -- Positioned below Sect Mission Tracker
-	statusBannerFrame.BackgroundColor3 = Color3.fromRGB(12, 16, 24)
-	statusBannerFrame.BackgroundTransparency = 1
-	statusBannerFrame.BorderSizePixel = 0
-	statusBannerFrame.Visible = false
-	statusBannerFrame.Parent = meditationStatusGui
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
-	corner.Parent = statusBannerFrame
-
-	statusStroke = Instance.new("UIStroke")
-	statusStroke.Color = Color3.fromRGB(115, 235, 255)
-	statusStroke.Thickness = 1.3
-	statusStroke.Transparency = 1
-	statusStroke.Parent = statusBannerFrame
-
-	statusTextLabel = Instance.new("TextLabel")
-	statusTextLabel.Name = "StatusText"
-	statusTextLabel.Size = UDim2.new(1, -10, 1, 0)
-	statusTextLabel.Position = UDim2.new(0, 5, 0, 0)
-	statusTextLabel.BackgroundTransparency = 1
-	statusTextLabel.Font = FONT_TITLE
-	statusTextLabel.TextSize = 14
-	statusTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	statusTextLabel.TextTransparency = 1
-	statusTextLabel.Text = "🧘 MEDITATING · 1.0X SPEED"
-	statusTextLabel.TextXAlignment = Enum.TextXAlignment.Center
-	statusTextLabel.TextYAlignment = Enum.TextYAlignment.Center
-	statusTextLabel.Parent = statusBannerFrame
-
-	local textStroke = Instance.new("UIStroke")
-	textStroke.Color = Color3.fromRGB(10, 10, 15)
-	textStroke.Thickness = 1.2
-	textStroke.Parent = statusTextLabel
-end
-
-local function UpdateMeditationBanner(character: Model)
-	if not statusBannerFrame or not statusTextLabel or not statusStroke then return end
-
-	local multiplier, nodeName = GetCurrentQiZoneMultiplier(character)
-	if multiplier > 1.0 then
-		local zoneColor = GetZoneColor(multiplier)
-		local displayName = if nodeName and nodeName ~= "" then nodeName:upper() else "QI ZONE"
-		statusTextLabel.Text = string.format("⚡ %s · %.1fX SPEED", displayName, multiplier)
-		statusTextLabel.TextColor3 = zoneColor
-		statusStroke.Color = zoneColor
-	else
-		statusTextLabel.Text = "🧘 MEDITATING · 1.0X SPEED"
-		statusTextLabel.TextColor3 = Color3.fromRGB(220, 230, 240)
-		statusStroke.Color = Color3.fromRGB(120, 140, 165)
-	end
-end
-
--- =============================================================================
--- QI NODE DOME & FLOATING BILLBOARD INITIALIZER
+-- 3D FLOATING QI NODE BILLBOARD SETUP (Fondamento + Bold UIStroke)
 -- =============================================================================
 local function SetupQiNodeVisual(nodePart: BasePart)
 	if nodePart:FindFirstChild("QiZoneBillboard") then return end
@@ -160,9 +64,9 @@ local function SetupQiNodeVisual(nodePart: BasePart)
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "QiZoneBillboard"
-	billboard.Size = UDim2.new(0, 280, 0, 56)
+	billboard.Size = UDim2.new(0, 320, 0, 65)
 	billboard.StudsOffset = Vector3.new(0, (nodePart.Size.Y / 2) + 3.5, 0)
-	billboard.MaxDistance = 150
+	billboard.MaxDistance = 160
 	billboard.AlwaysOnTop = true
 	billboard.ResetOnSpawn = false
 	billboard.LightInfluence = 0
@@ -181,36 +85,39 @@ local function SetupQiNodeVisual(nodePart: BasePart)
 	listLayout.Padding = UDim.new(0, 2)
 	listLayout.Parent = container
 
+	-- Node Title
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
-	titleLabel.Size = UDim2.new(1, 0, 0, 26)
+	titleLabel.Size = UDim2.new(1, 0, 0, 32)
 	titleLabel.BackgroundTransparency = 1
-	titleLabel.Font = FONT_TITLE
-	titleLabel.TextSize = 24
+	titleLabel.Font = FONT_QI_NODE
+	titleLabel.TextSize = 26
 	titleLabel.TextColor3 = zoneColor
 	titleLabel.Text = nodeName:upper()
 	titleLabel.Parent = container
 
 	local titleStroke = Instance.new("UIStroke")
-	titleStroke.Color = Color3.fromRGB(15, 15, 20)
-	titleStroke.Thickness = 2
+	titleStroke.Color = Color3.fromRGB(10, 10, 15)
+	titleStroke.Thickness = 2.0
 	titleStroke.Parent = titleLabel
 
+	-- Node Subtitle / Speed Multiplier
 	local subLabel = Instance.new("TextLabel")
 	subLabel.Name = "SubtitleLabel"
-	subLabel.Size = UDim2.new(1, 0, 0, 18)
+	subLabel.Size = UDim2.new(1, 0, 0, 22)
 	subLabel.BackgroundTransparency = 1
-	subLabel.Font = FONT_TITLE
-	subLabel.TextSize = 14
-	subLabel.TextColor3 = Color3.fromRGB(240, 245, 255)
+	subLabel.Font = FONT_QI_NODE
+	subLabel.TextSize = 16
+	subLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
 	subLabel.Text = string.format("[ %.1fX QI CULTIVATION SPEED ]", multiplier)
 	subLabel.Parent = container
 
 	local subStroke = Instance.new("UIStroke")
 	subStroke.Color = Color3.fromRGB(10, 10, 15)
-	subStroke.Thickness = 1.3
+	subStroke.Thickness = 1.6
 	subStroke.Parent = subLabel
 
+	-- Live attribute update listeners
 	nodePart:GetAttributeChangedSignal("QiMultiplier"):Connect(function()
 		local newMult = tonumber(nodePart:GetAttribute("QiMultiplier")) or 2.0
 		local newColor = GetZoneColor(newMult)
@@ -244,34 +151,76 @@ local function InitAllQiNodes()
 end
 
 -- =============================================================================
--- MEDITATION CAMERA, AUDIO & HUD STATE
+-- 2D SCREEN QIZONENOTIFGUI BINDING (Clean Text, No Icons)
+-- =============================================================================
+local function HookStudioUI()
+	qiZoneGui = playerGui:WaitForChild("QIZoneNotifGui", 10) :: ScreenGui?
+	if qiZoneGui then
+		zoneFrame = qiZoneGui:WaitForChild("ZoneFrame", 5) :: Frame?
+		if zoneFrame then
+			zoneTextLabel = zoneFrame:FindFirstChildOfClass("TextLabel")
+			zoneFrame.Visible = false
+		end
+	end
+end
+
+local function GetCurrentQiZoneMultiplier(character: Model): (number, string?)
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return 1.0, nil end
+
+	local qiNodesFolder = Workspace:FindFirstChild("QiNodes")
+	if not qiNodesFolder then return 1.0, nil end
+
+	for _, nodePart in ipairs(qiNodesFolder:GetChildren()) do
+		if nodePart:IsA("BasePart") then
+			local distance = (hrp.Position - nodePart.Position).Magnitude
+			local maxRadius = math.max(nodePart.Size.X, nodePart.Size.Z) / 2 + 3
+			if distance <= maxRadius then
+				local mult = tonumber(nodePart:GetAttribute("QiMultiplier")) or 2.0
+				local name = tostring(nodePart:GetAttribute("NodeName") or "Qi Condensation")
+				return mult, name
+			end
+		end
+	end
+
+	return 1.0, nil
+end
+
+local function UpdateZoneBanner(character: Model)
+	if not zoneFrame or not zoneTextLabel then return end
+
+	local multiplier, nodeName = GetCurrentQiZoneMultiplier(character)
+
+	if isMeditating then
+		zoneFrame.Visible = true
+		local effectiveMult = multiplier * 2.0
+		if multiplier > 1.0 then
+			zoneTextLabel.Text = string.format("%s - %.1fX SPEED (MEDITATING)", (nodeName or "QI NODE"):upper(), effectiveMult)
+		else
+			zoneTextLabel.Text = "MEDITATING - 2.0X SPEED"
+		end
+	elseif multiplier > 1.0 then
+		zoneFrame.Visible = true
+		zoneTextLabel.Text = string.format("%s - %.1fX SPEED", (nodeName or "QI NODE"):upper(), multiplier)
+	else
+		zoneFrame.Visible = false
+	end
+end
+
+-- =============================================================================
+-- MEDITATION STATE HANDLERS
 -- =============================================================================
 function CultivationController.StartMeditation(character: Model)
 	if isMeditating then return end
 	isMeditating = true
 
-	EnsureStatusBanner()
+	UpdateZoneBanner(character)
 
-	-- Slide down & Fade in Status Banner
-	if statusBannerFrame and statusTextLabel and statusStroke then
-		UpdateMeditationBanner(character)
-		statusBannerFrame.Visible = true
-		statusBannerFrame.Position = UDim2.new(0, 16, 0, 212)
-
-		TweenService:Create(statusBannerFrame, TWEEN_FAST, {
-			BackgroundTransparency = 0.25,
-			Position = UDim2.new(0, 16, 0, 220),
-		}):Play()
-		TweenService:Create(statusStroke, TWEEN_FAST, { Transparency = 0.2 }):Play()
-		TweenService:Create(statusTextLabel, TWEEN_FAST, { TextTransparency = 0 }):Play()
-	end
-
-	-- Live zone monitoring while meditating
 	if zoneMonitorThread then task.cancel(zoneMonitorThread) end
 	zoneMonitorThread = task.spawn(function()
 		while isMeditating and character.Parent do
-			UpdateMeditationBanner(character)
-			task.wait(0.3)
+			UpdateZoneBanner(character)
+			task.wait(0.35)
 		end
 	end)
 
@@ -302,22 +251,7 @@ function CultivationController.StopMeditation(character: Model)
 		zoneMonitorThread = nil
 	end
 
-	-- Fade out & Slide up Status Banner
-	if statusBannerFrame and statusTextLabel and statusStroke then
-		local fadeTween = TweenService:Create(statusBannerFrame, TWEEN_FAST, {
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0, 16, 0, 212),
-		})
-		TweenService:Create(statusStroke, TWEEN_FAST, { Transparency = 1 }):Play()
-		TweenService:Create(statusTextLabel, TWEEN_FAST, { TextTransparency = 1 }):Play()
-		fadeTween:Play()
-
-		fadeTween.Completed:Connect(function()
-			if not isMeditating and statusBannerFrame then
-				statusBannerFrame.Visible = false
-			end
-		end)
-	end
+	UpdateZoneBanner(character)
 
 	if meditationSound and meditationSound.IsPlaying then
 		meditationSound:Stop()
@@ -330,7 +264,7 @@ end
 
 function CultivationController.Init()
 	InitAllQiNodes()
-	EnsureStatusBanner()
+	HookStudioUI()
 
 	local cultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 	cultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
@@ -349,7 +283,14 @@ function CultivationController.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationController Initialized (Dynamic QiNode Visuals & Top-Left Status Active).")
+	RunService.Heartbeat:Connect(function()
+		local char = player.Character
+		if char and not isMeditating then
+			UpdateZoneBanner(char)
+		end
+	end)
+
+	print("[ASCEND] CultivationController Initialized (Clean Text Meditation Banner Active).")
 end
 
 return CultivationController

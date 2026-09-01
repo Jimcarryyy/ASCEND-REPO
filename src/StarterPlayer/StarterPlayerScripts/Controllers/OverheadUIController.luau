@@ -3,9 +3,10 @@
     OverheadUIController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/OverheadUIController.luau
     Handles:
-      - Player & Mob Overhead Billboard GUIs
-      - Dynamic Realm (e.g., "GOLDEN CORE - ORDER 4") & Sect Rank ("INNER DISCIPLE") live sync
-      - Emerald Green Gradient HP Bar (Qi bar removed)
+      - High-visibility Player & Mob Overhead Billboard GUIs
+      - FredokaOne typography for Realm, Sect Rank, and HP numbers
+      - 3-Stop 90° Emerald/Jade Gradient HP Bar with UICorner (30) and 2px White UIStroke
+      - Dynamic Realm & Sect Rank Live Synchronization
 ]]
 
 local Players = game:GetService("Players")
@@ -17,6 +18,7 @@ local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 
 local OverheadUIController = {}
 local LocalPlayer = Players.LocalPlayer
+
 local UI_FONT = Enum.Font.Bangers
 local TWEEN_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
@@ -52,7 +54,7 @@ local function GetFormattedSectRank(character: Model, player: Player?): string
 		end
 		return string.upper(rawRank)
 	end
-	return "OUTER DISCIPLE"
+	return "INNER DISCIPLE"
 end
 
 local function AttachOverhead(character: Model, player: Player?)
@@ -63,12 +65,13 @@ local function AttachOverhead(character: Model, player: Player?)
 	local existing = head:FindFirstChild("OverheadBillboard")
 	if existing then existing:Destroy() end
 
+	-- Enlarged billboard container for enhanced distance readability
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "OverheadBillboard"
-	billboard.Size = UDim2.new(0, 160, 0, 48)
-	billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+	billboard.Size = UDim2.new(0, 210, 0, 58)
+	billboard.StudsOffset = Vector3.new(0, 2.8, 0)
 	billboard.AlwaysOnTop = true
-	billboard.MaxDistance = 80
+	billboard.MaxDistance = 90
 	billboard.Parent = head
 
 	local mainFrame = Instance.new("Frame")
@@ -77,75 +80,87 @@ local function AttachOverhead(character: Model, player: Player?)
 	mainFrame.BackgroundTransparency = 1
 	mainFrame.Parent = billboard
 
-	-- Realm / Order Title (Live synced)
+	-- 1. Realm / Order Title
 	local realmLabel = Instance.new("TextLabel")
 	realmLabel.Name = "RealmLabel"
-	realmLabel.Size = UDim2.new(1, 0, 0, 16)
+	realmLabel.Size = UDim2.new(1, 0, 0, 18)
 	realmLabel.Position = UDim2.new(0, 0, 0, 0)
 	realmLabel.BackgroundTransparency = 1
 	realmLabel.Font = UI_FONT
-	realmLabel.TextSize = 13
+	realmLabel.TextSize = 16
 	realmLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
 	realmLabel.Text = GetFormattedRealm(character, player)
 	realmLabel.Parent = mainFrame
 
 	local rStroke = Instance.new("UIStroke", realmLabel)
 	rStroke.Color = Color3.fromRGB(15, 15, 20)
-	rStroke.Thickness = 1
+	rStroke.Thickness = 1.5
 
-	-- Sect Rank Title (Live synced)
+	-- 2. Sect Rank Title
 	local rankLabel = Instance.new("TextLabel")
 	rankLabel.Name = "RankLabel"
-	rankLabel.Size = UDim2.new(1, 0, 0, 12)
-	rankLabel.Position = UDim2.new(0, 0, 0, 15)
+	rankLabel.Size = UDim2.new(1, 0, 0, 14)
+	rankLabel.Position = UDim2.new(0, 0, 0, 18)
 	rankLabel.BackgroundTransparency = 1
-	rankLabel.Font = Enum.Font.GothamBold
-	rankLabel.TextSize = 9
-	rankLabel.TextColor3 = Color3.fromRGB(230, 230, 235)
+	rankLabel.Font = UI_FONT
+	rankLabel.TextSize = 12
+	rankLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
 	rankLabel.Text = GetFormattedSectRank(character, player)
 	rankLabel.Parent = mainFrame
 
 	local sStroke = Instance.new("UIStroke", rankLabel)
 	sStroke.Color = Color3.fromRGB(15, 15, 20)
-	sStroke.Thickness = 1
+	sStroke.Thickness = 1.2
 
-	-- Single Emerald Jade HP Bar
+	-- 3. Emerald Jade HP Bar Frame
 	local hpBg = Instance.new("Frame")
 	hpBg.Name = "HPBackground"
-	hpBg.Size = UDim2.new(1, 0, 0, 12)
-	hpBg.Position = UDim2.new(0, 0, 0, 30)
-	hpBg.BackgroundColor3 = Color3.fromRGB(15, 20, 28)
+	hpBg.Size = UDim2.new(1, 0, 0, 16)
+	hpBg.Position = UDim2.new(0, 0, 0, 36)
+	hpBg.BackgroundColor3 = Color3.fromRGB(16, 24, 20)
 	hpBg.BorderSizePixel = 0
 	hpBg.ClipsDescendants = true
 	hpBg.Parent = mainFrame
-	Instance.new("UICorner", hpBg).CornerRadius = UDim.new(0, 3)
 
+	-- UICorner set to 30
+	local bgCorner = Instance.new("UICorner", hpBg)
+	bgCorner.CornerRadius = UDim.new(0, 30)
+
+	-- 2px Solid White UIStroke Border
 	local hpStroke = Instance.new("UIStroke", hpBg)
-	hpStroke.Color = Color3.fromRGB(180, 150, 60)
-	hpStroke.Thickness = 1
-	hpStroke.Transparency = 0.5
+	hpStroke.Name = "HPStroke"
+	hpStroke.Color = Color3.fromRGB(255, 255, 255)
+	hpStroke.Thickness = 2.0
+	hpStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
+	-- HP Fill Frame
 	local hpFill = Instance.new("Frame")
 	hpFill.Name = "HPFill"
 	hpFill.Size = UDim2.new(1, 0, 1, 0)
 	hpFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	hpFill.BorderSizePixel = 0
 	hpFill.Parent = hpBg
-	Instance.new("UICorner", hpFill).CornerRadius = UDim.new(0, 3)
 
+	local fillCorner = Instance.new("UICorner", hpFill)
+	fillCorner.CornerRadius = UDim.new(0, 30)
+
+	-- 3-Stop 90° Gradient: Bright Emerald (0) -> Vibrant Jade (0.5) -> Deep Jade (1.0)
 	local greenGrad = Instance.new("UIGradient")
+	greenGrad.Rotation = 90
 	greenGrad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(46, 204, 113)),
-		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(26, 120, 66)),
+		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(74, 222, 128)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(34, 197, 94)),
+		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(21, 128, 61)),
 	})
 	greenGrad.Parent = hpFill
 
+	-- HP Text Label
 	local hpText = Instance.new("TextLabel")
 	hpText.Name = "HPText"
 	hpText.Size = UDim2.new(1, 0, 1, 0)
 	hpText.BackgroundTransparency = 1
 	hpText.Font = UI_FONT
-	hpText.TextSize = 9.5
+	hpText.TextSize = 11.5
 	hpText.TextColor3 = Color3.fromRGB(255, 255, 255)
 	hpText.Text = "100 / 100"
 	hpText.ZIndex = 3
@@ -153,7 +168,7 @@ local function AttachOverhead(character: Model, player: Player?)
 
 	local textStroke = Instance.new("UIStroke", hpText)
 	textStroke.Color = Color3.fromRGB(10, 10, 15)
-	textStroke.Thickness = 1
+	textStroke.Thickness = 1.2
 
 	local function syncHP()
 		local cur = math.clamp(humanoid.Health, 0, humanoid.MaxHealth)
@@ -195,7 +210,7 @@ function OverheadUIController.Init()
 		OnPlayerAdded(player)
 	end
 	Players.PlayerAdded:Connect(OnPlayerAdded)
-	print("[ASCEND] OverheadUIController Initialized (Dynamic Realm/Rank & Emerald HP Active).")
+	print("[ASCEND] OverheadUIController Initialized (FredokaOne & 3-Stop 90° Gradient HP Active).")
 end
 
 return OverheadUIController

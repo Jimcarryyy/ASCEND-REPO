@@ -3,8 +3,8 @@
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
     Handles:
-      1. Xianxia Floating Damage Numbers
-      2. Floating Sword Intent Combo & Unleashed Text Banners
+      1. Xianxia Floating Damage Numbers (Pure text, no icons)
+      2. Floating Sword Intent Combo & Unleashed Text Popups (Pure text, no icons)
       3. Slash VFX, Camera Shake, Hitstop, Parry Clashes & Block Sparks
 ]]
 
@@ -107,19 +107,19 @@ function CombatVFXController.SpawnIntentComboPopup(position: Vector3, comboCount
 	local stroke = Instance.new("UIStroke", label)
 
 	if isEmpowered then
-		label.Text = "⚡ SWORD INTENT UNLEASHED (1.75X)"
+		label.Text = "SWORD INTENT UNLEASHED (1.75X)"
 		label.TextSize = 24
 		label.TextColor3 = Color3.fromRGB(255, 235, 120)
 		stroke.Color = Color3.fromRGB(200, 50, 0)
 		stroke.Thickness = 2.0
 	elseif currentIntent >= 100 then
-		label.Text = "🌟 INTENT 100% · FULL CHARGE!"
+		label.Text = "INTENT 100% - FULL CHARGE!"
 		label.TextSize = 22
 		label.TextColor3 = Color3.fromRGB(255, 215, 0)
 		stroke.Color = Color3.fromRGB(15, 15, 20)
 		stroke.Thickness = 1.6
 	else
-		label.Text = string.format("⚔️ INTENT +25%% [COMBO x%d]", math.max(1, comboCount))
+		label.Text = string.format("INTENT +25%% [COMBO x%d]", math.max(1, comboCount))
 		label.TextSize = 18
 		label.TextColor3 = Color3.fromRGB(0, 215, 255)
 		stroke.Color = Color3.fromRGB(10, 20, 35)
@@ -162,16 +162,16 @@ function CombatVFXController.Init()
 
 			if payload.WasParried then
 				CombatVFXController.SpawnParryClash(targetPos)
-				CombatVFXController.SpawnDamageNumber(targetPos, 0, true, Color3.fromRGB(100, 220, 255), "✦ PARRY! ✦")
+				CombatVFXController.SpawnDamageNumber(targetPos, 0, true, Color3.fromRGB(100, 220, 255), "PARRY!")
 			elseif payload.WasGuardBroken then
 				Play3DSound(PARRY_CLASH_SOUND_ID, targetPos, 1.0)
 				CombatVFXController.AddCameraShake(0.55)
 				CombatVFXController.ApplyHitstop(0.06)
-				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, true, Color3.fromRGB(255, 60, 60), "💥 GUARD BROKEN!")
+				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, true, Color3.fromRGB(255, 60, 60), "GUARD BROKEN!")
 			elseif payload.WasBlocked then
 				Play3DSound(PARRY_CLASH_SOUND_ID, targetPos, 0.7)
 				if attacker == player then CombatVFXController.AddCameraShake(0.15) end
-				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, false, Color3.fromRGB(175, 195, 220), "🛡️ BLOCKED")
+				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, false, Color3.fromRGB(175, 195, 220), "BLOCKED")
 			else
 				Play3DSound(HIT_IMPACT_SOUND_ID, targetPos, 0.95)
 				CombatVFXController.SpawnSlashHitVFX(targetPos, hrp and hrp.CFrame)
@@ -180,7 +180,7 @@ function CombatVFXController.Init()
 					CombatVFXController.AddCameraShake(payload.IsCrit and 0.45 or 0.25)
 					CombatVFXController.ApplyHitstop(payload.IsCrit and 0.06 or 0.04)
 
-					-- Spawn Floating Sword Intent Combo Badge
+					-- Spawn Floating Sword Intent Combo Badge (Pure text)
 					CombatVFXController.SpawnIntentComboPopup(
 						targetPos,
 						payload.ComboCount or 1,
@@ -220,7 +220,7 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (With Intent Combo Popups).")
+	print("[ASCEND] CombatVFXController Initialized (Clean Text Combat Popups Active).")
 end
 
 function CombatVFXController.ApplyHitstop(duration: number)

@@ -129,7 +129,11 @@ function AlchemyController.Init()
 			end
 
 			if payload.Success and payload.ResultItemId then
-				HUDController.ShowItemToast(payload.ResultItemId, 1, payload.QualityText)
+				if HUDController and (HUDController :: any).ShowItemToast then
+					(HUDController :: any).ShowItemToast(payload.ResultItemId, 1, payload.QualityText)
+				elseif HUDController and (HUDController :: any).ShowToast then
+					(HUDController :: any).ShowToast(string.format("Refined %s (%s)", tostring(payload.ResultItemId), tostring(payload.QualityText or "Standard")))
+				end
 			end
 		end
 	end)
@@ -709,7 +713,7 @@ function AlchemyController.RefreshHerbPicker()
 
 	local layout = Instance.new("UIGridLayout")
 	layout.CellSize = UDim2.new(0, 92, 0, 92)
-	layout.CellPadding = UDim2.new(0, 8, 0, 8)
+	layout.CellPadding = UDim2.new(0, 8, 0, 8) -- Fixed UDim2 assignment
 	layout.Parent = herbPickerGrid
 
 	for slotIdx, slotData in pairs(currentInventoryData) do
