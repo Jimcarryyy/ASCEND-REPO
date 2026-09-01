@@ -30,6 +30,16 @@ UIAssets.Icons = {
 	DragonBloodVine        = "rbxassetid://87215598829275",
 	SpiritGrass            = "rbxassetid://112390155425328",
 	SpiritHealingDan       = "rbxassetid://72471225624084",
+
+	-- 8 Sword Tiers (Updated Live Asset IDs)
+	MortalIronJian              = "rbxassetid://109157084266033", -- Common (Tier 1)
+	AzureCloudDiscipleJian      = "rbxassetid://115690610892281", -- Uncommon (Tier 2)
+	FlowingQiSpiritSword        = "rbxassetid://85610178645930",  -- Rare (Tier 3)
+	VerdantJadeFlyingSword      = "rbxassetid://114181885052834", -- Epic (Tier 4)
+	VioletSoulSovereignJian     = "rbxassetid://102454036931672", -- Legendary (Tier 5)
+	VoidStarCleaverDao          = "rbxassetid://73201319689599",  -- Mythic (Tier 6)
+	AzurePatriarchHeritageJian  = "rbxassetid://129279811461089", -- Divine (Tier 7)
+	RadiantImmortalSovereignJian= "rbxassetid://131309720641215", -- Immortal (Tier 8)
 }
 
 -- Master Design Tokens
@@ -60,10 +70,6 @@ UIAssets.RarityCardColors = {
 	Common    = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#64748B"), Text = Color3.fromHex("#E2E8F0") },
 }
 
--- Alchemy Pill Quality Grade Colors
--- Keys match the exact strings returned by AlchemyConfig.CalculateCombinationMetrics,
--- used by MarketController, HUDController, and AlchemyController to color pill/item
--- cards by the quality grade rolled at crafting time (driven by herb age).
 UIAssets.GradeCardColors = {
 	["Sovereign Immortal Quality"] = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#F8FAFC"), Text = Color3.fromHex("#1E232A") },
 	["Century Superior Quality"]   = { Background = Color3.fromHex("#1C2638"), Border = Color3.fromHex("#F59E0B"), Text = Color3.fromHex("#FDE68A") },

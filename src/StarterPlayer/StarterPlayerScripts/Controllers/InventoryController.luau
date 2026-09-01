@@ -4,8 +4,7 @@
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
     Directly bound to StarterGui.SpiritPouchInventoryGui:
     - Dual-device adaptive grid: 6 slots/row on PC ({0, 100}, {0, 100}), 4 slots/row on Phone ({0, 56}, {0, 56})
-    - Space-Insensitive Universal 3D Viewport Engine: Resolves all 8 Sword Tiers (Tiers 1-8)
-    - Dynamic 3D spinning inspection preview for all swords and materials
+    - 2D High-Resolution Weapon Showcase for all 8 Sword Tiers (Replaces 3D ViewportFrames)
     - Full Support for Divine and Immortal tier rarities
     - Key Normalization Fix: Guarantees saved DataStore items display immediately on login
     - Integrated Panel Click Audio (rbxassetid://138567614125924)
@@ -127,32 +126,27 @@ local function GetRarityToken(rarityName: string): RarityColorToken
 	return RARITY_COLORS[rarityName] or DEFAULT_RARITY_TOKEN
 end
 
-local function IsTouchDevice(): boolean
-	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-end
-
 local function IsPositionInsideGui(guiObject: GuiObject, x: number, y: number): boolean
 	local pos = guiObject.AbsolutePosition
 	local size = guiObject.AbsoluteSize
 	return x >= pos.X and x <= (pos.X + size.X) and y >= pos.Y and y <= (pos.Y + size.Y)
 end
 
+local function GetItemIconAsset(itemId: string): string?
+	local itemDef = ItemConfig.GetItem(itemId)
+	if UIAssets.Icons and UIAssets.Icons[itemId] and UIAssets.Icons[itemId] ~= "" then
+		return UIAssets.Icons[itemId]
+	elseif itemDef and itemDef.Icon and itemDef.Icon ~= "" then
+		return itemDef.Icon
+	end
+	return nil
+end
+
 -- =============================================================================
--- FUZZY SPACE-INSENSITIVE 3D MODEL RESOLVER
+-- FUZZY SPACE-INSENSITIVE 3D MODEL RESOLVER (For non-weapon models)
 -- =============================================================================
 local function Find3DItemModel(itemId: string): Instance?
 	local cleanTarget = itemId:gsub("%s+", ""):lower()
-
-	if not weaponsFolder then
-		weaponsFolder = ReplicatedStorage:FindFirstChild("Weapons") :: Folder?
-	end
-	if weaponsFolder then
-		for _, child in ipairs(weaponsFolder:GetChildren()) do
-			if child.Name:gsub("%s+", ""):lower() == cleanTarget then
-				return child
-			end
-		end
-	end
 
 	if not herbsFolder then
 		herbsFolder = ReplicatedStorage:FindFirstChild("Herbs") :: Folder?
@@ -175,11 +169,6 @@ local function Find3DItemModel(itemId: string): Instance?
 				return child
 			end
 		end
-	end
-
-	local rootModel = ReplicatedStorage:FindFirstChild(itemId)
-	if rootModel and (rootModel:IsA("Model") or rootModel:IsA("BasePart")) then
-		return rootModel
 	end
 
 	return nil
@@ -323,6 +312,8 @@ function InventoryController.Init()
 
 	itemPreviewFrame = inspectionSection:WaitForChild("ItemPreviewFrame", 5) :: Frame
 	itemIconLarge = itemPreviewFrame:WaitForChild("ItemIconLarge", 5) :: ImageLabel
+	itemIconLarge.ScaleType = Enum.ScaleType.Fit
+	itemIconLarge.BackgroundTransparency = 1
 
 	inspectionViewport = itemPreviewFrame:FindFirstChild("InspectionViewport") :: ViewportFrame?
 	if not inspectionViewport then
@@ -420,7 +411,7 @@ function InventoryController.Init()
 		end)
 	end
 
-	-- Key Normalization: converts incoming string keys to number keys
+	-- Key Normalization
 	updateInventoryRemote.OnClientEvent:Connect(function(newInventory: any)
 		inventoryCache = {}
 		if newInventory and type(newInventory) == "table" then
@@ -446,7 +437,7 @@ function InventoryController.Init()
 		end
 	end)
 
-	print("[ASCEND] InventoryController Initialized (8-Tier 3D Sword Viewports Active).")
+	print("[ASCEND] InventoryController Initialized (2D High-Res Weapon Icons Active).")
 end
 
 -- =============================================================================
@@ -513,6 +504,7 @@ function InventoryController.Open()
 end
 
 function InventoryController.Close()
+	if not isOpen then return end
 	isOpen = false
 	screenGui.Enabled = false
 	mainFrame.Visible = false
@@ -525,7 +517,7 @@ function InventoryController.Close()
 end
 
 -- =============================================================================
--- POPULATE GRID WITH REAL ITEMS & ALIGNED SELECTED GLOW
+-- POPULATE GRID WITH 2D WEAPON ASSETS
 -- =============================================================================
 function InventoryController.RenderGrid()
 	for _, clone in ipairs(activeSlotClones) do
@@ -560,7 +552,6 @@ function InventoryController.RenderGrid()
 		end
 	end
 
-	-- Sorting with full 8-Tier Rarity coverage
 	local RARITY_RANKS = {
 		["Mortal"]    = 1, ["Common"]    = 1,
 		["Spiritual"] = 2, ["Uncommon"]  = 2,
@@ -590,7 +581,6 @@ function InventoryController.RenderGrid()
 		end)
 	end
 
-	-- Populate Slots
 	for _, entry in ipairs(filteredSlots) do
 		local slotObj = slotTemplate:Clone()
 		slotObj.Name = "Slot_" .. tostring(entry.SlotIndex)
@@ -599,7 +589,7 @@ function InventoryController.RenderGrid()
 		local rarityName = entry.ItemDef.Rarity or "Common"
 		local token = GetRarityToken(rarityName)
 
-		-- 1. Header Ribbon & Text
+		-- Header Ribbon
 		local headerRibbon = slotObj:FindFirstChild("HeaderRibbon") :: ImageLabel?
 		local rarityLabel: TextLabel? = nil
 		if headerRibbon then
@@ -621,7 +611,7 @@ function InventoryController.RenderGrid()
 			rarityLabel.Visible = true
 		end
 
-		-- 2. Aligned Selected Glow
+		-- Selected Glow
 		local GLOW_OVERSCAN = 0.08
 		local selectedGlow = slotObj:FindFirstChild("SelectedGlow") :: ImageLabel?
 		if selectedGlow then
@@ -636,44 +626,56 @@ function InventoryController.RenderGrid()
 			(slotObj :: GuiObject).ClipsDescendants = false
 		end
 
-		-- 3. Universal 3D/2D Item Rendering
+		-- 2D High-Res Icon Display
 		local itemIcon = slotObj:FindFirstChild("ItemIcon") :: ImageLabel?
-		local item3DModel = Find3DItemModel(entry.ItemId)
+		local slotViewport = slotObj:FindFirstChild("Slot3DViewport") :: ViewportFrame?
+		if slotViewport then
+			slotViewport.Visible = false
+		end
 
-		if item3DModel then
-			if itemIcon then itemIcon.Visible = false end
+		local isWeapon = (entry.ItemDef.Type == "Weapon" or entry.ItemDef.Type == "FlyingSword" or entry.ItemDef.Type == "Sword")
+		local iconAsset = GetItemIconAsset(entry.ItemId)
 
-			local slotViewport = slotObj:FindFirstChild("Slot3DViewport") :: ViewportFrame?
-			if not slotViewport then
-				slotViewport = Instance.new("ViewportFrame")
-				slotViewport.Name = "Slot3DViewport"
-				slotViewport.Size = UDim2.new(0.85, 0, 0.72, 0)
-				slotViewport.Position = UDim2.new(0.5, 0, 0.60, 0)
-				slotViewport.AnchorPoint = Vector2.new(0.5, 0.5)
-				slotViewport.BackgroundTransparency = 1
-				slotViewport.BorderSizePixel = 0
-				slotViewport.ZIndex = 3
-				slotViewport.Parent = slotObj
-			end
-			slotViewport.Visible = true
-			Setup3DViewport(slotViewport, item3DModel, false)
-		else
-			local slotViewport = slotObj:FindFirstChild("Slot3DViewport") :: ViewportFrame?
-			if slotViewport then slotViewport.Visible = false end
-
-			local iconAsset = (UIAssets.Icons and UIAssets.Icons[entry.ItemId]) or entry.ItemDef.Icon
+		if isWeapon and iconAsset then
 			if itemIcon then
-				itemIcon.BackgroundColor3 = token.Color
-				if iconAsset and iconAsset ~= "" then
-					itemIcon.Image = iconAsset
-					itemIcon.Visible = true
-				else
-					itemIcon.Visible = false
+				itemIcon.Image = iconAsset
+				itemIcon.ScaleType = Enum.ScaleType.Fit
+				itemIcon.BackgroundTransparency = 1
+				itemIcon.Visible = true
+			end
+		else
+			-- Fallback 3D Model Check for Non-Weapons
+			local item3DModel = Find3DItemModel(entry.ItemId)
+			if item3DModel then
+				if itemIcon then itemIcon.Visible = false end
+				if not slotViewport then
+					slotViewport = Instance.new("ViewportFrame")
+					slotViewport.Name = "Slot3DViewport"
+					slotViewport.Size = UDim2.new(0.85, 0, 0.72, 0)
+					slotViewport.Position = UDim2.new(0.5, 0, 0.60, 0)
+					slotViewport.AnchorPoint = Vector2.new(0.5, 0.5)
+					slotViewport.BackgroundTransparency = 1
+					slotViewport.BorderSizePixel = 0
+					slotViewport.ZIndex = 3
+					slotViewport.Parent = slotObj
+				end
+				slotViewport.Visible = true
+				Setup3DViewport(slotViewport, item3DModel, false)
+			else
+				if itemIcon then
+					if iconAsset and iconAsset ~= "" then
+						itemIcon.Image = iconAsset
+						itemIcon.ScaleType = Enum.ScaleType.Fit
+						itemIcon.BackgroundTransparency = 1
+						itemIcon.Visible = true
+					else
+						itemIcon.Visible = false
+					end
 				end
 			end
 		end
 
-		-- 4. Quantity Label
+		-- Quantity Label
 		local quantityLabel = slotObj:FindFirstChild("QuantityLabel") :: TextLabel?
 		if quantityLabel then
 			quantityLabel.Text = if entry.Count > 1 then "x" .. tostring(entry.Count) else ""
@@ -687,8 +689,9 @@ function InventoryController.RenderGrid()
 			InventoryController.RenderGrid()
 		end
 
-		if slotObj:IsA("GuiButton") then
-			slotObj.MouseButton1Click:Connect(selectSlot)
+		local clickTrigger = slotObj:FindFirstChildWhichIsA("GuiButton") or slotObj
+		if clickTrigger:IsA("GuiButton") then
+			clickTrigger.MouseButton1Click:Connect(selectSlot)
 		else
 			slotObj.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -701,7 +704,6 @@ function InventoryController.RenderGrid()
 		table.insert(activeSlotClones, slotObj)
 	end
 
-	-- Auto-select first item or maintain selection
 	if not selectedSlotIndex and #filteredSlots > 0 then
 		selectedSlotIndex = filteredSlots[1].SlotIndex
 		InventoryController.UpdateInspection(filteredSlots[1].ItemDef, filteredSlots[1].Count, filteredSlots[1].Quality)
@@ -711,7 +713,7 @@ function InventoryController.RenderGrid()
 end
 
 -- =============================================================================
--- UPDATE INSPECTION CARD (3D ROTATING MESH & STATS)
+-- UPDATE INSPECTION CARD (2D WEAPON ASSET PREVIEW)
 -- =============================================================================
 function InventoryController.UpdateInspection(itemDef: any, count: number, quality: string?)
 	if not itemDef then
@@ -732,26 +734,42 @@ function InventoryController.UpdateInspection(itemDef: any, count: number, quali
 	itemRarityLabel.TextColor3 = token.Color
 	descriptionLabel.Text = itemDef.Description or "No lore inscription found."
 
-	local item3DModel = Find3DItemModel(itemDef.Id or itemDef.Name)
+	local isWeapon = (itemDef.Type == "Weapon" or itemDef.Type == "FlyingSword" or itemDef.Type == "Sword")
+	local iconAsset = GetItemIconAsset(itemDef.Id or itemDef.Name)
 
-	if item3DModel and inspectionViewport then
-		if itemIconLarge then itemIconLarge.Visible = false end
-		inspectionViewport.Visible = true
-		activeInspectionSpinCleanup = Setup3DViewport(inspectionViewport, item3DModel, true)
-	else
+	if isWeapon and iconAsset then
+		-- 2D Image Showcase for Weapons
 		if inspectionViewport then
 			inspectionViewport.Visible = false
 			inspectionViewport:ClearAllChildren()
 		end
-
-		local iconAsset = (UIAssets.Icons and UIAssets.Icons[itemDef.Id]) or itemDef.Icon
 		if itemIconLarge then
-			itemIconLarge.BackgroundColor3 = token.Color
-			if iconAsset and iconAsset ~= "" then
-				itemIconLarge.Image = iconAsset
-				itemIconLarge.Visible = true
-			else
-				itemIconLarge.Visible = false
+			itemIconLarge.Image = iconAsset
+			itemIconLarge.ScaleType = Enum.ScaleType.Fit
+			itemIconLarge.BackgroundTransparency = 1
+			itemIconLarge.Visible = true
+		end
+	else
+		-- 3D Fallback for Non-Weapons
+		local item3DModel = Find3DItemModel(itemDef.Id or itemDef.Name)
+		if item3DModel and inspectionViewport then
+			if itemIconLarge then itemIconLarge.Visible = false end
+			inspectionViewport.Visible = true
+			activeInspectionSpinCleanup = Setup3DViewport(inspectionViewport, item3DModel, true)
+		else
+			if inspectionViewport then
+				inspectionViewport.Visible = false
+				inspectionViewport:ClearAllChildren()
+			end
+			if itemIconLarge then
+				if iconAsset and iconAsset ~= "" then
+					itemIconLarge.Image = iconAsset
+					itemIconLarge.ScaleType = Enum.ScaleType.Fit
+					itemIconLarge.BackgroundTransparency = 1
+					itemIconLarge.Visible = true
+				else
+					itemIconLarge.Visible = false
+				end
 			end
 		end
 	end

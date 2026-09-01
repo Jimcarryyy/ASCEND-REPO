@@ -3,10 +3,10 @@
     MarketController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/MarketController.luau
     Bound directly to Studio StarterGui.SectMerchantMarketGui hierarchy:
-    - SWORDS Category Tab replaces Talismans (Displays Tier 2-8 Flying Swords)
+    - SWORDS Category Tab displays all Tier 1-8 Flying Swords with high-res 2D UIAssets icons
+    - Inspect panel showcases 2D sword icons with full stats & lore
     - Enforces Sect Rank Requirements per Sword (Outer, Inner, Core, Elder, Patriarch)
-    - Live synced Spirit Stones, Sect Rank, CP, and Dynamic Item Inspect Panel
-    - Integrated Top-Center Bangers Toast Notifications
+    - Live synced Spirit Stones, Sect Rank, and EXACT Contribution Points (e.g. 1,970 CP)
     - Fixed 3-Column Responsive Grid (Always 3/row, auto-growing scroll canvas)
 ]]
 
@@ -17,11 +17,12 @@ local SoundService = game:GetService("SoundService")
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
+local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 local MarketController = {}
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
 -- Network Remotes
 local marketActionRemote: RemoteEvent
@@ -73,7 +74,7 @@ local totalValueLabel: TextLabel?
 local confirmExchangeBtn: ImageButton?
 local confirmBtnText: TextLabel?
 
--- Controller State
+-- State
 local currentMode: "Buy" | "Sell" = "Buy"
 local currentCategory: "ALL" | "CORES" | "ELIXIRS" | "HERBS" | "SWORDS" = "ALL"
 local selectedItemId: string? = nil
@@ -122,7 +123,6 @@ local function ApplyGradient(button: GuiButton?, colorA: Color3, colorB: Color3,
 	gradient.Rotation = rotation or 90
 end
 
--- Palette pulled from the existing gold/navy/maroon Xianxia theme
 local GRADIENT_GOLD_TOP = Color3.fromHex("#F5D06B")
 local GRADIENT_GOLD_BOTTOM = Color3.fromHex("#B8860B")
 local GRADIENT_NAVY_TOP = Color3.fromHex("#2A3752")
@@ -151,7 +151,6 @@ local function ApplyMarketButtonGradients()
 	ApplyGradient(maxBtn, GRADIENT_GREY_TOP, GRADIENT_GREY_BOTTOM)
 end
 
--- Toast Helper
 local function ShowToast(message: string, toastType: string?)
 	local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
 	if controllers then
@@ -160,7 +159,8 @@ local function ShowToast(message: string, toastType: string?)
 			local req = require(hudCtrl) :: any
 			if req.ShowGlobalToast then
 				req.ShowGlobalToast(message, toastType or "Success", 3.0)
-				return
+			elseif req.ShowToast then
+				req.ShowToast(message, 3.0)
 			end
 		end
 	end
@@ -175,8 +175,14 @@ local function PlayClickSound()
 	game:GetService("Debris"):AddItem(sound, 1.2)
 end
 
-local function FormatNum(val: number): string
-	return CultivationConfig.FormatNumber(val)
+local function FormatCurrency(num: number): string
+	local formatted = tostring(math.floor(num))
+	local k
+	while true do
+		formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+		if k == 0 then break end
+	end
+	return formatted
 end
 
 local function FormatRank(rawRank: any): string
@@ -186,10 +192,20 @@ end
 
 local function GetPlayerStones(): number
 	local stones = LocalPlayer:GetAttribute("SpiritStones")
-	if stones == nil and LocalPlayer.Character then
-		stones = LocalPlayer.Character:GetAttribute("SpiritStones")
-	end
+		or LocalPlayer:GetAttribute("Stones")
+		or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("SpiritStones"))
+		or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("Stones"))
 	return tonumber(stones) or 0
+end
+
+local function GetPlayerCP(): number
+	local cp = LocalPlayer:GetAttribute("ContributionPoints")
+		or LocalPlayer:GetAttribute("SectContribution")
+		or LocalPlayer:GetAttribute("CP")
+		or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("ContributionPoints"))
+		or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("SectContribution"))
+		or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("CP"))
+	return tonumber(cp) or 0
 end
 
 local function GetPlayerRank(): string
@@ -205,6 +221,309 @@ local function GetOwnedCount(itemId: string): number
 		end
 	end
 	return total
+end
+
+-- =============================================================================
+-- 2D ICON ASSET RESOLVER (UIAssets.Icons -> ItemConfig.Icon)
+-- =============================================================================
+local function GetItemIconAsset(itemId: string): string
+	local itemDef = ItemConfig.GetItem(itemId)
+	if UIAssets.Icons and UIAssets.Icons[itemId] and UIAssets.Icons[itemId] ~= "" then
+		return UIAssets.Icons[itemId]
+	elseif itemDef and itemDef.Icon and itemDef.Icon ~= "" then
+		return itemDef.Icon
+	end
+	return ""
+end
+
+local function GetVendorOrItemDef(itemId: string)
+	local vendorDef = SectConfig.GetMarketItem(itemId)
+	local itemDef = ItemConfig.GetItem(itemId)
+
+	if vendorDef then
+		return vendorDef, itemDef
+	elseif itemDef then
+		local tier = itemDef.Tier or 1
+		local buyPrice = itemDef.BasePrice or itemDef.Price or (tier * 800)
+		local sellPrice = math.floor(buyPrice * 0.5)
+		local reqRank = itemDef.RequiredRank or (
+			if tier >= 7 then "Patriarch"
+			elseif tier >= 5 then "Elder"
+			elseif tier >= 4 then "Core"
+			elseif tier >= 2 then "Inner"
+			else "Outer"
+		)
+		return {
+			BuyPrice = buyPrice,
+			SellPrice = sellPrice,
+			RequiredRank = reqRank,
+		}, itemDef
+	end
+	return nil, nil
+end
+
+local function GetItemCategory(itemDef: ItemConfig.ItemDefinition): string
+	if itemDef.Type == "Weapon" or itemDef.Category == "Sword" or itemDef.Category == "Weapon" or itemDef.Id:find("Jian") or itemDef.Id:find("Sword") or itemDef.Id:find("Dao") then
+		return "SWORDS"
+	elseif itemDef.Id == "DemonBeastCore" or itemDef.Type == "Crest" or itemDef.Category == "Core" or itemDef.Id:find("Core") then
+		return "CORES"
+	elseif itemDef.Type == "Consumable" or itemDef.Id:match("Dan$") or itemDef.Id:match("Pill$") or itemDef.Category == "Elixir" then
+		return "ELIXIRS"
+	elseif itemDef.Type == "Material" then
+		return "HERBS"
+	end
+	return "HERBS"
+end
+
+local function GetMaxAllowedQuantity(unitPrice: number): number
+	if currentMode == "Buy" then
+		if selectedItemId and ItemConfig.GetItem(selectedItemId) and ItemConfig.GetItem(selectedItemId).Type == "Weapon" then
+			return 1
+		end
+		local stones = GetPlayerStones()
+		if unitPrice <= 0 then return 99 end
+		local affordable = math.floor(stones / unitPrice)
+		return math.clamp(affordable, 1, 99)
+	else
+		if not selectedItemId then return 1 end
+		local owned = GetOwnedCount(selectedItemId)
+		return math.max(1, owned)
+	end
+end
+
+-- =============================================================================
+-- INSPECTION PANEL (2D SWORD ASSET SHOWCASE)
+-- =============================================================================
+local function UpdateInspectPanel()
+	if not selectedItemId then
+		if inspectTopTitle then inspectTopTitle.Text = "SELECT AN ITEM" end
+		if inspectGrade then inspectGrade.Text = "Grade: ---" end
+		if inspectSpiritAge then inspectSpiritAge.Text = "Spirit Age: ---" end
+		if inspectEffectsDesc then inspectEffectsDesc.Text = "Select an item to view effects." end
+		if inspectItemImage then inspectItemImage.Visible = false end
+		if totalValueLabel then totalValueLabel.Text = "Total: 0 Stones" end
+		if countLabel then countLabel.Text = "0" end
+		return
+	end
+
+	local vendorDef, itemDef = GetVendorOrItemDef(selectedItemId)
+	if not itemDef then return end
+
+	local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
+	local iconAsset = GetItemIconAsset(itemDef.Id)
+
+	-- 1. Dynamic Titles, Icons & Specs
+	if inspectTopTitle then
+		inspectTopTitle.Text = itemDef.Name
+	end
+	if inspectItemImage then
+		inspectItemImage.Image = iconAsset
+		inspectItemImage.ScaleType = Enum.ScaleType.Fit
+		inspectItemImage.BackgroundTransparency = 1
+		inspectItemImage.Visible = (iconAsset ~= "")
+	end
+	if inspectGrade then
+		inspectGrade.Text = string.format("Grade: %s-Rank", itemDef.Rarity or "Common")
+	end
+	if inspectSpiritAge then
+		if itemDef.Type == "Weapon" then
+			local reqRank = vendorDef and vendorDef.RequiredRank or "OuterDisciple"
+			inspectSpiritAge.Text = string.format("Req: %s", FormatRank(reqRank))
+		else
+			inspectSpiritAge.Text = if itemDef.AgeYears then string.format("Spirit Age: %d-Yr", itemDef.AgeYears) else "Spirit Age: Immortal"
+		end
+	end
+	if inspectEffectsDesc then
+		if itemDef.Type == "Weapon" then
+			inspectEffectsDesc.Text = string.format("+%d Physical Attack\n%s", itemDef.Damage or ((itemDef.Tier or 1) * 20), itemDef.Description or "")
+		elseif itemDef.Stats and itemDef.Stats.QiGrant then
+			inspectEffectsDesc.Text = string.format("+%s Usable Qi\n%s", FormatCurrency(itemDef.Stats.QiGrant), itemDef.Description or "")
+		elseif itemDef.Stats and itemDef.Stats.HealAmount then
+			inspectEffectsDesc.Text = string.format("+%s Health Recovery\n%s", FormatCurrency(itemDef.Stats.HealAmount), itemDef.Description or "")
+		else
+			inspectEffectsDesc.Text = itemDef.Description or ""
+		end
+	end
+
+	-- 2. Quantity & Total Stones Counter
+	if countLabel then
+		countLabel.Text = tostring(selectedQuantity)
+	end
+
+	local totalCost = unitPrice * selectedQuantity
+	if totalValueLabel then
+		totalValueLabel.Text = string.format("Total: %s Stones", FormatCurrency(totalCost))
+	end
+
+	if confirmBtnText then
+		confirmBtnText.Text = if currentMode == "Buy" then "CONFIRM EXCHANGE" else "SELL ITEMS"
+	end
+end
+
+-- =============================================================================
+-- POPULATE GRID WITH 2D SWORD ASSETS
+-- =============================================================================
+local function PopulateGrid()
+	if not itemGridScroll or not templateSlotFrame then return end
+
+	UpdateMarketGridCellSize()
+	itemGridScroll.CanvasPosition = Vector2.new(0, 0)
+
+	for _, clone in ipairs(activeSlotClones) do
+		clone:Destroy()
+	end
+	table.clear(activeSlotClones)
+
+	local candidateItems: { { ItemId: string, UnitPrice: number, StockOrOwned: string, Count: number, Tier: number? } } = {}
+
+	if currentMode == "Buy" then
+		local processed: { [string]: boolean } = {}
+
+		-- 1. Base SectConfig catalog items
+		local catalog = SectConfig.GetAllMarketItems()
+		for itemId, vendorItem in pairs(catalog) do
+			if vendorItem.BuyPrice then
+				local itemDef = ItemConfig.GetItem(itemId)
+				if itemDef then
+					processed[itemId] = true
+					local itemCat = GetItemCategory(itemDef)
+					if currentCategory == "ALL" or currentCategory == itemCat then
+						table.insert(candidateItems, {
+							ItemId = itemId,
+							UnitPrice = vendorItem.BuyPrice,
+							StockOrOwned = string.format("Rank: %s", tostring(vendorItem.RequiredRank):gsub("Disciple", ""):gsub("Sect", "")),
+							Count = 99,
+							Tier = itemDef.Tier or 1,
+						})
+					end
+				end
+			end
+		end
+
+		-- 2. Dynamically include all weapons from ItemConfig that aren't in SectConfig
+		local allItems = if ItemConfig.GetAllItems then ItemConfig.GetAllItems() else {}
+		for itemId, itemDef in pairs(allItems) do
+			if not processed[itemId] then
+				local itemCat = GetItemCategory(itemDef)
+				if itemDef.Type == "Weapon" or itemCat == "SWORDS" then
+					if currentCategory == "ALL" or currentCategory == "SWORDS" then
+						local vendorDef, _ = GetVendorOrItemDef(itemId)
+						if vendorDef and vendorDef.BuyPrice then
+							table.insert(candidateItems, {
+								ItemId = itemId,
+								UnitPrice = vendorDef.BuyPrice,
+								StockOrOwned = string.format("Rank: %s", tostring(vendorDef.RequiredRank):gsub("Disciple", ""):gsub("Sect", "")),
+								Count = 99,
+								Tier = itemDef.Tier or 1,
+							})
+						end
+					end
+				end
+			end
+		end
+
+		-- Sort in progression order (Tier then Price)
+		table.sort(candidateItems, function(a, b)
+			if (a.Tier or 1) ~= (b.Tier or 1) then
+				return (a.Tier or 1) < (b.Tier or 1)
+			end
+			return a.UnitPrice < b.UnitPrice
+		end)
+	else
+		local inventoryCounts: { [string]: number } = {}
+		for _, slotData in pairs(currentInventory) do
+			if slotData and slotData.ItemId then
+				inventoryCounts[slotData.ItemId] = (inventoryCounts[slotData.ItemId] or 0) + (slotData.Count or 1)
+			end
+		end
+
+		for itemId, count in pairs(inventoryCounts) do
+			local vendorDef, itemDef = GetVendorOrItemDef(itemId)
+			if itemDef and vendorDef and vendorDef.SellPrice and vendorDef.SellPrice > 0 then
+				local itemCat = GetItemCategory(itemDef)
+				if currentCategory == "ALL" or currentCategory == itemCat then
+					table.insert(candidateItems, {
+						ItemId = itemId,
+						UnitPrice = vendorDef.SellPrice,
+						StockOrOwned = string.format("Stock: %d", count),
+						Count = count,
+						Tier = itemDef.Tier or 1,
+					})
+				end
+			end
+		end
+	end
+
+	-- Create Grid Slots
+	for _, itemInfo in ipairs(candidateItems) do
+		local itemDef = ItemConfig.GetItem(itemInfo.ItemId)
+		if not itemDef then continue end
+
+		local slot = templateSlotFrame:Clone()
+		slot.Name = "Slot_" .. itemInfo.ItemId
+		slot.Visible = true
+		slot.Parent = itemGridScroll
+		table.insert(activeSlotClones, slot)
+
+		-- 2D Icon Rendering
+		local iconImg = slot:FindFirstChild("ItemImage") :: ImageLabel?
+		if iconImg then
+			local iconAsset = GetItemIconAsset(itemInfo.ItemId)
+			iconImg.Image = iconAsset
+			iconImg.ScaleType = Enum.ScaleType.Fit
+			iconImg.BackgroundTransparency = 1
+			iconImg.Visible = (iconAsset ~= "")
+		end
+
+		local pillDesc = slot:FindFirstChild("PillDescription") :: TextLabel?
+		if pillDesc then pillDesc.Text = itemDef.Name end
+
+		local stockLbl = slot:FindFirstChild("StockValue") :: TextLabel?
+		if stockLbl then stockLbl.Text = itemInfo.StockOrOwned end
+
+		local amountFrame = slot:FindFirstChild("Amount")
+		if amountFrame then
+			local priceLbl = amountFrame:FindFirstChild("TextLabel") :: TextLabel?
+			if priceLbl then priceLbl.Text = tostring(itemInfo.UnitPrice) end
+		end
+
+		local function selectThis()
+			PlayClickSound()
+			selectedItemId = itemInfo.ItemId
+			selectedQuantity = 1
+			UpdateInspectPanel()
+		end
+
+		local clickTrigger = slot:FindFirstChildWhichIsA("GuiButton") or slot
+		if clickTrigger:IsA("GuiButton") then
+			clickTrigger.MouseButton1Click:Connect(selectThis)
+		else
+			slot.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					selectThis()
+				end
+			end)
+		end
+	end
+
+	if #candidateItems > 0 then
+		local found = false
+		for _, info in ipairs(candidateItems) do
+			if info.ItemId == selectedItemId then
+				found = true
+				break
+			end
+		end
+		if not found then
+			selectedItemId = candidateItems[1].ItemId
+			selectedQuantity = 1
+		end
+	else
+		selectedItemId = nil
+		selectedQuantity = 0
+	end
+
+	UpdateInspectPanel()
 end
 
 -- =============================================================================
@@ -254,7 +573,6 @@ local function BindHierarchy(): boolean
 			filterHerbs = tabFrame2:FindFirstChild("Tab_HERBS") :: ImageButton?
 			filterSwords = (tabFrame2:FindFirstChild("Tab_SWORDS") or tabFrame2:FindFirstChild("Tab_TALISMANS")) :: ImageButton?
 
-			-- Rename Tab_TALISMANS to SWORDS visually
 			if filterSwords then
 				local lbl = filterSwords:FindFirstChildOfClass("TextLabel")
 				if lbl then lbl.Text = "SWORDS" end
@@ -274,14 +592,12 @@ local function BindHierarchy(): boolean
 					templateSlotFrame.Visible = false
 				end
 
-				-- Auto-growing scroll canvas so the bottom row is never clipped
 				itemGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 				itemGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 				itemGridScroll.ScrollBarThickness = 6
 
 				gridLayout = itemGridScroll:FindFirstChildOfClass("UIGridLayout")
 
-				-- Recompute cell size whenever the container is resized (device/resolution changes)
 				if gridLayout and not gridResizeConnected then
 					gridResizeConnected = true
 					itemGridScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateMarketGridCellSize)
@@ -333,7 +649,6 @@ local function BindHierarchy(): boolean
 		end
 	end
 
-	-- Format and enlarge Minus, Plus, and MAX button labels
 	local function StyleQuantityGlyph(btn: ImageButton?, glyph: string)
 		if not btn then return end
 
@@ -373,236 +688,16 @@ local function BindHierarchy(): boolean
 end
 
 -- =============================================================================
--- DATA REFRESH & INSPECT LOGIC
--- =============================================================================
-local function GetItemCategory(itemDef: ItemConfig.ItemDefinition): string
-	if itemDef.Type == "Weapon" then
-		return "SWORDS"
-	elseif itemDef.Id == "DemonBeastCore" or itemDef.Type == "Crest" then
-		return "CORES"
-	elseif itemDef.Type == "Consumable" or itemDef.Id:match("Dan$") or itemDef.Id:match("Pill$") then
-		return "ELIXIRS"
-	elseif itemDef.Type == "Material" then
-		return "HERBS"
-	end
-	return "HERBS"
-end
-
-local function GetMaxAllowedQuantity(unitPrice: number): number
-	if currentMode == "Buy" then
-		-- Swords are unique equipment (Limit to 1 per purchase)
-		if selectedItemId and ItemConfig.GetItem(selectedItemId) and ItemConfig.GetItem(selectedItemId).Type == "Weapon" then
-			return 1
-		end
-		local stones = GetPlayerStones()
-		if unitPrice <= 0 then return 99 end
-		local affordable = math.floor(stones / unitPrice)
-		return math.clamp(affordable, 1, 99)
-	else
-		if not selectedItemId then return 1 end
-		local owned = GetOwnedCount(selectedItemId)
-		return math.max(1, owned)
-	end
-end
-
-local function UpdateInspectPanel()
-	if not selectedItemId then
-		if inspectTopTitle then inspectTopTitle.Text = "SELECT AN ITEM" end
-		if inspectGrade then inspectGrade.Text = "Grade: ---" end
-		if inspectSpiritAge then inspectSpiritAge.Text = "Spirit Age: ---" end
-		if inspectEffectsDesc then inspectEffectsDesc.Text = "Select an item to view effects." end
-		if totalValueLabel then totalValueLabel.Text = "Total: 0 Stones" end
-		if countLabel then countLabel.Text = "0" end
-		return
-	end
-
-	local itemDef = ItemConfig.GetItem(selectedItemId)
-	local vendorDef = SectConfig.GetMarketItem(selectedItemId)
-	if not itemDef then return end
-
-	local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
-
-	-- 1. Dynamic Titles & Specs
-	if inspectTopTitle then
-		inspectTopTitle.Text = itemDef.Name
-	end
-	if inspectItemImage then
-		inspectItemImage.Image = itemDef.Icon or ""
-	end
-	if inspectGrade then
-		inspectGrade.Text = string.format("Grade: %s-Rank", itemDef.Rarity)
-	end
-	if inspectSpiritAge then
-		if itemDef.Type == "Weapon" then
-			local reqRank = vendorDef and vendorDef.RequiredRank or "OuterDisciple"
-			inspectSpiritAge.Text = string.format("Req: %s", FormatRank(reqRank))
-		else
-			inspectSpiritAge.Text = if itemDef.AgeYears then string.format("Spirit Age: %d-Yr", itemDef.AgeYears) else "Spirit Age: Immortal"
-		end
-	end
-	if inspectEffectsDesc then
-		if itemDef.Type == "Weapon" then
-			inspectEffectsDesc.Text = string.format("+%d Physical Attack\n%s", itemDef.Damage or 20, itemDef.Description)
-		elseif itemDef.Stats and itemDef.Stats.QiGrant then
-			inspectEffectsDesc.Text = string.format("+%s Usable Qi\n%s", FormatNum(itemDef.Stats.QiGrant), itemDef.Description)
-		elseif itemDef.Stats and itemDef.Stats.HealAmount then
-			inspectEffectsDesc.Text = string.format("+%s Health Recovery\n%s", FormatNum(itemDef.Stats.HealAmount), itemDef.Description)
-		else
-			inspectEffectsDesc.Text = itemDef.Description
-		end
-	end
-
-	-- 2. Quantity & Total Stones Counter
-	if countLabel then
-		countLabel.Text = tostring(selectedQuantity)
-	end
-
-	local totalCost = unitPrice * selectedQuantity
-	if totalValueLabel then
-		totalValueLabel.Text = string.format("Total: %s Stones", FormatNum(totalCost))
-	end
-
-	if confirmBtnText then
-		confirmBtnText.Text = if currentMode == "Buy" then "CONFIRM EXCHANGE" else "SELL ITEMS"
-	end
-end
-
-local function PopulateGrid()
-	if not itemGridScroll or not templateSlotFrame then return end
-
-	-- Force the fixed 3-column layout before laying out slots
-	UpdateMarketGridCellSize()
-
-	-- Snap scrollbar to the top
-	itemGridScroll.CanvasPosition = Vector2.new(0, 0)
-
-	for _, clone in ipairs(activeSlotClones) do
-		clone:Destroy()
-	end
-	table.clear(activeSlotClones)
-
-	local candidateItems: { { ItemId: string, UnitPrice: number, StockOrOwned: string, Count: number } } = {}
-
-	if currentMode == "Buy" then
-		local catalog = SectConfig.GetAllMarketItems()
-		for itemId, vendorItem in pairs(catalog) do
-			if vendorItem.BuyPrice then
-				local itemDef = ItemConfig.GetItem(itemId)
-				if itemDef then
-					local itemCat = GetItemCategory(itemDef)
-					if currentCategory == "ALL" or currentCategory == itemCat then
-						table.insert(candidateItems, {
-							ItemId = itemId,
-							UnitPrice = vendorItem.BuyPrice,
-							StockOrOwned = string.format("Rank: %s", vendorItem.RequiredRank:gsub("Disciple", ""):gsub("Sect", "")),
-							Count = 99,
-						})
-					end
-				end
-			end
-		end
-	else
-		local inventoryCounts: { [string]: number } = {}
-		for _, slotData in pairs(currentInventory) do
-			if slotData and slotData.ItemId then
-				inventoryCounts[slotData.ItemId] = (inventoryCounts[slotData.ItemId] or 0) + (slotData.Count or 1)
-			end
-		end
-
-		for itemId, count in pairs(inventoryCounts) do
-			local itemDef = ItemConfig.GetItem(itemId)
-			local vendorItem = SectConfig.GetMarketItem(itemId)
-			if itemDef and vendorItem and vendorItem.SellPrice > 0 then
-				local itemCat = GetItemCategory(itemDef)
-				if currentCategory == "ALL" or currentCategory == itemCat then
-					table.insert(candidateItems, {
-						ItemId = itemId,
-						UnitPrice = vendorItem.SellPrice,
-						StockOrOwned = string.format("Stock: %d", count),
-						Count = count,
-					})
-				end
-			end
-		end
-	end
-
-	-- Create Grid Slots
-	for _, itemInfo in ipairs(candidateItems) do
-		local itemDef = ItemConfig.GetItem(itemInfo.ItemId)
-		if not itemDef then continue end
-
-		local slot = templateSlotFrame:Clone()
-		slot.Name = "Slot_" .. itemInfo.ItemId
-		slot.Visible = true
-		slot.Parent = itemGridScroll
-		table.insert(activeSlotClones, slot)
-
-		local iconImg = slot:FindFirstChild("ItemImage") :: ImageLabel?
-		if iconImg then iconImg.Image = itemDef.Icon or "" end
-
-		local pillDesc = slot:FindFirstChild("PillDescription") :: TextLabel?
-		if pillDesc then pillDesc.Text = itemDef.Name end
-
-		local stockLbl = slot:FindFirstChild("StockValue") :: TextLabel?
-		if stockLbl then stockLbl.Text = itemInfo.StockOrOwned end
-
-		local amountFrame = slot:FindFirstChild("Amount")
-		if amountFrame then
-			local priceLbl = amountFrame:FindFirstChild("TextLabel") :: TextLabel?
-			if priceLbl then priceLbl.Text = tostring(itemInfo.UnitPrice) end
-		end
-
-		local function selectThis()
-			PlayClickSound()
-			selectedItemId = itemInfo.ItemId
-			selectedQuantity = 1
-			UpdateInspectPanel()
-		end
-
-		local clickTrigger = slot:FindFirstChildWhichIsA("GuiButton") or slot
-		if clickTrigger:IsA("GuiButton") then
-			clickTrigger.MouseButton1Click:Connect(selectThis)
-		else
-			slot.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-					selectThis()
-				end
-			end)
-		end
-	end
-
-	-- Auto-select first item or preserve valid selection
-	if #candidateItems > 0 then
-		local found = false
-		for _, info in ipairs(candidateItems) do
-			if info.ItemId == selectedItemId then
-				found = true
-				break
-			end
-		end
-		if not found then
-			selectedItemId = candidateItems[1].ItemId
-			selectedQuantity = 1
-		end
-	else
-		selectedItemId = nil
-		selectedQuantity = 0
-	end
-
-	UpdateInspectPanel()
-end
-
--- =============================================================================
 -- EVENT LISTENERS & LIFECYCLE
 -- =============================================================================
 function MarketController.SyncPlayerData()
 	local stones = GetPlayerStones()
 	local rank = GetPlayerRank()
-	local cp = LocalPlayer:GetAttribute("ContributionPoints") or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("ContributionPoints")) or 0
+	local cp = GetPlayerCP()
 
-	if stonesLabel then stonesLabel.Text = FormatNum(stones) end
+	if stonesLabel then stonesLabel.Text = FormatCurrency(stones) end
 	if rankLabel then rankLabel.Text = FormatRank(rank) end
-	if cpLabel then cpLabel.Text = string.format("%s CP", FormatNum(tonumber(cp) or 0)) end
+	if cpLabel then cpLabel.Text = string.format("%s CP", FormatCurrency(cp)) end
 end
 
 function MarketController.Open()
@@ -711,7 +806,7 @@ function MarketController.Init()
 	local function AdjustMax()
 		PlayClickSound()
 		if selectedItemId then
-			local vendorDef = SectConfig.GetMarketItem(selectedItemId)
+			local vendorDef, _ = GetVendorOrItemDef(selectedItemId)
 			local unitPrice = if currentMode == "Buy" then (vendorDef and vendorDef.BuyPrice or 50) else (vendorDef and vendorDef.SellPrice or 20)
 			selectedQuantity = GetMaxAllowedQuantity(unitPrice)
 		end
@@ -748,7 +843,7 @@ function MarketController.Init()
 				return
 			end
 
-			local vendorDef = SectConfig.GetMarketItem(selectedItemId)
+			local vendorDef, _ = GetVendorOrItemDef(selectedItemId)
 			if currentMode == "Buy" then
 				if not vendorDef or not vendorDef.BuyPrice then
 					ShowToast("ITEM NOT FOR SALE!", "Warning")
@@ -809,7 +904,7 @@ function MarketController.Init()
 				ShowToast(string.format("PURCHASED +%d %s!", amount, itemName:upper()), "Success")
 			else
 				local payout = payload.TotalPayout or 0
-				ShowToast(string.format("SOLD %d %s (+%s STONES)!", amount, itemName:upper(), FormatNum(payout)), "Reward")
+				ShowToast(string.format("SOLD %d %s (+%s STONES)!", amount, itemName:upper(), FormatCurrency(payout)), "Success")
 			end
 
 			MarketController.SyncPlayerData()
@@ -827,13 +922,33 @@ function MarketController.Init()
 		end
 	end)
 
-	LocalPlayer:GetAttributeChangedSignal("SpiritStones"):Connect(MarketController.SyncPlayerData)
-	LocalPlayer:GetAttributeChangedSignal("SectRank"):Connect(MarketController.SyncPlayerData)
-	LocalPlayer:GetAttributeChangedSignal("ContributionPoints"):Connect(MarketController.SyncPlayerData)
+	-- Multi-Attribute Currency Listeners
+	local currencyAttributes = {
+		"SpiritStones",
+		"Stones",
+		"SectRank",
+		"ContributionPoints",
+		"SectContribution",
+		"CP"
+	}
+
+	for _, attr in ipairs(currencyAttributes) do
+		LocalPlayer:GetAttributeChangedSignal(attr):Connect(MarketController.SyncPlayerData)
+		if LocalPlayer.Character then
+			LocalPlayer.Character:GetAttributeChangedSignal(attr):Connect(MarketController.SyncPlayerData)
+		end
+	end
+
+	LocalPlayer.CharacterAdded:Connect(function(char)
+		for _, attr in ipairs(currencyAttributes) do
+			char:GetAttributeChangedSignal(attr):Connect(MarketController.SyncPlayerData)
+		end
+		MarketController.SyncPlayerData()
+	end)
 
 	UpdateMarketGridCellSize()
 
-	print("[ASCEND] MarketController Initialized (Swords Category & Sect Rank Gate Active, Fixed 3-Col Grid).")
+	print("[ASCEND] MarketController Initialized (2D Sword Assets & High-Res Previews Active).")
 end
 
 return MarketController

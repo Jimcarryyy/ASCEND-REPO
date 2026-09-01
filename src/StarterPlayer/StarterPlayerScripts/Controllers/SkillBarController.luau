@@ -3,10 +3,11 @@
     SkillBarController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
     Handles:
-      - Desktop (SkillsGUI: M1, R, B, V, C) vs Mobile (LowViewPortSkillsGUI + Touch Combat Cluster)
-      - Exclusive 'C' Keybind for Meditation (M key completely removed)
-      - Dynamic Vitals & Looping Sword Intent updates
-      - BottomMenuGui & CurrencyGUI Bindings
+      - Desktop (SkillsGUI: M1, R, B, V, C) vs Mobile (LowViewPortSkillsGUI: 3 Bars only)
+      - Mobile Touch Cluster (Roblox Jump Style): M1, R, V, B, C spaced around native Jump
+      - Dynamic CurrencyGUI sync (Live Contribution Points / CP & Spirit Stones)
+      - Dual-Viewport Vitals & Looping Sword Intent updates
+      - BottomMenuGui Bindings
 ]]
 
 local Players = game:GetService("Players")
@@ -39,7 +40,7 @@ local desktopHpLabel: TextLabel?
 local desktopQiFill: Frame?
 local desktopQiLabel: TextLabel?
 
--- Low Viewport SkillsGUI (Studio: LowViewPortSkillsGUI)
+-- Low Viewport SkillsGUI (Studio: LowViewPortSkillsGUI - 3 Bars Only)
 local lowViewportGui: ScreenGui?
 local lowMainFrame: Frame?
 local lowIntentFill: Frame?
@@ -49,7 +50,7 @@ local lowHpLabel: TextLabel?
 local lowQiFill: Frame?
 local lowQiLabel: TextLabel?
 
--- Dynamic Mobile Right-Side Combat Cluster (M1, R, V)
+-- Dynamic Mobile Right-Side Combat Cluster (M1, R, V, B, C)
 local mobileCombatGui: ScreenGui?
 local mobileCombatCluster: Frame?
 
@@ -64,6 +65,8 @@ local cpLabel: TextLabel?
 local spiritStoneLabel: TextLabel?
 
 local combatActionRemote: RemoteEvent
+local sectRemote: RemoteEvent? = nil
+
 local currentSwordIntent = 0
 local lastHitLandedTime = os.clock()
 
@@ -105,6 +108,27 @@ local function FormatCurrency(num: number): string
 		if k == 0 then break end
 	end
 	return formatted
+end
+
+local function GetCurrentCP(): number
+	local char = LocalPlayer.Character
+	local val = (char and (char:GetAttribute("ContributionPoints") or char:GetAttribute("SectContribution") or char:GetAttribute("CP") or char:GetAttribute("Contribution") or char:GetAttribute("SectPoints")))
+		or LocalPlayer:GetAttribute("ContributionPoints")
+		or LocalPlayer:GetAttribute("SectContribution")
+		or LocalPlayer:GetAttribute("CP")
+		or LocalPlayer:GetAttribute("Contribution")
+		or LocalPlayer:GetAttribute("SectPoints")
+	return tonumber(val) or 0
+end
+
+local function GetCurrentStones(): number
+	local char = LocalPlayer.Character
+	local val = (char and (char:GetAttribute("SpiritStones") or char:GetAttribute("Stones") or char:GetAttribute("Money") or char:GetAttribute("Gold")))
+		or LocalPlayer:GetAttribute("SpiritStones")
+		or LocalPlayer:GetAttribute("Stones")
+		or LocalPlayer:GetAttribute("Money")
+		or LocalPlayer:GetAttribute("Gold")
+	return tonumber(val) or 0
 end
 
 local function EmitToast(message: string)
@@ -213,7 +237,7 @@ local function BindTouchOrClick(inst: Instance, callback: () -> ())
 end
 
 -- =============================================================================
--- MOBILE RIGHT-SIDE TOUCH COMBAT CLUSTER
+-- MOBILE COMBAT TOUCH BUTTON CREATOR
 -- =============================================================================
 local function CreateRobloxStyleTouchButton(name: string, size: number, position: UDim2, labelText: string, callback: () -> ()): ImageButton
 	local btn = Instance.new("ImageButton")
@@ -241,7 +265,7 @@ local function CreateRobloxStyleTouchButton(name: string, size: number, position
 	lbl.Size = UDim2.new(1, 0, 1, 0)
 	lbl.BackgroundTransparency = 1
 	lbl.Font = Enum.Font.GothamBold
-	lbl.TextSize = if size >= 60 then 11.5 else 10.5
+	lbl.TextSize = if size >= 60 then 11.5 else 10.0
 	lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
 	lbl.Text = labelText
 	lbl.Parent = btn
@@ -264,25 +288,36 @@ local function CreateRobloxStyleTouchButton(name: string, size: number, position
 	return btn
 end
 
+-- =============================================================================
+-- MOBILE RIGHT-SIDE TOUCH COMBAT CLUSTER (M1, R, V, B, C around Jump)
+-- =============================================================================
 local function BuildMobileCombatCluster(parentGui: ScreenGui)
 	mobileCombatCluster = Instance.new("Frame")
 	mobileCombatCluster.Name = "MobileCombatCluster"
-	mobileCombatCluster.Size = UDim2.new(0, 240, 0, 240)
+	mobileCombatCluster.Size = UDim2.new(0, 310, 0, 240)
 	mobileCombatCluster.Position = UDim2.new(1, 0, 1, 0)
 	mobileCombatCluster.AnchorPoint = Vector2.new(1, 1)
 	mobileCombatCluster.BackgroundTransparency = 1
 	mobileCombatCluster.Visible = false
 	mobileCombatCluster.Parent = parentGui
 
-	local m1Btn = CreateRobloxStyleTouchButton("MobileM1Button", 64, UDim2.new(1, -160, 1, -50), "M1\nSTRIKE", TriggerM1)
+	-- BOTTOM ROW: [B BREAK] -> [M1 STRIKE] -> [NATIVE JUMP]
+	local bBtn = CreateRobloxStyleTouchButton("MobileBButton", 50, UDim2.new(1, -225, 1, -55), "B\nBREAK", TriggerBreakthrough)
+	bBtn.Parent = mobileCombatCluster
+
+	local m1Btn = CreateRobloxStyleTouchButton("MobileM1Button", 64, UDim2.new(1, -150, 1, -55), "M1\nSTRIKE", TriggerM1)
 	m1Btn.Parent = mobileCombatCluster
 
-	local rBtn = CreateRobloxStyleTouchButton("MobileRButton", 48, UDim2.new(1, -160, 1, -125), "R\nDRAW", function()
+	-- TOP ROW: [C CULTIVATE] -> [R DRAW] -> [V FLIGHT]
+	local cBtn = CreateRobloxStyleTouchButton("MobileCButton", 50, UDim2.new(1, -225, 1, -135), "C\nCULTIVATE", TriggerMeditation)
+	cBtn.Parent = mobileCombatCluster
+
+	local rBtn = CreateRobloxStyleTouchButton("MobileRButton", 50, UDim2.new(1, -150, 1, -135), "R\nDRAW", function()
 		combatActionRemote:FireServer({ ToggleSheath = true })
 	end)
 	rBtn.Parent = mobileCombatCluster
 
-	local vBtn = CreateRobloxStyleTouchButton("MobileVButton", 48, UDim2.new(1, -70, 1, -160), "V\nFLIGHT", function()
+	local vBtn = CreateRobloxStyleTouchButton("MobileVButton", 50, UDim2.new(1, -75, 1, -165), "V\nFLIGHT", function()
 		combatActionRemote:FireServer({ ToggleFlight = true })
 	end)
 	vBtn.Parent = mobileCombatCluster
@@ -320,7 +355,7 @@ function SkillBarController.HookStudioUI()
 		end
 	end
 
-	-- 2. Low Viewport Mobile SkillsGUI (Intent/HP/QI + B & C/M Skills)
+	-- 2. Low Viewport Mobile SkillsGUI (3 Bars Only: Intent, HP, QI)
 	lowViewportGui = (PlayerGui:WaitForChild("LowViewPortSkillsGUI", 5) or PlayerGui:WaitForChild("LowViewPortSkillGUI", 5)) :: ScreenGui?
 	if lowViewportGui then
 		lowMainFrame = lowViewportGui:FindFirstChild("BottomCenterFrame", true) :: Frame?
@@ -333,16 +368,10 @@ function SkillBarController.HookStudioUI()
 
 			local qFrame = lowMainFrame:FindFirstChild("QIBarFrame") :: Frame?
 			if qFrame then lowQiFill, lowQiLabel = SetupBarFill(qFrame, Color3.fromRGB(0, 100, 255)) end
-
-			local bSlot = lowMainFrame:FindFirstChild("B_SKILL")
-			if bSlot then BindTouchOrClick(bSlot, TriggerBreakthrough) end
-
-			local cSlot = lowMainFrame:FindFirstChild("C_SKILL") or lowMainFrame:FindFirstChild("M_SKILL")
-			if cSlot then BindTouchOrClick(cSlot, TriggerMeditation) end
 		end
 	end
 
-	-- 3. Dynamic Mobile Right-Side Combat Cluster
+	-- 3. Dynamic Mobile Right-Side Combat Cluster (M1, R, V, B, C)
 	mobileCombatGui = Instance.new("ScreenGui")
 	mobileCombatGui.Name = "MobileCombatHUD"
 	mobileCombatGui.ResetOnSpawn = false
@@ -411,7 +440,7 @@ function SkillBarController.UpdateViewportMode()
 		desktopMainFrame.Visible = not isMobile
 	end
 
-	-- Low Viewport Mobile GUI Toggle
+	-- Low Viewport Mobile GUI Toggle (Bottom-Center 3 Bars)
 	if lowViewportGui then
 		lowViewportGui.Enabled = isMobile
 	end
@@ -419,7 +448,7 @@ function SkillBarController.UpdateViewportMode()
 		lowMainFrame.Visible = isMobile
 	end
 
-	-- Mobile Right-Side Combat Cluster
+	-- Mobile Right-Side Combat Cluster (M1, R, V, B, C)
 	if mobileCombatGui then
 		mobileCombatGui.Enabled = isMobile
 	end
@@ -459,7 +488,10 @@ function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: nu
 	if lowQiLabel then lowQiLabel.Text = qiStr end
 end
 
-function SkillBarController.UpdateCurrencies(cp: number, stones: number)
+function SkillBarController.UpdateCurrencies()
+	local cp = GetCurrentCP()
+	local stones = GetCurrentStones()
+
 	if cpLabel then cpLabel.Text = FormatCurrency(cp) end
 	if spiritStoneLabel then spiritStoneLabel.Text = FormatCurrency(stones) end
 end
@@ -492,13 +524,6 @@ local function BindCharacter(character: Model)
 		SkillBarController.UpdateVitals(tonumber(curHp) or 100, tonumber(maxHp) or 100, tonumber(curQi) or 100, tonumber(maxQi) or 100)
 	end
 
-	local function checkCurrencies()
-		local stones = character:GetAttribute("SpiritStones") or LocalPlayer:GetAttribute("SpiritStones") or LocalPlayer:GetAttribute("Stones") or 46600
-		local cp = character:GetAttribute("SectContribution") or LocalPlayer:GetAttribute("SectContribution") or LocalPlayer:GetAttribute("CP") or 350
-
-		SkillBarController.UpdateCurrencies(tonumber(cp) or 0, tonumber(stones) or 0)
-	end
-
 	local function checkIntent()
 		local intent = character:GetAttribute("SwordIntent") or LocalPlayer:GetAttribute("SwordIntent") or currentSwordIntent
 		local maxIntent = character:GetAttribute("MaxSwordIntent") or LocalPlayer:GetAttribute("MaxSwordIntent") or 100
@@ -515,22 +540,46 @@ local function BindCharacter(character: Model)
 	LocalPlayer:GetAttributeChangedSignal("Qi"):Connect(checkVitals)
 	LocalPlayer:GetAttributeChangedSignal("MaxQi"):Connect(checkVitals)
 
-	LocalPlayer:GetAttributeChangedSignal("SpiritStones"):Connect(checkCurrencies)
-	LocalPlayer:GetAttributeChangedSignal("Stones"):Connect(checkCurrencies)
-	LocalPlayer:GetAttributeChangedSignal("SectContribution"):Connect(checkCurrencies)
-	LocalPlayer:GetAttributeChangedSignal("CP"):Connect(checkCurrencies)
-	character:GetAttributeChangedSignal("SpiritStones"):Connect(checkCurrencies)
+	-- Multi-Attribute Currency Listeners
+	local currencyAttributes = {
+		"ContributionPoints",
+		"SectContribution",
+		"CP",
+		"Contribution",
+		"SectPoints",
+		"SpiritStones",
+		"Stones",
+		"Money",
+		"Gold"
+	}
+
+	for _, attr in ipairs(currencyAttributes) do
+		LocalPlayer:GetAttributeChangedSignal(attr):Connect(SkillBarController.UpdateCurrencies)
+		character:GetAttributeChangedSignal(attr):Connect(SkillBarController.UpdateCurrencies)
+	end
 
 	character:GetAttributeChangedSignal("SwordIntent"):Connect(checkIntent)
 	LocalPlayer:GetAttributeChangedSignal("SwordIntent"):Connect(checkIntent)
 
 	checkVitals()
-	checkCurrencies()
+	SkillBarController.UpdateCurrencies()
 	checkIntent()
 end
 
 function SkillBarController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
+
+	-- Hook SectAction for instant CP updates when turning in duties
+	pcall(function()
+		sectRemote = RemoteEvents.GetRemote("SectAction")
+		if sectRemote then
+			sectRemote.OnClientEvent:Connect(function(payload: any)
+				if type(payload) == "table" and (payload.Action == "SyncSectData" or payload.Action == "QuestCompleted") then
+					task.defer(SkillBarController.UpdateCurrencies)
+				end
+			end)
+		end
+	end)
 
 	SkillBarController.HookStudioUI()
 
@@ -588,7 +637,7 @@ function SkillBarController.Init()
 		end
 	end)
 
-	print("[ASCEND] SkillBarController Initialized (C_SKILL & Exclusive 'C' Cultivation Active).")
+	print("[ASCEND] SkillBarController Initialized (Live Dynamic CP & Multi-Currency Active).")
 end
 
 return SkillBarController
