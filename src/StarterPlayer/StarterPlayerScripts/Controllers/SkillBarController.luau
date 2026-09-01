@@ -3,10 +3,9 @@
     SkillBarController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
     Handles:
-      - Desktop (SkillsGUI) vs Mobile (LowViewPortSkillsGUI + Styled Mobile Combat Cluster)
-      - Mobile Touch Cluster matching native Roblox Jump button aesthetics (Gray UIStroke, Translucent dark body)
-      - Non-overlapping ergonomic spacing around native Roblox Jump button
-      - Dual-Viewport Vitals & Looping Sword Intent updates
+      - Desktop (SkillsGUI: M1, R, B, V, C) vs Mobile (LowViewPortSkillsGUI + Touch Combat Cluster)
+      - Exclusive 'C' Keybind for Meditation (M key completely removed)
+      - Dynamic Vitals & Looping Sword Intent updates
       - BottomMenuGui & CurrencyGUI Bindings
 ]]
 
@@ -157,7 +156,7 @@ local function TriggerMeditation()
 end
 
 -- =============================================================================
--- BAR FILL HELPER (Maintains exact Studio styling without overlap)
+-- BAR FILL HELPER
 -- =============================================================================
 local function SetupBarFill(barFrame: Frame, defaultColor: Color3): (Frame, TextLabel?)
 	barFrame.ClipsDescendants = true
@@ -214,7 +213,7 @@ local function BindTouchOrClick(inst: Instance, callback: () -> ())
 end
 
 -- =============================================================================
--- MOBILE RIGHT-SIDE TOUCH COMBAT CLUSTER (Matches Native Roblox Jump Style)
+-- MOBILE RIGHT-SIDE TOUCH COMBAT CLUSTER
 -- =============================================================================
 local function CreateRobloxStyleTouchButton(name: string, size: number, position: UDim2, labelText: string, callback: () -> ()): ImageButton
 	local btn = Instance.new("ImageButton")
@@ -275,17 +274,14 @@ local function BuildMobileCombatCluster(parentGui: ScreenGui)
 	mobileCombatCluster.Visible = false
 	mobileCombatCluster.Parent = parentGui
 
-	-- 1. [M1 STRIKE] - Placed safely to the left of the Jump button
 	local m1Btn = CreateRobloxStyleTouchButton("MobileM1Button", 64, UDim2.new(1, -160, 1, -50), "M1\nSTRIKE", TriggerM1)
 	m1Btn.Parent = mobileCombatCluster
 
-	-- 2. [R DRAW] - Placed safely to the upper-left of M1
 	local rBtn = CreateRobloxStyleTouchButton("MobileRButton", 48, UDim2.new(1, -160, 1, -125), "R\nDRAW", function()
 		combatActionRemote:FireServer({ ToggleSheath = true })
 	end)
 	rBtn.Parent = mobileCombatCluster
 
-	-- 3. [V FLIGHT] - Placed safely above the Jump button
 	local vBtn = CreateRobloxStyleTouchButton("MobileVButton", 48, UDim2.new(1, -70, 1, -160), "V\nFLIGHT", function()
 		combatActionRemote:FireServer({ ToggleFlight = true })
 	end)
@@ -296,7 +292,7 @@ end
 -- HOOK STUDIO GUIS & RESPONSIVE VIEWPORT TOGGLING
 -- =============================================================================
 function SkillBarController.HookStudioUI()
-	-- 1. Desktop SkillsGUI
+	-- 1. Desktop SkillsGUI (M1, R, B, V, C)
 	desktopSkillsGui = PlayerGui:WaitForChild("SkillsGUI", 5) :: ScreenGui?
 	if desktopSkillsGui then
 		desktopMainFrame = desktopSkillsGui:FindFirstChild("BottomCenterFrame", true) :: Frame?
@@ -315,7 +311,7 @@ function SkillBarController.HookStudioUI()
 				{ Name = "R_SKILL",  Callback = function() combatActionRemote:FireServer({ ToggleSheath = true }) end },
 				{ Name = "B_SKILL",  Callback = TriggerBreakthrough },
 				{ Name = "V_SKILL",  Callback = function() combatActionRemote:FireServer({ ToggleFlight = true }) end },
-				{ Name = "M_SKILL",  Callback = TriggerMeditation },
+				{ Name = "C_SKILL",  Callback = TriggerMeditation },
 			}
 			for _, s in ipairs(desktopSlots) do
 				local slotObj = desktopMainFrame:FindFirstChild(s.Name)
@@ -324,7 +320,7 @@ function SkillBarController.HookStudioUI()
 		end
 	end
 
-	-- 2. Low Viewport Mobile SkillsGUI (Bottom-Center Intent/HP/QI + B & M Skills)
+	-- 2. Low Viewport Mobile SkillsGUI (Intent/HP/QI + B & C/M Skills)
 	lowViewportGui = (PlayerGui:WaitForChild("LowViewPortSkillsGUI", 5) or PlayerGui:WaitForChild("LowViewPortSkillGUI", 5)) :: ScreenGui?
 	if lowViewportGui then
 		lowMainFrame = lowViewportGui:FindFirstChild("BottomCenterFrame", true) :: Frame?
@@ -341,12 +337,12 @@ function SkillBarController.HookStudioUI()
 			local bSlot = lowMainFrame:FindFirstChild("B_SKILL")
 			if bSlot then BindTouchOrClick(bSlot, TriggerBreakthrough) end
 
-			local mSlot = lowMainFrame:FindFirstChild("M_SKILL")
-			if mSlot then BindTouchOrClick(mSlot, TriggerMeditation) end
+			local cSlot = lowMainFrame:FindFirstChild("C_SKILL") or lowMainFrame:FindFirstChild("M_SKILL")
+			if cSlot then BindTouchOrClick(cSlot, TriggerMeditation) end
 		end
 	end
 
-	-- 3. Dynamic Mobile Right-Side Combat Cluster (Matches Jump Style)
+	-- 3. Dynamic Mobile Right-Side Combat Cluster
 	mobileCombatGui = Instance.new("ScreenGui")
 	mobileCombatGui.Name = "MobileCombatHUD"
 	mobileCombatGui.ResetOnSpawn = false
@@ -415,7 +411,7 @@ function SkillBarController.UpdateViewportMode()
 		desktopMainFrame.Visible = not isMobile
 	end
 
-	-- Low Viewport Mobile GUI Toggle (Bottom-Center)
+	-- Low Viewport Mobile GUI Toggle
 	if lowViewportGui then
 		lowViewportGui.Enabled = isMobile
 	end
@@ -423,7 +419,7 @@ function SkillBarController.UpdateViewportMode()
 		lowMainFrame.Visible = isMobile
 	end
 
-	-- Mobile Right-Side Combat Cluster (M1, R, V)
+	-- Mobile Right-Side Combat Cluster
 	if mobileCombatGui then
 		mobileCombatGui.Enabled = isMobile
 	end
@@ -576,7 +572,7 @@ function SkillBarController.Init()
 		SkillBarController.UpdateViewportMode()
 	end)
 
-	-- Desktop Keybind triggers
+	-- Desktop Keybind triggers (Exclusive 'C' keybind for Meditation)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 		local key = input.KeyCode
@@ -587,12 +583,12 @@ function SkillBarController.Init()
 			combatActionRemote:FireServer({ ToggleFlight = true })
 		elseif key == Enum.KeyCode.B then
 			TriggerBreakthrough()
-		elseif key == Enum.KeyCode.M or key == Enum.KeyCode.C then
+		elseif key == Enum.KeyCode.C then
 			TriggerMeditation()
 		end
 	end)
 
-	print("[ASCEND] SkillBarController Initialized (Roblox Jump Style Mobile Controls Active).")
+	print("[ASCEND] SkillBarController Initialized (C_SKILL & Exclusive 'C' Cultivation Active).")
 end
 
 return SkillBarController

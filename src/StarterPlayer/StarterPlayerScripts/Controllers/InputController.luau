@@ -6,8 +6,9 @@
     - CTRL: Toggle Run/Sprint ON/OFF on PC/Desktop
     - T: Block & Perfect Parry (Hold to Guard, Tap for Parry)
     - LeftShift: 2-Stage Qi Dash
-    - C / M: Meditation Toggle
+    - C: Meditation Toggle (M key completely removed)
     - R: Sheath / Draw Toggle
+    - V: Sword Flight Toggle
     - B: Breakthrough Request
     - M1: 5-Hit Combo Attack Sequence
     - Mobile: Dynamic Thumbstick Auto-Run + Direct Touch Triggers
@@ -45,6 +46,7 @@ local isBlocking = false
 
 local lastCPress = 0
 local lastRPress = 0
+local lastVPress = 0
 local lastM1Press = 0
 local lastDashPress = 0
 local dashStep = 1
@@ -56,6 +58,19 @@ local COMBO_TIMEOUT = 1.3
 
 local function IsTouchDevice(): boolean
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+end
+
+local function EmitToast(message: string)
+	local controllers = player.PlayerScripts:FindFirstChild("Controllers")
+	if controllers then
+		local hudCtrl = controllers:FindFirstChild("HUDController")
+		if hudCtrl then
+			local req = require(hudCtrl) :: any
+			if req and req.ShowToast then
+				req.ShowToast(message)
+			end
+		end
+	end
 end
 
 function InputController.GetLocomotionSpeeds(): (number, number)
@@ -77,7 +92,7 @@ local function IsAnyMenuOpen(): boolean
 	local playerGui = player:FindFirstChild("PlayerGui")
 	if not playerGui then return false end
 
-	local uiNames = { "SpiritPouchInventoryGui", "AlchemyFurnaceGui", "SectMarketGui", "DialogueGui", "ArenaRegistrationGui" }
+	local uiNames = { "SpiritPouchInventoryGui", "AlchemyFurnaceGui", "SectMarketGui", "DialogueGui", "ArenaRegistrationGui", "SpiritCauldronAlchemyGui" }
 	for _, name in ipairs(uiNames) do
 		local gui = playerGui:FindFirstChild(name)
 		if gui and gui:IsA("ScreenGui") and gui.Enabled then
@@ -161,7 +176,7 @@ function InputController.Init()
 		end
 	end)
 
-	print("[ASCEND] InputController Initialized (CTRL: Run Toggle | T: Block).")
+	print("[ASCEND] InputController Initialized (CTRL: Run Toggle | T: Block | C: Cultivate).")
 end
 
 function InputController.SetEnabled(state: boolean)
@@ -357,16 +372,24 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	-- 4. C or M: Meditation
-	if input.KeyCode == Enum.KeyCode.C or input.KeyCode == Enum.KeyCode.M then
+	-- 4. C: Meditation (Exclusive key, M key removed)
+	if input.KeyCode == Enum.KeyCode.C then
 		local now = os.clock()
 		if now - lastCPress < 0.8 then return end
 		lastCPress = now
+
+		local isCurrentlyMeditating = character and character:GetAttribute("IsMeditating") == true
+		if isCurrentlyMeditating then
+			EmitToast("Exited Meditation")
+		else
+			EmitToast("Entered Meditation (Cultivating Qi)")
+		end
+
 		combatActionRemote:FireServer({ ToggleMeditation = true })
 		return
 	end
 
-	-- 5. R: Sheath Toggle
+	-- 5. R: Sheath / Draw Toggle
 	if input.KeyCode == Enum.KeyCode.R then
 		if isMeditating then return end
 		local now = os.clock()
@@ -376,15 +399,32 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
+	-- 6. V: Sword Flight Toggle
+	if input.KeyCode == Enum.KeyCode.V then
+		if isMeditating then return end
+		local now = os.clock()
+		if now - lastVPress < 0.5 then return end
+		lastVPress = now
+		combatActionRemote:FireServer({ ToggleFlight = true })
+		return
+	end
+
 	if not enabled or isMeditating or isBlocking then return end
 
-	-- 6. B: Breakthrough Request
+	-- 7. B: Breakthrough Request
 	if input.KeyCode == Enum.KeyCode.B then
+		local curQi = character and character:GetAttribute("Qi") or 0
+		local maxQi = character and character:GetAttribute("MaxQi") or 100
+		if curQi >= maxQi then
+			EmitToast("Initiating Cultivation Breakthrough...")
+		else
+			EmitToast(string.format("Breakthrough Failed: Qi not condensed (%s/%s)", tostring(math.floor(curQi)), tostring(math.floor(maxQi))))
+		end
 		combatActionRemote:FireServer({ RequestBreakthrough = true })
 		return
 	end
 
-	-- 7. MouseButton1: M1 Combo
+	-- 8. MouseButton1: M1 Combo Strike
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		InputController.TriggerM1()
 		return

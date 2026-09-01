@@ -3,8 +3,8 @@
     CultivationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CultivationController.luau
     Handles:
-      1. 3D Floating Qi Node Billboards (Fondamento Font + UIStroke)
-      2. 2D Screen QIZoneNotifGui Binding (Pure text, no emojis/icons)
+      1. 3D Floating Qi Node Billboards (Bangers Font + UIStroke)
+      2. 2D Screen QIZoneNotifGui Binding (Accurate, non-doubled zone rates)
       3. Meditation FOV adjustments, sound loop, and real-time multiplier detection
 ]]
 
@@ -22,7 +22,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 local camera = Workspace.CurrentCamera
 
-local FONT_QI_NODE = Enum.Font.Fondamento
+local FONT_QI_NODE = Enum.Font.Bangers
 local MEDITATION_SOUND_ID = "rbxassetid://124551555247426"
 local meditationSound: Sound? = nil
 
@@ -47,7 +47,7 @@ local function GetZoneColor(multiplier: number): Color3
 end
 
 -- =============================================================================
--- 3D FLOATING QI NODE BILLBOARD SETUP (Fondamento + Bold UIStroke)
+-- 3D FLOATING QI NODE BILLBOARD SETUP (Bangers + Bold UIStroke)
 -- =============================================================================
 local function SetupQiNodeVisual(nodePart: BasePart)
 	if nodePart:FindFirstChild("QiZoneBillboard") then return end
@@ -85,13 +85,13 @@ local function SetupQiNodeVisual(nodePart: BasePart)
 	listLayout.Padding = UDim.new(0, 2)
 	listLayout.Parent = container
 
-	-- Node Title
+	-- Node Title (Bangers Font)
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
 	titleLabel.Size = UDim2.new(1, 0, 0, 32)
 	titleLabel.BackgroundTransparency = 1
 	titleLabel.Font = FONT_QI_NODE
-	titleLabel.TextSize = 26
+	titleLabel.TextSize = 28
 	titleLabel.TextColor3 = zoneColor
 	titleLabel.Text = nodeName:upper()
 	titleLabel.Parent = container
@@ -101,13 +101,13 @@ local function SetupQiNodeVisual(nodePart: BasePart)
 	titleStroke.Thickness = 2.0
 	titleStroke.Parent = titleLabel
 
-	-- Node Subtitle / Speed Multiplier
+	-- Node Subtitle / Multiplier (Bangers Font)
 	local subLabel = Instance.new("TextLabel")
 	subLabel.Name = "SubtitleLabel"
 	subLabel.Size = UDim2.new(1, 0, 0, 22)
 	subLabel.BackgroundTransparency = 1
 	subLabel.Font = FONT_QI_NODE
-	subLabel.TextSize = 16
+	subLabel.TextSize = 18
 	subLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
 	subLabel.Text = string.format("[ %.1fX QI CULTIVATION SPEED ]", multiplier)
 	subLabel.Parent = container
@@ -151,7 +151,7 @@ local function InitAllQiNodes()
 end
 
 -- =============================================================================
--- 2D SCREEN QIZONENOTIFGUI BINDING (Clean Text, No Icons)
+-- 2D SCREEN QIZONENOTIFGUI BINDING
 -- =============================================================================
 local function HookStudioUI()
 	qiZoneGui = playerGui:WaitForChild("QIZoneNotifGui", 10) :: ScreenGui?
@@ -193,11 +193,10 @@ local function UpdateZoneBanner(character: Model)
 
 	if isMeditating then
 		zoneFrame.Visible = true
-		local effectiveMult = multiplier * 2.0
 		if multiplier > 1.0 then
-			zoneTextLabel.Text = string.format("%s - %.1fX SPEED (MEDITATING)", (nodeName or "QI NODE"):upper(), effectiveMult)
+			zoneTextLabel.Text = string.format("%s - %.1fX SPEED (MEDITATING)", (nodeName or "QI NODE"):upper(), multiplier)
 		else
-			zoneTextLabel.Text = "MEDITATING - 2.0X SPEED"
+			zoneTextLabel.Text = "MEDITATING - 1.0X SPEED"
 		end
 	elseif multiplier > 1.0 then
 		zoneFrame.Visible = true
@@ -290,7 +289,7 @@ function CultivationController.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationController Initialized (Clean Text Meditation Banner Active).")
+	print("[ASCEND] CultivationController Initialized (Bangers QiNode Billboards Active).")
 end
 
 return CultivationController
