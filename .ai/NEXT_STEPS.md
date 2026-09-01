@@ -1,169 +1,33 @@
 # Next Steps & Project Roadmap — ASCEND
 
 ## Purpose
-This file lays out the next planned development milestones and future roadmap. Use it after completing current objectives or when planning upcoming phases.
+Planned upcoming work, ordered by priority. Replace/reorder sections as priorities shift — don't append duplicate roadmap blocks underneath old ones.
 
-## 🏯 Sect Zone (Zone 1) V1 Additions — Agreed Scope, Not Yet Built (2026-08-31)
-*Per ADR-031. None of the below are confirmed built — verify in Studio before marking complete.*
-
-- [ ] Central Sect Altar / Sword Gacha roll — status unconfirmed, referenced in original MVP doc
-- [ ] Beginner tutorial/onboarding flow (greet → M1 dummy → alchemy demo → gathering intro → mission board intro); requires new `TutorialComplete` save-flag in `PlayerDataManager`
-- [ ] Sect Elder Pavilion — clarify vs. existing Sect shop
-- [ ] Contribution Point display/progress toward next Disciple promotion
-- [ ] Confirmed spawn/respawn point tied to sect plaza
-- [ ] Sect notice board / lore NPCs (optional)
-- [ ] Meditation spot / cultivation garden marker (visual only, ties to `C` meditate)
-- [ ] Portal / zone-transition gateway to Zone 2 (can be visually locked pre-Zone-2)
-- [ ] Optional: storage/bank NPC separate from inventory
-
-*Explicitly deferred: 16 personal mini-houses per server (ADR-032). Do not resurface unless developer brings it back up.*
-
-## 📊 Sect Leaderboards — Designed, Code Drafted, NOT Applied (2026-08-31)
-*Designed in Architect session. Do not treat as implemented until developer confirms each item applied and verified in Studio.*
-
-- [ ] Create `src/ServerScriptService/Server/State/LeaderboardManager.luau` — two `OrderedDataStore`s (`ASCEND_CultivationRank_V1`, `ASCEND_ArenaWins_V1`), auto-building `SurfaceGui` boards on `Workspace.SectZone.Leaderboards.CultivationBoard` / `.ArenaBoard`
-- [ ] Edit `PlayerDataManager.luau` — add `ArenaWins` field + `GetArenaWins`/`AddArenaWin` functions
-- [ ] Edit `ArenaManager.luau` — call `AddArenaWin` on duel win
-- [ ] Edit `ServerMain.server.luau` — require + Init call
+**Last consolidated:** 2026-09-02.
 
 ---
 
-## Connectivity
-- Follows `.ai/CURRENT_TASK.md` and `.ai/PROJECT_STATUS.md`.
-- Points to active Phase 7 and future Phase 8 work.
+## Immediate (this task, see `CURRENT_TASK.md`)
+1. Flying Sword Flight Mode — see blocking keybind issue noted in `CURRENT_TASK.md`.
 
----
+## Near-term (queued, not yet started — confirm order with developer)
+2. Bottom-Center Vital & Sword Intent HUD redesign.
+3. Tier 5–8 sword model integration (4 remaining sword assets).
+4. Center-reticle skill aim trajectory for `E`/`Q`/`F`.
+5. Sect Market Vendor NPC placement verification in Zone 1 — confirm `workspace.MarketVendors`, `workspace.QuestNPCs`, `workspace.MobSpawns`, `workspace.SparringArena` are actually placed (this was an open item as of the last placement-focused session and was never re-confirmed).
+6. Roblox Creator Dashboard: confirm live Gamepass IDs and Developer Product IDs are populated in `MonetizationConfig.luau` (not placeholders).
 
-## 🚀 Immediate Next Steps (Phase 7: Core Loop & World Gathering)
+## Status unclear — confirm before scheduling
+- **Spirit Beast AI / Hunting Engine** (Ironhide Boar, Spirit Deer, Demon Wolf — Pathfinding patrol/aggro/attack/flee, drop tables). Was in an earlier "active next" slot but doesn't appear in the latest dated changelog entry. Confirm status.
+- **Sect Leaderboards** (`LeaderboardManager.luau`, `OrderedDataStore`-backed, auto-built `SurfaceGui` boards). Designed per `DECISIONS.md` history but not verified as merged into the live repo tree.
 
-### 1. Zone 1 & Zone 2 Herb Gathering Node System (Task 7.1A) — [COMPLETED]
-- [x] Place physical 3D harvestable herb nodes in `workspace.GatheringNodes` (`SpiritGrass`, `DragonBloodVine`, `GaleWindLotus`, `CelestialSpring`, `JadeOre`).
-- [x] Add `ProximityPrompt` `[E]` interaction to harvest herbs directly into the player's Spirit Pouch (`K`).
-- [x] Implement node respawn timers (12-to-30-second cooldown) and weighted random herb age rolls (1-Yr to 1,000-Yr).
-- [x] Connect audio playback for `SoundService.GatherHerbsSound` on harvest.
+## Sect Zone (Zone 1) V1 world-dressing scope — agreed, not yet verified built
+Existing: Alchemy shop, Sect shop, mission board, training dummy.
+Agreed additions: Sword Altar/gacha, beginner tutorial, Sect Elder Pavilion clarification, Contribution Point display, confirmed spawn point, notice board/lore NPCs, meditation garden marker, Zone 2 portal tease, optional bank NPC.
+**Explicitly deferred (do not resurface unless developer does):** 16 personal mini-houses per server.
 
-### 2. Upgraded Manual 3-Slot Spirit Cauldron Alchemy Engine (Task 7.1B) — [COMPLETED]
-- [x] Refactor `AlchemyConfig.luau`, `AlchemyManager.luau`, and `AlchemyController.luau` for manual 3-slot herb selection.
-- [x] Add dynamic age-based success calculations (higher herb ages boost success rate up to 100% and potency up to 3.0x).
-- [x] Add craftable buff pills: *Spirit Healing Dan*, *Qi Gathering Dan* (2x Meditation Speed), *Physique Tempering Dan* (+35% Damage), *Gale Wind Dan* (+40% Flight Speed), and *Foundation Gathering Dan*.
-
-### 3. Environmental Qi Meditation Pads & Realm Breakthroughs (Task 7.1C) — [ACTIVE NEXT TASK]
-- [ ] Place interactive **Meditation Stone Pads** (`workspace.MeditationPads`) in Zone 4 / Zone 2 streams.
-- [ ] Implement meditation channeling (**[F]** key / ProximityPrompt) with `Celestial Float System` pose to fill the `800 / 800` Qi bar $3.5\times$ faster than passive absorption.
-- [ ] Implement **Realm Breakthrough Trials**: consuming a *Foundation Gathering Dan* when Qi is full triggers celestial golden aura particles, advances cultivator tiers (*Qi Condensation* $\rightarrow$ *Foundation Establishment*), increases permanent stats, and updates HUD titles.
-
-### 4. Spirit Beast AI Spawning & Flying Sword Combat (Task 7.1D)
-- [ ] Spawn wild spirit beasts in Zone 2 to fight with Flying Swords.
-- [ ] Implement beast loot drops (`DemonBeastCore`) on death.
-
-### 5. Sect Market Vendors & Monetization Integration (Task 7.1E)
-- [ ] Set up shop vendor NPCs in Zone 1 (Azure Sect Hub) to trade Spirit Stones and process Roblox Developer Products / GamePasses.
-
----
-
-## 🔮 Future Roadmap (Phase 8 & Beyond)
-
-### Phase 8: Xianxia World Expansion & Monetization
-- [ ] Add Gamepass Store (Auto-Meditate, $2\times$ Qi Speed, Tribulation Protection Pills).
-- [ ] Add Leaderboards (Highest Realm Rank, Top Sword Mastery).
-
-
----\n
-## 🚀 Immediate Next Steps (Phase 7: Core Loop & World Gathering)
-
-### 1. Zone 1 & Zone 2 Herb Gathering Node System (Task 7.1A) — [COMPLETED]
-- [x] Place physical 3D harvestable herb nodes in `workspace.GatheringNodes`.
-- [x] Add `ProximityPrompt` `[E]` interaction and animated on-screen Item Toast banners (`HUDController.ShowItemToast`).
-- [x] Support non-disappearing nodes (`KeepModelVisible = true` for `CelestialSpring`).
-
-### 2. Upgraded Manual 3-Slot Spirit Cauldron Alchemy Engine (Task 7.1B) — [COMPLETED]
-- [x] Add interactive Qi Flame Temperature Control minigame in `AlchemyController.luau`.
-- [x] Add Quality-Grade Metadata (*Standard*, *Refined Medium*, *Century Superior*, *Sovereign Immortal*) and stack separation.
-- [x] Add persistent Alchemy Mastery EXP and Leveling (*Apprentice Alchemist* $\rightarrow$ *Pill Emperor*).
-- [x] Register 12 2D PNG asset icons and implement dynamic quality/rarity card background tinting.
-
-### 3. Monetized Xianxia HUD & Action Skill Bar Integration — [COMPLETED]
-- [x] Integrate custom HUD template `rbxassetid://107254331482831` (`VitalHUDFrame`) with headshot portrait, level badge (`100`), display name, green HP fill, and blue QI fill.
-- [x] Build `HUDSkinConfig.luau` supporting `DefaultBronze`, `SakuraImmortal`, and `AzureDragon` with auto-aligning slot offset mappings.
-- [x] Bind `ActionSkillBar` slots (`Slot_E`, `Slot_F`, `Slot_M1`, `Slot_Q`, `Slot_R`, `Slot_Shift`) with background `rbxassetid://97080305696865`, keybind badges, and dynamic skill cooldown swipe overlays.
-
-### 4. Environmental Qi Meditation Pads & Realm Breakthroughs (Task 7.1C) — [ACTIVE NEXT TASK]
-- [ ] Place interactive **Meditation Stone Pads** (`workspace.MeditationPads`) in Zone 4 / Zone 2 streams.
-- [ ] Implement meditation channeling (**[F]** key / ProximityPrompt) with `Celestial Float System` pose to fill the `800 / 800` Qi bar $3.5\times$ faster than passive absorption.
-- [ ] Implement **Realm Breakthrough Trials**: consuming a *Foundation Gathering Dan* when Qi is full triggers celestial golden aura particles, advances cultivator tiers (*Qi Condensation* $\rightarrow$ *Foundation Establishment*), increases permanent stats, and updates HUD titles.
-
-
-# NEXT STEPS ROADMAP
-
-## Immediate Focus (Phase 7 Remaining)
-1. **Task 7.1D — Spirit Beast AI & Hunting Engine:**
-   - Server-side Pathfinding AI for wild beasts (*Ironhide Boar*, *Spirit Deer*, *Demon Wolf*) in Bamboo Valley, Ice Crags, and Magma Ridge.
-   - Drop tables for *Beast Cores* and *Monster Hides* used in advanced Alchemy Breakthrough Pills.
-2. **Task 7.1E — Sect Market Vendors & Monetization Engine:**
-   - Interactive Market NPCs in Sect Sanctuary with `ProximityPrompt` interaction.
-   - Equippable HUD Skin GUI (`DefaultBronze`, `SakuraImmortal`, `AzureDragon`).
-   - Spirit Stone currency transactions, item buying/selling, and Roblox Gamepass / Developer Product integration.
-
-## Future Phase Roadmap
-1. **Cultivation Realm Breakthrough Rewards System (Manhwa/Manhua Advancement):**
-   - Physical & spiritual advancements per realm conquered (*Body Tempering*, *Golden Bones*, *Meridian Talent Nodes*, *Divine Spirit Consciousness*).
-2. **World Boss Battles & Sovereign Sword Peak Arena (Zone 5):**
-   - Multi-phase World Boss encounters, flying sword flight showcases, and raid mechanics.
-3. **Upper Realm / Divine Plane Expansion (Post-V1):**
-   - Expanding beyond the 10 Major Realms ($100\text{M}$ V1 Cap) into Trillions/Quintillions Divine Realms in future expansion updates.
-
-   # Immediate Next Steps for Next Session
-
-1. **Complete Hybrid UI Studio Hookup for Remaining Modals:**
-   - Hook Studio Explorer frames for `SpiritPouchGui` (Inventory) and `SpiritCauldronGui` (Alchemy) to `InventoryController.luau` and `AlchemyController.luau`.
-   - Update `VitalHUDGui` in Studio to match the dark obsidian and gold talisman styling.
-2. **End-to-End Gameplay Loop Testing in 2-Player Test Mode:**
-   - Test full progression: Gather Herbs -> Brew Pills -> Defeat R6 Mobs -> Submit Sect Quests -> Gain Contribution -> Promote Disciple Rank -> Duel in 1v1 Arena -> Buy/Sell in Market.
-3. **Roblox Creator Dashboard Setup:**
-   - Create and input live Gamepass IDs and Developer Product IDs into `MonetizationConfig.luau`.
-4. **Final Zone 1 Map Placement:**
-   - Verify physical placement of `workspace.MarketVendors`, `workspace.QuestNPCs`, `workspace.MobSpawns`, and `workspace.SparringArena` parts.
-
-
-   # Immediate Development Roadmap
-
-## Phase 7 Next Steps:
-
-### 1. Flying Sword Flight Engine (御剑飞行)
-* Toggle flight mode via `V` keybind.
-* Position sword horizontally under cultivator's feet (`HumanoidRootPart.FlightSwordMount`).
-* Smooth 3D omnidirectional flight physics (W/S pitch & thrust, A/D strafe, Space ascend, Shift descend).
-* Aerodynamic banking tilt when turning.
-* Cultivation realm flight speed scaling (Base: 65 -> Peak: 140+ studs/sec).
-
-### 2. Center-Reticle Combat Aiming Trajectory
-* Cast sword skill projectiles (Telekinesis Thrust `E`, Sword Tempest `Q`, Falling Sky Slam `F`) directly toward the center focus reticle in 3D world space.
-
-### 3. Complete Remaining 4 Sword Assets (Tiers 5–8)
-* Generate, import, add SurfaceAppearance, and attach `SwordAttachment` + `BackSwordAttachment` for:
-  * `VioletSoulSovereignJian` (Tier 5 Legendary)
-  * `VoidStarCleaverDao` (Tier 6 Mythic)
-  * `AzurePatriarchHeritageJian` (Sect Prestige)
-  * `RadiantImmortalSovereignJian` (VIP / Celestial)
-
-# Immediate Development Roadmap (Updated 2026-08-27)
-
-## Phase 7 Next Objectives:
-
-### 1. Flying Sword Flight Engine (御剑飞行)
-* Dedicated `V` key toggle (and mobile flight action button).
-* Horizontal sword mounting beneath feet (`HumanoidRootPart.FlightSwordMount`).
-* 3D omnidirectional flight controls (`W`/`S` pitch and thrust, `A`/`D` strafe, `Space` ascend, `CTRL`/`C` descend).
-* Dynamic aerodynamic banking into turns.
-* Realm-scaled flight velocity (Base: $65 \rightarrow$ Peak: $140+\text{ studs/s}$).
-
-### 2. Bottom-Center Vital & Sword Intent HUD Integration
-* Assemble the redesigned bottom-center HP, Qi, and Sword Intent gauge in Studio `StarterGui`.
-* Connect live health deltas, catch-up ghost damage bar, and Qi recovery to the new layout.
-
-### 3. Tier 5–8 Sword Model Asset Integration
-* Configure, import, and mount remaining 4 sword assets in `ReplicatedStorage.Weapons`:
-  * `VioletSoulSovereignJian` (Tier 5 Legendary)
-  * `VoidStarCleaverDao` (Tier 6 Mythic)
-  * `AzurePatriarchHeritageJian` (Sect Prestige)
-  * `RadiantImmortalSovereignJian` (VIP / Celestial)
+## Future Roadmap (Phase 8+)
+- Gamepass Store expansion (Auto-Meditate, 2× Qi Speed, Tribulation Protection Pills).
+- Cultivation Realm Breakthrough Rewards System (Body Tempering, Golden Bones, Meridian Talent Nodes, Divine Spirit Consciousness).
+- World Boss Battles & Sovereign Sword Peak Arena (Zone 5), multi-phase raid mechanics.
+- Upper Realm / Divine Plane expansion beyond the 10 Major Realms (V1 caps around 1–2 Billion HP/Qi at Immortal Ascension Order 9 per the actual `CultivationConfig.luau` formula — see `PROGRESSION_SPEC.md`).
