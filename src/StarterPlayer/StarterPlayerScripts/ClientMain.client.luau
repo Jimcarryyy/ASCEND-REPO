@@ -27,6 +27,10 @@ local CONTROLLER_NAMES = {
 	"SkillBarController",
 	"FocusTargetController",
 	"SectController",
+	"BlacksmithController",
+	"TeaHouseController",
+	"StarterGuideController",
+	"SparringGuidanceController",
 }
 
 local function InitializeClient()
@@ -47,7 +51,7 @@ local function InitializeClient()
 		end
 	end
 
-	print("[ASCEND] All Client Controllers Initialized Concurrently (Including CultivationController).")
+	print("[ASCEND] All Client Controllers Initialized Concurrently (Including Lower Layer Facilities).")
 end
 
 InitializeClient()

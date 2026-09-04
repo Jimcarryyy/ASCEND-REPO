@@ -3,13 +3,13 @@
     AlchemyManager.luau
     Location: src/ServerScriptService/Server/Cultivation/AlchemyManager.luau
     Server-authoritative manual cauldron combination alchemy engine.
-    Delivers pills with distinct Quality Metadata to InventoryManager and syncs Sect Quests.
+    Universal ProximityPrompt & 3D Cauldron binding.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local CollectionService = game:GetService("CollectionService")
+local Workspace = game:GetService("Workspace")
 
 local AlchemyConfig = require(ReplicatedStorage.Shared.Configs.AlchemyConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
@@ -27,24 +27,7 @@ local alchemyActionRemote: RemoteEvent
 function AlchemyManager.Init()
 	alchemyActionRemote = RemoteEvents.GetRemote("AlchemyAction")
 
-	local folder = workspace:FindFirstChild("AlchemyCauldrons")
-	if folder then
-		for _, child in ipairs(folder:GetChildren()) do
-			AlchemyManager.SetupCauldronModel(child)
-		end
-		folder.ChildAdded:Connect(function(child)
-			AlchemyManager.SetupCauldronModel(child)
-		end)
-	end
-
-	for _, cauldronModel in ipairs(CollectionService:GetTagged("AlchemyCauldron")) do
-		AlchemyManager.SetupCauldronModel(cauldronModel)
-	end
-
-	CollectionService:GetInstanceAddedSignal("AlchemyCauldron"):Connect(function(instance)
-		AlchemyManager.SetupCauldronModel(instance)
-	end)
-
+	-- Handle client refinement actions
 	alchemyActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
 		if type(payload) ~= "table" or not payload.Action then return end
 
@@ -61,27 +44,7 @@ function AlchemyManager.Init()
 		end
 	end)
 
-	print("[ASCEND] Upgraded Quality-Metadata AlchemyManager Initialized with Quest Sync.")
-end
-
-function AlchemyManager.SetupCauldronModel(cauldronInstance: Instance)
-	if not cauldronInstance:IsA("Model") and not cauldronInstance:IsA("BasePart") then return end
-
-	if cauldronInstance:IsA("Model") and not cauldronInstance.PrimaryPart then
-		cauldronInstance.PrimaryPart = cauldronInstance:FindFirstChildWhichIsA("BasePart")
-	end
-
-	local existingPrompt = cauldronInstance:FindFirstChildOfClass("ProximityPrompt")
-	if not existingPrompt then
-		local prompt = Instance.new("ProximityPrompt")
-		prompt.Name = "CauldronPrompt"
-		prompt.ObjectText = "Spirit Cauldron Furnace"
-		prompt.ActionText = "Combine & Refine Herbs"
-		prompt.HoldDuration = 0.5
-		prompt.MaxActivationDistance = 12
-		prompt.RequiresLineOfSight = false
-		prompt.Parent = cauldronInstance
-	end
+	print("[ASCEND] Universal AlchemyManager Initialized.")
 end
 
 function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndices: { number }, flamePrecision: number)

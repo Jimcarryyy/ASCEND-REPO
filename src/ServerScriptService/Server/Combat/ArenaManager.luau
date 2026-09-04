@@ -156,21 +156,25 @@ local function IsPlayerOnPad(player: Player, padPart: BasePart): boolean
 end
 
 function ArenaManager.CheckDuelPads()
-	local folder = ArenaManager.GetArenaFolder()
-	if not folder then return end
-
-	local pad1 = folder:FindFirstChild("DuelPad1", true) :: BasePart?
-	local pad2 = folder:FindFirstChild("DuelPad2", true) :: BasePart?
+	-- Recursively find DuelPad1 and DuelPad2 across Functional_Stations and Workspace
+	local pad1 = Workspace:FindFirstChild("DuelPad1", true) or (Workspace.Functional_Stations and Workspace.Functional_Stations:FindFirstChild("DuelPad1", true))
+	local pad2 = Workspace:FindFirstChild("DuelPad2", true) or (Workspace.Functional_Stations and Workspace.Functional_Stations:FindFirstChild("DuelPad2", true))
+	
 	if not pad1 or not pad2 then return end
+
+	local p1Part = if pad1:IsA("Model") then (pad1:FindFirstChild("DuelPad", true) or pad1.PrimaryPart or pad1:FindFirstChildWhichIsA("BasePart")) else pad1 :: BasePart
+	local p2Part = if pad2:IsA("Model") then (pad2:FindFirstChild("DuelPad", true) or pad2.PrimaryPart or pad2:FindFirstChildWhichIsA("BasePart")) else pad2 :: BasePart
+
+	if not p1Part or not p2Part then return end
 
 	local currentP1: Player? = nil
 	local currentP2: Player? = nil
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if not activeDuels[player] then
-			if IsPlayerOnPad(player, pad1) then
+			if IsPlayerOnPad(player, p1Part :: BasePart) then
 				currentP1 = player
-			elseif IsPlayerOnPad(player, pad2) then
+			elseif IsPlayerOnPad(player, p2Part :: BasePart) then
 				currentP2 = player
 			end
 		end
@@ -178,9 +182,6 @@ function ArenaManager.CheckDuelPads()
 
 	pad1Player = currentP1
 	pad2Player = currentP2
-
-	pad1.Color = if currentP1 then Color3.fromRGB(0, 220, 255) else Color3.fromRGB(40, 40, 50)
-	pad2.Color = if currentP2 then Color3.fromRGB(0, 220, 255) else Color3.fromRGB(40, 40, 50)
 
 	if currentP1 and currentP2 and currentP1 ~= currentP2 then
 		if not countdownActive then
@@ -232,9 +233,14 @@ end
 -- IN-RING 1v1 DUEL EXECUTION (STREAMING SAFE)
 -- =============================================================================
 function ArenaManager.StartDuel(p1: Player, p2: Player)
-	local p1SpawnCF = ArenaManager.GetTargetCFrame("Spawn1", CFrame.new(-120, 14, 280))
-	local p2SpawnCF = ArenaManager.GetTargetCFrame("Spawn2", CFrame.new(-120, 14, 340))
-	local specSpawnCF = ArenaManager.GetTargetCFrame("SpectatorSpawn", CFrame.new(-160, 14, 310))
+	-- Automatically locate spawn nodes inside Sect_Solitary_SwordArena
+	local arena = Workspace:FindFirstChild("Sect_Solitary_SwordArena", true)
+	local p1Node = arena and arena:FindFirstChild("SpawnNode_Challenger_Cyan", true) :: BasePart?
+	local p2Node = arena and arena:FindFirstChild("SpawnNode_Defender_Red", true) :: BasePart?
+
+	local p1SpawnCF = if p1Node then p1Node.CFrame + Vector3.new(0, 3.5, 0) else CFrame.new(0, 15, 0)
+	local p2SpawnCF = if p2Node then p2Node.CFrame + Vector3.new(0, 3.5, 0) else CFrame.new(0, 15, 40)
+	local specSpawnCF = p1SpawnCF + Vector3.new(-30, 10, 0)
 
 	local duel: ActiveDuel = {
 		Player1 = p1,
@@ -258,7 +264,6 @@ function ArenaManager.StartDuel(p1: Player, p2: Player)
 			if hrp and hum and hum.Health > 0 then
 				char:SetAttribute("InArena", true)
 
-				-- Request map streaming before teleport
 				pcall(function()
 					p:RequestStreamAroundAsync(spawnCF.Position, 2)
 				end)
@@ -284,7 +289,7 @@ function ArenaManager.StartDuel(p1: Player, p2: Player)
 	SetupFighter(p1, p1SpawnCF, p2SpawnCF)
 	SetupFighter(p2, p2SpawnCF, p1SpawnCF)
 
-	print(string.format("[ArenaManager] ⚔️ Physical Duel Commenced: %s vs %s!", p1.Name, p2.Name))
+	print(string.format("[ArenaManager] ⚔️ 1v1 Arena Duel Commenced: %s vs %s!", p1.Name, p2.Name))
 end
 
 function ArenaManager.MonitorDuels()

@@ -30,6 +30,8 @@ export type RemoteName =
 	| "UpdateQuestTracker"
 	| "QuestAction"
 	| "UpdateSect"
+	| "BlacksmithAction"
+	| "TeaHouseAction"
 
 local ALL_REMOTES: { RemoteName } = {
 	"CombatAction",
@@ -52,6 +54,8 @@ local ALL_REMOTES: { RemoteName } = {
 	"UpdateQuestTracker",
 	"QuestAction",
 	"UpdateSect",
+	"BlacksmithAction",
+	"TeaHouseAction",
 }
 
 local RemoteEvents = {}
