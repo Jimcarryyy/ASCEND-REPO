@@ -121,3 +121,43 @@ All numerical HP and Qi text across HUDs, Overheads, and Damage Numbers format u
 
 ### 3. 5-Gate Loading Screen Engine (`LoadingScreen.client.luau`)
 * Executes at $t=0$ in `ReplicatedFirst`, synchronizing (1) Engine load, (2) 3D Model/Audio preloading, (3) Character & Sword Rig Mount, (4) DataStore V2 Sync, and (5) Smooth multi-element fade-out.
+
+
+# ASCEND — UI / UX Specification & Interface Architecture
+
+> Studio Hierarchy Bindings, Responsive Viewport Adaptation & Design Tokens
+
+---
+
+## 1. Studio ScreenGui Hierarchy Mappings
+
+| ScreenGui Name | Root Frame | Controller | Function & Bound Components |
+| :--- | :--- | :--- | :--- |
+| **`SkillsGUI`** | `BottomCenterFrame` | `SkillBarController` | Desktop action HUD: `IntentBarFrame`, `HPBarFrame`, `QIBarFrame`, `M1_SKILL`, `R_SKILL`, `B_SKILL`, `V_SKILL`, `C_SKILL`. |
+| **`LowViewPortSkillsGUI`** | `BottomCenterFrame` | `SkillBarController` | Mobile/Tablet bottom-center HUD: `IntentBarFrame`, `HPBarFrame`, `QIBarFrame` (3 clean bars only). |
+| **`MobileCombatHUD`** | `MobileCombatCluster` | `SkillBarController` | Dynamic mobile right-side 2×3 touch cluster (`M1`, `R`, `V`, `B`, `C` around native Jump). |
+| **`CurrencyGUI`** | `CurrencyFrame` | `SkillBarController` | Top-right live currency counters: `CPFrame` (Contribution Points) & `SpiritStoneFrame` (Spirit Stones). |
+| **`BottomMenuGui`** | `MenuFrame` | `SkillBarController` | Bottom-left modal toggles: `BagImageButton` (Pouch) & `ArenaImageButton` (1v1 Arena). |
+| **`GlobalToastNotifGui`** | `ToastFrame` | `HUDController` | Top-center notification text with generation-ID anti-spam transitions. |
+| **`SectMissionGui`** | `MissionFrame` | `QuestTrackerController` | Top-left 3-tier quest tracking cards (`Frame1`, `Frame2`, `Frame3`). |
+| **`QIZoneNotifGui`** | `ZoneFrame` | `CultivationController` | Top-left Qi zone speed multiplier banner (e.g. `EMERALD MIST CAVERNS - 5.0X SPEED`). |
+| **`SectMerchantMarketGui`** | `MainFrame` | `MarketController` | Sect Exchange Pavilion: auto-populating swords, exact CP (`1,970 CP`), buy/sell loot. |
+| **`SpiritPouchInventoryGui`** | `MainFrame` | `InventoryController` | 60-slot spirit pouch with 2D high-res weapon icons, sorting, and item inspection. |
+
+---
+
+## 2. Responsive Viewport Switching Rules
+
+```text
+Viewport / Device Check (Camera.ViewportSize & UserInputService)
+       │
+       ├── Desktop (Keyboard / Viewport Width >= 950px):
+       │   ├── SkillsGUI.Enabled = true (BottomCenterFrame.Visible = true)
+       │   ├── LowViewPortSkillsGUI.Enabled = false (Visible = false)
+       │   └── MobileCombatHUD.Enabled = false (Visible = false)
+       │
+       └── Mobile / Tablet (Touch / Viewport Width < 950px):
+           ├── SkillsGUI.Enabled = false (BottomCenterFrame.Visible = false)
+           ├── LowViewPortSkillsGUI.Enabled = true (BottomCenterFrame.Visible = true)
+           ├── MobileCombatHUD.Enabled = true (MobileCombatCluster.Visible = true)
+           └── Native Roblox JumpButton in TouchGui remains active & untouched

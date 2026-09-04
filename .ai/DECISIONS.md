@@ -194,3 +194,56 @@ This document records key architecture decisions for ASCEND, including accepted 
 * **Source:** Decided directly with developer
 * **Context:** Developer raised a "16 personal mini-houses per server" feature for Zone 1.
 * **Decision:** Cut from V1 scope. Not to be resurfaced as a pending task unless the developer brings it back up.
+
+# Architecture Decision Log — ASCEND
+
+## Purpose
+Records structural architectural decisions, design paradigms, security patterns, and scope resolutions.
+
+---
+
+### ADR-033 — Studio-Authoritative GUI Migration & 2D Asset Standardization
+* **Date:** 2026-09-02
+* **Status:** Accepted & Implemented
+* **Context:** Programmatic `Instance.new` UI generation caused layout drift, made Studio editing difficult, and introduced viewport scaling conflicts between PC and mobile.
+* **Decision:**
+  1. Replaced hardcoded client GUI generation with direct bindings to Studio Explorer instances (`SkillsGUI`, `LowViewPortSkillsGUI`, `CurrencyGUI`, `BottomMenuGui`, `SectMissionGui`, `GlobalToastNotifGui`).
+  2. Maintained separate Desktop (`SkillsGUI`) and Mobile (`LowViewPortSkillsGUI` + right-side touch cluster) interfaces.
+  3. Replaced 3D ViewportFrames in the inventory and market with high-resolution 2D PNG assets across all 8 sword tiers.
+
+### ADR-034 — Looping Sword Intent Combat Engine
+* **Date:** 2026-09-02
+* **Status:** Accepted & Implemented
+* **Context:** M1 combo strikes lacked mid-combat progression and mechanical reward for sustained aggression.
+* **Decision:**
+  1. Implemented a dynamic `SwordIntent` gauge ($0 \rightarrow 100$).
+  2. Each landed M1 strike generates $+25\%$ Intent (4 hits to full charge).
+  3. At $100\%$ Intent, the next M1 strike consumes the entire gauge to deal $1.75\times$ Empowered Damage with golden critical VFX and audio impact.
+  4. Gauge immediately resets to $0\%$ upon strike execution, creating an infinite combat loop.
+  5. If the player leaves combat for $>2.5$ seconds, Intent continuously decays at $8\%/\text{s}$.
+
+### ADR-035 — Single-Bar Overhead UI & FredokaOne Styling
+* **Date:** 2026-09-02
+* **Status:** Accepted & Implemented
+* **Context:** The player overhead display had redundant Qi bars, static text bindings, and lacked visual punch.
+* **Decision:**
+  1. Stripped the Qi bar from overheads (Qi is tracked in the bottom HUD).
+  2. Applied a 3-stop $90^\circ$ emerald-to-jade vertical gradient to the HP bar (`#4ADE80` $\rightarrow$ `#22C55E` $\rightarrow$ `#15803D`) with a 2px solid white `UIStroke` and `UICorner` of 30.
+  3. Standardized all overhead text to `Enum.Font.FredokaOne` with dynamic attribute listeners on `Realm` and `SectRank`.
+
+### ADR-036 — Keybind Consolidation: Exclusive `C` Meditation
+* **Date:** 2026-09-02
+* **Status:** Accepted & Implemented
+* **Context:** Multiple keys (`C` and `M`) were triggering meditation across `InputController` and `SkillBarController`.
+* **Decision:**
+  1. Removed `Enum.KeyCode.M` from all controllers.
+  2. Assigned **`C`** as the exclusive keybind for Cultivation/Meditation on Desktop, with `C_SKILL` on the HUD.
+  3. Centralized `V` (Flight), `R` (Draw/Sheath), `B` (Breakthrough), `Shift` (Dash), `CTRL` (Run Toggle), and `T` (Block/Parry).
+
+### ADR-037 — Dynamic Market Sword Catalog & Exact Currency Synchronization
+* **Date:** 2026-09-02
+* **Status:** Accepted & Implemented
+* **Context:** The Sect Exchange shop only displayed 3 hardcoded swords, and Contribution Points rounded to `2.0K CP` instead of showing exact values.
+* **Decision:**
+  1. Updated `MarketController.luau` to dynamically iterate through `ItemConfig.GetAllItems()`, auto-populating all Tier 1–8 swords into the `SWORDS` and `ALL` tabs.
+  2. Swapped numerical rounding for exact integer formatting (`FormatCurrency`), ensuring `1,970 CP` displays accurately across the Pavilion header and HUD.

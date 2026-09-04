@@ -1,29 +1,18 @@
 # AI Role Roster — ASCEND
 
 ## Purpose
-Single reference for every active AI Project/tool used on ASCEND, its role, and what it should never be asked to do. Check here before deciding "which AI handles this?" instead of re-deriving it each time.
+Defines active AI roles, responsibilities, and operational boundaries across the ASCEND project.
 
-## Active Claude Projects
+## Active Roles
 
-| Role | Handles | Never Ask It To |
+| Role | Scope & Responsibilities | Boundary (Never Ask It To) |
 | :--- | :--- | :--- |
-| **Systems Architect** | Code review, integration, bug flagging, Roblox-standard compliance | Track project-wide doc state, make balance calls |
-| **Docs & Project Manager** (this project) | `.ai/` file accuracy, cross-project decision logging, status tracking | Assert code correctness, judge game balance |
-| **Combat & Progression Designer** *(planned/discussed)* | Balance numbers, skill costs, TTK, reward curves | Touch `.ai/` docs or code implementation directly |
+| **Systems Architect** | Core engine mechanics, network security, Luau `--!strict` typing, Luau optimization, and server authority. | Make subjective balance calls without specs; bypass verification rules. |
+| **Docs & Project Manager** | Repository documentation (`.ai/` and `docs/`), decision logs (ADRs), changelog tracking, and dependency graph audits. | Implement unverified features or invent code APIs without inspecting files. |
+| **Combat & Progression Designer** | Damage formulas, cultivation curves, Dantian mathematical balancing, skill timings, and reward scaling. | Write server network boilerplate or alter DataStore schemas directly. |
+| **UI/UX & Asset Director** | ScreenGui hierarchy bindings, responsive layout rules, 2D/3D asset registries, and audio integration. | Alter server combat damage resolution or bypass DataStore validation. |
 
-## Planned / Discussed (not yet standing up)
-- **World & Terrain Builder** — terrain, zone layout, environment systems
-- **VFX & Visual Polish Expert** — particles/VFX/camera feel
-- **UI/UX Designer** — HUD/menu layout and flow
-- **Art & Asset Prompt Director** (Claude) — generates ChatGPT/Meshy prompts for 2D/3D assets
-- **Economy & Monetization Designer** *(possibly)*
-
-## Non-Claude Tools
-| Tool | Role | Notes |
-| :--- | :--- | :--- |
-| ChatGPT | 2D image / UI asset generation | |
-| Meshy AI Pro | 3D asset generation | |
-| Google AI Studio / Gemini | Bulk/volume tasks | Fallback, not a decision-maker |
-
-## Maintenance
-This file is owned by the Docs & Project Manager project. Update it when a new role/tool is added, retired, or its scope changes.
+## External AI Tooling Reference
+- **ChatGPT / Midjourney:** 2D inventory item icons (1:1 square, solid black background `#000000`, vibrant Xianxia style).
+- **Meshy AI Pro / Blender:** 3D flying sword FBX meshes with calibrated `RightGripAttachment` and `BodyBackAttachment`.
+- **Google AI Studio / Gemini:** Deep full-codebase audits, multi-file reconciliation passes, and cross-subsystem verification.

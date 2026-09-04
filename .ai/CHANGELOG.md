@@ -227,3 +227,47 @@ The following are historical `PROJECT_STATUS.md` completion snapshots, preserved
 - **Keybind Schema Update:** Rebound Block/Parry to **`T`**, restored **`F`** as Falling Sky Slam, bound Sprint Toggle to **`CTRL`**, and rebound Focus Target to **`MouseButton3` / `Z`**.
 - **Combat Footwork Gate:** Movement dampens to `WalkSpeed = 8` during M1 swings with `IsAttacking` locking, preventing mobile auto-sprint overrides while attacking.
 - **Asynchronous Client Boot (`ClientMain.client.luau`):** Concurrently boots all client controllers in isolated `task.spawn()` threads, eliminating sequential 10-second boot freezes.
+
+
+# CHANGELOG — ASCEND
+
+## [Phase 8 — Studio GUI Overhaul, Looping Sword Intent & Asset Polish] - 2026-09-02
+
+### Added
+- **Studio-Authoritative GUI Integration:**
+  - Migrated `SkillBarController.luau`, `HUDController.luau`, `QuestTrackerController.luau`, and `CultivationController.luau` to bind directly to Studio `StarterGui` instances.
+  - Linked `SkillsGUI` (Desktop), `LowViewPortSkillsGUI` (Mobile vitals), `CurrencyGUI`, `BottomMenuGui`, `SectMissionGui`, and `GlobalToastNotifGui`.
+- **Looping Sword Intent Combat Engine:**
+  - Integrated $+25\%$ Intent accumulation per landed M1 strike in `HitboxManager.luau` and `SkillBarController.luau`.
+  - Added $1.75\times$ Empowered Strike consumption at $100\%$ Intent with instant $0\%$ loop reset.
+  - Added continuous $8\%/\text{s}$ decay after $2.5\text{s}$ of hit inactivity.
+  - Added floating combat combo badges (`INTENT +25% [COMBO x1]`, `INTENT 100% - FULL CHARGE!`, `SWORD INTENT UNLEASHED (1.75X)`).
+- **Mobile Touch Combat Cluster:**
+  - Designed an ergonomic 2×3 touch grid (`M1`, `R`, `V`, `B`, `C`) around the native Roblox Jump button using Roblox's translucent gray circle aesthetic.
+  - Left native Roblox mobile jump button in `TouchGui` active and untouched.
+- **2D High-Resolution Weapon Asset Registry (`UIAssets.luau`):**
+  - Registered 8 live asset IDs for sword tiers: Mortal Iron (`109157084266033`), Azure Cloud (`115690610892281`), Flowing Qi (`85610178645930`), Verdant Jade (`114181885052834`), Violet Soul (`102454036931672`), Void Star (`73201319689599`), Azure Patriarch (`129279811461089`), and Radiant Immortal (`131309720641215`).
+  - Replaced 3D ViewportFrames in `InventoryController.luau` and `MarketController.luau` with 2D icon showcases.
+- **Dynamic Sect Market Weapon Catalog (`MarketController.luau`):**
+  - Auto-populates all swords from `ItemConfig` into the `SWORDS` and `ALL` tabs.
+  - Corrected Contribution Points header display from rounded `2.0K CP` to exact `1,970 CP`.
+- **Generation-ID Anti-Spam Toast Engine (`HUDController.luau`):**
+  - Implemented token-validated toast transitions preventing rapid consecutive harvests from hiding notifications prematurely.
+
+### Changed
+- **Overhead UI Overhaul (`OverheadUIController.luau`):**
+  - Replaced font with `Enum.Font.FredokaOne`.
+  - Applied 3-stop $90^\circ$ vertical green gradient (`#4ADE80` $\rightarrow$ `#22C55E` $\rightarrow$ `#15803D`) with a 2px solid white `UIStroke` and `UICorner` of 30.
+  - Removed overhead Qi bar to reduce screen clutter.
+- **3D Qi Node Billboards (`CultivationController.luau`):**
+  - Styled floating node billboards with `Enum.Font.Bangers` and 2px black `UIStroke`.
+  - Fixed client zone banner calculation to display true node rates (e.g. `5.0X SPEED`) without artificial doubling.
+- **Keybind Consolidation (`InputController.luau`):**
+  - Removed `M` keybind; assigned `C` as the exclusive cultivation key.
+  - Added desktop toast feedback for `B` (Breakthrough) and `C` (Meditation).
+
+### Fixed
+- Fixed `AlchemyController.luau` line 132 nil callback by exporting `HUDController.ShowItemToast`.
+- Fixed `AlchemyController.luau` line 716 `UIGridLayout.CellPadding` type error (`UDim2` expected, got `UDim`).
+- Fixed trailing backslash syntax error in `InventoryController.luau` line 430.
+- Fixed non-existent `NotifyClient` remote timeout in `RemoteEvents.luau`.

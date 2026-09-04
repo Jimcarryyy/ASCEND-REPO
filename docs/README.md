@@ -1,28 +1,29 @@
-# ASCEND-REPO — DOCUMENTATION INDEX
+---
 
-> Technical Specifications Directory
-> Master Entry Point: `ASCEND.md`
+# Part 2: `docs/` Specifications (11 Files)
 
-## Technical Specification Index
+---
 
-| Document | Purpose & Scope | Status |
+### 1. `docs/README.md`
+
+```markdown
+# ASCEND — Technical Specifications Index
+
+> Master Documentation Directory for ASCEND (Roblox Xianxia Action RPG)
+
+---
+
+## Documentation Directory
+
+| Specification | Scope & Primary Systems | Status |
 | :--- | :--- | :--- |
-| `ASCEND.md` | Master Project Entry Point & Startup Workflow | 🟢 Active |
-| `GAME_DESIGN.md` | Azure Cloud Realm Map, Low-Cortisol Loop & Monetization Strategy | 🟢 Active |
-| `ARCHITECTURE_SPEC.md` | Directory Hierarchy, Services & Remote Network Graph | 🟢 Active |
-| `COMBAT_SPEC.md` | Universal 1-Pack Skillset, Hitboxes & Magma Cleaves | 🟢 Active |
-| `PROGRESSION_SPEC.md` | Normalized 45-Stage Realm Progression (100–10,000 HP/Qi) | 🟢 Active |
-| `UI_UX_SPEC.md` | Light-Mode Palette, Custom Xianxia HUD, Azure Cloud Panels | 🟢 Active |
-| `ASSET_MANIFEST.md` | 32 Equipment Items, 12 2D PNG Icons, Vintage Herbs & HUD Skins | 🟢 Active |
-| `CODEBASE_CLEANUP_GUIDE.md` | Codebase Pruning Audit & Dead Code Guidelines | 🟢 Active |
-| `AI_PROMPT_GUIDE.md` | Stylized Low-Poly 3D Generation & 2D Icon Prompts | 🟢 Active |
-| `ROBLOX_PERFORMANCE_RULES.md` | 60 FPS Mobile Performance & Memory Limits | 🟢 Active |
-| `CODE_DEPENDENCY_GUIDE.md` | Full Require Graph & Cross-Module References | 🟢 Active |
-| ~~`SWORD_MASTERY_SPEC.md`~~ | Deprecated for V1 MVP (replaced by Realm Engine) | 🔴 Deprecated |
-| ~~`ECONOMY_AND_MARKET_SPEC.md`~~ | Deprecated for V1 MVP (replaced by Gacha & Spirit Stones) | 🔴 Deprecated |
-
-## Version 1 Architecture Summary
-*(Updated 2026-08-20)*
-
-1. **Server Core:** DataStore V2 persistence, 10-Realm / 90-Order progression, 3-slot manual alchemy, gathering RNG, Sect economy, R6 zone mob AI, 1v1 same-realm sparring arena.
-2. **Client Hybrid UI:** Studio Explorer frames driven by dedicated Luau controllers — responsive scaling, unified Dark Obsidian/Gold aesthetics, cross-platform touch support.
+| **`GAME_DESIGN.md`** | Master vision, 5-Zone Azure Cloud Realm, low-cortisol loops, and core gameplay pillars. | 🟢 Active |
+| **`ARCHITECTURE_SPEC.md`** | Service-Controller framework, network remote graph, DataStore V3 schema, and R6 locomotion. | 🟢 Active |
+| **`COMBAT_SPEC.md`** | Pure Sword combat engine, looping Sword Intent, 5-hit M1 combo, Parrying/Posture, and CC states. | 🟢 Active |
+| **`PROGRESSION_SPEC.md`** | 10 Major Realms $\times$ 9 Orders (90 Tiers), Dantian tripartite equation, and Sect hierarchy. | 🟢 Active |
+| **`UI_UX_SPEC.md`** | Studio-authoritative GUI bindings, Dark Obsidian/Gold design tokens, and mobile touch cluster. | 🟢 Active |
+| **`ASSET_MANIFEST.md`** | 2D sword icon asset IDs, alchemical icons, movement animation suite, and universal audio registry. | 🟢 Active |
+| **`CODEBASE_CLEANUP_GUIDE.md`** | Codebase pruning standards, dead-code detection, and deprecated file removals. | 🟢 Active |
+| **`CODE_DEPENDENCY_GUIDE.md`** | Complete client-server require graph, module couplings, and remote network routes. | 🟢 Active |
+| **`ROBLOX_PERFORMANCE_RULES.md`** | 60 FPS mobile optimization rules, memory limits, network budget, and spatial culling. | 🟢 Active |
+| **`AI_PROMPT_GUIDE.md`** | Standardized prompt engineering guidelines for 2D icons and 3D weapon meshes. | 🟢 Active |

@@ -105,3 +105,49 @@ $$\text{Final Damage} = \text{Skill Base Damage} \times \text{Cultivator Power M
 ### 4. Arena Stat Normalization & Clashes
 * **1,000 HP Fair Duels:** Inside the Sector 3 Arena (`InArena == true`), all cultivators receive flat $1{,}000\text{ HP}$ and normalized damage curves for $100\%$ skill parity.
 * **Simultaneous Sword Clashes:** Attacks landing within $\pm 0.08\text{s}$ trigger a Sword Clash ($0\text{ damage}$, spark blast, mutual pushback).
+
+---
+
+### 3. `docs/COMBAT_SPEC.md`
+
+```markdown
+# ASCEND — Pure Sword Cultivator Combat Specification
+
+> Server-Authoritative Combat, Looping Sword Intent, Parrying & Combo Mechanics
+
+---
+
+## 1. Looping Sword Intent Combat Engine
+
+The Sword Intent engine provides a continuous reward loop for sustained melee aggression:
+
+$$\mathbf{IntentGain = +25\% \text{ per landed M1 hit}} \quad \longrightarrow \quad \mathbf{100\% \text{ Intent} = 1.75\times \text{ Empowered Strike}}$$
+
+1. **Accumulation:** Each confirmed M1 hit that damages a target adds $+25\%$ Intent ($4$ hits to reach $100\%$).
+2. **Empowered Strike:** Upon reaching $100\%$ Intent, the bar turns gold (`SWORD INTENT 100%`). The next M1 strike consumes the entire gauge to deal **$1.75\times$ base damage**, triggering golden critical slash VFX, camera impact shake, and floating text (`SWORD INTENT UNLEASHED (1.75X)`).
+3. **Loop Reset:** The gauge resets to $0\%$ immediately after the empowered strike connects, starting the loop over.
+4. **Combat Inactivity Decay:** If no hits connect for $>2.5$ seconds, Intent continuously decays at **$8.0\%/\text{s}$** down to $0\%$.
+
+---
+
+## 2. 5-Hit M1 Broadsword Combo Chain (`MouseButton1`)
+
+| Step | Animation Asset ID | Duration | Speed | Base Damage | Posture Damage |
+| :---: | :--- | :---: | :---: | :---: | :---: |
+| **Hit 1** | `rbxassetid://129254042886405` | 0.44s | 0.85x | 18 | 12 |
+| **Hit 2** | `rbxassetid://78342794513338` | 0.40s | 0.85x | 19 | 14 |
+| **Hit 3** | `rbxassetid://133701354257850` | 0.44s | 0.85x | 21 | 16 |
+| **Hit 4** | `rbxassetid://140582503077234` | 0.46s | 0.80x | 23 | 18 |
+| **Hit 5** | `rbxassetid://111677132360566` | 0.54s | 0.75x | 28 (Finisher) | 28 |
+
+* **Combat Footwork Commitment:** Movement speed dampens to `WalkSpeed = 8` during M1 swings to ensure clean hitbox registration in PvP.
+* **Combo Timeout:** Pausing for $>1.3\text{s}$ between swings resets the combo chain back to Hit 1.
+
+---
+
+## 3. Defense, Parrying & Posture System
+
+* **Standard Guard (Hold `T`):** Blocks incoming attacks within the front $180^\circ$ arc, reducing damage by **$70\%$**. Drains posture based on attack weight ($12 \rightarrow 28\text{ pts}$).
+* **Perfect Parry (Tap `T` within $0.22\text{s}$):** **$100\%$ Damage Negation**, breaks attacker's posture with a **$0.5\text{s}$ stagger**, restores $+10\text{ Posture}$, triggers parry spark VFX, and plays clash audio (`rbxassetid://9114223175`). Costs $0$ Posture.
+* **Guard-Break Penalty:** Reaching $0\text{ Posture}$ inflicts a **$2.0\text{s}$ vulnerability stun** ($+25\%$ bonus damage taken) with shield-shatter audio.
+* **Anti-Stunlock Buffer:** Players receive **$0.6\text{s}$ of hard hyperarmor (`CCImmune`)** upon recovering from any stun.

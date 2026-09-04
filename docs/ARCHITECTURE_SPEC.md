@@ -1,51 +1,78 @@
-# ASCEND-V1 — TECHNICAL ARCHITECTURE SPECIFICATION
+# ASCEND — Technical Architecture Specification
 
-> **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
-> **Scope:** Directory Hierarchy, Service-Controller Framework, DataStore Schemas, & Lifecycle Hooks.
+> Directory Hierarchy, Service-Controller Framework, Networking & Lifecycle Hooks
 
----\n
-## 1. Roblox Studio Project Directory Structure
+---
+
+## 1. Directory Structure
 
 ```text
 src/
+├── ReplicatedFirst/
+│   └── LoadingScreen.client.luau          (5-gate preload and server sync loading screen)
 ├── ReplicatedStorage/
 │   └── Shared/
 │       ├── Configs/
-│       │   ├── AlchemyConfig.luau          (Recipe formulas, age success math, pill effects)
-│       │   ├── CultivationConfig.luau      (45 Tiers, normalized 100 - 10,000 HP/Qi scale)
-│       │   ├── GatheringConfig.luau          (Node harvest times, respawn delays, age drops)
-│       │   ├── ItemConfig.luau             (Master item registry for equipment, herbs, pills)
-│       │   ├── UIAssets.luau               (Light-Mode Palette & FredokaOne typography)
+│       │   ├── AlchemyConfig.luau          (Formulas, flame minigame, quality multipliers)
+│       │   ├── AnimationConfig.luau        (R6 animation asset registry & timings)
+│       │   ├── CultivationConfig.luau      (10 Major Realms x 9 Orders, stat curves)
+│       │   ├── GatheringConfig.luau        (Harvest timers, respawns, weighted herb ages)
+│       │   ├── HUDSkinConfig.luau          (HUD skins and offset mappings)
+│       │   ├── ItemConfig.luau             (Master item registry for 8 sword tiers, pills, herbs)
+│       │   ├── MobConfig.luau              (R6 zone mob stats, AI attributes, drop tables)
+│       │   ├── MonetizationConfig.luau     (Gamepasses, DevProducts, receipt definitions)
+│       │   ├── SectConfig.luau             (6 Disciple ranks, 3-tier daily duties, catalog)
+│       │   ├── UIAssets.luau               (Audio IDs, 2D sword icons, design tokens)
 │       │   └── Weapons/
-│       │       └── FlyingSwordConfig.luau  (Flying Sword M1 combo steps, skill damage, ranges)
+│       │       └── FlyingSwordConfig.luau  (M1 chains, posture damage, parry timings)
 │       └── Network/
-│           └── RemoteEvents.luau           (RemoteEvent factory pre-creating all network remotes)
+│           └── RemoteEvents.luau           (Central RemoteEvent factory)
 ├── ServerScriptService/
 │   └── Server/
-│       ├── ServerMain.server.luau          (Server initialization entry point)
+│       ├── ServerMain.server.luau          (Master server bootstrap)
 │       ├── Combat/
-│       │   ├── HitboxManager.luau          (Spatial box query engine & knockback physics)
-│       │   └── WeaponManager.luau          (Equipped 3D sword model tracker & bounds scaler)
+│       │   ├── ArenaManager.luau           (1v1 Sparring arena matchmaking & normalization)
+│       │   ├── HitboxManager.luau          (Spatial box hitboxes, parry resolution, intent loop)
+│       │   ├── MobAIManager.luau           (Pathfinding AI, aggro, leash state machine)
+│       │   ├── WeaponManager.luau          (3D sword model mounting & draw/sheath tracker)
+│       │   └── Weapons/
+│       │       └── FlyingSwordServer.luau  (Server attack execution pipeline)
 │       ├── Cultivation/
 │       │   ├── AlchemyManager.luau         (Server manual combination alchemy engine)
-│       │   └── CultivationManager.luau     (Qi meditation F, breakthroughs B, health scaling)
-│       ├── World/
-│       │   └── GatheringManager.luau       (Server harvesting engine & workspace node tracker)
-│       └── State/
-│           ├── CombatStateManager.luau     (Server combat state tracker & cooldown validator)
-│           ├── InventoryManager.luau       (60-slot server inventory engine, on-demand RequestSync)
-│           └── PlayerDataManager.luau      (DataStoreService persistence engine & 5-min auto-save)
+│       │   ├── CultivationManager.luau     (Dantian Qi expansion, meditation, breakthroughs)
+│       │   └── SectManager.luau            (Quest lifecycle, promotions, stipends)
+│       ├── State/
+│       │   ├── CombatStateManager.luau     (ActionState, CCState, hyperarmor buffer)
+│       │   ├── InventoryManager.luau       (60-slot storage, stack validation)
+│       │   ├── MarketplaceManager.luau     (ProcessReceipt & gamepass perk verification)
+│       │   └── PlayerDataManager.luau      (DataStore V3 persistence & developer injection)
+│       └── World/
+│           ├── EnvironmentTimeManager.luau (12-min 4-phase day/night lighting engine)
+│           ├── GatheringManager.luau       (Server harvesting & weighted RNG rolls)
+│           ├── TreeCollisionManager.luau   (Trunk-only collision cleaner)
+│           └── VendorManager.luau          (Sect market transactions)
 └── StarterPlayer/
+    ├── StarterCharacterScripts/
+    │   └── Animate.client.luau             (Dedicated R6 locomotion engine & yaw pinning)
     └── StarterPlayerScripts/
-        ├── ClientMain.client.luau          (Client initialization entry point)
+        ├── ClientMain.client.luau          (Concurrent task.spawn client bootstrap)
         └── Controllers/
-            ├── AlchemyController.luau      (Light-Mode manual 3-slot cauldron combination UI)
-            ├── CombatVFXController.luau    (3-wave magma crescent cleaves, sunfalls, camera shake, damage text)
-            ├── GatheringController.luau     (Client prompt interaction & GatherHerbsSound)
-            ├── HUDController.luau           (Light-Mode HUD dock, HP/Qi meters, hotbar)
-            ├── InputController.luau         (Keybind inputs LMB, F, Q, E, R, Shift, G, B, K)
-            └── InventoryController.luau     (Spirit Pouch 60-slot storage, rarity-tinted borders)
+            ├── AlchemyController.luau      (Cauldron combination & flame minigame UI)
+            ├── AnimationController.luau    (R6 attack keyframing & dash anim playback)
+            ├── ArenaController.luau        (1v1 Arena registration modal binding)
+            ├── CombatVFXController.luau    (Floating damage, intent popups, parry sparks)
+            ├── CultivationController.luau  (3D Bangers QiNode billboards & QIZoneNotifGui)
+            ├── FocusTargetController.luau  (Top-center target lock-on & posture gauge)
+            ├── GatheringController.luau    (World prompt interaction & audio sync)
+            ├── HUDController.luau          (GlobalToastNotifGui anti-spam toast engine)
+            ├── InputController.luau        (CTRL run, T block, Shift dash, C cultivate, M1)
+            ├── InventoryController.luau    (Spirit Pouch 60-slot 2D sword showcase)
+            ├── MarketController.luau       (Sect Pavilion auto-catalog & exact CP sync)
+            ├── OverheadUIController.luau   (FredokaOne overheads, emerald HP bar)
+            ├── QuestTrackerController.luau (SectMissionGui 3-tier duty cards)
+            ├── SectController.luau         (Sect Pavilion disciple promotion modal)
+            ├── SkillBarController.luau     (SkillsGUI, LowViewPortSkillsGUI, CurrencyGUI)
+            └── WindEnvironmentController.luau (Spatial culling organic wind sway physics)
 
 ## 5. R6 Character Locomotion & Animation Architecture
 

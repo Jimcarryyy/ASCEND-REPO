@@ -106,3 +106,50 @@ $$\text{Reward} = \text{BaseReward} \times (1 + (\text{RealmIndex} - 1) \times 0
   * *Core $\rightarrow$ Direct:* Nascent Soul + $10{,}000\text{ CP}$
   * *Direct $\rightarrow$ Elder:* Spirit Severing + $50{,}000\text{ CP}$
   * *Elder $\rightarrow$ Grand Elder:* Tribulation Transcending + $150{,}000\text{ CP}$
+
+
+  # ASCEND — Cultivation Progression & Progression Hierarchy
+
+> 10 Major Realms, 90 Sub-Stage Orders, Dantian Tripartite Architecture, & Sect Ladder
+
+---
+
+## 1. Cultivation Realm Progression Scale
+
+Progression spans **10 Major Realms $\times$ 9 Orders (90 total sub-stage orders)**:
+
+| Tier | Major Realm Name | Orders | HP Range | Max Qi Capacity | Progression Highlights |
+| :---: | :--- | :---: | :---: | :---: | :--- |
+| **1** | **Qi Condensation** | Order 1–9 | $1,000 \rightarrow 12,000$ | $1,000 \rightarrow 12,000$ | Starter gathering, manual meditation, $2\times$ Qi nodes. |
+| **2** | **Foundation Establishment** | Order 1–9 | $15,000 \rightarrow 120,000$ | $15,000 \rightarrow 120,000$ | Unlocks 3-slot cauldron alchemy and Outer Disciple promotion. |
+| **3** | **Golden Core** | Order 1–9 | $75,000 \rightarrow 850,000$ | $75,000 \rightarrow 850,000$ | Unlocks 3-wave lightning tribulations and Inner Disciple rank. |
+| **4** | **Nascent Soul** | Order 1–9 | $350,000 \rightarrow 4.5\text{M}$ | $350,000 \rightarrow 4.5\text{M}$ | Medium $5\times$ Qi Node Fields required for fast cultivation. |
+| **5** | **Spirit Severing** | Order 1–9 | $1.5\text{M} \rightarrow 22\text{M}$ | $1.5\text{M} \rightarrow 22\text{M}$ | Demon Beast Core alchemy required for breakthroughs. |
+| **6** | **Void Refining** | Order 1–9 | $7.5\text{M} \rightarrow 90\text{M}$ | $7.5\text{M} \rightarrow 90\text{M}$ | 5-wave lightning tribulations and Core Disciple promotion. |
+| **7** | **Body Integration** | Order 1–9 | $25\text{M} \rightarrow 280\text{M}$ | $25\text{M} \rightarrow 280\text{M}$ | High-yield $9\times$ Qi Node Fields. |
+| **8** | **Mahayana** | Order 1–9 | $55\text{M} \rightarrow 650\text{M}$ | $55\text{M} \rightarrow 650\text{M}$ | Direct Disciple promotion and century elixirs. |
+| **9** | **Tribulation Transcending** | Order 1–9 | $80\text{M} \rightarrow 950\text{M}$ | $80\text{M} \rightarrow 950\text{M}$ | 9-wave severe tribulations and Sect Elder rank. |
+| **10** | **Immortal Ascension** | Order 1–9 | $100\text{M} \rightarrow 1.5\text{B}$ | $100\text{M} \rightarrow 1.5\text{B}$ | **V1 Absolute Peak** — Grand Elder rank. |
+
+---
+
+## 2. Dantian Energy Equations
+
+$$\mathbf{CurrentQi \le CultivatedQi \le MaxQiGoal}$$
+
+1. **`CurrentQi`:** Active energy consumed during combat skills. Recovers to `CultivatedQi` in $60\text{s}$ standing ($1.66\%/\text{s}$) or $10\text{s}$ meditating ($10.0\%/\text{s}$).
+2. **`CultivatedQi`:** Persistent Dantian energy storage capacity. Expands toward `MaxQiGoal` strictly during meditation inside Qi Nodes or via Alchemy Dans.
+3. **`MaxQiGoal`:** The required threshold to trigger a Breakthrough (`B` key). When achieved, `Order` advances, `MaxQiGoal` expands, and existing `CultivatedQi` is **100% preserved**.
+
+---
+
+## 3. Sect Disciple Promotion Ladder
+
+| Rank | Required Realm | Required Contribution (CP) | Daily Stipend |
+| :--- | :--- | :---: | :--- |
+| **Outer Disciple** | Qi Condensation (Tier 1) | 0 CP | 100 Stones + 2 Healing Dans |
+| **Inner Disciple** | Foundation Establishment (Tier 2) | 500 CP | 300 Stones + 4 Healing Dans |
+| **Core Disciple** | Golden Core (Tier 3) | 2,500 CP | 800 Stones + 2 Qi Gathering Dans |
+| **Direct Disciple** | Nascent Soul (Tier 4) | 10,000 CP | 2,000 Stones + 2 Gale Wind Dans |
+| **Sect Elder** | Spirit Severing (Tier 5) | 50,000 CP | 5,000 Stones + 1 Foundation Dan |
+| **Grand Elder** | Tribulation Transcending (Tier 9) | 150,000 CP | 15,000 Stones + 3 Foundation Dans |
