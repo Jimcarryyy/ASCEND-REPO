@@ -147,3 +147,117 @@ Code
   * Stepping onto both pads triggers a 3-second countdown.
   * Stepping off immediately cancels the match countdown.
   * Completing the countdown teleports both fighters into the battle ring with $1{,}000\text{ HP}$.
+
+---
+
+# 4. `docs/GAME_DESIGN.md`
+
+```markdown
+# ASCEND — Master Game Design Document
+
+## 1. Vision & Core Philosophy
+**ASCEND** is an Eastern Xianxia (Immortal Hero) Action RPG. Disciples begin as mortal aspirants in the Jade Pure Sect, train in sword arts, gather spiritual herbs, brew pills and spirit teas, refine divine blades, spar in dueling rings, and overcome celestial tribulations to ascend through 10 realms of immortality.
+
+---
+
+## 2. Master Gameplay Loop
+
+```text
+               ┌──────────────────────────────────────────────┐
+               │              GATHER & EXPLORE                │
+               │  - Harvest Vintage Herbs (1-Yr to 1,000-Yr)  │
+               │  - Mine Mountain Iron Ingot                  │
+               │  - Draw Celestial Dew Springs                │
+               └──────────────────────┬───────────────────────┘
+                                      │
+                                      ▼
+               ┌──────────────────────────────────────────────┐
+               │             CRAFT & CULTIVATE                │
+               │  - Refine Pills in Bronze Alchemy Cauldron   │
+               │  - Order Timed Buffs at Spirit Tea Pavilion  │
+               │  - Forge & Sharpen Blades at Blacksmith      │
+               │  - Meditate in 2.0x Qi Sakura Nodes          │
+               └──────────────────────┬───────────────────────┘
+                                      │
+                                      ▼
+               ┌──────────────────────────────────────────────┐
+               │              MARTIAL ENGAGEMENT              │
+               │  - Test DPS on Ironwood Training Dummies     │
+               │  - Execute 3-Tier Daily Sect Duties (CP)     │
+               │  - 1v1 Sparring Arena Matches                │
+               │  - Hunt Beasts in Wilderness (Zone 2)        │
+               └──────────────────────┬───────────────────────┘
+                                      │
+                                      ▼
+               ┌──────────────────────────────────────────────┐
+               │              REALM ASCENSION                 │
+               │  - Channel Cultivated Qi to 100%             │
+               │  - Endure Heavenly Tribulation Lightning     │
+               │  - Promote Disciple Rank (Outer -> Elder)    │
+               └──────────────────────┴───────────────────────┘
+3. World Architecture: Three-Tier Sect Layout (ADR-044)
+The Sect Hub is laid out in three stepped elevation tiers, utilizing a slate, marble, dark wood, and black roof tile aesthetic:
+3.1 Tier 1: Lower Service & Training Grounds
+The foundational courtyard dedicated to daily disciple life, crafting, trade, and basic training:
+Blacksmith Forge (Sect_NPC_MadameTie): Features the Master Blacksmith Anvil. Offers weapon refinement up to +10 (+5% base ATK per tier) and Blade Sharpening (+10% Crit Chance for 15 minutes).
+Spirit Tea Pavilion (Sect_NPC_XiaoLing): Sells freshly brewed spirit teas providing instant recovery and 10–15 minute attribute buffs (Meditation speed, Health regen, Sword Intent gain).
+Sect Training Grounds (Sect_NPC_InstructorWu): Features 3 Ironwood Dummies with ImmortalDummyHandler.server.luau tracking real-time damage, DPS, and floating combat text.
+Sect Starter Guide Pavilion (Sect_NPC_ElderQing): An interactive 4-tab knowledge kiosk explaining Controls, Cultivation, Sword Intent, and Sect Duties.
+Bronze Alchemy Cauldron (Sect_NPC_MasterShen): Interactive alchemy station featuring a manual 3-slot herb loader and needle-slider temperature minigame.
+Sect Notice Board (Sect_NPC_DeaconZhao): Issues 3-tier daily duties (Gathering, Alchemy, Sparring) rewarding Contribution Points (CP) and Spirit Stones.
+Sect Treasury & Market (Sect_NPC_StewardJin): Disciple store offering weapon purchases, pill sales, and material trading.
+Spiritual Features: 2.0x Qi Sakura Meditation Grove, practicing Outer Disciples executing sword routines, and the Wilderness Gateway (Sect_NPC_DaoistFeng) leading to Zone 2.
+3.2 Tier 2: Middle Spiritual Dao Sanctuary
+The elevated plateau bridging disciple life and supreme governance:
+Elevated Sword Altar (Dao Sanctuary): A monumental raised stone dais reached via R6-calibrated non-trip staircases. Features floating spirit swords used for blade attunement and the weapon gacha system.
+Inner Disciple Courtyards: Paved stone gathering grounds with decorative lanterns and banners, where promoted Inner Disciples meditate and congregate.
+3.3 Tier 3: Upper Sovereign Palace Hall
+The summit of authority, overlooking the entire mountain valley:
+Grand Palace Hall: Constructed with black roof tiles, brass ornaments, and crimson silk drapery.
+Supreme Sect Leader: Presides in midnight-black Daoist robes upon the elevated Dragon Dais.
+Grand Sword Elder Liang: Oversees advanced disciple promotions and martial examinations.
+The Top 7 Pillars of the Sect: Seven elite lore NPCs representing mastery of the seven distinct paths of the blade.
+Palace Retinue: Palace maids and heavily armored elite male and female sect guards stationed at fortress bastions.
+4. Subsystem Specifications
+4.1 Blacksmithing Refinement & Sharpening
+Manager: BlacksmithManager.luau | Controller: BlacksmithController.luau
+Refinement (+1 to +10):
+Upgrades equipped Flying Sword base attack power.
+Formula: DamageMultiplier = 1.0 + (RefineLevel * 0.05) (Maximum +50% at +10).
+Cost: 150 + (RefineLevel * 75) Spirit Stones plus MountainIronIngot units.
+Success Chance: math.max(0.35, 0.95 - (RefineLevel * 0.08)). Failure consumes materials without dropping refinement level.
+Blade Sharpening:
+Cost: 100 Spirit Stones.
+Grants a temporary +10% Critical Strike Chance buff (SharpnessCritBonus = 0.10) for 15 minutes (os.clock() + 900).
+4.2 Spirit Tea Pavilion
+Manager: TeaHouseManager.luau | Controller: TeaHouseController.luau
+Catalog:
+Jade Dew Spirit Tea (100 Stones): +250 Instant Qi, +10% Meditation Speed for 10 min (TeaMeditationMultiplier = 1.10).
+Crimson Ginseng Brew (150 Stones): +500 Instant HP, +15% Health Regen for 10 min (HealthRegenBonus = 0.15).
+Dragon Well Sword Tea (250 Stones): +15% Sword Intent Gain Rate for 15 min (TeaSwordIntentMultiplier = 1.15).
+4.3 Training Grounds & Ironwood Dummies
+Server Handler: ImmortalDummyHandler.server.luau | Controller: SparringGuidanceController.luau
+Three Ironwood Dummies (TrainingDummy_1, 2, 3) located in Workspace.Functional_Stations.Sect_TrainingGround.
+Functionality: 10,000,000 HP pool with instant server-authoritative regeneration. Tracks total damage received over rolling 5-second windows to compute real-time DPS. Overhead BillboardGui renders hits and live DPS using Enum.Font.Bangers. DPS can be reset via instructor dialogue.
+4.4 Sect Economy & Progression
+Currency 1 — Spirit Stones: Universal trading currency earned from mob defeats, selling pills, completing quests, and daily stipends.
+Currency 2 — Contribution Points (CP): Earned exclusively through daily Sect duties. Determines Disciple Rank promotions:
+Mortal Aspirant (0 CP)
+Outer Disciple (500 CP)
+Inner Disciple (1,500 CP)
+Core Disciple (3,500 CP)
+Sect Elder (7,500 CP)
+Grand Elder (15,000 CP)
+4.5 1v1 Sparring Arena
+Manager: ArenaManager.luau | Controller: ArenaController.luau
+Physical circular arena walled to prevent walk-in access. Matchmaking initiated when two matched-realm players stand on DuelPad1 and DuelPad2.
+3-second countdown with auto-abort if a player steps off. Teleports combatants to arena spawn foci, normalizes HP to 1,000, disables lethal damage, and teleports participants back upon concession/defeat.
+code
+Code
+---
+
+### Delivery Notice
+
+Batch 1 (`README.md`, `ARCHITECTURE_SPEC.md`, `UI_UX_SPEC.md`, and `GAME_DESIGN.md`) is complete and ready to replace your existing files on GitHub.
+
+Whenever you're ready, say **"proceed"** or **"next"**, and I will output **Batch 2** (`COMBAT_SPEC.md`, `PROGRESSION_SPEC.md`, `CODE_DEPENDENCY_GUIDE.md`, and `ASSET_MANIFEST.md`) in their entirety.

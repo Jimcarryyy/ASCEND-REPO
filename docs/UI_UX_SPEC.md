@@ -1,163 +1,130 @@
-# ASCEND-V1 — UI/UX SPECIFICATION & WIREFRAME MAP
+---
 
-> **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
-> **Scope:** Traditional Xianxia Palette, Sharp 90° Corners, `FredokaOne` Typography, HUD & Spirit Pouch.
+# 3. `docs/UI_UX_SPEC.md`
+
+```markdown
+# ASCEND — UI/UX Design System & Layout Specification
+
+## 1. Core Engineering Principles
+
+### 1.1 Studio-Authoritative Hierarchy (Strict Rule — ADR-041)
+**Runtime programmatic UI generation via `Instance.new` inside Lua scripts is strictly prohibited.**
+All GUI layouts, frames, buttons, gradients, text labels, and UIStrokes must be constructed inside Studio within `StarterGui`. Client controllers are strictly restricted to:
+- Listening to UI events (`Activated`, `MouseEnter`, `MouseLeave`).
+- Populating dynamic text, progress bar scales, and list templates.
+- Executing visual tweens (opacity fades, positional slides).
+- Toggling canvas visibility (`Enabled = true / false`).
+
+### 1.2 Standardized Typography System (ADR-042)
+- **Titles, Headers, Station Billboards & NPC Names:** `Enum.Font.Bangers`
+  - All Bangers text must include a solid black `UIStroke`:
+    - `UIStroke.Color = Color3.fromRGB(0, 0, 0)`
+    - `UIStroke.Thickness = 1.5` (Labels < 24pt) / `2.0` (Labels >= 24pt)
+- **Body Copy, Descriptions, Stats & Dialogue:** `Enum.Font.Fundamento`
+  - Clean, elegant readability tailored for Eastern Xianxia prose.
+
+### 1.3 DisplayOrder Layering Hierarchy (ADR-043)
+To eliminate overlapping modals and render priority conflicts, every ScreenGui in `StarterGui` must have an assigned `DisplayOrder`:
+
+| DisplayOrder | ScreenGui Name | Functional Purpose |
+| :---: | :--- | :--- |
+| **1** | `MasterHUDGui` | Persistent desktop/mobile gameplay HUD (Vitals, Skills, Currencies). |
+| **2** | `LowViewPortSkillsGUI` | Fallback skill cluster for compact mobile viewports. |
+| **5** | `OverheadUI` | World BillboardGuis for player, mob, and dummy vitals. |
+| **10** | `BlacksmithGui` | Weapon refinement (+10) and blade sharpening forge modal. |
+| **10** | `TeaHouseGui` | Spirit tea ordering and buff catalog modal. |
+| **10** | `SparringGuidanceGui` | Training dummy DPS tracking and sparring trial modal. |
+| **10** | `StarterGuideGui` | 4-tab interactive player onboarding guide modal. |
+| **10** | `SpiritPouchInventoryGui` | 60-slot storage, 2D weapon previews, and inspection window. |
+| **10** | `SectPavilionGui` | Sect duties, disciple rank promotions, and daily stipend modal. |
+| **10** | `AlchemyCauldronGui` | 3-slot herb combination and temperature minigame modal. |
+| **12** | `ArenaGUI` | Matchmaking status, countdown banners, and match resolution. |
+| **20** | `GlobalToastNotifGui` | Floating status messages and harvest notifications. |
+| **100** | `LoadingScreen` | ReplicatedFirst initial gate and asset preloader canvas. |
 
 ---
 
-## 1. Traditional Xianxia Palette System
+## 2. Color Token System (Dark Obsidian & Antique Gold — ADR-015)
 
-All HUD components, Spirit Pouch modals, and Alchemy Cauldrons enforce the traditional Xianxia color system:
-
-* **Main Panel**: `#F7EAE0` (`Color3.fromRGB(247, 234, 224)` Warm Cream White)
-* **Sub-Panels / Cards**: `#F9D2BA` (`Color3.fromRGB(249, 210, 186)` Soft Peach Accent)
-* **Border Stroke**: `#1D4533` (`Color3.fromRGB(29, 69, 51)` Deep Jade Green, `Thickness = 1.5`)
-* **Primary Text & Headers**: `#1D4533` (`Color3.fromRGB(29, 69, 51)` Deep Jade Green)
-* **Subtext & Buttons**: `#5E3122` (`Color3.fromRGB(94, 49, 34)` Rich Mahogany Wood)
-* **Corners**: **100% Sharp 90° Corners** (0px border-radius).
-
----
-
-## 2. Rarity-Tinted Item Slot Backgrounds
-
-Item grid slots in the Spirit Pouch (`InventoryController.luau`) enforce soft tinted background colors by rarity:
-
-* **Mythic / Immortal**: `#FEE2E2` (Soft Crimson Tint)
-* **Legendary**: `#FEF3C7` (Soft Amber Gold Tint)
-* **Epic**: `#F3E8FF` (Soft Purple Tint)
-* **Rare**: `#E0F2FE` (Soft Sapphire Blue Tint)
-* **Uncommon**: `#DCFCE7` (Soft Emerald Green Tint)
-* **Common**: `#F1F5F9` (Soft Slate Gray Tint)
-
-
----\n
-## 3. Custom Xianxia Vital HUD & Monetized Skin Specification
-
-* **Template Asset**: `rbxassetid://107254331482831` (`VitalHUDFrame`).
-* **Portrait Ring**: Houses a 3D Avatar Headshot thumbnail (`rbxthumb://type=AvatarHeadShot&id=...`).
-* **Diamond Level Badge**: Houses player level/breakthrough tier (`100`) rendered in `FredokaOne` bold RichText (`<b>100</b>`).
-* **Display Name**: Rendered in `FredokaOne` bold RichText (`<b>HAN_JUEEE</b>`, `#38BDF8` Cyan).
-* **HP Bar**: `#10B981` Emerald Green fill with `LuckiestGuy` font text (`389 / 800`) padded $14\text{px}$ left and $18\text{px}$ right.
-* **QI Bar**: `#3B82F6` Azure Blue fill with `LuckiestGuy` font text (`800 / 800`) padded $14\text{px}$ left and $18\text{px}$ right.
-* **Monetized HUD Skin Engine (`HUDSkinConfig.luau`)**: Supports equipping custom HUD skins (`DefaultBronze`, `SakuraImmortal`, `AzureDragon`). Equipping a skin updates `VitalHUDFrame.Image` AND auto-snaps slot offset positions (`HPSlotPosition`, `QISlotPosition`, `PortraitPosition`).
-* **Action Skill Bar (`ActionSkillBar`)**: Binds `Slot_E`, `Slot_F`, `Slot_M1`, `Slot_Q`, `Slot_R`, `Slot_Shift` to background `rbxassetid://97080305696865`, attaching keybind badges and dark radial/vertical swipe cooldown overlays with countdown timers (`HUDController.TriggerSkillCooldown`).
-
----
-
-## 4. Azure Cloud Realm Jade & Cloud Panel Design Identity (Approved)
-
-* **Main Modal Fill**: Soft Pale Jade Celadon (`#E2F1ED`).
-* **Watermark Art**: Subtle hand-painted Azure Cloud swirl watermarks (`#38BDF8`).
-* **Borders**: Contoured, non-straight Xianxia cloud scroll contours with gold & azure jade accents.
-* **Close Button Extension**: Top-right ornamental tab extending outside the main frame boundary designed as a custom circular close-button plaque slot.
-
-## 4. Main Vital HUD & Unit Formatting (`HUDController.luau`)
-
-### A. Simple Clean Qi Display
-* Main HUD Qi bar text strictly renders:
-  $$\mathbf{CurrentQi \:/\: CultivatedQi} \quad (\text{e.g., } \mathbf{43.3k \:/\: 75.0k})$$
-* **Rule:** The `MaxQiGoal` text is **COMPLETELY REMOVED** from the main HUD. No `[Goal: ...]` wording is displayed on the combat HUD bar.
-
-### B. Universal Short Unit Formatting (`CultivationConfig.FormatNumber`)
-All numerical HP and Qi text across HUDs, Overheads, and Damage Numbers format using short unit suffixes:
-* $< 1,000$: Integer (e.g. `200`)
-* $\ge 1,000$: Thousands (e.g. `1.0k`, `84.0k`)
-* $\ge 1,000,000$: Millions (e.g. `1.50M`, `95.0M`)
-* $\ge 1,000,000,000$: Billions (e.g. `1.20B`)
-
-### C. Dynamic Level Diamond
-* Level diamond calculates total Cultivation Level (1 to 90) across the 10 Realms:
-  $$\text{Level} = ((\text{RealmTier} - 1) \times 9) + \text{Order}$$
-* **Fix:** `HUDController` checks `payload.Tier ~= nil` before updating the level diamond, preventing level snapping to 1 during resource harvesting or inventory sync events.
-
----
-
-## 5. 3D Overhead Badges (`OverheadUIController.luau`)
-
-* **2-Line Format:** Player Name, HP Bar, and Qi Bar are removed from the 3D overhead to eliminate redundancy with the Vital HUD.
-  * **Line 1 (Gold Accent `#FFD700`):** `REALM NAME and RANK` (e.g., `Golden Core — Order 1`)
-  * **Line 2 (Jade Green Accent `#50DC78`):** `ALCHEMY NAME and RANK` (e.g., `Mortal Alchemist — Rank 1`)
-* **Typography & Outline:** Rendered in **`Enum.Font.LuckiestGuy`** with **thick black letter outlines** (`TextStrokeColor3 = Color3.fromRGB(0,0,0)`, `TextStrokeTransparency = 0`).
-* **Fixed Pixel Sizing:** Uses fixed BillboardGui pixel dimensions (`UDim2.new(0, 260, 0, 52)`) with `TextSize = 18` / `15`, preventing text from collapsing to 0 height in Studio.
-
----
-
-## 6. Custom Xianxia Loading Screen (`src/ReplicatedFirst/LoadingScreen.client.luau`)
-
-* **ReplicatedFirst:** Executes before game assets load, calling `ReplicatedFirst:RemoveDefaultLoadingScreen()`.
-* **Fullscreen Background:** Custom Xianxia artwork (`BACKGROUND_IMAGE_ID`) with dark overlay (`#000000`, 0.45 transparency).
-* **Dynamic Preloading:** Scans `ReplicatedStorage` and `SoundService` for renderable instances (`MeshPart`, `Sound`, `Decal`, `ImageLabel`) and tracks `ContentProvider:PreloadAsync()`.
-* **Server Sync Gate:** Holds progress bar at 95% until server fires `UpdateCultivation`, confirming player profile DataStore load.
-* **Skip Button:** `"SKIP [SPACE / CLICK]"` button appears after 1.5 seconds.
-
-### Official Dark Obsidian & Antique Gold Design Tokens (Updated 2026-08-20)
-
-- **Deep UI Background:** `#111827` (Dark Navy Charcoal)
-- **Secondary Surface:** `#1C2638` (Dark Blue-Gray)
-- **Raised Surface:** `#273246` (Card/Slot Background)
-- **Main Border:** `#8B6B32` (Antique Bronze-Gold, 1.5px to 2px stroke)
-- **Highlight Border:** `#C49A4A` (Warm Celestial Gold)
-- **Primary Text:** `#F1E8D2` (Warm Ivory, `Enum.Font.FredokaOne` / `GothamBold`)
-- **Secondary Text:** `#A9A99F` (Muted Gray-Beige)
-- **Jade Accent:** `#10B981` (HP / Vitality / Success)
-- **Spirit Blue:** `#3B82F6` (Qi Energy / Info)
-- **Vermilion:** `#E63946` (Danger / Close / Drop)
-- **DisplayOrder Hierarchy:**
-  - `DisplayOrder = 99`: Top-Level Toasts (`AscendToastGui`)
-  - `DisplayOrder = 25`: Modals (`SpiritPouchGui`, `SectMarketGui`, `SpiritCauldronGui`)
-  - `DisplayOrder = 18`: Arena In-Match HUD (`ArenaHUDGui`)
-  - `DisplayOrder = 10`: Persistent Trackers (`QuestTrackerGui`)
-  - `DisplayOrder = 5`: Main HUD & Top Menu (`VitalHUDGui`, `TopMenuGUI`, `SkillsGUI`)
-
-  ## Additive UI/UX Specification (2026-08-27) — Studio Hierarchy Bindings & 3D Viewports
-
-### 1. Studio-Authoritative UI Binding Paradigm
-* Replaced programmatic `Instance.new` modal creation with direct bindings to Studio `StarterGui` instances (`SpiritPouchInventoryGui`, `SectPavilionGui`, `ArenaGUI`, `TopMenuGUI`).
-
-### 2. Spirit Pouch 3D Viewport Engine (`InventoryController.luau`)
-* **3D Sword & Herb Rendering:** Dynamically queries `ReplicatedStorage.Weapons` and `ReplicatedStorage.Herbs` to render a $35^\circ$ martial diagonal in grid slots and a live-spinning 3D mesh in the large inspection window.
-* **Adaptive Grid Sizing:** Dynamically scales from 6 columns on desktop ($100\times 100\text{px}$) down to 4 columns on mobile ($56\times 56\text{px}$).
-
-### 3. 5-Gate Loading Screen Engine (`LoadingScreen.client.luau`)
-* Executes at $t=0$ in `ReplicatedFirst`, synchronizing (1) Engine load, (2) 3D Model/Audio preloading, (3) Character & Sword Rig Mount, (4) DataStore V2 Sync, and (5) Smooth multi-element fade-out.
-
-
-# ASCEND — UI / UX Specification & Interface Architecture
-
-> Studio Hierarchy Bindings, Responsive Viewport Adaptation & Design Tokens
-
----
-
-## 1. Studio ScreenGui Hierarchy Mappings
-
-| ScreenGui Name | Root Frame | Controller | Function & Bound Components |
+| Token | Hex Value | RGB Value | Application |
 | :--- | :--- | :--- | :--- |
-| **`SkillsGUI`** | `BottomCenterFrame` | `SkillBarController` | Desktop action HUD: `IntentBarFrame`, `HPBarFrame`, `QIBarFrame`, `M1_SKILL`, `R_SKILL`, `B_SKILL`, `V_SKILL`, `C_SKILL`. |
-| **`LowViewPortSkillsGUI`** | `BottomCenterFrame` | `SkillBarController` | Mobile/Tablet bottom-center HUD: `IntentBarFrame`, `HPBarFrame`, `QIBarFrame` (3 clean bars only). |
-| **`MobileCombatHUD`** | `MobileCombatCluster` | `SkillBarController` | Dynamic mobile right-side 2×3 touch cluster (`M1`, `R`, `V`, `B`, `C` around native Jump). |
-| **`CurrencyGUI`** | `CurrencyFrame` | `SkillBarController` | Top-right live currency counters: `CPFrame` (Contribution Points) & `SpiritStoneFrame` (Spirit Stones). |
-| **`BottomMenuGui`** | `MenuFrame` | `SkillBarController` | Bottom-left modal toggles: `BagImageButton` (Pouch) & `ArenaImageButton` (1v1 Arena). |
-| **`GlobalToastNotifGui`** | `ToastFrame` | `HUDController` | Top-center notification text with generation-ID anti-spam transitions. |
-| **`SectMissionGui`** | `MissionFrame` | `QuestTrackerController` | Top-left 3-tier quest tracking cards (`Frame1`, `Frame2`, `Frame3`). |
-| **`QIZoneNotifGui`** | `ZoneFrame` | `CultivationController` | Top-left Qi zone speed multiplier banner (e.g. `EMERALD MIST CAVERNS - 5.0X SPEED`). |
-| **`SectMerchantMarketGui`** | `MainFrame` | `MarketController` | Sect Exchange Pavilion: auto-populating swords, exact CP (`1,970 CP`), buy/sell loot. |
-| **`SpiritPouchInventoryGui`** | `MainFrame` | `InventoryController` | 60-slot spirit pouch with 2D high-res weapon icons, sorting, and item inspection. |
+| `DarkObsidian` | `#111827` | `17, 24, 39` | Master modal background, deep canvas fill. |
+| `MidnightSteel` | `#1C2638` | `28, 38, 56` | Item slot cards, panel surfaces, inner frames. |
+| `AntiqueGold` | `#C49A4A` | `196, 154, 74` | Modal borders, title underlines, primary buttons. |
+| `BronzeGold` | `#8B6B32` | `139, 107, 50` | Inactive button borders, secondary separators. |
+| `WarmIvory` | `#F1E8D2` | `241, 232, 210` | Primary header text, button labels, key stats. |
+| `MutedSilver` | `#9CA3AF` | `156, 163, 175` | Description copy, cooldown counters, subtitles. |
+| `JadeGreen` | `#10B981` | `16, 185, 129` | Health bar fill, positive buffs, successful forge. |
+| `AzureBlue` | `#3B82F6` | `59, 130, 246` | Qi bar fill, telekinesis accents, meditation motes. |
+| `AmberGold` | `#F59E0B` | `245, 158, 11` | Sword Intent bar fill, empowered strikes, criticals. |
+| `CrimsonRed` | `#EF4444` | `239, 68, 68` | Guard-break warning, damage taken, failed forge. |
 
 ---
 
-## 2. Responsive Viewport Switching Rules
+## 3. Master Desktop HUD Layout (`StarterGui.MasterHUDGui`)
 
 ```text
-Viewport / Device Check (Camera.ViewportSize & UserInputService)
-       │
-       ├── Desktop (Keyboard / Viewport Width >= 950px):
-       │   ├── SkillsGUI.Enabled = true (BottomCenterFrame.Visible = true)
-       │   ├── LowViewPortSkillsGUI.Enabled = false (Visible = false)
-       │   └── MobileCombatHUD.Enabled = false (Visible = false)
-       │
-       └── Mobile / Tablet (Touch / Viewport Width < 950px):
-           ├── SkillsGUI.Enabled = false (BottomCenterFrame.Visible = false)
-           ├── LowViewPortSkillsGUI.Enabled = true (BottomCenterFrame.Visible = true)
-           ├── MobileCombatHUD.Enabled = true (MobileCombatCluster.Visible = true)
-           └── Native Roblox JumpButton in TouchGui remains active & untouched
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ [TOP-LEFT]                          [TOP-CENTER]               [TOP-RIGHT]  │
+│ Sect Duty Tracker               Global Toast Banners          Spirit Stones │
+│ "Refine 3 Herbs (2/3)"         "Discovered 100-Yr Ginseng"         48,285   │
+│                                                               Contribution  │
+│                                                                 1,970 CP    │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│ [BOTTOM-LEFT]                       [BOTTOM-CENTER]                         │
+│ Navigation Tray            HP  [████████████████████████] 1,500/1,500       │
+│ [Bag] [Sect] [Map]         QI  [████████████████████████]   850/850         │
+│ [Meditate] [Settings]      INT [██████████░░░░░░░░░░░░░░]   60% (3/5)       │
+│                            ┌───┬───┬───┬───┬───┬───┐                        │
+│                            │ M1│ Q │ E │ F │ T │Shift                       │
+│                            └───┴───┴───┴───┴───┴───┘                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+3.1 Cluster Breakdown
+Top-Center (Global Toast Notifications):
+Renders animated status toasts (vintage herb discoveries, pill refinement grade, tea drinking confirmation).
+Managed by HUDController.luau.
+Bottom-Center (Vitals & Action Hotbar):
+HP Bar: Dual-gradient jade fill (#10B981) with white text (CurrentHP / MaxHP).
+Qi Bar: Azure blue fill (#3B82F6) displaying internal energy.
+Sword Intent Bar: Segmented amber bar filling in 25% increments (4 hits = 100% discharge flash).
+Action Hotbar: 6 slots displaying keybinds (M1, Q, E, F, T, Shift) with radial cooldown sweeps.
+Managed by SkillBarController.luau.
+Top-Left (Sect Duty Tracker):
+Shows active daily duties from Deacon Zhao with real-time numeric tracking ((2/3)).
+Managed by QuestTrackerController.luau.
+Top-Right (Currencies & Identity):
+Displays Spirit Stones and Sect Contribution Points (CP) with gold/jade currency icons.
+Managed by SkillBarController.luau / SectController.luau.
+Bottom-Left (Navigation Menu Tray):
+Interactive button tray toggling modals: [Bag], [Sect], [Map], [Meditate], and [Settings].
+Managed by HUDController.luau.
+4. Lower Sect Facility Modals
+4.1 Blacksmithing Forge (StarterGui.BlacksmithGui)
+Station Target: Master Blacksmith Anvil / Sect_NPC_MadameTie.
+Panels:
+Equipped Weapon Card: Displays equipped sword name, rarity border, refinement level (+0 to +10), and base ATK bonus.
+Refine Action Panel: Displays material requirements (MountainIronIngot, Spirit Stones), success percentage chance, and "Refine Blade" action button.
+Blade Sharpening Panel: Displays 100 Spirit Stone cost, +10% Crit Chance description, and "Sharpen Blade" action button with active countdown timer.
+4.2 Spirit Tea Pavilion (StarterGui.TeaHouseGui)
+Station Target: Sect_NPC_XiaoLing.
+Panels:
+Tea Selection Grid: 3 interactive cards displaying Jade Dew, Crimson Ginseng, and Dragon Well.
+Details Panel: Outlines instant recovery values, timed buff duration (10–15 min), Spirit Stone price, and "Brew & Drink" action button.
+4.3 Training Grounds & Sparring Guidance (StarterGui.SparringGuidanceGui)
+Station Target: Sect_NPC_InstructorWu.
+Panels:
+Performance Tracker: Displays real-time and peak DPS recorded across the 3 Ironwood Dummies.
+Action Controls: "Start Sparring Trial" button (prompts 3-dummy combo challenge) and "Reset DPS" button (clears combat accumulators).
+4.4 Sect Starter Guide (StarterGui.StarterGuideGui)
+Station Target: Sect_NPC_ElderQing.
+Tabs (Bangers headers with black UIStroke):
+Controls & Movement: Keybind table (M1, CTRL, Shift, T, C, R, B, V, Q, E, F).
+Cultivation & Breakthroughs: Explains Dantian Qi accumulation, 2.0x Qi nodes, and heavenly tribulations.
+Sword Intent & Blades: Details the 5-hit combo, Sword Intent empowerment, and the 5 sword families.
+Sect Duties & Arena: Details daily duties, CP ranks, and the 1v1 Sparring Arena rules.

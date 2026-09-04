@@ -271,3 +271,74 @@ The following are historical `PROJECT_STATUS.md` completion snapshots, preserved
 - Fixed `AlchemyController.luau` line 716 `UIGridLayout.CellPadding` type error (`UDim2` expected, got `UDim`).
 - Fixed trailing backslash syntax error in `InventoryController.luau` line 430.
 - Fixed non-existent `NotifyClient` remote timeout in `RemoteEvents.luau`.
+
+
+# CHANGELOG — ASCEND
+
+## Purpose
+This document records historical feature additions, engine enhancements, balance passes, and architectural updates across all development milestones.
+
+---
+
+## [Phase 8.2 — Lower Layer Debug Pass, Typography Standard & Desktop HUD Rebuild] — September 2026
+
+### Added
+- **Typography Standard Enforcement (ADR-042):**
+  - Standardized all titles, headers, station signs, and NPC names to **`Enum.Font.Bangers`** with a solid black `UIStroke` outline (`Thickness = 1.5 - 2.0`).
+  - Standardized all body copy, descriptions, lore text, and dialogue to **`Enum.Font.Fundamento`**.
+- **DisplayOrder Layering Architecture (ADR-043):**
+  - Assigned strict `DisplayOrder` layers to all 10 ScreenGuis in `StarterGui` (HUD = 1, Facilities = 10, Toasts = 20, Loading = 100), permanently eliminating modal overlap.
+- **Three-Tier Elevation Sect World Architecture (ADR-044):**
+  - Structured the Jade Pure Sect hub across 3 distinct elevation tiers (Lower Services & Training, Middle Dao Sanctuary & Sword Altar, Upper Sovereign Palace Hall with black roof tiles).
+  - Placed the Top 7 Pillars of the Sect (elite lore masters) on Tier 3.
+- **Studio-Authoritative UI Mandate (ADR-041):**
+  - Permanently prohibited runtime `Instance.new` UI generation inside Lua controllers. All UI elements must exist natively in `StarterGui`.
+
+### Fixed & Debugged (Messages 175–179)
+- **Tea House Crash Fix (`TeaHouseManager.luau:88`):** Fixed `invalid argument #1 to 'min' (number expected, got nil)` by validating numeric health parameters before clamp/min operations.
+- **Blacksmith Initialization & Prompt Fix (`BlacksmithManager.luau:14, 63`):** Resolved `attempt to call a nil value` and `attempt to index nil with 'WaitForChild'` by properly decoupling character load dependencies and connecting the ProximityPrompt directly to `Sect_NPC_MadameTie` and `Master Blacksmith Anvil`.
+- **Sect Starter Guide Prompt Collision Fix (`StarterGuideController.luau`):** Resolved bug where interacting with Elder Qing inadvertently triggered `SectPavilionGui`. Bound ProximityPrompt strictly to `StarterGui.StarterGuideGui`.
+- **Sparring Guidance DPS Reset Loop Fix (`SparringGuidanceController.luau`):** Resolved client spam loop during dummy DPS reset routines and bound UI buttons cleanly to Instructor Wu.
+- **Alchemy Cauldron Interface Migration:** Migrated hardcoded Lua UI in `AlchemyController.luau` to native Studio ScreenGui (`StarterGui.AlchemyCauldronGui`).
+- **Character Locomotion Stair Tripping Fix:** Corrected wedge collisions and step height sizing on the Grand Staircase and Sword Altar foundation to prevent R6 characters from flipping or getting stuck while running.
+
+---
+
+## [Phase 8.1 — Lower Layer Sect Facilities & Interactive NPC Ecosystem] — September 2026
+
+### Added
+- **Blacksmithing Refinement & Sharpening Station (`BlacksmithManager.luau` & `BlacksmithController.luau`):**
+  - Server-authoritative weapon refinement up to `+10` (+5% base ATK per level; up to +50% ATK).
+  - Dynamic success scaling (`max(0.35, 0.95 - Refine * 0.08)`) with Spirit Stone and `MountainIronIngot` costs.
+  - Blade sharpening: 100 Spirit Stones for +10% Critical Strike Chance for 15 minutes.
+- **Spirit Tea Pavilion Subsystem (`TeaHouseManager.luau` & `TeaHouseController.luau`):**
+  - 3 craftable spirit brews with instant recovery and 10–15 minute timed attribute buffs (*Jade Dew*, *Crimson Ginseng*, *Dragon Well*).
+- **Training Grounds & Sparring Trials (`SparringGuidanceController.luau` & `ImmortalDummyHandler.server.luau`):**
+  - 3 Ironwood Dummies in `Workspace.Functional_Stations.Sect_TrainingGround` featuring 10,000,000 HP, instant auto-regen, rolling 5s DPS tracking, and floating overhead numbers.
+- **Interactive Sect Starter Guide (`StarterGuideController.luau`):**
+  - 4-tab interactive guide bound to `Sect_NPC_ElderQing` (Controls, Cultivation, Sword Intent, Sect Duties).
+- **Central Network Remote Expansion (`RemoteEvents.luau`):**
+  - Registered `BlacksmithAction` and `TeaHouseAction`, expanding the network pool to 22 remotes.
+- **Controller Reorganization:**
+  - Consolidated `OverheadUIController.luau` into `src/StarterPlayer/StarterPlayerScripts/Controllers/`.
+
+---
+
+## [Phase 8.0 — Studio GUI Overhaul, Looping Sword Intent & Asset Polish] — 2026-09-02
+
+### Added
+- **Studio-Authoritative GUI Integration:** Bound client controllers to Studio `StarterGui` instances.
+- **Looping Sword Intent Combat Engine:** Added dynamic Sword Intent gauge (+25%/hit, 1.75× empowered strike at 100%, 8%/s decay after 2.5s inactivity).
+- **Mobile Touch Combat Cluster:** Ergonomic 2×3 touch layout (`M1`, `R`, `V`, `B`, `C`) around native Jump button.
+- **2D Weapon Asset Showcase:** Integrated 8 live high-res sword icons (`UIAssets.luau`) and replaced 3D viewports with 2D cards.
+- **Keybind Consolidation:** Standardized `C` as exclusive meditation key; removed redundant `M` keybind.
+
+---
+
+## [Phase 7.3 — Combat Overhaul, 3D Inventory Viewports & 1v1 Arena Polish] — 2026-08-27
+
+### Added
+- **Server Combat & CC State Machine (`CombatStateManager.luau`):** Managing `ActionState`, `CCState`, Posture, Guard-Break, and a 0.6s hyperarmor buffer.
+- **Block & Perfect Parry (`T` Key):** 180° frontal guard arc (80% mitigation); 0.22s Perfect Parry window (100% negation, 0.5s stagger, +5% Qi).
+- **Physical Dual-Pad Matchmaking (`ArenaManager.luau`):** Standby detection on `DuelPad1` and `DuelPad2`, 3-second countdown, 1,000 HP normalization, non-lethal defeat resolution.
+- **Concurrent Client Boot (`ClientMain.client.luau`):** Concurrently boots all controllers via `task.spawn()`.

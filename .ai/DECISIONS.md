@@ -247,3 +247,101 @@ Records structural architectural decisions, design paradigms, security patterns,
 * **Decision:**
   1. Updated `MarketController.luau` to dynamically iterate through `ItemConfig.GetAllItems()`, auto-populating all Tier 1–8 swords into the `SWORDS` and `ALL` tabs.
   2. Swapped numerical rounding for exact integer formatting (`FormatCurrency`), ensuring `1,970 CP` displays accurately across the Pavilion header and HUD.
+
+
+  # Architecture Decision Log — ASCEND
+
+## Purpose
+This document records structural architectural decisions, design paradigms, security standards, and engine pivots across the ASCEND project.
+
+---
+
+### ADR-012: Codebase Pruning & Legacy Non-Sword Purge
+* **Status:** Accepted
+* **Context:** Legacy gauntlet and spear scripts cluttered the codebase and diluted the Xianxia identity.
+* **Decision:** Deleted `GauntletServer`, `SpearServer`, `GauntletConfig`, and `SpearConfig`. Routed 100% of attack requests strictly through `FlyingSwordServer.luau`.
+
+### ADR-013: Stat Progression Curve Normalization
+* **Status:** Accepted
+* **Context:** Astronomical 50B numbers created arithmetic overflow and UI layout distortion.
+* **Decision:** Re-anchored base stats to clean mathematical curves governed by `CultivationConfig.luau`.
+
+### ADR-014: Studio-Authoritative 3D Attachment Workflow
+* **Status:** Accepted
+* **Context:** Pure CFrame code offsets required tedious trial-and-error manual adjustments.
+* **Decision:** Position `RightGripAttachment` and `BodyBackAttachment` visually inside 3D models in Studio. `WeaponManager.luau` reads attachments directly on spawn.
+
+### ADR-015: Dark Obsidian & Antique Gold UI Palette Standard
+* **Status:** Accepted
+* **Context:** Interface styling was fragmented between legacy pastel light-mode cards and dark modals.
+* **Decision:** Standardized on `#111827` (Deep Background), `#1C2638` (Secondary Surface), `#8B6B32` / `#C49A4A` (Antique Gold Borders), `#F1E8D2` (Warm Ivory Text), `#10B981` (Jade Vitality), and `#3B82F6` (Azure Qi).
+
+### ADR-028: 10 Major Realm Cultivation & Dantian Progression Overhaul
+* **Status:** Accepted
+* **Context:** Original 5-realm structure felt too brief and lacked the exponential progression loop characteristic of Xianxia literature.
+* **Decision:** Expanded hierarchy to 10 Major Realms with 9 Orders each (90 total stages). Established tripartite Dantian architecture (`CurrentQi <= CultivatedQi <= MaxQiGoal`) where `CultivatedQi` and `CurrentQi` are 100% preserved upon breakthrough.
+
+### ADR-029: Avatar Rig Paradigm Pivot (R6 Standard) & Dedicated Locomotion
+* **Status:** Accepted
+* **Context:** R15 15-joint keyframing was overly complex for a solo developer, whereas R6 ensures fast keyframing, snappy martial arts readability, and 60 FPS mobile performance.
+* **Decision:** Pivoted character baseline to R6. Implemented `Animate.client.luau` in `StarterCharacterScripts` to override default movement scripts, adding idle yaw pinning, velocity-synced footstep audio, and anti-ragdoll state locking.
+
+### ADR-030: Tree Collision Cleanup & Organic Wind Physics
+* **Status:** Accepted
+* **Context:** Foliage bounding boxes blocked character movement on slopes, and static world props felt lifeless.
+* **Decision:** Created `TreeCollisionManager.luau` (sets foliage `CanCollide = false` while keeping trunks solid) and `WindEnvironmentController.luau` (organic desynchronized vertex swaying with <160 stud spatial culling).
+
+### ADR-033: Studio-Authoritative GUI Architecture
+* **Status:** Accepted
+* **Context:** Programmatic `Instance.new` UI generation caused layout drift and made Studio visual editing impossible.
+* **Decision:** Migrated all UI components to direct bindings on Studio `StarterGui` hierarchies (`SkillsGUI`, `LowViewPortSkillsGUI`, `CurrencyGUI`, `BottomMenuGui`, `SectMissionGui`, `GlobalToastNotifGui`).
+
+### ADR-034: Looping Sword Intent Combat Engine
+* **Status:** Accepted
+* **Context:** Basic attack combos lacked mid-combat progression and mechanical reward for aggression.
+* **Decision:** Implemented dynamic Sword Intent gauge (+25% per landed M1 strike; at 100%, next strike deals 1.75× Empowered Damage and resets gauge to 0%). Decay activates at 8%/s after 2.5s of hit inactivity.
+
+### ADR-036: Keybind Consolidation
+* **Status:** Accepted
+* **Context:** Overlapping keys (`C` vs `M` for meditation; `F` skill naming collisions) caused input confusion.
+* **Decision:** Enforced canonical bindings: `M1` (Combo), `Q` (Sword Tempest), `E` (Telekinesis Thrust), `F` (Falling Sky Slam), `T` (Block/Parry), `Shift` (Dash), `C` (Cultivate), `R` (Draw/Sheath), `B` (Breakthrough), `CTRL` (Sprint Toggle).
+
+### ADR-038: Blacksmith Weapon Refinement (+10) & Blade Sharpening Engine
+* **Status:** Accepted
+* **Context:** Players needed permanent weapon progression sinks and temporary combat buffs using gathered materials and currency.
+* **Decision:** Implemented server-authoritative `BlacksmithManager.luau` and client `BlacksmithController.luau`. Supported refining weapons up to `+10` (+5% base ATK per level). Added Blade Sharpening (100 Spirit Stones, +10% Crit for 15 minutes).
+
+### ADR-039: Spirit Tea Pavilion Buff Architecture & Timed Attribute Modifiers
+* **Status:** Accepted
+* **Context:** The game lacked consumable session buffs tied to low-cortisol roleplay in the Sect hub.
+* **Decision:** Implemented server-authoritative `TeaHouseManager.luau` and client `TeaHouseController.luau`. Added 3 distinct tea brews providing instant restoration (HP/Qi) plus timed attribute buffs (10–15 min) for meditation cultivation speed and sword intent accumulation.
+
+### ADR-040: Interactive Sect Starter Guide & Authoritative Training Grounds
+* **Status:** Accepted
+* **Context:** New players lacked in-game onboarding for martial controls, and there was no objective way to measure combo damage or test DPS.
+* **Decision:** Implemented `StarterGuideController.luau` bound to `Sect_NPC_ElderQing` (4-tab interactive manual). Implemented `ImmortalDummyHandler.server.luau` on 3 Ironwood Dummies with server-authoritative DPS calculation and reset hooks via `SparringGuidanceController.luau`.
+
+### ADR-041: Strict Prohibition of Runtime Programmatic UI Generation
+* **Status:** Accepted (Developer Messages 168, 172, 178)
+* **Context:** Generating UI layouts dynamically via Lua `Instance.new()` leads to layout misalignment, unmaintainable codebases, and inability to adjust styling visually in Roblox Studio.
+* **Decision:** All GUI elements must be authored directly in `StarterGui` (via Studio Tools or Command Bar scripts). Client scripts are strictly limited to acquiring instance references, binding events, tweening, and populating live text data.
+
+### ADR-042: Sect Typography Standard (`Bangers` & `Fundamento`)
+* **Status:** Accepted (Developer Messages 107, 108, 125, 127, 128, 168)
+* **Context:** Font choices were inconsistent across the game (mixing Cinzel, FredokaOne, and default sans-serif).
+* **Decision:** Standardized typography across the entire project:
+  1. **Headers, Titles, Station Billboards & NPC Names:** `Enum.Font.Bangers` with a mandatory solid black `UIStroke` outline (`Color3.fromRGB(0, 0, 0)`, `Thickness = 1.5 - 2.0`).
+  2. **Body Copy, Descriptions, Quest Details & Dialogue:** `Enum.Font.Fundamento`.
+
+### ADR-043: ScreenGui DisplayOrder Layering Hierarchy
+* **Status:** Accepted (Developer Messages 175, 183)
+* **Context:** Opening facility modals caused visual collision and input blocking with the persistent HUD.
+* **Decision:** Enforced strict DisplayOrder hierarchy: `MasterHUDGui` = 1, `OverheadUI` = 5, all Facility Modals (`BlacksmithGui`, `TeaHouseGui`, etc.) = 10, `ArenaGUI` = 12, `GlobalToastNotifGui` = 20, `LoadingScreen` = 100.
+
+### ADR-044: Three-Tier Elevation Sect World Architecture & Aesthetic
+* **Status:** Accepted (Developer Messages 2, 38, 94, 105, 115, 131, 133, 134)
+* **Context:** Flat world terrain felt uninspired and lacked the grand spatial hierarchy characteristic of prominent Xianxia sword sects.
+* **Decision:** Structured Zone 1 into 3 distinct stepped elevation tiers:
+  - **Tier 1 (Lower):** Practical services, crafting, training grounds, daily duties, outer disciples, and market.
+  - **Tier 2 (Middle):** Elevated Dao Sanctuary and Sword Altar (blade attunement/gacha) with non-trip R6 stairs and inner disciple quarters.
+  - **Tier 3 (Upper):** Sovereign Sect Palace with black roof tiles, housing the Supreme Sect Leader, Grand Sword Elder Liang, and the Top 7 Pillars of the Sect.
