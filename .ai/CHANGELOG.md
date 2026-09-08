@@ -342,3 +342,31 @@ This document records historical feature additions, engine enhancements, balance
 - **Block & Perfect Parry (`T` Key):** 180° frontal guard arc (80% mitigation); 0.22s Perfect Parry window (100% negation, 0.5s stagger, +5% Qi).
 - **Physical Dual-Pad Matchmaking (`ArenaManager.luau`):** Standby detection on `DuelPad1` and `DuelPad2`, 3-second countdown, 1,000 HP normalization, non-lethal defeat resolution.
 - **Concurrent Client Boot (`ClientMain.client.luau`):** Concurrently boots all controllers via `task.spawn()`.
+
+## [Phase 8.3 — Jade Pure Sect Architecture, 19-NPC Roster & Master HUD Integration] — September 2026
+
+### Added
+- **Complete 16-Station Functional Suite (`Workspace.Functional_Stations`):**
+  - Rebuilt all interactive world assets: `Murim_SpawnDais`, `Sect_TrainingGround`, `Sect_AlchemyStation` (with 3D `EightTrigramsCauldron`), `Sect_Mission_And_Leaderboard`, `Sect_GuardHouse_VerificationPoint`, `Sect_Blacksmith_Forge`, `Sect_TeaHouse_Pavilion`, `Sect_SwordAltar_Complete`, `Sect_Duelist_Pavilion`, `Sect_Solitary_SwordArena`, `Sect_Treasury_Shopfront`, `Sect_BankVault_Stash`, `Sect_Wilderness_PortalGate`, `Sect_Patriarch_ThroneDais`, `Sect_Council_DiscussionPavilion`, and `Sect_Ancestor_SeclusionDais`.
+- **Complete 19-Character Sect NPC Suite (`Workspace.NPCs`):**
+  - **Tier 1 (Lower):** Guard, Guide Elder Qing, Master Shen (Alchemy), Deacon Zhao (Missions), Merchant Qian (Trader), Instructor Wu (Sparring), Outer Disciple, Madame Tie (Blacksmith), Xiao Ling (Tea Hostess), Disciple Shi (Sweeper).
+  - **Tier 2 (Middle):** Grand Sword Elder Liang, Steward Jin (Treasury), Vault Keeper Lu (Bank), Daoist Feng (Portal Gatekeeper), Inner Disciple, Senior Sister Xue (Sword Prodigy), Disciple Wei (Formations), Disciple Lin (Formations).
+  - **Tier 3 (Upper):** Patriarch Han (Sect Master), Elder Tie (Discipline/War), Ancestor Han's Avatar (1,000-Yr Seclusion), Core Disciple, Elder Mu (Medicine), Elder Ba (Formations), Elder Ling (Scriptures), Elite Sky-Sword Guard (Male), Elite Sky-Sword Guard (Female), Palace Maid Attendant.
+- **The 7 Sword Pillars of the Jade Pure Sect:**
+  - Ye Chen (Azure Dragon), Hong Lian (Crimson Flame), Leng Wushuang (Frost Lotus), Lei Zhen (Thunder Crag), Gu You (Cosmic Void), Feng Qing'er (Celestial Wind), and Mo Chen (Shadow Asura).
+- **MasterHUDGui Live Integration:**
+  - Connected `SkillBarController.luau`, `HUDController.luau`, `QuestTrackerController.luau`, and `CultivationController.luau` directly to `StarterGui.MasterHUDGui`.
+- **12 Pre-Built Modal GUIs in `StarterGui`:**
+  - `BlacksmithGui`, `TeaHouseGui`, `StarterGuideGui`, `SparringGuidanceGui`, `AlchemyGui`, `SwordAltarGachaGui`, `ContributionShopGui`, `BankVaultGui`, `WildernessPortalGui`, `PatriarchAudienceGui`, `CouncilElderDiscussionGui`, `AncestorSeclusionGui`, `DisciplineHallGui`, `BossHealthHUD`, `GatheringHUD`, `DeathReincarnationGui`, `HeavenlyTreasuryGui`, `SettingsGui`.
+
+### Changed
+- **Sect Identity & Palette Lock:** Standardized on the **Cobblestone (`#9B968C`) + Dark Slate (`#282D37`) + Antique Brass (`#C3A55F`)** suite with black ceramic pagoda roof tiles.
+- **Typography Standard:** Enforced `Bangers` with black `UIStroke` for headers, titles, and buttons; `Fondamento` for lore, descriptions, and stats.
+- **DisplayOrder Hierarchy:** Set `MasterHUDGui = 10`, all Facility Modals = `50`, and `DeathReincarnationGui = 60`.
+
+### Fixed
+- **Stair Tripping Bug:** Implemented $1.0\text{-stud}$ step increments ($28\text{ steps}$ over $28\text{ studs}$) on the Grand Staircase and Sword Altar Foundation, allowing R6 characters to sprint without tripping.
+- **Floor Sinking & Z-Fighting Bug:** Replaced large flat cylinder floor colliders with solid flat blocks, eliminating texture flickering and character floor dipping.
+- **Madame Tie & Anvil Prompt Fix:** Added recursive ancestor detection in `BlacksmithManager.luau` and `BlacksmithController.luau`.
+- **Elder Qing Prompt Collision Fix:** Removed `"seek guidance"` from `SectManager.luau` so Elder Qing exclusively opens `StarterGuideGui`.
+- **TopBar Overlap:** Shifted `TopLeftDutyTracker` down by $+56\text{px}$ to clear Roblox CoreGui buttons.

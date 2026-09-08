@@ -65,3 +65,27 @@ All communication flows strictly through the 22 centralized RemoteEvents:
 - **World & Lower Layer Facilities (4):** `GatheringAction`, `AlchemyAction`, `BlacksmithAction`, `TeaHouseAction`
 - **Sect & Duties (4):** `SectAction`, `UpdateSect`, `QuestAction`, `UpdateQuestTracker`
 - **1v1 Sparring Arena (3):** `ArenaAction`, `ArenaRegister`, `ArenaMatchUpdate`
+
+# ASCEND — Project Status Overview
+
+## Status Summary
+* **Current Milestone:** Phase 8.3 — MasterHUDGui Live Integration & World Finalization
+* **Sect Architecture:** Jade Pure Sword Sect (3-Tier Stepped Mountain Fortress)
+* **Master Persistence Key:** `ASCEND_PlayerData_V2`
+* **Avatar Rig Standard:** Roblox R6 Standard Rig (All Native Attachments Active)
+* **Palette Standard:** Cobblestone (`#9B968C`) + Dark Slate (`#282D37`) + Antique Brass (`#C3A55F`)
+* **Typography Standard:** `Bangers` (Titles/Headers) & `Fondamento` (Body/Stats)
+
+---
+
+## Subsystem Health & Operational Readiness
+
+| Subsystem | Status | Core Script / Module Architecture | Implementation Details & Live Capabilities |
+| :--- | :---: | :--- | :--- |
+| **Master HUD Suite** | 🟢 Operational | `StarterGui.MasterHUDGui`, `SkillBarController`, `HUDController`, `QuestTrackerController` | Unified 5-cluster HUD. Live HP/Qi/Intent bars, 10-slot skill bar with cooldown sweeps, live CP & Spirit Stones, Sect Duty tracker, and bottom nav buttons. `DisplayOrder = 10`. |
+| **Functional Stations Suite** | 🟢 Operational | `Workspace.Functional_Stations` (16 Stations) | 100% rebuilt and verified: Spawn Dais, Training Ground (3 Immortal Dummies), Alchemy Station, Mission/Leaderboard Stele, Guard House, Blacksmith Forge, Tea Pavilion, Sword Altar Complete, Duelist Pavilions, Solitary Arena, Treasury Shopfront, Bank Vault Stash, Wilderness Portal, Patriarch Throne, Council Pavilion, Seclusion Dais. |
+| **Sect NPC Suite** | 🟢 Operational | `Workspace.NPCs` (19 NPCs + 7 Pillars) | All 3 tiers populated with R6 rigs, native attachments, unanchored animation-ready limbs, welded geometric clothing, and Bangers UI. |
+| **Blacksmithing Facility** | 🟢 Operational | `BlacksmithManager`, `BlacksmithController`, `StarterGui.BlacksmithGui` | Weapon refinement up to +10 (+5% ATK/level) and Blade Sharpening (+10% Crit for 15 min). Prompt hook fixed. |
+| **Spirit Tea Pavilion** | 🟢 Operational | `TeaHouseManager`, `TeaHouseController`, `StarterGui.TeaHouseGui` | 3 spirit brews (Jade Dew, Crimson Ginseng, Dragon Well) with instant recovery and 10–15 min timed buffs. |
+| **Spirit Cauldron Alchemy** | 🟢 Operational | `AlchemyConfig`, `AlchemyManager`, `AlchemyController`, `StarterGui.AlchemyGui` | Static 3-panel UI in StarterGui. Auto-mounts 3D EightTrigramsCauldron with smoke VFX. Manual 3-slot combination, live herb icons, and quality pill metadata. |
+| **1v1 Sparring Arena** | 🟢 Operational | `ArenaManager`, `ArenaController`, `Sect_Solitary_SwordArena` | Sealed 120-stud flat circular arena with forcefield barrier. Dual-pad queue via `Sect_Duelist_Pavilion` with 3-second countdown and 1,000 HP stat normalization. |

@@ -345,3 +345,47 @@ This document records structural architectural decisions, design paradigms, secu
   - **Tier 1 (Lower):** Practical services, crafting, training grounds, daily duties, outer disciples, and market.
   - **Tier 2 (Middle):** Elevated Dao Sanctuary and Sword Altar (blade attunement/gacha) with non-trip R6 stairs and inner disciple quarters.
   - **Tier 3 (Upper):** Sovereign Sect Palace with black roof tiles, housing the Supreme Sect Leader, Grand Sword Elder Liang, and the Top 7 Pillars of the Sect.
+
+  ### ADR-045 — Jade Pure Sword Sect World Rebranding & 7 Sword Pillars
+* **Date:** 2026-09-08
+* **Status:** Accepted
+* **Context:** "Azure Cloud Sect" was generic and did not reflect a dedicated Sword Dao sect. The developer chose a stylized homage to *Top Tier Providence* (*Yuqing / Jade Pure Sect*).
+* **Decision:**
+  1. Rebranded Sect to **Jade Pure Sword Sect** across all 3D signs, UI headers, and `SectConfig.luau`.
+  2. Established **The 7 Sword Pillars of the Jade Pure Sect** representing the 7 paths of the blade: Ye Chen (Azure Dragon), Hong Lian (Crimson Flame), Leng Wushuang (Frost Lotus), Lei Zhen (Thunder Crag), Gu You (Cosmic Void), Feng Qing'er (Celestial Wind), and Mo Chen (Shadow Asura).
+  3. Integrated **Ancestor Han's Avatar** into the Tier 3 secluded meditation cave (*1,000-Year Seclusion Qi* bonus).
+
+### ADR-046 — Universal ProximityPrompt & Tag-Driven Stations Architecture
+* **Date:** 2026-09-08
+* **Status:** Accepted
+* **Context:** Hardcoded folder scanning (`Workspace.MarketVendors`, `Workspace.AlchemyCauldrons`) broke when moving assets.
+* **Decision:**
+  1. Standardized all interactive world assets under **`Workspace.Functional_Stations`**.
+  2. Replaced folder-dependent polling with universal `ProximityPrompt` event hooks across server managers (`VendorManager`, `BlacksmithManager`, `TeaHouseManager`, `AlchemyManager`, `SectManager`, `ArenaManager`).
+
+### ADR-047 — Monolithic Flat Block Floor Physics & Z-Fighting Elimination
+* **Date:** 2026-09-08
+* **Status:** Accepted
+* **Context:** Thin cylinders used as walkable floors caused severe character sinking due to Roblox cylinder collision faceting, and co-planar floor slabs caused GPU Z-fighting.
+* **Decision:**
+  1. Prohibited `PartType.Cylinder` on walkable floor collision surfaces. All walkable floors must be solid rectangular Blocks (`CanCollide = true`). Circular Dao inlays are set to `CanCollide = false`.
+  2. Enforced a minimum $+0.08\text{-stud}$ vertical separation between decorative inlays and foundation beds.
+  3. Merged `Sect_SwordAltar_Foundation` and `Sect_JadePure_SwordAltar` into **`Sect_SwordAltar_Complete`** with 4-way flush R6 steps ($1.0\text{-stud}$ height).
+
+### ADR-048 — 19-NPC Sect Roster & Native R6 Attachment Standard
+* **Date:** 2026-09-08
+* **Status:** Accepted
+* **Context:** NPCs lacked standard R6 attachments for weapon socketing, and limbs were incorrectly anchored, breaking animations.
+* **Decision:**
+  1. Enforced standard R6 rigging with all 11 official attachments (`RootAttachment`, `HatAttachment`, `HairAttachment`, `FaceCenterAttachment`, `FaceFrontAttachment`, `BodyBackAttachment`, `WaistBackAttachment`, `RightGripAttachment`, `LeftGripAttachment`, `RightFootAttachment`, `LeftFootAttachment`).
+  2. Enforced physics rule: **Only `HumanoidRootPart.Anchored = true`**; all limbs and armor are `Anchored = false`, `Massless = true`, `CanCollide = false` with `WeldConstraint`.
+  3. Cleared geometric placeholder swords from back attachments so real 3D mesh swords snap cleanly onto `Torso.BodyBackAttachment`.
+
+### ADR-049 — Unified MasterHUDGui & TopBar Inset Clearance
+* **Date:** 2026-09-08
+* **Status:** Accepted
+* **Context:** 6 standalone legacy HUDs created screen clutter, and `TopLeftDutyTracker` overlapped the Roblox CoreGui topbar.
+* **Decision:**
+  1. Consolidated all persistent HUD elements into **`StarterGui.MasterHUDGui`**.
+  2. Shifted `TopLeftDutyTracker` down by $+56\text{px}$ ($Y = 0.075$) to clear the Roblox topbar pill.
+  3. Set `DisplayOrder = 50` and centered facility modals at $Y = 0.38$ with a compact $0.54\text{–}0.58$ height, giving $190\text{px}$ of clearance above the bottom HUD.

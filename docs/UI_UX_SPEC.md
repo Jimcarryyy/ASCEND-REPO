@@ -128,3 +128,58 @@ Controls & Movement: Keybind table (M1, CTRL, Shift, T, C, R, B, V, Q, E, F).
 Cultivation & Breakthroughs: Explains Dantian Qi accumulation, 2.0x Qi nodes, and heavenly tribulations.
 Sword Intent & Blades: Details the 5-hit combo, Sword Intent empowerment, and the 5 sword families.
 Sect Duties & Arena: Details daily duties, CP ranks, and the 1v1 Sparring Arena rules.
+
+
+## 3. Master Desktop & Mobile HUD Layout (`StarterGui.MasterHUDGui`)
+
+### DisplayOrder Standard: `MasterHUDGui.DisplayOrder = 10` (Modals = 50)
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ [TOP-LEFT]                          [TOP-CENTER]               [TOP-RIGHT]  │
+│ TopLeftDutyTracker (Y = +56px)    ToastContainer            TopRightCurrency│
+│ \"Herbal Foraging Duty  0/5\"     \"Discovered 100-Yr Ginseng\"  SPIRIT STONES  │
+│ \"Alchemy Refine        0/1\"                                  48,285       │
+│ \"Sparring Discipline   0/3\"                               SECT CONTRIBUTION│
+│                                                               1,910 CP      │
+│ ZoneFrame                                                                   │
+│ \"Qi Condensation - 2.0x SPEED\"                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                     [BOTTOM-CENTER]                         │
+│                           VitalsContainer                                   │
+│                           HP  [████████████████████████] 637.9K / 637.9K    │
+│                           QI  [████████████████████████] 479.1K / 479.1K    │
+│                           INT [████████████████████████] SWORD INTENT 100%  │
+│                                                                             │
+│                           BottomCenterFrame.HotbarContainer (10 Slots)      │
+│                           ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐          │
+│                           │ B │ C │ E │ F │ M1│ Q │ R │SHF│ T │ V │          │
+│                           └───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘          │
+│                           BottomNavTray                                     │
+│                           [Arena]   [Bag]   [Guide]   [Meditate]   [Sect]   │
+└─────────────────────────────────────────────────────────────────────────────┘
+Complete 12-Modal Registry in StarterGui (DisplayOrder = 50, 
+Y
+=
+0.38
+Y=0.38
+):
+BlacksmithGui — Equipped blade preview, refinement up to +10, and blade sharpening buff.
+TeaHouseGui — Jade Dew (+250 Qi), Crimson Ginseng (+500 HP), and Dragon Well (+15% Intent rate).
+StarterGuideGui — 4-tab interactive guide (Controls, Realms & Qi, Sword Intent, Sect Duties).
+SparringGuidanceGui — Combat fundamentals, combo trial progress (0/3), and dummy DPS reset.
+AlchemyGui — 12-slot herb pouch grid, 3 cauldron combination slots, metrics preview, and formula guide.
+SwordAltarGachaGui — 1x/10x Flying sword awakening, pity counter (50-pull guarantee), and drop rates.
+ContributionShopGui — CP exchange store for flight manuals, breakthrough dans, and scabbards.
+BankVaultGui — 2-panel inventory transfer (Pouch vs. Vault Stash) + vault expansion.
+WildernessPortalGui — Zone 2 Beast Domain gate requirements, monster warnings, and teleport confirmation.
+PatriarchAudienceGui — Major realm breakthrough ceremonies, power multiplier previews, and 9-fold lightning warnings.
+CouncilElderDiscussionGui — 3-tab discourse hub for Elders Mu (Pills), Ba (Formations), and Ling (Scriptures).
+AncestorSeclusionGui — Seclusion tracker with 
++
+5.0
+×
++5.0×
+ Qi multiplier and low-key cultivation wisdom.

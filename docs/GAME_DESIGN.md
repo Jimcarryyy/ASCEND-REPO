@@ -261,3 +261,31 @@ Code
 Batch 1 (`README.md`, `ARCHITECTURE_SPEC.md`, `UI_UX_SPEC.md`, and `GAME_DESIGN.md`) is complete and ready to replace your existing files on GitHub.
 
 Whenever you're ready, say **"proceed"** or **"next"**, and I will output **Batch 2** (`COMBAT_SPEC.md`, `PROGRESSION_SPEC.md`, `CODE_DEPENDENCY_GUIDE.md`, and `ASSET_MANIFEST.md`) in their entirety.
+
+## 3.4 Jade Pure Sword Sect Structure & 19-NPC Roster
+
+### The Three Elevation Tiers:
+1. **Tier 1 (Lower Disciple Grounds & Bazaar):**
+   * *Murim Arrival Spawn Dais:* Central player arrival node with ascending Qi motes and 4 boundary braziers.
+   * *Martial Training Grounds:* $78 \times 58\text{ stud}$ sparring pavilion with 3 Immortal Ironwood Dummies ($10^{15}\text{ HP}$, server auto-regen, live DPS tracking) overseen by **Instructor Wu**.
+   * *Alchemy Crafting Workshop:* Mounts the 3D *Eight Trigrams Cauldron* with violet/cyan smoke VFX and herb preparation tables overseen by **Master Shen**.
+   * *Sect Notice Board & Leaderboard Monolith:* 3-tier daily duty board overseen by **Deacon Zhao** + inscribed disciple ranking stele.
+   * *Sentry Checkpoint Guard House:* Verification desk with Sect Registry Ledger and glowing jade scanner.
+   * *Blacksmith Forge:* Stone charcoal hearth and anvil for weapon refining (+10) and blade sharpening overseen by **Madame Tie**.
+   * *Spirit Tea Pavilion:* Open-air pavilion serving timed cultivation recovery brews overseen by **Xiao Ling**.
+   * *Bazaar NPCs:* Outer Disciples, Sweeping Disciple Shi, and General Trader Merchant Qian.
+
+2. **Tier 2 (Middle Sacred Core & Sword Altar):**
+   * *The Sword Altar Centerpiece (`Sect_SwordAltar_Complete`):* $42 \times 42\text{ stud}$ solid plinth foundation with 4-way flush R6 steps ($1.0\text{-stud}$ height), colossal $28\text{-stud}$ spirit sword, 4 orbiting spectral blades, 8 boundary braziers, and gacha/sword dao prompt overseen by **Grand Sword Elder Liang**.
+   * *1v1 Sparring Arena & Duelist Pavilions:* Sealed $120\text{-stud}$ flat circular arena with forcefield barrier and twin `DuelPad` queue gazebos.
+   * *Sect Contribution Treasury:* Shopfront counter with CP ledger and artifact showcase overseen by **Steward Jin**.
+   * *Sect Bank Storage Vault:* Monumental iron vault door with stash chests overseen by **Vault Keeper Lu**.
+   * *Wilderness Mountain Portal:* Ancient stone spirit archway teasing Zone 2 access overseen by **Daoist Feng**.
+   * *Tier 2 Disciples:* Inner Disciples, Senior Sister Xue (Sword Prodigy), and Barrier Array Artisans.
+
+3. **Tier 3 (Upper Patriarch Sanctuary):**
+   * *Grand Black Pagoda Palace & Sovereign Throne:* High palace with dark slate roof tiles housing **Patriarch Han** on the Dragon Throne Dais.
+   * *Grand Council Elders' Pavilion:* Open-air stone pavilion with a central Weiqi (Go) game table for **Elder Mu** (Medicine), **Elder Ba** (Formations), and **Elder Ling** (Scriptures).
+   * *Ancestor Han's 1,000-Year Seclusion Dais:* Meditation dais with 3 floating runestones granting $+5.0\times$ Seclusion Qi multipliers.
+   * *Sovereign Palace Enforcers:* Elite Sky-Sword Guards (Male & Female variants), Core Disciples (Personal Heirs), and Palace Maid Attendants.
+   * *The 7 Sword Pillars of the Jade Pure Sect:* Ye Chen (Azure Dragon), Hong Lian (Crimson Flame), Leng Wushuang (Frost Lotus), Lei Zhen (Thunder Crag), Gu You (Cosmic Void), Feng Qing'er (Celestial Wind), Mo Chen (Shadow Asura).

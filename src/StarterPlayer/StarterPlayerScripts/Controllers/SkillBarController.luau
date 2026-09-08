@@ -2,12 +2,11 @@
 --[[
     SkillBarController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
-    Handles:
-      - Desktop (SkillsGUI: M1, R, B, V, C) vs Mobile (LowViewPortSkillsGUI: 3 Bars only)
-      - Mobile Touch Cluster (Roblox Jump Style): M1, R, V, B, C spaced around native Jump
-      - Dynamic CurrencyGUI sync (Live Contribution Points / CP & Spirit Stones)
-      - Dual-Viewport Vitals & Looping Sword Intent updates
-      - BottomMenuGui Bindings
+    Directly bound to StarterGui.MasterHUDGui:
+    - 10-Slot Skill Hotbar (B, C, E, F, M1, Q, R, Shift, T, V) with Cooldown Sweeps
+    - Vitals Container (HP, Qi, Sword Intent Gauge)
+    - TopRight Currency (Live Contribution Points CP & Spirit Stones)
+    - BottomNavTray Modal Buttons (Arena, Bag, Guide, Meditate, Sect)
 ]]
 
 local Players = game:GetService("Players")
@@ -15,7 +14,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
@@ -23,69 +21,39 @@ local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationCo
 local SkillBarController = {}
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
-local Camera = Workspace.CurrentCamera
 
 local INTENT_BAR_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local BUTTON_PRESS_TWEEN = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local INTENT_DECAY_DELAY = 2.5
 local INTENT_DECAY_RATE = 8.0
 
--- Desktop SkillsGUI
-local desktopSkillsGui: ScreenGui?
-local desktopMainFrame: Frame?
-local desktopIntentFill: Frame?
-local desktopIntentLabel: TextLabel?
-local desktopHpFill: Frame?
-local desktopHpLabel: TextLabel?
-local desktopQiFill: Frame?
-local desktopQiLabel: TextLabel?
+-- MasterHUDGui References
+local masterGui: ScreenGui?
+local vitalsContainer: Frame?
+local hpFill: Frame?
+local hpTextLabel: TextLabel?
+local qiFill: Frame?
+local qiTextLabel: TextLabel?
+local intentFill: Frame?
+local intentTextLabel: TextLabel?
 
--- Low Viewport SkillsGUI (Studio: LowViewPortSkillsGUI - 3 Bars Only)
-local lowViewportGui: ScreenGui?
-local lowMainFrame: Frame?
-local lowIntentFill: Frame?
-local lowIntentLabel: TextLabel?
-local lowHpFill: Frame?
-local lowHpLabel: TextLabel?
-local lowQiFill: Frame?
-local lowQiLabel: TextLabel?
-
--- Dynamic Mobile Right-Side Combat Cluster (M1, R, V, B, C)
-local mobileCombatGui: ScreenGui?
-local mobileCombatCluster: Frame?
-
--- BottomMenuGui
-local bottomMenuGui: ScreenGui?
-local bagButton: ImageButton?
-local arenaButton: ImageButton?
-
--- CurrencyGUI
-local currencyGui: ScreenGui?
+local currencyFrame: Frame?
 local cpLabel: TextLabel?
 local spiritStoneLabel: TextLabel?
+
+local hotbarContainer: Frame?
+local bottomNavTray: Frame?
 
 local combatActionRemote: RemoteEvent
 local sectRemote: RemoteEvent? = nil
 
 local currentSwordIntent = 0
 local lastHitLandedTime = os.clock()
-
 local lastKnownQi = 0
 local lastKnownMaxQi = 100
 
--- =============================================================================
--- DEVICE DETECTION (Touch / Mobile Viewport)
--- =============================================================================
-local function IsMobileOrTouch(): boolean
-	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
-		return true
-	end
-	local vp = Camera.ViewportSize
-	if vp.X > 0 and (vp.X < 950 or vp.Y < 560) then
-		return true
-	end
-	return false
-end
+local skillButtons: { [string]: ImageButton } = {}
+local cooldownSweeps: { [string]: Frame } = {}
+local cooldownTexts: { [string]: TextLabel } = {}
 
 local function FormatNum(num: number): string
 	if CultivationConfig and CultivationConfig.FormatNumber then
@@ -112,36 +80,20 @@ end
 
 local function GetCurrentCP(): number
 	local char = LocalPlayer.Character
-	local val = (char and (char:GetAttribute("ContributionPoints") or char:GetAttribute("SectContribution") or char:GetAttribute("CP") or char:GetAttribute("Contribution") or char:GetAttribute("SectPoints")))
+	local val = (char and (char:GetAttribute("ContributionPoints") or char:GetAttribute("SectContribution") or char:GetAttribute("CP")))
 		or LocalPlayer:GetAttribute("ContributionPoints")
 		or LocalPlayer:GetAttribute("SectContribution")
 		or LocalPlayer:GetAttribute("CP")
-		or LocalPlayer:GetAttribute("Contribution")
-		or LocalPlayer:GetAttribute("SectPoints")
 	return tonumber(val) or 0
 end
 
 local function GetCurrentStones(): number
 	local char = LocalPlayer.Character
-	local val = (char and (char:GetAttribute("SpiritStones") or char:GetAttribute("Stones") or char:GetAttribute("Money") or char:GetAttribute("Gold")))
+	local val = (char and (char:GetAttribute("SpiritStones") or char:GetAttribute("Stones") or char:GetAttribute("Money")))
 		or LocalPlayer:GetAttribute("SpiritStones")
 		or LocalPlayer:GetAttribute("Stones")
 		or LocalPlayer:GetAttribute("Money")
-		or LocalPlayer:GetAttribute("Gold")
 	return tonumber(val) or 0
-end
-
-local function EmitToast(message: string)
-	local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
-	if controllers then
-		local hudCtrl = controllers:FindFirstChild("HUDController")
-		if hudCtrl then
-			local req = require(hudCtrl) :: any
-			if req and req.ShowToast then
-				req.ShowToast(message)
-			end
-		end
-	end
 end
 
 local function TriggerM1()
@@ -150,320 +102,143 @@ local function TriggerM1()
 		local inputCtrl = controllers:FindFirstChild("InputController")
 		if inputCtrl then
 			local req = require(inputCtrl) :: any
-			if req.TriggerM1 then
-				req.TriggerM1()
-				return
-			end
+			if req.TriggerM1 then req.TriggerM1(); return end
 		end
 	end
 	combatActionRemote:FireServer({ SkillKey = "M1", AimDirection = Vector3.new(0, 0, -1), Timestamp = os.clock() })
 end
 
-local function TriggerBreakthrough()
-	if lastKnownQi >= lastKnownMaxQi then
-		EmitToast("Initiating Cultivation Breakthrough...")
-	else
-		EmitToast(string.format("Breakthrough Failed: Qi not condensed (%s/%s)", FormatNum(lastKnownQi), FormatNum(lastKnownMaxQi)))
-	end
-	combatActionRemote:FireServer({ RequestBreakthrough = true })
-end
-
-local function TriggerMeditation()
-	local char = LocalPlayer.Character
-	local isCurrentlyMeditating = char and char:GetAttribute("IsMeditating") == true
-	if isCurrentlyMeditating then
-		EmitToast("Exited Meditation")
-	else
-		EmitToast("Entered Meditation (Cultivating Qi)")
-	end
-	combatActionRemote:FireServer({ ToggleMeditation = true })
-end
-
--- =============================================================================
--- BAR FILL HELPER
--- =============================================================================
-local function SetupBarFill(barFrame: Frame, defaultColor: Color3): (Frame, TextLabel?)
-	barFrame.ClipsDescendants = true
-
-	local fill = barFrame:FindFirstChild("BarFill") :: Frame?
-	if not fill then
-		fill = Instance.new("Frame")
-		fill.Name = "BarFill"
-		fill.Size = UDim2.new(1, 0, 1, 0)
-		fill.Position = UDim2.new(0, 0, 0, 0)
-		fill.BackgroundColor3 = defaultColor
-		fill.BorderSizePixel = 0
-		fill.ZIndex = 1
-		fill.Parent = barFrame
-
-		local parentCorner = barFrame:FindFirstChildOfClass("UICorner")
-		if parentCorner then
-			local c = parentCorner:Clone()
-			c.Parent = fill
-		else
-			local c = Instance.new("UICorner", fill)
-			c.CornerRadius = UDim.new(0, 30)
-		end
-
-		local existingGrad = barFrame:FindFirstChildOfClass("UIGradient")
-		if existingGrad then
-			existingGrad.Parent = fill
-		end
-	end
-
-	local textLabel = barFrame:FindFirstChildOfClass("TextLabel")
-	if textLabel then
-		textLabel.ZIndex = 3
-	end
-
-	return fill, textLabel
-end
-
-local function BindTouchOrClick(inst: Instance, callback: () -> ())
-	if inst:IsA("GuiButton") then
-		inst.MouseButton1Click:Connect(callback)
-	elseif inst:IsA("GuiObject") then
-		inst.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-				callback()
-			end
-		end)
-	end
-	for _, child in ipairs(inst:GetChildren()) do
-		if child:IsA("GuiButton") then
-			child.MouseButton1Click:Connect(callback)
-		end
-	end
-end
-
--- =============================================================================
--- MOBILE COMBAT TOUCH BUTTON CREATOR
--- =============================================================================
-local function CreateRobloxStyleTouchButton(name: string, size: number, position: UDim2, labelText: string, callback: () -> ()): ImageButton
-	local btn = Instance.new("ImageButton")
-	btn.Name = name
-	btn.Size = UDim2.new(0, size, 0, size)
-	btn.Position = position
-	btn.AnchorPoint = Vector2.new(0.5, 0.5)
-	btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	btn.BackgroundTransparency = 0.5
-	btn.BorderSizePixel = 0
-	btn.AutoButtonColor = false
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(1, 0)
-	corner.Parent = btn
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(180, 180, 180)
-	stroke.Thickness = 2.0
-	stroke.Transparency = 0.45
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = btn
-
-	local lbl = Instance.new("TextLabel")
-	lbl.Size = UDim2.new(1, 0, 1, 0)
-	lbl.BackgroundTransparency = 1
-	lbl.Font = Enum.Font.GothamBold
-	lbl.TextSize = if size >= 60 then 11.5 else 10.0
-	lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
-	lbl.Text = labelText
-	lbl.Parent = btn
-
-	local scale = Instance.new("UIScale", btn)
-
-	btn.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-			TweenService:Create(scale, BUTTON_PRESS_TWEEN, { Scale = 0.9 }):Play()
-			callback()
-		end
-	end)
-
-	btn.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-			TweenService:Create(scale, BUTTON_PRESS_TWEEN, { Scale = 1.0 }):Play()
-		end
-	end)
-
-	return btn
-end
-
--- =============================================================================
--- MOBILE RIGHT-SIDE TOUCH COMBAT CLUSTER (M1, R, V, B, C around Jump)
--- =============================================================================
-local function BuildMobileCombatCluster(parentGui: ScreenGui)
-	mobileCombatCluster = Instance.new("Frame")
-	mobileCombatCluster.Name = "MobileCombatCluster"
-	mobileCombatCluster.Size = UDim2.new(0, 310, 0, 240)
-	mobileCombatCluster.Position = UDim2.new(1, 0, 1, 0)
-	mobileCombatCluster.AnchorPoint = Vector2.new(1, 1)
-	mobileCombatCluster.BackgroundTransparency = 1
-	mobileCombatCluster.Visible = false
-	mobileCombatCluster.Parent = parentGui
-
-	-- BOTTOM ROW: [B BREAK] -> [M1 STRIKE] -> [NATIVE JUMP]
-	local bBtn = CreateRobloxStyleTouchButton("MobileBButton", 50, UDim2.new(1, -225, 1, -55), "B\nBREAK", TriggerBreakthrough)
-	bBtn.Parent = mobileCombatCluster
-
-	local m1Btn = CreateRobloxStyleTouchButton("MobileM1Button", 64, UDim2.new(1, -150, 1, -55), "M1\nSTRIKE", TriggerM1)
-	m1Btn.Parent = mobileCombatCluster
-
-	-- TOP ROW: [C CULTIVATE] -> [R DRAW] -> [V FLIGHT]
-	local cBtn = CreateRobloxStyleTouchButton("MobileCButton", 50, UDim2.new(1, -225, 1, -135), "C\nCULTIVATE", TriggerMeditation)
-	cBtn.Parent = mobileCombatCluster
-
-	local rBtn = CreateRobloxStyleTouchButton("MobileRButton", 50, UDim2.new(1, -150, 1, -135), "R\nDRAW", function()
-		combatActionRemote:FireServer({ ToggleSheath = true })
-	end)
-	rBtn.Parent = mobileCombatCluster
-
-	local vBtn = CreateRobloxStyleTouchButton("MobileVButton", 50, UDim2.new(1, -75, 1, -165), "V\nFLIGHT", function()
-		combatActionRemote:FireServer({ ToggleFlight = true })
-	end)
-	vBtn.Parent = mobileCombatCluster
-end
-
--- =============================================================================
--- HOOK STUDIO GUIS & RESPONSIVE VIEWPORT TOGGLING
--- =============================================================================
 function SkillBarController.HookStudioUI()
-	-- 1. Desktop SkillsGUI (M1, R, B, V, C)
-	desktopSkillsGui = PlayerGui:WaitForChild("SkillsGUI", 5) :: ScreenGui?
-	if desktopSkillsGui then
-		desktopMainFrame = desktopSkillsGui:FindFirstChild("BottomCenterFrame", true) :: Frame?
-		if desktopMainFrame then
-			local iFrame = desktopMainFrame:FindFirstChild("IntentBarFrame") :: Frame?
-			if iFrame then desktopIntentFill, desktopIntentLabel = SetupBarFill(iFrame, Color3.fromRGB(245, 140, 0)) end
+	masterGui = (PlayerGui:FindFirstChild("MasterHUDGui") or PlayerGui:WaitForChild("MasterHUDGui", 8)) :: ScreenGui?
+	if not masterGui then return end
+	masterGui.DisplayOrder = 10
 
-			local hFrame = desktopMainFrame:FindFirstChild("HPBarFrame") :: Frame?
-			if hFrame then desktopHpFill, desktopHpLabel = SetupBarFill(hFrame, Color3.fromRGB(0, 200, 50)) end
+	-- 1. Vitals Container (HP, Qi, Intent)
+	vitalsContainer = masterGui:FindFirstChild("VitalsContainer") :: Frame?
+	if vitalsContainer then
+		local hpFrame = vitalsContainer:FindFirstChild("HPBarFrame")
+		if hpFrame then
+			hpFill = hpFrame:FindFirstChild("BarFill") :: Frame?
+			hpTextLabel = hpFrame:FindFirstChildOfClass("TextLabel")
+		end
 
-			local qFrame = desktopMainFrame:FindFirstChild("QIBarFrame") :: Frame?
-			if qFrame then desktopQiFill, desktopQiLabel = SetupBarFill(qFrame, Color3.fromRGB(0, 100, 255)) end
+		local qiFrame = vitalsContainer:FindFirstChild("QIBarFrame")
+		if qiFrame then
+			qiFill = qiFrame:FindFirstChild("BarFill") :: Frame?
+			qiTextLabel = qiFrame:FindFirstChildOfClass("TextLabel")
+		end
 
-			local desktopSlots = {
-				{ Name = "M1_SKILL", Callback = TriggerM1 },
-				{ Name = "R_SKILL",  Callback = function() combatActionRemote:FireServer({ ToggleSheath = true }) end },
-				{ Name = "B_SKILL",  Callback = TriggerBreakthrough },
-				{ Name = "V_SKILL",  Callback = function() combatActionRemote:FireServer({ ToggleFlight = true }) end },
-				{ Name = "C_SKILL",  Callback = TriggerMeditation },
-			}
-			for _, s in ipairs(desktopSlots) do
-				local slotObj = desktopMainFrame:FindFirstChild(s.Name)
-				if slotObj then BindTouchOrClick(slotObj, s.Callback) end
-			end
+		local intentFrame = vitalsContainer:FindFirstChild("IntentBarFrame")
+		if intentFrame then
+			intentFill = intentFrame:FindFirstChild("BarFill") :: Frame?
+			intentTextLabel = intentFrame:FindFirstChildOfClass("TextLabel")
 		end
 	end
 
-	-- 2. Low Viewport Mobile SkillsGUI (3 Bars Only: Intent, HP, QI)
-	lowViewportGui = (PlayerGui:WaitForChild("LowViewPortSkillsGUI", 5) or PlayerGui:WaitForChild("LowViewPortSkillGUI", 5)) :: ScreenGui?
-	if lowViewportGui then
-		lowMainFrame = lowViewportGui:FindFirstChild("BottomCenterFrame", true) :: Frame?
-		if lowMainFrame then
-			local iFrame = lowMainFrame:FindFirstChild("IntentBarFrame") :: Frame?
-			if iFrame then lowIntentFill, lowIntentLabel = SetupBarFill(iFrame, Color3.fromRGB(245, 140, 0)) end
-
-			local hFrame = lowMainFrame:FindFirstChild("HPBarFrame") :: Frame?
-			if hFrame then lowHpFill, lowHpLabel = SetupBarFill(hFrame, Color3.fromRGB(0, 200, 50)) end
-
-			local qFrame = lowMainFrame:FindFirstChild("QIBarFrame") :: Frame?
-			if qFrame then lowQiFill, lowQiLabel = SetupBarFill(qFrame, Color3.fromRGB(0, 100, 255)) end
-		end
-	end
-
-	-- 3. Dynamic Mobile Right-Side Combat Cluster (M1, R, V, B, C)
-	mobileCombatGui = Instance.new("ScreenGui")
-	mobileCombatGui.Name = "MobileCombatHUD"
-	mobileCombatGui.ResetOnSpawn = false
-	mobileCombatGui.DisplayOrder = 11
-	mobileCombatGui.IgnoreGuiInset = false
-	mobileCombatGui.Parent = PlayerGui
-	BuildMobileCombatCluster(mobileCombatGui)
-
-	-- 4. BottomMenuGui
-	bottomMenuGui = PlayerGui:WaitForChild("BottomMenuGui", 5) :: ScreenGui?
-	if bottomMenuGui then
-		bagButton = bottomMenuGui:FindFirstChild("BagImageButton", true) :: ImageButton?
-		arenaButton = bottomMenuGui:FindFirstChild("ArenaImageButton", true) :: ImageButton?
-
-		if bagButton then
-			bagButton.MouseButton1Click:Connect(function()
-				local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
-				if controllers then
-					local inv = controllers:FindFirstChild("InventoryController")
-					if inv then
-						local req = require(inv) :: any
-						if req.Toggle then req.Toggle() end
-					end
-				end
-			end)
-		end
-
-		if arenaButton then
-			arenaButton.MouseButton1Click:Connect(function()
-				local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
-				if controllers then
-					local arena = controllers:FindFirstChild("ArenaController")
-					if arena then
-						local req = require(arena) :: any
-						if req.ToggleModal then req.ToggleModal() end
-					end
-				end
-			end)
-		end
-	end
-
-	-- 5. CurrencyGUI
-	currencyGui = PlayerGui:WaitForChild("CurrencyGUI", 5) :: ScreenGui?
-	if currencyGui then
-		local cpFrame = currencyGui:FindFirstChild("CPFrame", true)
+	-- 2. Top-Right Currency Frame
+	currencyFrame = masterGui:FindFirstChild("TopRightCurrencyFrame") :: Frame?
+	if currencyFrame then
+		local cpFrame = currencyFrame:FindFirstChild("CPFrame")
 		if cpFrame then cpLabel = cpFrame:FindFirstChildOfClass("TextLabel") end
 
-		local spiritFrame = currencyGui:FindFirstChild("SpiritStoneFrame", true)
-		if spiritFrame then spiritStoneLabel = spiritFrame:FindFirstChildOfClass("TextLabel") end
+		local stoneFrame = currencyFrame:FindFirstChild("SpiritStoneFrame")
+		if stoneFrame then spiritStoneLabel = stoneFrame:FindFirstChildOfClass("TextLabel") end
 	end
 
-	SkillBarController.UpdateViewportMode()
+	-- 3. Bottom Center Hotbar Container (10 Skills)
+	local bottomCenter = masterGui:FindFirstChild("BottomCenterFrame")
+	if bottomCenter then
+		hotbarContainer = bottomCenter:FindFirstChild("HotbarContainer") :: Frame?
+		if hotbarContainer then
+			local skillSlotNames = { "B_SKILL", "C_SKILL", "E_SKILL", "F_SKILL", "M1_SKILL", "Q_SKILL", "R_SKILL", "Shift_SKILL", "T_SKILL", "V_SKILL" }
+			for _, sName in ipairs(skillSlotNames) do
+				local btn = hotbarContainer:FindFirstChild(sName) :: ImageButton?
+				if btn then
+					skillButtons[sName] = btn
+					cooldownSweeps[sName] = btn:FindFirstChild("CooldownSweep") :: Frame?
+					cooldownTexts[sName] = btn:FindFirstChild("CooldownText") :: TextLabel?
+
+					btn.Activated:Connect(function()
+						if sName == "M1_SKILL" then
+							TriggerM1()
+						elseif sName == "R_SKILL" then
+							combatActionRemote:FireServer({ ToggleSheath = true })
+						elseif sName == "V_SKILL" then
+							combatActionRemote:FireServer({ ToggleFlight = true })
+						elseif sName == "B_SKILL" then
+							combatActionRemote:FireServer({ RequestBreakthrough = true })
+						elseif sName == "C_SKILL" then
+							combatActionRemote:FireServer({ ToggleMeditation = true })
+						end
+					end)
+				end
+			end
+		end
+	end
+
+	-- 4. Bottom Nav Tray (Modal Openers)
+	bottomNavTray = masterGui:FindFirstChild("BottomNavTray") :: Frame?
+	if bottomNavTray then
+		local function bindNav(btnName: string, callback: () -> ())
+			local btn = bottomNavTray:FindFirstChild(btnName) :: TextButton?
+			if btn then
+				btn.Activated:Connect(callback)
+			end
+		end
+
+		bindNav("ArenaImageButton", function()
+			local c = LocalPlayer.PlayerScripts.Controllers:FindFirstChild("ArenaController")
+			if c then require(c).ToggleModal() end
+		end)
+
+		bindNav("BagImageButton", function()
+			local c = LocalPlayer.PlayerScripts.Controllers:FindFirstChild("InventoryController")
+			if c then require(c).Toggle() end
+		end)
+
+		bindNav("GuideImageButton", function()
+			local g = PlayerGui:FindFirstChild("StarterGuideGui")
+			if g then g.Enabled = not g.Enabled; g.ModalBackdrop.Visible = g.Enabled end
+		end)
+
+		bindNav("MeditateButton", function()
+			combatActionRemote:FireServer({ ToggleMeditation = true })
+		end)
+
+		bindNav("SectImageButton", function()
+			local c = LocalPlayer.PlayerScripts.Controllers:FindFirstChild("SectController")
+			if c then require(c).Open() end
+		end)
+	end
 end
 
--- =============================================================================
--- EXPLICIT VIEWPORT VISIBILITY SWITCHER
--- =============================================================================
-function SkillBarController.UpdateViewportMode()
-	local isMobile = IsMobileOrTouch()
+function SkillBarController.TriggerCooldown(slotName: string, duration: number)
+	local sweep = cooldownSweeps[slotName] or cooldownSweeps[slotName .. "_SKILL"]
+	local text = cooldownTexts[slotName] or cooldownTexts[slotName .. "_SKILL"]
+	if not sweep then return end
 
-	-- Desktop GUI Toggle
-	if desktopSkillsGui then
-		desktopSkillsGui.Enabled = not isMobile
-	end
-	if desktopMainFrame then
-		desktopMainFrame.Visible = not isMobile
-	end
+	sweep.Visible = true
+	if text then text.Visible = true end
 
-	-- Low Viewport Mobile GUI Toggle (Bottom-Center 3 Bars)
-	if lowViewportGui then
-		lowViewportGui.Enabled = isMobile
-	end
-	if lowMainFrame then
-		lowMainFrame.Visible = isMobile
-	end
+	local startTime = os.clock()
+	local conn: RBXScriptConnection?
+	conn = RunService.Heartbeat:Connect(function()
+		local elapsed = os.clock() - startTime
+		local remaining = math.max(0, duration - elapsed)
+		local progress = math.clamp(remaining / duration, 0, 1)
 
-	-- Mobile Right-Side Combat Cluster (M1, R, V, B, C)
-	if mobileCombatGui then
-		mobileCombatGui.Enabled = isMobile
-	end
-	if mobileCombatCluster then
-		mobileCombatCluster.Visible = isMobile
-	end
+		sweep.Size = UDim2.new(1, 0, progress, 0)
+		if text then text.Text = string.format("%.1f", remaining) end
+
+		if remaining <= 0 then
+			sweep.Visible = false
+			if text then text.Visible = false; text.Text = "" end
+			if conn then conn:Disconnect() end
+		end
+	end)
 end
 
--- =============================================================================
--- DUAL-VIEWPORT VITALS & INTENT UPDATES
--- =============================================================================
 function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: number, maxQi: number)
-	lastKnownQi = curQi or 0
-	lastKnownMaxQi = maxQi or 100
-
 	local hMax = math.max(1, maxHp or 100)
 	local hCur = math.clamp(curHp or 0, 0, hMax)
 	local hRatio = math.clamp(hCur / hMax, 0, 1)
@@ -472,27 +247,18 @@ function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: nu
 	local qCur = math.clamp(curQi or 0, 0, qMax)
 	local qRatio = math.clamp(qCur / qMax, 0, 1)
 
-	local hpStr = string.format("HP %s/%s", FormatNum(hCur), FormatNum(hMax))
-	local qiStr = string.format("QI %s/%s", FormatNum(qCur), FormatNum(qMax))
+	if hpFill then TweenService:Create(hpFill, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play() end
+	if hpTextLabel then hpTextLabel.Text = string.format("HP %s/%s", FormatNum(hCur), FormatNum(hMax)) end
 
-	-- Desktop Update
-	if desktopHpFill then TweenService:Create(desktopHpFill, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play() end
-	if desktopHpLabel then desktopHpLabel.Text = hpStr end
-	if desktopQiFill then TweenService:Create(desktopQiFill, INTENT_BAR_TWEEN, { Size = UDim2.new(qRatio, 0, 1, 0) }):Play() end
-	if desktopQiLabel then desktopQiLabel.Text = qiStr end
-
-	-- Low Viewport Mobile Update
-	if lowHpFill then TweenService:Create(lowHpFill, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play() end
-	if lowHpLabel then lowHpLabel.Text = hpStr end
-	if lowQiFill then TweenService:Create(lowQiFill, INTENT_BAR_TWEEN, { Size = UDim2.new(qRatio, 0, 1, 0) }):Play() end
-	if lowQiLabel then lowQiLabel.Text = qiStr end
+	if qiFill then TweenService:Create(qiFill, INTENT_BAR_TWEEN, { Size = UDim2.new(qRatio, 0, 1, 0) }):Play() end
+	if qiTextLabel then qiTextLabel.Text = string.format("QI %s/%s", FormatNum(qCur), FormatNum(qMax)) end
 end
 
 function SkillBarController.UpdateCurrencies()
 	local cp = GetCurrentCP()
 	local stones = GetCurrentStones()
 
-	if cpLabel then cpLabel.Text = FormatCurrency(cp) end
+	if cpLabel then cpLabel.Text = FormatCurrency(cp) .. " CP" end
 	if spiritStoneLabel then spiritStoneLabel.Text = FormatCurrency(stones) end
 end
 
@@ -501,15 +267,9 @@ function SkillBarController.UpdateSwordIntent(current: number, max: number)
 	local maxVal = math.max(1, max or 100)
 	local ratio = math.clamp(currentSwordIntent / maxVal, 0, 1)
 	local percent = math.floor(ratio * 100)
-	local intentStr = if percent >= 100 then "SWORD INTENT 100%" else string.format("SWORD INTENT %d%%", percent)
 
-	-- Desktop Intent
-	if desktopIntentFill then TweenService:Create(desktopIntentFill, INTENT_BAR_TWEEN, { Size = UDim2.new(ratio, 0, 1, 0) }):Play() end
-	if desktopIntentLabel then desktopIntentLabel.Text = intentStr end
-
-	-- Low Viewport Mobile Intent
-	if lowIntentFill then TweenService:Create(lowIntentFill, INTENT_BAR_TWEEN, { Size = UDim2.new(ratio, 0, 1, 0) }):Play() end
-	if lowIntentLabel then lowIntentLabel.Text = intentStr end
+	if intentFill then TweenService:Create(intentFill, INTENT_BAR_TWEEN, { Size = UDim2.new(ratio, 0, 1, 0) }):Play() end
+	if intentTextLabel then intentTextLabel.Text = string.format("SWORD INTENT %d%%", percent) end
 end
 
 local function BindCharacter(character: Model)
@@ -520,7 +280,6 @@ local function BindCharacter(character: Model)
 		local maxHp = if humanoid then humanoid.MaxHealth else (character:GetAttribute("MaxHealth") or 100)
 		local curQi = character:GetAttribute("Qi") or LocalPlayer:GetAttribute("Qi") or 100
 		local maxQi = character:GetAttribute("MaxQi") or LocalPlayer:GetAttribute("MaxQi") or 100
-
 		SkillBarController.UpdateVitals(tonumber(curHp) or 100, tonumber(maxHp) or 100, tonumber(curQi) or 100, tonumber(maxQi) or 100)
 	end
 
@@ -540,19 +299,7 @@ local function BindCharacter(character: Model)
 	LocalPlayer:GetAttributeChangedSignal("Qi"):Connect(checkVitals)
 	LocalPlayer:GetAttributeChangedSignal("MaxQi"):Connect(checkVitals)
 
-	-- Multi-Attribute Currency Listeners
-	local currencyAttributes = {
-		"ContributionPoints",
-		"SectContribution",
-		"CP",
-		"Contribution",
-		"SectPoints",
-		"SpiritStones",
-		"Stones",
-		"Money",
-		"Gold"
-	}
-
+	local currencyAttributes = { "ContributionPoints", "SectContribution", "CP", "SpiritStones", "Stones" }
 	for _, attr in ipairs(currencyAttributes) do
 		LocalPlayer:GetAttributeChangedSignal(attr):Connect(SkillBarController.UpdateCurrencies)
 		character:GetAttributeChangedSignal(attr):Connect(SkillBarController.UpdateCurrencies)
@@ -569,7 +316,6 @@ end
 function SkillBarController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 
-	-- Hook SectAction for instant CP updates when turning in duties
 	pcall(function()
 		sectRemote = RemoteEvents.GetRemote("SectAction")
 		if sectRemote then
@@ -583,31 +329,17 @@ function SkillBarController.Init()
 
 	SkillBarController.HookStudioUI()
 
-	if LocalPlayer.Character then
-		BindCharacter(LocalPlayer.Character)
-	end
+	if LocalPlayer.Character then BindCharacter(LocalPlayer.Character) end
 	LocalPlayer.CharacterAdded:Connect(BindCharacter)
 
-	-- Direct CombatAction sync for instant Sword Intent charge
 	combatActionRemote.OnClientEvent:Connect(function(attacker: Player, skillKey: string, payload: any)
 		if attacker == LocalPlayer and type(payload) == "table" and payload.HasHit == true then
 			lastHitLandedTime = os.clock()
-
-			if payload.CurrentIntent ~= nil then
-				currentSwordIntent = tonumber(payload.CurrentIntent) or 0
-			else
-				if currentSwordIntent >= 99.9 then
-					currentSwordIntent = 0
-				else
-					currentSwordIntent = math.clamp(currentSwordIntent + 25, 0, 100)
-				end
-			end
-
+			currentSwordIntent = if payload.CurrentIntent ~= nil then (tonumber(payload.CurrentIntent) or 0) else math.clamp(currentSwordIntent + 25, 0, 100)
 			SkillBarController.UpdateSwordIntent(currentSwordIntent, 100)
 		end
 	end)
 
-	-- Client-side smooth intent decay
 	RunService.Heartbeat:Connect(function(dt: number)
 		local now = os.clock()
 		if (now - lastHitLandedTime > INTENT_DECAY_DELAY) and currentSwordIntent > 0 then
@@ -616,28 +348,7 @@ function SkillBarController.Init()
 		end
 	end)
 
-	-- Viewport resize listener for Studio device emulation
-	Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-		SkillBarController.UpdateViewportMode()
-	end)
-
-	-- Desktop Keybind triggers (Exclusive 'C' keybind for Meditation)
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then return end
-		local key = input.KeyCode
-
-		if key == Enum.KeyCode.R then
-			combatActionRemote:FireServer({ ToggleSheath = true })
-		elseif key == Enum.KeyCode.V then
-			combatActionRemote:FireServer({ ToggleFlight = true })
-		elseif key == Enum.KeyCode.B then
-			TriggerBreakthrough()
-		elseif key == Enum.KeyCode.C then
-			TriggerMeditation()
-		end
-	end)
-
-	print("[ASCEND] SkillBarController Initialized (Live Dynamic CP & Multi-Currency Active).")
+	print("[ASCEND] SkillBarController Initialized (MasterHUDGui Bound).")
 end
 
 return SkillBarController
