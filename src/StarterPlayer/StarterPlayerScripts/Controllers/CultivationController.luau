@@ -139,7 +139,7 @@ function CultivationController.Init()
 	HookStudioUI()
 
 	local cultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
-	cultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })\
+	cultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		if type(data) ~= "table" then return end
 		local character = player.Character
 		if not character then return end

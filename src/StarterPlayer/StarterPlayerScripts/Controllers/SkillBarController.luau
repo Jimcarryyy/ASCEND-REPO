@@ -48,8 +48,6 @@ local sectRemote: RemoteEvent? = nil
 
 local currentSwordIntent = 0
 local lastHitLandedTime = os.clock()
-local lastKnownQi = 0
-local lastKnownMaxQi = 100
 
 local skillButtons: { [string]: ImageButton } = {}
 local cooldownSweeps: { [string]: Frame } = {}
@@ -102,7 +100,7 @@ local function TriggerM1()
 		local inputCtrl = controllers:FindFirstChild("InputController")
 		if inputCtrl then
 			local req = require(inputCtrl) :: any
-			if req.TriggerM1 then req.TriggerM1(); return end
+			if req and req.TriggerM1 then req.TriggerM1(); return end
 		end
 	end
 	combatActionRemote:FireServer({ SkillKey = "M1", AimDirection = Vector3.new(0, 0, -1), Timestamp = os.clock() })
@@ -212,7 +210,9 @@ function SkillBarController.HookStudioUI()
 	end
 end
 
-function SkillBarController.TriggerCooldown(slotName: string, duration: number)
+-- Defensive Cooldown Sweeper (duration defaults to 1.5s if omitted)
+function SkillBarController.TriggerCooldown(slotName: string, duration: number?)
+	local cd = if duration and type(duration) == "number" and duration > 0 then duration else 1.5
 	local sweep = cooldownSweeps[slotName] or cooldownSweeps[slotName .. "_SKILL"]
 	local text = cooldownTexts[slotName] or cooldownTexts[slotName .. "_SKILL"]
 	if not sweep then return end
@@ -224,8 +224,8 @@ function SkillBarController.TriggerCooldown(slotName: string, duration: number)
 	local conn: RBXScriptConnection?
 	conn = RunService.Heartbeat:Connect(function()
 		local elapsed = os.clock() - startTime
-		local remaining = math.max(0, duration - elapsed)
-		local progress = math.clamp(remaining / duration, 0, 1)
+		local remaining = math.max(0, cd - elapsed)
+		local progress = math.clamp(remaining / cd, 0, 1)
 
 		sweep.Size = UDim2.new(1, 0, progress, 0)
 		if text then text.Text = string.format("%.1f", remaining) end

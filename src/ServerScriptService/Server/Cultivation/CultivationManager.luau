@@ -4,7 +4,8 @@
     Location: src/ServerScriptService/Server/Cultivation/CultivationManager.luau
     Server-authoritative cultivation state engine for ASCEND.
     Binds ReplicatedStorage.VFX["Full body aura"] during Meditation & Tribulation breakthroughs.
-    Guarantees clean destruction of all aura parts and attachments upon standing.
+    Features: Floating Daoist levitation during meditation (elevates 2.8 studs above ground)
+    and clean ground re-alignment upon standing.
 ]]
 
 local Players = game:GetService("Players")
@@ -233,7 +234,7 @@ end
 
 function CultivationManager.ConsumeQi(player: Player, amount: number): boolean
 	local pData = playerData[player]
-	if not pData then return false end
+	if not pData then return end
 
 	if pData.CurrentQi < amount then
 		return false
@@ -248,25 +249,31 @@ function CultivationManager.ToggleMeditation(player: Player)
 	local pData = playerData[player]
 	if not pData or pData.IsTribulationActive then return end
 
+	local character = player.Character
+	if not character then return end
+
+	-- Block meditation while flying
+	if character:GetAttribute("IsFlying") == true then
+		return
+	end
+
 	local now = os.clock()
 	local lastTime = lastToggleTimestamp[player] or 0
 	if now - lastTime < 0.8 then return end
 	lastToggleTimestamp[player] = now
 
 	pData.IsMeditating = not pData.IsMeditating
-	local character = player.Character
-	if not character then return end
 
 	local weaponMgr = getWeaponManager()
 
 	if pData.IsMeditating then
 		if weaponMgr and weaponMgr.SetWeaponState then
-			weaponMgr.SetWeaponState(player, "Back")
+			weaponMgr.SetWeaponState(player, "Back", true)
 		end
 		CultivationManager.StartGroundedMeditation(player, character, pData.Realm, false)
 	else
 		if weaponMgr and weaponMgr.SetWeaponState then
-			weaponMgr.SetWeaponState(player, "Back")
+			weaponMgr.SetWeaponState(player, "Back", true)
 		end
 		CultivationManager.StopGroundedMeditation(player, character)
 	end
@@ -284,7 +291,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	local realmInfo = CultivationConfig[realm]
 	local auraColor = if realmInfo then (if isBreakthrough then realmInfo.Tribulation.AuraColor else realmInfo.AuraColor) else Color3.fromRGB(0, 220, 255)
 
-	humanoid.Sit = true
 	humanoid.WalkSpeed = 0
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
@@ -303,9 +309,11 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	raycastParams.FilterDescendantsInstances = { character }
 	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
-	local rayResult = Workspace:Raycast(hrp.Position, Vector3.new(0, -20, 0), raycastParams)
-	local groundY = if rayResult then rayResult.Position.Y else (hrp.Position.Y - 2.8)
-	hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 1.6, hrp.Position.Z) * hrp.CFrame.Rotation
+	local rayResult = Workspace:Raycast(hrp.Position, Vector3.new(0, -25, 0), raycastParams)
+	local groundY = if rayResult then rayResult.Position.Y else (hrp.Position.Y - 3.0)
+
+	-- ELEVATE TO FLOATING HEIGHT: Positions HRP at groundY + 4.8 so the cross-legged pose hovers cleanly
+	hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 4.8, hrp.Position.Z) * hrp.CFrame.Rotation
 
 	-- Locate "Full body aura" from ReplicatedStorage.VFX
 	local auraTemplate = (vfxFolder and vfxFolder:FindFirstChild("Full body aura"))
@@ -366,12 +374,23 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 				child:Destroy()
 			end
 		end
+
+		-- Clean landing raycast: places character flush at groundY + 3.0 before unanchoring
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterDescendantsInstances = { character }
+		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+		local rayResult = Workspace:Raycast(hrp.Position, Vector3.new(0, -25, 0), raycastParams)
+
+		if rayResult then
+			local groundY = rayResult.Position.Y
+			hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 3.0, hrp.Position.Z) * hrp.CFrame.Rotation
+		end
+
 		hrp.Anchored = false
 	end
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.Sit = false
 		humanoid.WalkSpeed = 18
 		humanoid.JumpPower = 65
 		humanoid.AutoRotate = true

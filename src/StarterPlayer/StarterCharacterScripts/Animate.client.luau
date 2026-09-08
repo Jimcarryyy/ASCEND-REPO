@@ -3,7 +3,8 @@
     Animate.client.luau
     Location: src/StarterPlayer/StarterCharacterScripts/Animate.client.luau
     Master R6 Movement Animation & Audio Sync Engine for ASCEND.
-    Features: Rock-solid Idle Yaw Pinning (0% rotation drift), Anti-ragdoll protection, and clean locomotion audio.
+    Features: Rock-solid Idle Yaw Pinning, Anti-ragdoll protection, clean locomotion audio,
+    and complete Flight Mode isolation (zero running animations/sounds during flight + instant fall on dismount).
 ]]
 
 local Character = script.Parent :: Model
@@ -103,7 +104,6 @@ local function PlayImpactAudio(audioObj: Instance?)
 	end
 end
 
--- Helper function to sanitize Asset ID strings
 local function SanitizeAssetId(id: string): string
 	if not id or id == "" then return "" end
 	local clean = id:match("rbxassetid://%d+") or id:match("%d+")
@@ -140,7 +140,6 @@ local function GetLocomotionTrack(animName: string, animId: string, priority: En
 	return nil
 end
 
--- Locomotion tracks with standard Movement priority
 local trackIdle  = GetLocomotionTrack("Idle", moveCfg.Idle, Enum.AnimationPriority.Idle, true)
 local trackWalk  = GetLocomotionTrack("Walk", moveCfg.Walk, Enum.AnimationPriority.Movement, true)
 local trackRun   = GetLocomotionTrack("Run", moveCfg.Run, Enum.AnimationPriority.Movement, true)
@@ -204,6 +203,21 @@ local function StopAllLocomotionTracks()
 	targetIdleYaw = nil
 end
 
+-- Flight Mode State Sync: Stop all walking/running immediately & trigger Fall on dismount
+Character:GetAttributeChangedSignal("IsFlying"):Connect(function()
+	local isFlying = Character:GetAttribute("IsFlying") == true
+	if isFlying then
+		StopAllLocomotionTracks()
+	else
+		-- If in air when dismounting, trigger falling animation immediately!
+		if Humanoid.FloorMaterial == Enum.Material.Air or Humanoid:GetState() == Enum.HumanoidStateType.Freefall then
+			SetLocomotionState("Fall")
+		else
+			SetLocomotionState("Idle")
+		end
+	end
+end)
+
 Character:GetAttributeChangedSignal("IsMeditating"):Connect(function()
 	local isMed = Character:GetAttribute("IsMeditating") == true
 	if isMed then
@@ -215,7 +229,7 @@ end)
 
 -- State Change Listener
 Humanoid.StateChanged:Connect(function(_, newState)
-	if Character:GetAttribute("IsMeditating") == true then
+	if Character:GetAttribute("IsFlying") == true or Character:GetAttribute("IsMeditating") == true then
 		StopAllLocomotionTracks()
 		return
 	end
@@ -237,14 +251,14 @@ Humanoid.StateChanged:Connect(function(_, newState)
 		targetIdleYaw = nil
 		if not isDeliberateJump then
 			freefallStartTime = os.clock()
-			task.delay(0.25, function()
+			task.delay(0.15, function()
 				if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and not isDeliberateJump then
 					SetLocomotionState("Fall")
 				end
 			end)
 		else
-			task.delay(1.2, function()
-				if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and (os.clock() - freefallStartTime) >= 1.2 then
+			task.delay(1.0, function()
+				if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and (os.clock() - freefallStartTime) >= 1.0 then
 					SetLocomotionState("Fall")
 				end
 			end)
@@ -261,6 +275,7 @@ Humanoid.StateChanged:Connect(function(_, newState)
 		end)
 
 		task.delay(0.16, function()
+			if Character:GetAttribute("IsFlying") == true then return end
 			if Humanoid.MoveDirection.Magnitude > 0.05 then
 				local isSprinting = Humanoid.WalkSpeed > 20
 				SetLocomotionState(if isSprinting then "Run" else "Walk")
@@ -283,11 +298,12 @@ Humanoid.StateChanged:Connect(function(_, newState)
 	end
 end)
 
--- Continuous Locomotion Loop with Zero Idle Drift Pinning
+-- Continuous Locomotion Loop with Flight & Meditation Suppression
 RunService.RenderStepped:Connect(function()
 	if not Character.Parent or not Humanoid.Parent or not RootPart then return end
 
-	if Character:GetAttribute("IsMeditating") == true then
+	-- Completely sleep and silence while Flying or Meditating
+	if Character:GetAttribute("IsFlying") == true or Character:GetAttribute("IsMeditating") == true then
 		StopMovementAudio()
 		if activeLocomotionTrack and activeLocomotionTrack.IsPlaying then
 			activeLocomotionTrack:Stop(0.05)
@@ -306,7 +322,6 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	if Humanoid.MoveDirection.Magnitude > 0.05 then
-		-- Actively moving: clear idle pin and steer freely
 		targetIdleYaw = nil
 		local isSprinting = Humanoid.WalkSpeed > 20
 
@@ -322,7 +337,7 @@ RunService.RenderStepped:Connect(function()
 			if not customWalkSound.IsPlaying then customWalkSound:Play() end
 		end
 	else
-		-- STANDING IDLE: Capture exact facing angle and pin it firmly
+		-- STANDING IDLE
 		SetLocomotionState("Idle")
 		StopMovementAudio()
 
@@ -331,7 +346,6 @@ RunService.RenderStepped:Connect(function()
 			targetIdleYaw = y
 		end
 
-		-- Lock rotation firmly to targetIdleYaw (only when not in focus target mode)
 		if Character:GetAttribute("IsFocusMode") ~= true and targetIdleYaw then
 			RootPart.AssemblyAngularVelocity = Vector3.zero
 			RootPart.CFrame = CFrame.new(RootPart.Position) * CFrame.Angles(0, targetIdleYaw, 0)

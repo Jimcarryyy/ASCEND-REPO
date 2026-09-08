@@ -4,7 +4,7 @@
     Location: src/ServerScriptService/Server/State/CombatStateManager.luau
     Unified Server-Side Combat & CC State Machine for ASCEND.
     Authoritatively manages Action States, CC States, Posture, Guard-Break,
-    Stun Immunity (Hyperarmor), Qi Dash I-Frames, and In-Combat lockouts.
+    Stun Immunity (Hyperarmor), Qi Dash I-Frames, In-Combat lockouts, and Flight Mode (V).
 ]]
 
 local Players = game:GetService("Players")
@@ -67,7 +67,14 @@ function CombatStateManager.Init()
 			return
 		end
 
-		-- 2. Guard / Block Stance (F)
+		-- 1b. Flight Toggle (V)
+		if payload.ToggleFlight then
+			local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+			WeaponManager.ToggleFlight(player)
+			return
+		end
+
+		-- 2. Guard / Block Stance (T)
 		if payload.Action == "BlockStart" then
 			CombatStateManager.StartBlock(player, payload.Timestamp)
 			return
@@ -88,7 +95,7 @@ function CombatStateManager.Init()
 		end
 	end)
 
-	print("[ASCEND] Unified CombatStateManager Initialized (Full CC & Posture Engine Active).")
+	print("[ASCEND] Unified CombatStateManager Initialized (Full CC, Posture & Flight Engine Active).")
 end
 
 function CombatStateManager.OnPlayerAdded(player: Player)
@@ -124,6 +131,7 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 		character:SetAttribute("InCombat", false)
 		character:SetAttribute("CCState", "None")
 		character:SetAttribute("IsBlocking", false)
+		character:SetAttribute("IsFlying", false)
 	end)
 end
 
@@ -223,6 +231,12 @@ function CombatStateManager.ApplyCC(player: Player, ccType: CCState, duration: n
 		char:SetAttribute("CCState", ccType)
 		char:SetAttribute("IsBlocking", false)
 
+		-- Dismount if stunned or guard-broken during flight
+		if char:GetAttribute("IsFlying") == true then
+			local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+			WeaponManager.ToggleFlight(player)
+		end
+
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		if hum then hum.WalkSpeed = 0 end
 	end
@@ -263,6 +277,13 @@ function CombatStateManager.StartBlock(player: Player, clientTimestamp: number?)
 		return
 	end
 
+	-- Dismount if blocking during flight
+	local char = player.Character
+	if char and char:GetAttribute("IsFlying") == true then
+		local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+		WeaponManager.ToggleFlight(player)
+	end
+
 	local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 	if WeaponManager.GetWeaponState(player) == "Back" then
 		WeaponManager.SetWeaponState(player, "Hand")
@@ -279,7 +300,6 @@ function CombatStateManager.StartBlock(player: Player, clientTimestamp: number?)
 	state.BlockStartTime = clampedStart
 	state.ActionState = "Blocking"
 
-	local char = player.Character
 	if char then
 		char:SetAttribute("IsBlocking", true)
 		char:SetAttribute("BlockStartTime", clampedStart)
@@ -355,6 +375,12 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	-- CC and Lockout Gate
 	if state.CCState == "Stunned" or state.CCState == "GuardBroken" then return false end
 	if state.ActionState == "Windup" or state.ActionState == "Recovery" then return false end
+
+	-- Dismount if attacking during flight
+	if character:GetAttribute("IsFlying") == true then
+		local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+		WeaponManager.ToggleFlight(player)
+	end
 
 	local now = os.clock()
 

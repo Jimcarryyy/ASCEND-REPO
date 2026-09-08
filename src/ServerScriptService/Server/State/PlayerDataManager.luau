@@ -181,6 +181,8 @@ end
 function PlayerDataManager.OnPlayerAdded(player: Player)
 	local dataKey = "Player_" .. player.UserId
 	local loadedData: any = nil
+	local isDev = IsDeveloper(player)
+	local defaultEquipped = if isDev then "VoidStarCleaverDao" else STARTER_WEAPON
 
 	if playerDataStore then
 		for attempt = 1, MAX_RETRIES do
@@ -223,7 +225,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 				CurrentQi = DEFAULT_PLAYER_DATA.Cultivation.CurrentQi,
 				CultivatedQi = DEFAULT_PLAYER_DATA.Cultivation.CultivatedQi or 200,
 			},
-			EquippedWeapon = DEFAULT_PLAYER_DATA.EquippedWeapon,
+			EquippedWeapon = defaultEquipped,
 			Inventory = {
 				[1] = { ItemId = "MortalIronJian", Count = 1 },
 				[2] = { ItemId = "SpiritHealingDan", Count = 5 },
@@ -242,6 +244,13 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		if not loadedData.Version or loadedData.Version < CURRENT_VERSION then
 			print(string.format("[PlayerDataManager] Migrating %s data to Version 3 schema.", player.Name))
 			loadedData.Version = CURRENT_VERSION
+		end
+
+		-- SANITIZE CLOUD DATA: Fix corrupted FlyingSword or force developer default to VoidStarCleaverDao
+		local eq = tostring(loadedData.EquippedWeapon or "")
+		if eq == "" or eq == "FlyingSword" or eq == "Celestial Thunder Sovereign Sword" or string.find(eq:lower(), "flyingsword") or (isDev and eq == "MortalIronJian") then
+			loadedData.EquippedWeapon = defaultEquipped
+			print(string.format("[PlayerDataManager] Sanitized equipped weapon for %s -> '%s'", player.Name, defaultEquipped))
 		end
 	end
 
@@ -275,13 +284,11 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 
 	-- Normalize inventory keys
 	local normalizedInventory: { [number]: SavedInventorySlot } = {}
-	local isDev = IsDeveloper(player)
 
 	if loadedData.Inventory and type(loadedData.Inventory) == "table" then
 		for slotKey, slotData in pairs(loadedData.Inventory) do
 			local slotNum = tonumber(slotKey)
 			if slotNum and slotData and slotData.ItemId then
-				-- If regular player migrating from V2, purge the legacy free test swords
 				if not isDev and isMigratedFromV2 and LEGACY_TEST_SWORDS[slotData.ItemId] then
 					continue
 				end
@@ -299,7 +306,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	-- WEAPON ACCESS MANAGEMENT
 	-- =========================================================================
 	if isDev then
-		-- Developer: Auto-grant every weapon defined in the game
 		print(string.format("[PlayerDataManager] Developer detected (%s) — injecting full weapon arsenal.", player.Name))
 		local allItems = ItemConfig.GetAllItems()
 
@@ -323,7 +329,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			end
 		end
 	else
-		-- Regular Player / Alt: Ensure ONLY MortalIronJian is given if no weapon is possessed
 		local hasWeapon = false
 		for _, slot in pairs(normalizedInventory) do
 			local itemDef = ItemConfig.GetItem(slot.ItemId)
@@ -344,7 +349,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 
 	InventoryManager.SetInventory(player, normalizedInventory)
-	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or STARTER_WEAPON)
+	WeaponManager.EquipWeapon(player, loadedData.EquippedWeapon or defaultEquipped)
 
 	local SectManager = getSectManager()
 	if SectManager.SetQuestState then
@@ -366,6 +371,14 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		character:SetAttribute("SectRank", playerEconomyData[player].SectRank)
 		character:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
 		character:SetAttribute("ContributionPoints", playerEconomyData[player].ContributionPoints)
+
+		task.defer(function()
+			local targetWeapon = loadedData.EquippedWeapon or defaultEquipped
+			if targetWeapon == "FlyingSword" or string.find(tostring(targetWeapon):lower(), "flyingsword") then
+				targetWeapon = defaultEquipped
+			end
+			WeaponManager.EquipWeapon(player, targetWeapon, "Hand")
+		end)
 	end
 
 	if player.Character then
@@ -373,12 +386,13 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 	player.CharacterAdded:Connect(bindChar)
 
-	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s).",
+	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Weapon: %s).",
 		player.Name,
 		loadedData.Cultivation.Realm,
 		loadedData.Cultivation.Order or 1,
 		loadedData.SpiritStones or 250,
-		loadedData.SectRank or "OuterDisciple"
+		loadedData.SectRank or "OuterDisciple",
+		tostring(loadedData.EquippedWeapon)
 	))
 end
 
@@ -514,6 +528,12 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		return false
 	end
 
+	-- SANITIZE BEFORE SAVING: Prevent FlyingSword from ever entering cloud save
+	local defaultWep = if IsDeveloper(player) then "VoidStarCleaverDao" else STARTER_WEAPON
+	if not equippedWeapon or equippedWeapon == "FlyingSword" or string.find(tostring(equippedWeapon):lower(), "flyingsword") then
+		equippedWeapon = defaultWep
+	end
+
 	local serializedInventory: { [string]: SavedInventorySlot } = {}
 	for slotIdx, slot in pairs(inventory) do
 		if slot and slot.ItemId then
@@ -533,7 +553,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 			CurrentQi = cultivation.CurrentQi,
 			CultivatedQi = cultivation.CultivatedQi,
 		},
-		EquippedWeapon = equippedWeapon or STARTER_WEAPON,
+		EquippedWeapon = equippedWeapon,
 		Inventory = serializedInventory,
 		Sect = (player.Character and player.Character:GetAttribute("Sect") :: string?) or "Azure Cloud Sect",
 		SectRank = economy.SectRank,
@@ -558,7 +578,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 
 		if success then
 			saveSuccess = true
-			print(string.format("[PlayerDataManager] Successfully saved data for %s.", player.Name))
+			print(string.format("[PlayerDataManager] Successfully saved data for %s (Equipped: %s).", player.Name, equippedWeapon))
 			break
 		else
 			warn(string.format("[PlayerDataManager] SetAsync attempt %d failed for %s: %s", attempt, player.Name, tostring(err)))

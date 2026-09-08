@@ -31,6 +31,9 @@ local AnimationConfig = {
 		-- 2-Stage Repeatable Qi Dash Animations
 		Dash_1 = "rbxassetid://118004062849712",
 		Dash_2 = "rbxassetid://87494050060721",
+
+		-- Flying Sword In-Flight Mode Animation
+		Flight = "rbxassetid://81098622855235",
 	},
 
 	FlyingSword = {

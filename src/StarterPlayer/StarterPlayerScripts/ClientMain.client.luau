@@ -31,6 +31,7 @@ local CONTROLLER_NAMES = {
 	"TeaHouseController",
 	"StarterGuideController",
 	"SparringGuidanceController",
+	"CharacterStatsController", 
 }
 
 local function InitializeClient()
