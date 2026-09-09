@@ -151,3 +151,35 @@ $$\mathbf{IntentGain = +25\% \text{ per landed M1 hit}} \quad \longrightarrow \q
 * **Perfect Parry (Tap `T` within $0.22\text{s}$):** **$100\%$ Damage Negation**, breaks attacker's posture with a **$0.5\text{s}$ stagger**, restores $+10\text{ Posture}$, triggers parry spark VFX, and plays clash audio (`rbxassetid://9114223175`). Costs $0$ Posture.
 * **Guard-Break Penalty:** Reaching $0\text{ Posture}$ inflicts a **$2.0\text{s}$ vulnerability stun** ($+25\%$ bonus damage taken) with shield-shatter audio.
 * **Anti-Stunlock Buffer:** Players receive **$0.6\text{s}$ of hard hyperarmor (`CCImmune`)** upon recovering from any stun.
+
+## Section 10: Traversal Mechanics & Flying Sword Flight Mode (Phase 8.4)
+
+### 10.1 Flying Sword Flight Mode (御剑飞行)
+* **Hotkey:** **`V`** (Desktop) / **`V_SKILL`** (Mobile Touch Cluster).
+* **Mounting Physics:**
+  * Connects `character["Left Leg"].LeftFootAttachment` to `FlyingSword.Mesh1.0.FeetAttachment` via `RigidConstraint` and `AnimationConstraint`.
+  * Elevates character $+3.5\text{ studs}$ off the ground on mount.
+  * Hides equipped combat weapon (`EquippedSword.Transparency = 1`).
+* **Steering & Anti-Tumble Lock:**
+  * Disables `Humanoid.AutoRotate = false` during flight.
+  * Binds high-torque `AlignOrientation` (`MaxTorque = 10,000,000`, `Responsiveness = 35`) with `FLIGHT_YAW_OFFSET = 90`, locking sword and character strictly facing the horizontal camera direction.
+* **Aerodynamic Cushions:**
+  * **Ground Clearance Cushion:** Raycast maintains a minimum altitude of $6.5\text{ studs}$ above terrain, repelling the sword so it never drags or clips.
+  * **Proximity Obstacle Cushion:** Forward raycast ($8.5\text{ stud}$ buffer) eliminates inward velocity against walls and cliffs, enabling smooth surface sliding.
+* **Vertical Movement:**
+  * `Spacebar`: Ascend ($+42\text{ studs/s}$).
+  * `LeftControl` / `C`: Descend ($-42\text{ studs/s}$).
+  * Idle: Slow natural downward glide at $-2.5\text{ studs/s}$ until caught by ground cushion.
+* **Velocity:** **$75\text{ studs/s}$**.
+* **Dismounting:** Pressing `V` destroys the flight mount, forces `Freefall` state (immediately playing the falling animation), restores normal gravity, and unhides the combat weapon in hand.
+
+### 10.2 High-Impact Locomotion & Qi Dash
+* **Movement Speeds:**
+  * Open World: Walk $18\text{ studs/s}$ / Sprint **$44\text{ studs/s}$**.
+  * Sparring Arena: Walk $16\text{ studs/s}$ / Sprint **$34\text{ studs/s}$**.
+  * Sprinting features harmonic step-synced head-bobbing and dynamic FOV expansion ($70^\circ \rightarrow 76^\circ$).
+* **Lightning Flash-Step Dash (`LeftShift`):**
+  * Instant explosive velocity: **$150\text{ studs/s}$** burst over $0.16\text{s}$ ($\approx 20\text{ studs}$ distance).
+  * **Anti-Trip Protection:** Lifts character $+1.2\text{ studs}$ off the ground, applies temporary `Freefall` state, and locks upright orientation with an `AlignOrientation` (`MaxTorque = 10,000,000`), completely preventing tripping or flipping when dashing during a sprint.
+  * Camera juice: Instant FOV punch ($70^\circ \rightarrow 79^\circ \rightarrow 70^\circ$) + micro-trauma directional shake.
+  * Visuals: Spawns two fading Celestial Cyan Neon ghost afterimages (`#38BDF8`).

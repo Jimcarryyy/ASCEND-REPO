@@ -370,3 +370,76 @@ This document records historical feature additions, engine enhancements, balance
 - **Madame Tie & Anvil Prompt Fix:** Added recursive ancestor detection in `BlacksmithManager.luau` and `BlacksmithController.luau`.
 - **Elder Qing Prompt Collision Fix:** Removed `"seek guidance"` from `SectManager.luau` so Elder Qing exclusively opens `StarterGuideGui`.
 - **TopBar Overlap:** Shifted `TopLeftDutyTracker` down by $+56\text{px}$ to clear Roblox CoreGui buttons.
+
+## [Phase 8.4 — Flying Sword Flight Mode, High-Impact Locomotion & 9-Slice UI Overhaul] — September 2026
+
+### Added
+- **Server-Authoritative Flying Sword Flight Mode (`WeaponManager.luau` & `InputController.luau`):**
+  - Bound flight toggle to the **`V`** key (and `V_SKILL` on desktop/mobile HUDs).
+  - Mounted dedicated `ReplicatedStorage.FlyingSword` horizontally under the character's feet using pre-defined `FeetAttachment` and `LeftFootAttachment` via synchronized `RigidConstraint` (physics weld) and `AnimationConstraint`.
+  - Registered R6 Daoist sword-surfing animation (`rbxassetid://81098622855235`) in `AnimationConfig.Movement.Flight`, playing at `Enum.AnimationPriority.Action4`.
+  - Implemented 3D omnidirectional flight physics with locked directional steering:
+    - Set `Humanoid.AutoRotate = false` and added high-torque `AlignOrientation` (`MaxTorque = 10,000,000`, `Responsiveness = 35`) with `FLIGHT_YAW_OFFSET = 90`, locking the sword tip and character forward with the camera view and eliminating 360° spinning and collision tumbling.
+    - Added downward raycast **Ground Clearance Cushion** (`MIN_HOVER_ALTITUDE = 6.5 studs`), automatically pushing the sword ~3.5 studs above grass, rocks, and terrain so it never drags or clips.
+    - Added forward **Proximity Obstacle Cushion** (`MIN_OBSTACLE_BUFFER = 8.5 studs`), eliminating inward velocity on solid models/cliffs and allowing smooth sliding along walls with zero snagging.
+    - Flight vertical controls: `Spacebar` to ascend (+42 studs/s), `LeftControl` / `C` to descend (-42 studs/s), and camera pitch steering.
+    - Natural slow idle descent: drifts downward gently at -2.5 studs/s when hands are off the controls until cushioned above the ground.
+    - Increased flight velocity to **75 studs/s**.
+  - Generated complete **Celestial Thunder Sword Flight VFX Suite**:
+    - `FlightRibbon` 4-stop azure-to-indigo trail (`#E0F2FE` -> `#38BDF8` -> `#2563EB` -> `#1E1B4B`).
+    - `BladeEdgeAura` particle mist wafting along the blade edges.
+    - `CoreThunderSparks` & `SwordCoreLight` (12-stud range, 1.4 brightness) around the crossguard cyan gem.
+    - `TipSlipstream` air-condensation streaks cutting through clouds at the blade tip.
+
+- **High-Impact Locomotion & Lightning Flash-Step Dash (`AnimationController.luau` & `InputController.luau`):**
+  - Boosted sprint speed from 35 studs/s to **44 studs/s** (Open World) and **34 studs/s** (Arena).
+  - Added step-synced harmonic running head-bobbing (vertical footfall compression $\pm 0.08$ studs, lateral weight sway $\pm 0.05$ studs, and roll tilt $\pm 0.75^\circ$).
+  - Added dynamic speed-tunnel FOV smoothly expanding from $70^\circ \rightarrow 76^\circ$ while sprinting.
+  - Overhauled **Lightning Qi Dash (`LeftShift`)**:
+    - Explosive instantaneous impulse: **150 studs/s** burst over 0.16s covering $\approx 20\text{ studs}$.
+    - Fixed running-dash tripping/flipping bug by adding **$+1.2\text{ stud}$ elevation lift**, setting temporary `Freefall` state, and locking upright posture with an `AlignOrientation` (`MaxTorque = 10,000,000`).
+    - Added camera speed-warp FOV punch ($70^\circ \rightarrow 79^\circ \rightarrow 70^\circ$) + high-frequency micro-trauma camera shake.
+    - Spawns two fading Celestial Cyan Neon ghost afterimages (`#38BDF8`) at $t = 0\text{s}$ and $t = 0.06\text{s}$.
+
+- **Floating Daoist Meditation Elevation (`CultivationManager.luau` & `AnimationController.luau`):**
+  - Fixed buried-in-ground meditation bug by lifting `HumanoidRootPart` to `groundY + 4.8` studs upon pressing **`C`** (hovering ~2.8 studs above the floor in lotus posture) and removing `humanoid.Sit = true`.
+  - Added downward raycast on exit to land flush at `groundY + 3.0` studs on any slope, stair, or terrain.
+  - Pre-warmed `MEDITATION_ANIM_ID` via `ContentProvider:PreloadAsync` and pre-loaded `meditationTrack` on character spawn, eliminating the first-press standing-freeze bug.
+
+- **Dedicated Character & Weapon Profile (`StarterGui.CharacterStatsGui` & `CharacterStatsController.luau`):**
+  - Created 4-tab middle-center modal ($0.5, 0.5$) with `DisplayOrder = 50`:
+    - `1. DAO REALM`: Live Disciple name, Sect Rank, Realm, Realm Power Multiplier, Alchemy Rank, and Dantian Qi progress bar.
+    - `2. COMBAT STATS`: Live Max HP, Poise (Posture), Ground Speed, Flight Velocity, Sword Intent %, and Critical Chance.
+    - `3. SPIRIT WEAPON`: Equipped Blade name, rarity, base ATK damage, swing cadence, Blacksmith Refinement Grade (+Grade = +5%/lvl), and Whetstone Buff countdown timer.
+    - `4. 3D AVATAR`: Real-time 3D rotating ViewportFrame of character holding equipped weapon.
+  - Sourced with genuine `Fondamento` descriptions and bold `Bangers` badges.
+  - Toggled with keybind **`P`**.
+
+- **Mobile Scatter Cluster Full Interactivity (`SkillBarController.luau`):**
+  - Wired all 10 mobile buttons in `MasterHUDGui.MobileScatterCluster` (`M1`, `Shift`, `T` hold-to-block, `Q`, `E`, `F`, `R`, `V`, `C`, `B`).
+  - Synchronized dual cooldown sweeps across desktop hotbar and mobile touch buttons simultaneously.
+
+- **9-Slice Textured Panel Architecture (`rbxassetid://115367926298823`):**
+  - Standardized facility modal main windows to 9-slice `ImageLabel`s with `SliceCenter = Rect.new(146, 120, 878, 120)` and `SliceScale = 1`.
+  - Applied to `SectPavilionGui`, `BlacksmithGui`, `TeaHouseGui`, `AlchemyGui`, and `StarterGuideGui`.
+  - Styled inner sub-panels to Deep Warm Obsidian (`#0E1016`, 0.20 transparency) with Antique Gold borders (`#B4914B`).
+  - Upgraded action buttons (`RefineButton`, `SharpenButton`, `BrewButton`) with high-contrast glowing backgrounds and bold pure white Bangers text.
+
+### Changed
+- **Overhead UI Standard (`OverheadUIController.luau`):**
+  - Slimmed health bar from $22\text{px}$ pill to $11\text{px}$ sleek rectangle with $1\text{px}$ micro-corners and $1\text{px}$ dark slate border (`#37414E`).
+  - Applied 3-stop Celestial Jade green gradient (`#4ADE80` -> `#22C55E` -> `#108043`).
+  - Standardized all overhead typography to `Enum.Font.FredokaOne` and centered numeric HP text directly on the bar.
+  - Stripped overhead Qi bar to reduce clutter and enforced strict player-only attachment (ignoring all NPCs and dummies).
+
+### Fixed
+- **Combat Weapon vs Flying Sword Isolation:**
+  - Resolved bug where the Flying Sword spawned in hand on player join in the live published game.
+  - Sanitized `PlayerDataManager.luau` to purge any saved `"FlyingSword"` from cloud DataStores, defaulting developer `Han_jueee` to `"VoidStarCleaverDao"`.
+  - Sourced combat weapons strictly from `ReplicatedStorage.Weapons`, reserving `ReplicatedStorage.FlyingSword` strictly for the `V` key flight mount.
+  - Restored genuine `MortalIronJian` mesh from `ReplicatedStorage["Old swords (IGNORE)"]`.
+- **`SkillBarController:227` Subtraction Crash:** Added defensive fallback (`local cd = duration or 1.5`) in `TriggerCooldown`, eliminating nil arithmetic errors when triggering block (`T`).
+- **`WeaponManager:245` Arithmetic Crash:** Resolved string-to-number multiplication error by safely resolving realm tier indices through `CultivationConfig.GetRealmIndex`.
+- **`CultivationController:142` Syntax Error:** Removed stray backslash that prevented client controller booting.
+- **Deacon Zhao Sect Pavilion Prompt:** Resolved hierarchy lookup bug in `SectController.luau` so pressing `E` on Deacon Zhao opens `SectPavilionGui` with 0ms lag.
+- **Movement Sound Governor:** Muted phantom footstep audio during flight collisions and mid-air jump spamming.

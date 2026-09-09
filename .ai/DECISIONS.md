@@ -389,3 +389,49 @@ This document records structural architectural decisions, design paradigms, secu
   1. Consolidated all persistent HUD elements into **`StarterGui.MasterHUDGui`**.
   2. Shifted `TopLeftDutyTracker` down by $+56\text{px}$ ($Y = 0.075$) to clear the Roblox topbar pill.
   3. Set `DisplayOrder = 50` and centered facility modals at $Y = 0.38$ with a compact $0.54\text{–}0.58$ height, giving $190\text{px}$ of clearance above the bottom HUD.
+
+  ### ADR-050 — Server-Authoritative Flying Sword Flight Mode & Aerodynamic Hover Physics
+* **Date:** 2026-09-09
+* **Status:** Accepted & Implemented
+* **Context:** Cultivators required an authentic Xianxia sword-riding traversal mechanic (御剑飞行) that felt smooth, responsive, and did not drag on terrain or tumble upon colliding with buildings.
+* **Decision:**
+  1. Wired `V` key toggle across `InputController.luau`, `CombatStateManager.luau`, and `WeaponManager.luau`.
+  2. Mounted `ReplicatedStorage.FlyingSword` to character's `Left Leg` using `LeftFootAttachment` and `FeetAttachment` via synchronized `RigidConstraint` and `AnimationConstraint`.
+  3. Enforced upright posture via an `AlignOrientation` (`MaxTorque = 10,000,000`, `Responsiveness = 35`) with `FLIGHT_YAW_OFFSET = 90`, locking the sword tip forward with the camera view and eliminating 360° spinning or collision tumbling.
+  4. Implemented downward raycast **Ground Clearance Cushion** (`MIN_HOVER_ALTITUDE = 6.5 studs`) with upward spring force, keeping the sword hovering ~3.5 studs above ground/grass without clipping.
+  5. Implemented forward **Proximity Obstacle Cushion** (`MIN_OBSTACLE_BUFFER = 8.5 studs`), eliminating inward velocity on solid models/cliffs to enable smooth wall-sliding.
+  6. Flight velocity locked at **75 studs/s**, with Spacebar ascend (+42 studs/s), Ctrl/C descend (-42 studs/s), and gentle idle descent (-2.5 studs/s).
+* **Consequences:** Created an authentic, fluid sword-flight experience that is physically stable across all terrain types.
+
+### ADR-051 — Combat Weapon vs. Flying Sword Lifecycle Isolation & Cloud DataStore Sanitization
+* **Date:** 2026-09-09
+* **Status:** Accepted & Implemented
+* **Context:** A previous test script cloned the Flying Sword mesh into `ReplicatedStorage.Weapons.MortalIronJian`. When auto-save ran during flight testing, `EquippedWeapon = "FlyingSword"` was written to production DataStore, causing players to spawn in the live published game holding the Flying Sword horizontally by its middle gem.
+* **Decision:**
+  1. **Strict Folder Isolation:** Combat weapons are sourced exclusively from `ReplicatedStorage.Weapons` (`VoidStarCleaverDao`, `MortalIronJian`, etc.). `ReplicatedStorage.FlyingSword` is exclusively reserved for the `V` key flight mount.
+  2. **Cloud Data Sanitization:** `PlayerDataManager.luau` sanitizes `loadedData.EquippedWeapon` on join—if it equals `"FlyingSword"`, it is automatically overwritten with `"VoidStarCleaverDao"` (developer) or `"MortalIronJian"` (regular players).
+  3. `SaveData(player)` strictly prohibits saving `"FlyingSword"` to cloud DataStores.
+  4. Restored genuine `MortalIronJian` mesh from `ReplicatedStorage["Old swords (IGNORE)"]`.
+* **Consequences:** Permanently eliminated cloud weapon corruption and cleanly separated combat weapons from flight mounts.
+
+### ADR-052 — High-Impact Locomotion, Anti-Trip Elevation Dash & Movement Sound Governor
+* **Date:** 2026-09-09
+* **Status:** Accepted & Implemented
+* **Context:** Sprinting at 35 studs/s felt sluggish, dashing while running tripped R6 characters into forward flips due to ground friction, and Roblox character audio looped footstep sounds during flight collisions and jump-spamming.
+* **Decision:**
+  1. Increased open-world sprint speed from 35 to **44 studs/s** (Arena: 34 studs/s).
+  2. Added harmonic step-synced head-bobbing ($\pm 0.08$ studs vertical bounce, lateral sway, $\pm 0.75^\circ$ roll tilt) and dynamic sprint FOV ($70^\circ \rightarrow 76^\circ$).
+  3. **Anti-Trip Qi Dash Engine:** Dashing at 150 studs/s lifts the character $+1.2\text{ studs}$, applies temporary `Freefall` state to disable ground friction, and locks upright posture with an `AlignOrientation` (`MaxTorque = 10,000,000`), completely eliminating tripping and faceplants.
+  4. **Movement Sound Governor:** Bound a continuous listener in `AnimationController.luau` and `Animate.client.luau` that mutes `Running` audio and stops ground tracks whenever `IsFlying == true` or `FloorMaterial == Air`.
+* **Consequences:** Dramatic improvement in character movement feel, responsiveness, and auditory polish.
+
+### ADR-053 — 9-Slice Textured Panel Standard & Dedicated Cultivator Profile GUI
+* **Date:** 2026-09-09
+* **Status:** Accepted & Implemented
+* **Context:** Procedural flat vector UI borders looked inconsistent with authored Xianxia art assets, and players had no in-game window to inspect their Blacksmith refinements, realm multipliers, or weapon damage.
+* **Decision:**
+  1. Adopted **`rbxassetid://115367926298823`** as the universal 9-slice background panel asset (`SliceCenter = Rect.new(146, 120, 878, 120)`, `SliceScale = 1`) across `SectPavilionGui`, `BlacksmithGui`, `TeaHouseGui`, `AlchemyGui`, and `StarterGuideGui`.
+  2. Enforced `IgnoreGuiInset = true` on all facility modals for 100% full-screen backdrop coverage.
+  3. Built and deployed **`CharacterStatsGui`** ($0.5, 0.5$ dead-center) with 4 tabs (`1. DAO REALM`, `2. COMBAT STATS`, `3. SPIRIT WEAPON`, `4. 3D AVATAR`) bound to keybind **`P`**.
+  4. Enforced typography standard: `Enum.Font.Bangers` for headers and category badges; `Fondamento` for all stat descriptions and lore values.
+* **Consequences:** Unified the visual identity of all game menus with high-contrast, scalable, calligraphic Xianxia presentation.

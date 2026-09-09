@@ -86,3 +86,5 @@ V	Sword Flight Mode	Mounts flying sword horizontally beneath feet for 3D omnidir
 Q	Skill: Sword Tempest	Spawns a rotating blade vortex around the player (Costs 15% Qi).
 E	Skill: Telekinesis Thrust	Fires a telekinetic flying sword projectile forward (Costs 12% Qi).
 F	Skill: Falling Sky Slam	High vertical jump followed by an earth-shattering downward plunge (Costs 10% Qi).
+
+| Phase 8.4 | September 2026 | Flying Sword Flight Mode (75 studs/s, 3D hover cushion, obstacle barrier, VFX), Anti-Trip 150 studs/s Lightning Dash, 44 studs/s Running with Head-Bobbing, Floating Meditation (+2.8 studs), Dedicated CharacterStatsGui (`P` key), 9-Slice Panel Standard (`115367926298823`), and Mobile Scatter Cluster Keybind Parity. |

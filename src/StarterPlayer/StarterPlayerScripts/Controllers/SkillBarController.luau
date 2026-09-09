@@ -3,10 +3,12 @@
     SkillBarController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
     Directly bound to StarterGui.MasterHUDGui:
-    - 10-Slot Skill Hotbar (B, C, E, F, M1, Q, R, Shift, T, V) with Cooldown Sweeps
+    - 10-Slot Desktop Hotbar (BottomCenterFrame.HotbarContainer)
+    - 10-Button Mobile Touch Cluster (MobileScatterCluster with Hold-to-Block & Tap Actions)
+    - Dual Cooldown Sweeper (syncs sweeps & timers across desktop & mobile buttons)
     - Vitals Container (HP, Qi, Sword Intent Gauge)
-    - TopRight Currency (Live Contribution Points CP & Spirit Stones)
-    - BottomNavTray Modal Buttons (Arena, Bag, Guide, Meditate, Sect)
+    - TopRight Currency (Live CP & Spirit Stones)
+    - BottomNavTray Modal Openers (Arena, Bag, Guide, Meditate, Sect)
 ]]
 
 local Players = game:GetService("Players")
@@ -41,6 +43,7 @@ local cpLabel: TextLabel?
 local spiritStoneLabel: TextLabel?
 
 local hotbarContainer: Frame?
+local mobileScatterCluster: Frame?
 local bottomNavTray: Frame?
 
 local combatActionRemote: RemoteEvent
@@ -49,9 +52,20 @@ local sectRemote: RemoteEvent? = nil
 local currentSwordIntent = 0
 local lastHitLandedTime = os.clock()
 
-local skillButtons: { [string]: ImageButton } = {}
-local cooldownSweeps: { [string]: Frame } = {}
-local cooldownTexts: { [string]: TextLabel } = {}
+-- Multi-target cooldown tracking (Supports both Desktop and Mobile buttons per slot)
+local cooldownSweeps: { [string]: { Frame } } = {}
+local cooldownTexts: { [string]: { TextLabel } } = {}
+
+local function GetInputController(): any
+	local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
+	if controllers then
+		local inputCtrl = controllers:FindFirstChild("InputController")
+		if inputCtrl then
+			return require(inputCtrl)
+		end
+	end
+	return nil
+end
 
 local function FormatNum(num: number): string
 	if CultivationConfig and CultivationConfig.FormatNumber then
@@ -94,22 +108,115 @@ local function GetCurrentStones(): number
 	return tonumber(val) or 0
 end
 
-local function TriggerM1()
-	local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
-	if controllers then
-		local inputCtrl = controllers:FindFirstChild("InputController")
-		if inputCtrl then
-			local req = require(inputCtrl) :: any
-			if req and req.TriggerM1 then req.TriggerM1(); return end
-		end
-	end
-	combatActionRemote:FireServer({ SkillKey = "M1", AimDirection = Vector3.new(0, 0, -1), Timestamp = os.clock() })
+-- Normalize skill names ("M1_SKILL" -> "M1", "Shift_SKILL" -> "Shift")
+local function CleanSlotKey(rawName: string): string
+	local clean = rawName:gsub("_SKILL$", "")
+	return clean
 end
 
+--------------------------------------------------------------------------------
+-- UNIFIED BUTTON BINDER (Works for Desktop Hotbar & Mobile Scatter Cluster)
+--------------------------------------------------------------------------------
+local function BindSkillButton(btn: GuiButton, rawName: string)
+	local cleanKey = CleanSlotKey(rawName)
+
+	-- 1. Register Cooldown Sweeps
+	local sweep = btn:FindFirstChild("CooldownSweep") :: Frame?
+	local cdText = btn:FindFirstChild("CooldownText") :: TextLabel?
+
+	if sweep then
+		if not cooldownSweeps[cleanKey] then cooldownSweeps[cleanKey] = {} end
+		table.insert(cooldownSweeps[cleanKey], sweep)
+	end
+	if cdText then
+		if not cooldownTexts[cleanKey] then cooldownTexts[cleanKey] = {} end
+		table.insert(cooldownTexts[cleanKey], cdText)
+	end
+
+	-- 2. Bind Action Trigger Logic
+	if cleanKey == "M1" then
+		btn.Activated:Connect(function()
+			local ic = GetInputController()
+			if ic and ic.TriggerM1 then
+				ic.TriggerM1()
+			else
+				combatActionRemote:FireServer({ SkillKey = "M1", AimDirection = Vector3.new(0, 0, -1), Timestamp = os.clock() })
+			end
+		end)
+
+	elseif cleanKey == "Shift" or cleanKey == "Dash" then
+		btn.Activated:Connect(function()
+			local ic = GetInputController()
+			if ic and ic.TriggerDash then
+				ic.TriggerDash()
+			end
+		end)
+
+	elseif cleanKey == "T" or cleanKey == "Shield" then
+		-- Hold to Block, Release to Stop Block (Mobile Touch & Click compatible)
+		btn.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+				local ic = GetInputController()
+				if ic and ic.StartBlock then ic.StartBlock() end
+			end
+		end)
+		btn.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+				local ic = GetInputController()
+				if ic and ic.StopBlock then ic.StopBlock() end
+			end
+		end)
+
+	elseif cleanKey == "Q" or cleanKey == "Whirl" then
+		btn.Activated:Connect(function()
+			local ic = GetInputController()
+			if ic and ic.TriggerSkill then ic.TriggerSkill("Q") end
+		end)
+
+	elseif cleanKey == "E" or cleanKey == "Thrust" then
+		btn.Activated:Connect(function()
+			local ic = GetInputController()
+			if ic and ic.TriggerSkill then ic.TriggerSkill("E") end
+		end)
+
+	elseif cleanKey == "F" or cleanKey == "Slam" then
+		btn.Activated:Connect(function()
+			local ic = GetInputController()
+			if ic and ic.TriggerSkill then ic.TriggerSkill("F") end
+		end)
+
+	elseif cleanKey == "R" or cleanKey == "Sheath" then
+		btn.Activated:Connect(function()
+			combatActionRemote:FireServer({ ToggleSheath = true })
+		end)
+
+	elseif cleanKey == "V" or cleanKey == "Flight" then
+		btn.Activated:Connect(function()
+			combatActionRemote:FireServer({ ToggleFlight = true })
+		end)
+
+	elseif cleanKey == "C" or cleanKey == "Meditate" then
+		btn.Activated:Connect(function()
+			combatActionRemote:FireServer({ ToggleMeditation = true })
+		end)
+
+	elseif cleanKey == "B" or cleanKey == "Break" then
+		btn.Activated:Connect(function()
+			combatActionRemote:FireServer({ RequestBreakthrough = true })
+		end)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- HOOK MASTER HUD UI
+--------------------------------------------------------------------------------
 function SkillBarController.HookStudioUI()
 	masterGui = (PlayerGui:FindFirstChild("MasterHUDGui") or PlayerGui:WaitForChild("MasterHUDGui", 8)) :: ScreenGui?
 	if not masterGui then return end
 	masterGui.DisplayOrder = 10
+
+	table.clear(cooldownSweeps)
+	table.clear(cooldownTexts)
 
 	-- 1. Vitals Container (HP, Qi, Intent)
 	vitalsContainer = masterGui:FindFirstChild("VitalsContainer") :: Frame?
@@ -143,38 +250,38 @@ function SkillBarController.HookStudioUI()
 		if stoneFrame then spiritStoneLabel = stoneFrame:FindFirstChildOfClass("TextLabel") end
 	end
 
-	-- 3. Bottom Center Hotbar Container (10 Skills)
-	local bottomCenter = masterGui:FindFirstChild("BottomCenterFrame")
+	local skillSlotNames = {
+		"B_SKILL", "C_SKILL", "E_SKILL", "F_SKILL", "M1_SKILL",
+		"Q_SKILL", "R_SKILL", "Shift_SKILL", "T_SKILL", "V_SKILL"
+	}
+
+	-- 3. Bottom Center Desktop Hotbar (BottomCenterFrame.HotbarContainer)
+	local bottomCenter = masterGui:FindFirstChild("BottomCenterFrame") :: Frame?
 	if bottomCenter then
 		hotbarContainer = bottomCenter:FindFirstChild("HotbarContainer") :: Frame?
 		if hotbarContainer then
-			local skillSlotNames = { "B_SKILL", "C_SKILL", "E_SKILL", "F_SKILL", "M1_SKILL", "Q_SKILL", "R_SKILL", "Shift_SKILL", "T_SKILL", "V_SKILL" }
 			for _, sName in ipairs(skillSlotNames) do
-				local btn = hotbarContainer:FindFirstChild(sName) :: ImageButton?
+				local btn = hotbarContainer:FindFirstChild(sName) :: GuiButton?
 				if btn then
-					skillButtons[sName] = btn
-					cooldownSweeps[sName] = btn:FindFirstChild("CooldownSweep") :: Frame?
-					cooldownTexts[sName] = btn:FindFirstChild("CooldownText") :: TextLabel?
-
-					btn.Activated:Connect(function()
-						if sName == "M1_SKILL" then
-							TriggerM1()
-						elseif sName == "R_SKILL" then
-							combatActionRemote:FireServer({ ToggleSheath = true })
-						elseif sName == "V_SKILL" then
-							combatActionRemote:FireServer({ ToggleFlight = true })
-						elseif sName == "B_SKILL" then
-							combatActionRemote:FireServer({ RequestBreakthrough = true })
-						elseif sName == "C_SKILL" then
-							combatActionRemote:FireServer({ ToggleMeditation = true })
-						end
-					end)
+					BindSkillButton(btn, sName)
 				end
 			end
 		end
 	end
 
-	-- 4. Bottom Nav Tray (Modal Openers)
+	-- 4. Mobile Scatter Cluster (MobileScatterCluster)
+	mobileScatterCluster = masterGui:FindFirstChild("MobileScatterCluster") :: Frame?
+	if mobileScatterCluster then
+		for _, sName in ipairs(skillSlotNames) do
+			local btn = mobileScatterCluster:FindFirstChild(sName) :: GuiButton?
+			if btn then
+				BindSkillButton(btn, sName)
+			end
+		end
+		print("📱 Successfully hooked all 10 mobile buttons inside MobileScatterCluster.")
+	end
+
+	-- 5. Bottom Nav Tray (Modal Openers)
 	bottomNavTray = masterGui:FindFirstChild("BottomNavTray") :: Frame?
 	if bottomNavTray then
 		local function bindNav(btnName: string, callback: () -> ())
@@ -196,7 +303,7 @@ function SkillBarController.HookStudioUI()
 
 		bindNav("GuideImageButton", function()
 			local g = PlayerGui:FindFirstChild("StarterGuideGui")
-			if g then g.Enabled = not g.Enabled; g.ModalBackdrop.Visible = g.Enabled end
+			if g then g.Enabled = not g.Enabled end
 		end)
 
 		bindNav("MeditateButton", function()
@@ -210,15 +317,22 @@ function SkillBarController.HookStudioUI()
 	end
 end
 
--- Defensive Cooldown Sweeper (duration defaults to 1.5s if omitted)
+--------------------------------------------------------------------------------
+-- DUAL COOLDOWN SWEEPER (DESKTOP & MOBILE SYNCHRONIZED)
+--------------------------------------------------------------------------------
 function SkillBarController.TriggerCooldown(slotName: string, duration: number?)
 	local cd = if duration and type(duration) == "number" and duration > 0 then duration else 1.5
-	local sweep = cooldownSweeps[slotName] or cooldownSweeps[slotName .. "_SKILL"]
-	local text = cooldownTexts[slotName] or cooldownTexts[slotName .. "_SKILL"]
-	if not sweep then return end
+	local cleanKey = CleanSlotKey(slotName)
 
-	sweep.Visible = true
-	if text then text.Visible = true end
+	local sweepList = cooldownSweeps[cleanKey]
+	local textList = cooldownTexts[cleanKey]
+
+	if not sweepList or #sweepList == 0 then return end
+
+	for _, s in ipairs(sweepList) do s.Visible = true end
+	if textList then
+		for _, t in ipairs(textList) do t.Visible = true end
+	end
 
 	local startTime = os.clock()
 	local conn: RBXScriptConnection?
@@ -227,12 +341,25 @@ function SkillBarController.TriggerCooldown(slotName: string, duration: number?)
 		local remaining = math.max(0, cd - elapsed)
 		local progress = math.clamp(remaining / cd, 0, 1)
 
-		sweep.Size = UDim2.new(1, 0, progress, 0)
-		if text then text.Text = string.format("%.1f", remaining) end
+		for _, s in ipairs(sweepList) do
+			s.Size = UDim2.new(1, 0, progress, 0)
+		end
+
+		if textList then
+			local formatted = string.format("%.1f", remaining)
+			for _, t in ipairs(textList) do
+				t.Text = formatted
+			end
+		end
 
 		if remaining <= 0 then
-			sweep.Visible = false
-			if text then text.Visible = false; text.Text = "" end
+			for _, s in ipairs(sweepList) do s.Visible = false end
+			if textList then
+				for _, t in ipairs(textList) do
+					t.Visible = false
+					t.Text = ""
+				end
+			end
 			if conn then conn:Disconnect() end
 		end
 	end)
@@ -348,7 +475,7 @@ function SkillBarController.Init()
 		end
 	end)
 
-	print("[ASCEND] SkillBarController Initialized (MasterHUDGui Bound).")
+	print("[ASCEND] SkillBarController Initialized (Desktop & MobileScatterCluster Fully Bound).")
 end
 
 return SkillBarController

@@ -183,3 +183,37 @@ AncestorSeclusionGui — Seclusion tracker with
 ×
 +5.0×
  Qi multiplier and low-key cultivation wisdom.
+
+ ## Section 9: Universal 9-Slice Textured Panel Standard (Phase 8.4)
+
+### 9.1 Background Panel Asset Token
+All major facility modals and character windows have been standardized to the custom Chinese bamboo & antique gold textured frame asset:
+* **Asset ID:** `rbxassetid://115367926298823`
+* **ScaleType:** `Enum.ScaleType.Slice`
+* **SliceCenter:** `Rect.new(146, 120, 878, 120)`
+* **SliceScale:** `1.0`
+* **BackgroundTransparency:** `1.0`
+* **BorderSizePixel:** `0`
+
+### 9.2 Layering & Alignment Standard
+* **Full-Screen Coverage:** All modal ScreenGuis must set `IgnoreGuiInset = true` so the dark backdrop (`ModalBackdrop`, `#000000` with $0.50\text{--}0.55$ transparency) covers 100% of the screen under CoreGui topbars.
+* **True Middle-Center Placement:** Modal main windows must be strictly positioned at:
+  * `AnchorPoint = Vector2.new(0.5, 0.5)`
+  * `Position = UDim2.new(0.5, 0, 0.5, 0)`
+* **DisplayOrder Hierarchy:**
+  * `MasterHUDGui`: `10`
+  * All Facility Modals (`BlacksmithGui`, `TeaHouseGui`, `SectPavilionGui`, `AlchemyGui`, `StarterGuideGui`, `CharacterStatsGui`): `50`
+  * Toast Notifications: `70`
+  * Loading Screen: `100`
+
+### 9.3 Inner Sub-Panel Styling
+To match the obsidian bamboo texture:
+* `BackgroundColor3`: `#0E1016` (Deep Warm Obsidian) with `0.20` transparency.
+* `UIStroke`: `#B4914B` (Antique Gold, $1.5\text{px}$) matching the corner sword medallions.
+* `UICorner`: `8px` radius.
+
+### 9.4 High-Contrast Action Buttons
+All modal confirmation and action buttons must feature high-contrast pure white text:
+* **Celestial Azure Actions (Sharpening / Stipends / Guide Enter):** `#0096BE` fill, `#00DCFF` ($2.0\text{px}$) outline, `#FFFFFF` Bangers text with $1.5\text{px}$ black stroke.
+* **Forged Amber Actions (Refinement / Promotions):** `#B45309` fill, `#FDE047` ($2.0\text{px}$) outline, `#FFFFFF` Bangers text with $1.5\text{px}$ black stroke.
+* **Radiant Jade Actions (Tea Brewing / Quest Claims):** `#10B981` fill, `#34D399` ($2.0\text{px}$) outline, `#FFFFFF` Bangers text with $1.5\text{px}$ black stroke.

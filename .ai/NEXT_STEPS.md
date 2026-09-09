@@ -48,3 +48,18 @@ This document outlines planned upcoming engineering and design milestones for AS
   - Merge and activate `LeaderboardManager.luau` with dual `OrderedDataStore` backends for Top Cultivators (Realm/Order) and Sect Contribution Points.
 - **Heavenly Tribulation Lightning Visuals:**
   - Dynamic lightning arc strikes and screen flash shaders during Major Breakthroughs (Order 9 -> Order 1 of next Realm).
+
+  ## Active Production Roadmap — Post-Phase 8.4
+
+### Priority 1: Creator Dashboard Monetization Audit (Medium Priority)
+- [ ] Cross-check live Gamepass IDs in `MonetizationConfig.luau` against Roblox Creator Dashboard (`2x Qi Speed`, `Auto-Meditation`, `Tribulation Shield`, `+20 Pouch Slots`, `VIP Elder`).
+- [ ] Audit DevProduct IDs for Spirit Stone pouches and instant recovery pills.
+
+### Priority 2: Zone 1 World Dressing & Station Audit (Medium Priority)
+- [ ] In Studio edit mode, verify that all 16 `Functional_Stations` in `Workspace.Functional_Stations` have valid collision blocks.
+- [ ] Verify proximity prompts across all 19 NPCs in `Workspace.NPCs`.
+- [ ] Ensure `SwordAltarGachaGui` has valid connection to the Sword Altar dais on Tier 2.
+
+### Priority 3: Heavenly Tribulation Visual Effects (Phase 9 Preview)
+- [ ] Add dynamic lightning bolts and sky darkening in `CultivationManager.luau` when players attempt major realm breakthroughs (e.g. Core -> Nascent Soul).
+- [ ] Implement ascension blastwave VFX on breakthrough success.
