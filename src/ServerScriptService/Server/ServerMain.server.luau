@@ -37,6 +37,8 @@ local function InitializeServer()
 	CultivationManager.Init()
 	InventoryManager.Init()
 	PlayerDataManager.Init()
+
+	-- 3. World & Cultivation Facilities
 	GatheringManager.Init()
 	AlchemyManager.Init()
 	EnvironmentTimeManager.Init()
@@ -45,11 +47,13 @@ local function InitializeServer()
 	BlacksmithManager.Init()
 	TeaHouseManager.Init()
 	SectManager.Init()
-	MobAIManager.Init()
+
+	-- 4. Combat Encounters & Arena
 	ArenaManager.Init()
 	MarketplaceManager.Init()
+	MobAIManager.Init() -- Single initialization for Mob Spawners & AI Loop
 
-	print("[ASCEND] Master Server Engine Initialized Successfully! (All Core & Lower Layer Managers Active)")
+	print("[ASCEND] Master Server Engine Initialized Successfully! (All Core, World & Mob AI Managers Active)")
 end
 
 InitializeServer()

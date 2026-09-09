@@ -23,6 +23,17 @@ local activeHarvests: { [Player]: boolean } = {}
 
 local gatheringActionRemote: RemoteEvent
 
+-- Universal schema-safe config getter (handles both GetNodeConfig and .Nodes)
+local function GetConfig(nodeType: string): any
+	if type((GatheringConfig :: any).GetNodeConfig) == "function" then
+		return (GatheringConfig :: any).GetNodeConfig(nodeType)
+	elseif type((GatheringConfig :: any).Nodes) == "table" then
+		return (GatheringConfig :: any).Nodes[nodeType]
+	else
+		return (GatheringConfig :: any)[nodeType]
+	end
+end
+
 function GatheringManager.Init()
 	gatheringActionRemote = RemoteEvents.GetRemote("GatheringAction")
 
@@ -46,12 +57,6 @@ function GatheringManager.Init()
 		GatheringManager.SetupNodeModel(instance)
 	end)
 
-	-- NOTE: Harvest completion is no longer driven by a client-fired RemoteEvent.
-	-- ProximityPrompt.Triggered (connected server-side in SetupNodeModel) is the
-	-- sole trigger path, since it's the only one the server can trust — a client
-	-- can call FireServer() on demand, but cannot forge the engine's own
-	-- server-side Triggered signal or shorten its HoldDuration.
-
 	print("[ASCEND] GatheringManager Engine Initialized (Server-Authoritative Prompt Triggers, Randomized Herb Ages & Quest Sync Enabled).")
 end
 
@@ -59,7 +64,7 @@ function GatheringManager.SetupNodeModel(nodeInstance: Instance)
 	if not nodeInstance:IsA("Model") and not nodeInstance:IsA("BasePart") then return end
 
 	local nodeType = nodeInstance:GetAttribute("NodeType") or nodeInstance.Name
-	local config = GatheringConfig.GetNodeConfig(nodeType)
+	local config = GetConfig(nodeType)
 	if not config then return end
 
 	if nodeInstance:IsA("Model") and not nodeInstance.PrimaryPart then
@@ -70,16 +75,17 @@ function GatheringManager.SetupNodeModel(nodeInstance: Instance)
 	if not prompt then
 		prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "GatherPrompt"
-		prompt.ObjectText = config.NodeName
-		prompt.ActionText = config.PromptText
-		prompt.HoldDuration = config.HarvestDuration
-		prompt.MaxActivationDistance = config.MaxDistance
-		prompt.RequiresLineOfSight = false
 		prompt.Parent = nodeInstance
 	end
 
-	-- Guard against double-connecting if SetupNodeModel ever runs twice for the same node
-	-- (e.g. re-fired ChildAdded/tag signal), and connect the server-authoritative trigger.
+	prompt.ObjectText = config.NodeName
+	prompt.ActionText = config.PromptText
+	prompt.HoldDuration = 0 -- 1-Click trigger (client plays channeled bar)
+	prompt.MaxActivationDistance = config.MaxDistance
+	prompt.RequiresLineOfSight = false
+	prompt.Style = Enum.ProximityPromptStyle.Custom -- Suppresses default Roblox bubble
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+
 	if not prompt:GetAttribute("_GatheringServerConnected") then
 		prompt:SetAttribute("_GatheringServerConnected", true)
 		prompt.Triggered:Connect(function(playerWhoTriggered: Player)
@@ -98,7 +104,7 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	if not primaryPart then return end
 
 	local nodeType = nodeInstance:GetAttribute("NodeType") or nodeInstance.Name
-	local config = GatheringConfig.GetNodeConfig(nodeType)
+	local config = GetConfig(nodeType)
 	if not config then return end
 
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart
@@ -109,10 +115,24 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	end
 
 	activeHarvests[player] = true
-	depletedNodes[nodeInstance] = true
-
 	local prompt = nodeInstance:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then prompt.Enabled = false end
+
+	-- Channeled harvest delay
+	task.wait(config.HarvestDuration or 1.8)
+
+	-- Validate player didn't die or run away during channeling
+	local stillAlive = character:FindFirstChild("Humanoid") and (character.Humanoid :: Humanoid).Health > 0
+	local stillNearby = (hrp.Position - (primaryPart :: BasePart).Position).Magnitude <= (config.MaxDistance + 6)
+
+	if not stillAlive or not stillNearby then
+		activeHarvests[player] = nil
+		if prompt then prompt.Enabled = true end
+		return
+	end
+
+	depletedNodes[nodeInstance] = true
+	activeHarvests[player] = nil
 
 	-- Fade model out on harvest ONLY if KeepModelVisible is false
 	if not config.KeepModelVisible then
@@ -126,38 +146,41 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	end
 
 	-- Weighted Random Roll for Herb Age
-	local roll = math.random()
-	local cumulativeChance = 0
-	local selectedItemId = config.AgeDrops[1].ItemId -- Default fallback
+	local dropList = config.AgeDrops or config.Drops
+	local selectedItemId = "SpiritGrass_1Yr"
 
-	for _, drop in ipairs(config.AgeDrops) do
-		cumulativeChance += drop.Chance
-		if roll <= cumulativeChance then
-			selectedItemId = drop.ItemId
-			break
+	if dropList and #dropList > 0 then
+		local roll = math.random()
+		local cumulativeChance = 0
+		selectedItemId = dropList[1].ItemId
+
+		for _, drop in ipairs(dropList) do
+			local chance = drop.Chance
+			if chance > 1 then chance = chance / 100 end -- converts 60 -> 0.60 if needed
+			cumulativeChance += chance
+			if roll <= cumulativeChance then
+				selectedItemId = drop.ItemId
+				break
+			end
 		end
 	end
 
-	-- Grant Loot
+	-- Grant Loot & Sync Sect Duty
 	InventoryManager.AddItem(player, selectedItemId, 1)
-
-	-- Sync Sect Quest Progress for Herb Harvesting
 	SectManager.AddQuestProgress(player, "Gather", config.NodeName, 1)
 	SectManager.AddQuestProgress(player, "Gather", nodeType, 1)
 
-	print(string.format("[GatheringManager] %s harvested %s from %s (Random Roll: %.2f)", player.Name, selectedItemId, config.NodeName, roll))
+	print(string.format("[GatheringManager] %s harvested %s from %s", player.Name, selectedItemId, config.NodeName))
 
-	-- Notify Client to Play Harvest Sound and Show Toast Notification
+	-- Notify Client
 	gatheringActionRemote:FireClient(player, {
 		Action = "HarvestSuccess",
 		ItemId = selectedItemId,
 		Count = 1,
 	})
 
-	activeHarvests[player] = nil
-
 	-- Respawn Node after delay
-	task.delay(config.RespawnTime, function()
+	task.delay(config.RespawnTime or 12.0, function()
 		depletedNodes[nodeInstance] = nil
 		if prompt then prompt.Enabled = true end
 
@@ -165,7 +188,7 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 			for _, descendant in ipairs(nodeInstance:GetDescendants()) do
 				if descendant:IsA("BasePart") then
 					descendant.Transparency = 0
-					elseif descendant:IsA("ParticleEmitter") then
+				elseif descendant:IsA("ParticleEmitter") then
 					descendant.Enabled = true
 				end
 			end
