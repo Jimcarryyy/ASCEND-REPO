@@ -273,7 +273,7 @@ function InputController.Init()
 		chargeTrackF = nil
 		slashTrackF = nil
 
-		-- PERMANENT ANTI-TRIP LOCK
+		-- PERMANENT ANTI-TRIP LOCK: FallingDown & Ragdoll permanently disabled
 		local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
