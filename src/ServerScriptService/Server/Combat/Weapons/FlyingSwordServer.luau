@@ -2,12 +2,19 @@
 --[[
     FlyingSwordServer.luau
     Location: src/ServerScriptService/Server/Combat/Weapons/FlyingSwordServer.luau
-    Authoritative server attack engine with Arena Stat Normalization, Velocity Hitbox queries,
-    Dual Hitbox Q Skill, and 100-Slash Spherical Domain F Skill (protected against Mob nil-calls).
+    Authoritative server attack & movement engine:
+    - Server-Authoritative F Ultimate Blink Movement (LinearVelocity PerAxis + Y-Clamp + Tween Decay)
+    - Anti-Trip Ground Physics & Attribute Gating (IsChargingF, IsBlinking)
+    - Dual Hitbox Q Skill (Point-Blank Melee + 3x Traveling Waves)
+    - 100-Slash Spherical Domain F Skill Damage Resolution
 ]]
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
 
 local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
@@ -19,6 +26,7 @@ local MobAIManager = require(ServerScriptService.Server.Combat.MobAIManager)
 
 local FlyingSwordServer = {}
 local playerCombos: { [Player]: { Step: number, LastTime: number } } = {}
+local activeBlinkTweens: { [Player]: Tween } = {}
 
 local function GetEquippedWeaponBaseDamage(player: Player): number
 	local weaponId = WeaponManager.GetEquippedWeapon(player)
@@ -34,6 +42,106 @@ local function ResolveAimDirection(payload: any?, fallback: Vector3): Vector3
 		return payload.AimDirection
 	end
 	return fallback
+end
+
+-- =============================================================================
+-- SERVER-AUTHORITATIVE BLINK PHYSICS ENGINE (MIRRORS WORKING SHIFT DASH)
+-- =============================================================================
+function FlyingSwordServer.StartChargeF(player: Player)
+	local character = player.Character
+	if not character then return end
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local hum = character:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum or hum.Health <= 0 then return end
+
+	-- Clamp existing vertical velocity and arrest horizontal velocity safely
+	local currentY = math.clamp(hrp.AssemblyLinearVelocity.Y, -2, 2)
+	hrp.AssemblyLinearVelocity = Vector3.new(0, currentY, 0)
+	hrp.AssemblyAngularVelocity = Vector3.zero
+
+	character:SetAttribute("IsChargingF", true)
+	character:SetAttribute("IsAttacking", true)
+	hum.WalkSpeed = 0
+end
+
+function FlyingSwordServer.ExecuteBlinkMovement(player: Player, charForward: Vector3, travelDistance: number, speed: number)
+	local character = player.Character
+	if not character then return end
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local hum = character:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum or hum.Health <= 0 then return end
+
+	-- 1. Set State Attributes
+	character:SetAttribute("IsChargingF", false)
+	character:SetAttribute("IsBlinking", true)
+
+	-- 2. Clamp AssemblyLinearVelocity.Y to safe range BEFORE applying blink force
+	local currentY = math.clamp(hrp.AssemblyLinearVelocity.Y, -2, 2)
+	hrp.AssemblyLinearVelocity = Vector3.new(0, currentY, 0)
+	hrp.AssemblyAngularVelocity = Vector3.zero
+
+	-- 3. Create Attachment + LinearVelocity (ForceLimitMode.PerAxis)
+	local rootAttachment = hrp:FindFirstChild("BlinkAttachment") :: Attachment?
+	if not rootAttachment then
+		rootAttachment = Instance.new("Attachment")
+		rootAttachment.Name = "BlinkAttachment"
+		rootAttachment.Parent = hrp
+	end
+
+	local linearVel = Instance.new("LinearVelocity")
+	linearVel.Name = "BlinkLinearVelocity"
+	linearVel.Attachment0 = rootAttachment
+	linearVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+	-- ZERO Y-FORCE: Physically impossible to push character into ground or launch into sky
+	linearVel.MaxAxesForce = Vector3.new(350000, 0, 350000)
+	linearVel.VectorVelocity = charForward * speed
+	linearVel.RelativeTo = Enum.ActuatorRelativeTo.World
+	linearVel.Parent = hrp
+
+	local totalDuration = travelDistance / speed
+	local sustainDuration = totalDuration * 0.65 -- Full speed duration
+	local decayDuration = totalDuration * 0.35   -- Smooth deceleration duration
+
+	task.delay(sustainDuration, function()
+		if not linearVel.Parent then return end
+
+		-- 4. Smooth Decay via TweenService before Destroy()
+		local decayTween = TweenService:Create(
+			linearVel,
+			TweenInfo.new(decayDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ VectorVelocity = charForward * 12 }
+		)
+		activeBlinkTweens[player] = decayTween
+		decayTween:Play()
+
+		decayTween.Completed:Connect(function()
+			-- 5. Cleanup Constraints
+			if linearVel then linearVel:Destroy() end
+			if rootAttachment then rootAttachment:Destroy() end
+			activeBlinkTweens[player] = nil
+
+			if hrp and hrp.Parent then
+				hrp.AssemblyLinearVelocity = Vector3.new(0, math.clamp(hrp.AssemblyLinearVelocity.Y, -2, 2), 0)
+				hrp.AssemblyAngularVelocity = Vector3.zero
+
+				-- Clean upright orientation lock
+				local _, currentYaw, _ = hrp.CFrame:ToOrientation()
+				hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, currentYaw, 0)
+			end
+
+			-- 6. Restore Movement Attributes only AFTER decay completes
+			character:SetAttribute("IsBlinking", false)
+			character:SetAttribute("IsAttacking", false)
+
+			-- Notify client to restore locomotion speeds
+			local remoteFolder = ReplicatedStorage:FindFirstChild("Shared") and ReplicatedStorage.Shared:FindFirstChild("Network")
+			local RemoteEventsMod = remoteFolder and require(remoteFolder:FindFirstChild("RemoteEvents"))
+			local combatActionRemote = RemoteEventsMod and RemoteEventsMod.GetRemote("CombatAction")
+			if combatActionRemote then
+				combatActionRemote:FireClient(player, player, "F_Finished", {})
+			end
+		end)
+	end)
 end
 
 function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, payload: any?): any?
@@ -53,6 +161,11 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 	local wasBlocked = false
 	local wasGuardBroken = false
 	local isCrit = false
+
+	if skillKey == "StartChargeF" then
+		FlyingSwordServer.StartChargeF(player)
+		return payload
+	end
 
 	if skillKey == "M1" then
 		hits, damage, wasParried, wasBlocked, wasGuardBroken, isCrit = FlyingSwordServer.ExecuteM1Combo(player, hrp, inArena, payload)
@@ -186,6 +299,7 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 		local orientationCFrame = CFrame.lookAt(torsoOrigin, torsoOrigin + flatAimDir)
 		local hitCharacters: { [Model]: boolean } = {}
 
+		-- 1. Point-blank melee slice
 		local meleeBox = orientationCFrame * CFrame.new(0, 0, -3.5)
 		local meleeHits = HitboxManager.CastCompensatedBox(char, meleeBox, Vector3.new(12, 4, 7))
 		local meleeDmg = math.floor(finalDamage * 0.40)
@@ -210,6 +324,7 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 			end
 		end
 
+		-- 2. 3x Traveling Waves (36 studs @ 70 studs/s)
 		local waveDmg = math.floor(finalDamage * 0.25)
 		local waveLifetime = 36 / 70
 		for waveIdx = 1, 3 do
@@ -218,7 +333,7 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 				local elapsed = 0
 
 				local conn: RBXScriptConnection?
-				conn = game:GetService("RunService").Heartbeat:Connect(function(dt)
+				conn = RunService.Heartbeat:Connect(function(dt)
 					elapsed += dt
 					local currPos = startPos + flatAimDir * (70 * elapsed)
 					local currCF = CFrame.lookAt(currPos, currPos + flatAimDir)
@@ -246,68 +361,74 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 			end)
 		end
 
-		elseif skillKey == "F" then
-			-- =============================================================
-			-- SKILL F: ULTIMATE 100-SLASH SPHERE DOMAIN (28-STUD MIDPOINT)
-			-- =============================================================
-			local sphereCenter = if payload and payload.Origin then payload.Origin else (hrp.Position + flatAimDir * 14)
-			local shredRadius = 18 -- 36-stud diameter
-			local tickDmg = math.floor(finalDamage * 0.20) -- 5 ticks x 20% = 100% damage
-	
-			local hitCooldowns: { [Model]: number } = {}
-			local shredDuration = 0.70
-			local elapsed = 0
-	
-			local conn: RBXScriptConnection?
-			conn = game:GetService("RunService").Heartbeat:Connect(function(dt)
-				elapsed += dt
-				local now = os.clock()
-	
-				local overlap = OverlapParams.new()
-				overlap.FilterType = Enum.RaycastFilterType.Exclude
-				overlap.FilterDescendantsInstances = { char }
-	
-				local partsInSphere = workspace:GetPartBoundsInRadius(sphereCenter, shredRadius, overlap)
-				for _, part in ipairs(partsInSphere) do
-					local targetModel = part:FindFirstAncestorOfClass("Model")
-					local targetHum = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
-	
-					if targetHum and targetModel ~= char and targetHum.Health > 0 then
-						if not hitCooldowns[targetModel] or (now - hitCooldowns[targetModel]) >= 0.12 then
-							hitCooldowns[targetModel] = now
-	
-							local fakeHit: HitboxManager.HitResult = {
-								HitPart = part,
-								Character = targetModel,
-								Position = part.Position,
-								Normal = Vector3.new(0, 1, 0),
-								Distance = (part.Position - sphereCenter).Magnitude,
-							}
-							table.insert(hits, fakeHit)
-	
-							local ok, res = pcall(function()
-								return HitboxManager.ApplyCombatResolution(player, fakeHit, tickDmg, skillData.PostureDamage * 0.2, skillData.Knockback * 0.2)
-							end)
-							if ok and res then
-								if res.WasParried then anyParried = true end
-								if res.WasBlocked then anyBlocked = true end
-								if res.WasGuardBroken then anyGuardBroken = true end
-							else
-								targetHum:TakeDamage(tickDmg)
-							end
-	
-							MobAIManager.RecordDamage(targetModel, player)
+	elseif skillKey == "F" then
+		-- =============================================================
+		-- SKILL F: SERVER-AUTHORITATIVE BLINK & 100-SLASH SPHERE
+		-- =============================================================
+		local travelDist = skillData.DashDistance or 28.0
+		local speed = skillData.DashSpeed or 150.0
+
+		-- 1. Authoritative Physics Movement Execution
+		FlyingSwordServer.ExecuteBlinkMovement(player, flatAimDir, travelDist, speed)
+
+		-- 2. Multi-Tick Damage Sphere at the 14-stud midpoint
+		local sphereCenter = hrp.Position + flatAimDir * (travelDist * 0.5) + Vector3.new(0, -0.40, 0)
+		local shredRadius = 18.0 -- 36-stud diameter
+		local tickDmg = math.floor(finalDamage * 0.20) -- 5 ticks x 20% = 100% damage
+
+		local hitCooldowns: { [Model]: number } = {}
+		local shredDuration = 0.70
+		local elapsed = 0
+
+		local conn: RBXScriptConnection?
+		conn = RunService.Heartbeat:Connect(function(dt)
+			elapsed += dt
+			local now = os.clock()
+
+			local overlap = OverlapParams.new()
+			overlap.FilterType = Enum.RaycastFilterType.Exclude
+			overlap.FilterDescendantsInstances = { char }
+
+			local partsInSphere = workspace:GetPartBoundsInRadius(sphereCenter, shredRadius, overlap)
+			for _, part in ipairs(partsInSphere) do
+				local targetModel = part:FindFirstAncestorOfClass("Model")
+				local targetHum = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
+
+				if targetHum and targetModel ~= char and targetHum.Health > 0 then
+					if not hitCooldowns[targetModel] or (now - hitCooldowns[targetModel]) >= 0.12 then
+						hitCooldowns[targetModel] = now
+
+						local fakeHit: HitboxManager.HitResult = {
+							HitPart = part,
+							Character = targetModel,
+							Position = part.Position,
+							Normal = Vector3.new(0, 1, 0),
+							Distance = (part.Position - sphereCenter).Magnitude,
+						}
+						table.insert(hits, fakeHit)
+
+						local ok, res = pcall(function()
+							return HitboxManager.ApplyCombatResolution(player, fakeHit, tickDmg, skillData.PostureDamage * 0.2, skillData.Knockback * 0.2)
+						end)
+						if ok and res then
+							if res.WasParried then anyParried = true end
+							if res.WasBlocked then anyBlocked = true end
+							if res.WasGuardBroken then anyGuardBroken = true end
+						else
+							targetHum:TakeDamage(tickDmg)
 						end
+
+						MobAIManager.RecordDamage(targetModel, player)
 					end
 				end
-	
-				if elapsed >= shredDuration then
-					if conn then conn:Disconnect() end
-				end
-			end)
+			end
+
+			if elapsed >= shredDuration then
+				if conn then conn:Disconnect() end
+			end
+		end)
 
 	else
-		-- Standard skill query for E, R
 		local torsoOrigin = hrp.Position + Vector3.new(0, -0.40, 0)
 		local orientationCFrame = CFrame.lookAt(torsoOrigin, torsoOrigin + flatAimDir)
 		local hitboxCFrame = orientationCFrame * CFrame.new(skillData.Offset)

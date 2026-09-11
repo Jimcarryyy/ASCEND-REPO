@@ -100,19 +100,19 @@ local FlyingSwordConfig = {
 		},
 		F = {
 			Name = "100-Slash Flash Domain",
-			Damage = 100,               -- Total multi-tick damage (5 x 20)
+			Damage = 100,               -- 5 ticks x 20 damage
 			ArenaDamage = 240,
 			PostureDamage = 70,
 			Cooldown = 5.5,             -- 5.5s cooldown
 			QiCostPercent = 0.20,       -- 20% Max Qi cost
-			Range = Vector3.new(36, 16, 36), -- 36-stud massive sphere diameter
-			Offset = Vector3.new(0, 0, -25), -- Centered at mid-dash point
+			Range = Vector3.new(36, 16, 36),
+			Offset = Vector3.new(0, 0, -14),
 			Knockback = Vector3.new(0, 16, -26),
-			Windup = 0.20,              -- Min charge time
-			ActiveDuration = 0.70,      -- Sphere shred duration
-			Recovery = 0.35,
-			DashSpeed = 220,            -- Flash step velocity
-			DashDistance = 42,          -- Total reach
+			Windup = 0.20,
+			ActiveDuration = 0.70,
+			Recovery = 0.20,
+			DashSpeed = 150,            -- Snappy 150 studs/s velocity
+			DashDistance = 28,          -- Tuned to 28 studs (close-to-mid range)
 		},
 		T = {
 			Name = "Block & Parry",

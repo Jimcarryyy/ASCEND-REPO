@@ -7,10 +7,10 @@
     - Harmonic Running Camera Shake (stride-synced vertical bounce, lateral sway & roll)
     - Dynamic Speed-Tunnel FOV (70° -> 76° on sprint)
     - 3D Flight & Proximity Obstacle Cushion preserved
-    - Permanent Anti-Trip Ground Physics Lock (FallingDown & Ragdoll permanently disabled)
-    - Instant Velocity Arrest on Charge (Zero sliding/tripping when pressing F mid-sprint)
-    - Natural Humanoid Locomotion Handoff (0.2s pause -> seamless sprint resumption)
-    - 28-Stud Balanced Flash-Step Range
+    - Client-Side Animation Blending (Proper FadeTime & Priorities, no hard cuts)
+    - Zero Client Velocity Injection: Movement is strictly Server-Authoritative
+    - Gated Locomotion (IsBlinking / IsChargingF attributes respected in RenderStepped)
+    - Automatic Sprint Resumption after F decay completes
 ]]
 
 local Players = game:GetService("Players")
@@ -273,7 +273,7 @@ function InputController.Init()
 		chargeTrackF = nil
 		slashTrackF = nil
 
-		-- PERMANENT ANTI-TRIP LOCK: FallingDown & Ragdoll permanently disabled
+		-- PERMANENT ANTI-TRIP ENFORCEMENT: Never allow character to trip into ragdoll
 		local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
@@ -297,6 +297,25 @@ function InputController.Init()
 		end
 	end)
 
+	-- Listener for Server Completion of F Skill
+	combatActionRemote.OnClientEvent:Connect(function(attacker: Player, skillKey: string, payload: any?)
+		if attacker == player and skillKey == "F_Finished" then
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then
+				local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
+				if wasSprintingBeforeF and humanoid.MoveDirection.Magnitude > 0.05 then
+					isSprinting = true
+					humanoid.WalkSpeed = sprintSpeed
+				else
+					isSprinting = false
+					humanoid.WalkSpeed = walkSpeed
+				end
+			end
+			isExecutingSkillF = false
+		end
+	end)
+
 	UserInputService.InputBegan:Connect(InputController.OnInputBegan)
 	UserInputService.InputEnded:Connect(InputController.OnInputEnded)
 
@@ -313,6 +332,8 @@ function InputController.Init()
 
 		local isFlying = (character:GetAttribute("IsFlying") == true)
 		local isDashing = (character:GetAttribute("IsDashing") == true)
+		local isBlinking = (character:GetAttribute("IsBlinking") == true)
+		local isChargingF = (character:GetAttribute("IsChargingF") == true)
 
 		-- 1. FLIGHT LOCOMOTION & HOVER
 		if isFlying then
@@ -387,13 +408,14 @@ function InputController.Init()
 			end
 		end
 
-		-- 2. GROUND FOOTWORK & SPRINT SPEED-TUNNEL CAMERA
+		-- 2. GROUND FOOTWORK: STRICT ATTRIBUTE GATING
+		-- While charging, blinking, or casting, WalkSpeed logic does not interfere with physics
 		local isAttacking = character:GetAttribute("IsAttacking") == true
 		local isStunned = character:GetAttribute("IsStunned") == true 
 			or character:GetAttribute("CCState") == "Stunned" 
 			or character:GetAttribute("CCState") == "GuardBroken"
 
-		if isAttacking or isBlocking or isMeditating or isStunned or isDashing or isCastingSkillQ or isExecutingSkillF or isHoldingF then
+		if isAttacking or isBlocking or isMeditating or isStunned or isDashing or isBlinking or isChargingF or isCastingSkillQ or isExecutingSkillF or isHoldingF then
 			return
 		end
 
@@ -449,7 +471,7 @@ end
 function InputController.ToggleSprint()
 	if isMeditating or not enabled or isBlocking or isCastingSkillQ or isExecutingSkillF then return end
 	local character = player.Character
-	if character and (character:GetAttribute("IsDashing") == true or character:GetAttribute("IsFlying") == true) then return end
+	if character and (character:GetAttribute("IsDashing") == true or character:GetAttribute("IsFlying") == true or character:GetAttribute("IsBlinking") == true) then return end
 
 	if isSprinting then
 		InputController.StopSprint()
@@ -461,7 +483,7 @@ end
 function InputController.StartSprint()
 	if isMeditating or not enabled or isBlocking or isCastingSkillQ or isExecutingSkillF then return end
 	local character = player.Character
-	if character and character:GetAttribute("IsFlying") == true then return end
+	if character and (character:GetAttribute("IsFlying") == true or character:GetAttribute("IsBlinking") == true) then return end
 
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 	if humanoid then
@@ -484,7 +506,7 @@ end
 function InputController.StartBlock()
 	local character = player.Character
 	if isMeditating or not enabled or isBlocking or isCastingSkillQ or isExecutingSkillF then return end
-	if character and (character:GetAttribute("IsFlying") == true or character:GetAttribute("IsDashing") == true or character:GetAttribute("IsAttacking") == true) then return end
+	if character and (character:GetAttribute("IsFlying") == true or character:GetAttribute("IsDashing") == true or character:GetAttribute("IsBlinking") == true or character:GetAttribute("IsAttacking") == true) then return end
 
 	isBlocking = true
 	if isSprinting then isSprinting = false end
@@ -537,7 +559,7 @@ end
 function InputController.TriggerDash()
 	local character = player.Character
 	if isMeditating or not enabled or isBlocking or isCastingSkillQ or isExecutingSkillF then return end
-	if character and character:GetAttribute("IsFlying") == true then return end
+	if character and (character:GetAttribute("IsFlying") == true or character:GetAttribute("IsBlinking") == true) then return end
 
 	local now = os.clock()
 	if (now - lastDashPress) < DASH_COOLDOWN then return end
@@ -561,7 +583,7 @@ end
 function InputController.TriggerM1()
 	local character = player.Character
 	if not enabled or isMeditating or isBlocking or IsAnyMenuOpen() or isCastingSkillQ or isExecutingSkillF then return end
-	if character and character:GetAttribute("IsFlying") == true then return end
+	if character and (character:GetAttribute("IsFlying") == true or character:GetAttribute("IsBlinking") == true) then return end
 
 	local now = os.clock()
 	if (now - lastM1Press) < currentAttackLockout then return end
@@ -591,7 +613,7 @@ end
 function InputController.TriggerSkill(skillKey: string)
 	local character = player.Character
 	if not enabled or isMeditating or isBlocking or IsAnyMenuOpen() then return end
-	if character and character:GetAttribute("IsFlying") == true then return end
+	if character and (character:GetAttribute("IsFlying") == true or character:GetAttribute("IsBlinking") == true) then return end
 
 	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local hum = character and character:FindFirstChildOfClass("Humanoid")
@@ -619,8 +641,13 @@ function InputController.TriggerSkill(skillKey: string)
 		local wasSprintingBeforeCast = isSprinting
 		hum.WalkSpeed = 3.5
 
-		local AnimationController = require(script.Parent.AnimationController)
-		AnimationController.PlayAttackAnimation(skillKey, nil)
+		-- Smooth Animation Transition (FadeTime 0.10)
+		local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
+		local qAnimObj = Instance.new("Animation")
+		qAnimObj.AnimationId = AnimationConfig.FlyingSword.Q.AnimationId
+		local qTrack = animator:LoadAnimation(qAnimObj)
+		qTrack.Priority = Enum.AnimationPriority.Action2
+		qTrack:Play(0.10)
 
 		local SkillBarController = require(script.Parent.SkillBarController)
 		if SkillBarController.TriggerCooldown then
@@ -633,7 +660,7 @@ function InputController.TriggerSkill(skillKey: string)
 
 		task.delay(0.30, function()
 			if not hrp.Parent then return end
-			hrp.AssemblyLinearVelocity = charForward * 20 + Vector3.new(0, 2, 0)
+			hrp.AssemblyLinearVelocity = charForward * 20 + Vector3.new(0, 1.5, 0)
 
 			local sound = Instance.new("Sound")
 			sound.SoundId = SWORD_RELEASE_SFX
@@ -644,7 +671,9 @@ function InputController.TriggerSkill(skillKey: string)
 
 			combatActionRemote:FireServer(payload)
 
+			-- Smooth recovery: fade out track over 0.18s
 			task.delay(0.18, function()
+				if qTrack then qTrack:Stop(0.18) end
 				if hum and hum.Parent then
 					local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
 					if wasSprintingBeforeCast and hum.MoveDirection.Magnitude > 0.05 then
@@ -675,12 +704,12 @@ function InputController.TriggerSkill(skillKey: string)
 end
 
 -- =============================================================================
--- ULTIMATE SKILL F: CHARGE, SHUNPO BLINK & 100-SLASH SPHERE (ANTI-TRIP FIXED)
+-- ULTIMATE SKILL F: CHARGE, SHUNPO BLINK & SERVER VELOCITY EXECUTION
 -- =============================================================================
 local function StartChargingUltimateF()
 	local character = player.Character
 	if not enabled or isMeditating or isBlocking or IsAnyMenuOpen() or isExecutingSkillF then return end
-	if character and character:GetAttribute("IsFlying") == true then return end
+	if character and (character:GetAttribute("IsFlying") == true or character:GetAttribute("IsBlinking") == true) then return end
 
 	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local hum = character and character:FindFirstChildOfClass("Humanoid")
@@ -703,12 +732,8 @@ local function StartChargingUltimateF()
 	chargeStartTimeF = now
 	wasSprintingBeforeF = isSprinting
 
-	-- INSTANT MOMENTUM ARREST: Prevents sliding/tripping forward when pressing F mid-sprint
-	hrp.AssemblyLinearVelocity = Vector3.new(0, math.min(0, hrp.AssemblyLinearVelocity.Y), 0)
-	hrp.AssemblyAngularVelocity = Vector3.zero
-	hum.WalkSpeed = 0
-
-	character:SetAttribute("IsAttacking", true)
+	-- Notify Server to anchor state and clamp velocity authoritatively
+	combatActionRemote:FireServer({ Action = "StartChargeF", SkillKey = "StartChargeF" })
 
 	local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
 	if not chargeTrackF then
@@ -719,14 +744,14 @@ local function StartChargingUltimateF()
 		chargeTrackF.Priority = Enum.AnimationPriority.Action3
 	end
 
-	chargeTrackF:Play(0.06)
+	-- Smooth blend into charge stance (FadeTime 0.15)
+	chargeTrackF:Play(0.15)
 	chargeTrackF:AdjustSpeed(1.0)
 
 	if camera then
 		TweenService:Create(camera, TweenInfo.new(0.35, Enum.EasingStyle.Sine), { FieldOfView = 65.0 }):Play()
 	end
 
-	-- Freeze pose indefinitely on final charge frame
 	task.spawn(function()
 		local freezeTarget = if chargeTrackF.Length > 0.3 then (chargeTrackF.Length * 0.85) else 0.24
 		local elapsed = 0
@@ -760,41 +785,16 @@ local function ReleaseUltimateF()
 	end
 
 	task.delay(remainingWait, function()
-		if chargeTrackF then chargeTrackF:Stop(0.04) end
+		-- Smooth blend out of charge track (FadeTime 0.10)
+		if chargeTrackF then chargeTrackF:Stop(0.10) end
 
 		local charForward = (hrp.CFrame.LookVector * Vector3.new(1, 0, 1)).Unit
-		local targetTravelDist = FlyingSwordConfig.Skills.F.DashDistance or 28.0 -- Tuned to 28 studs
-		local dashSpeed = FlyingSwordConfig.Skills.F.DashSpeed or 150.0
-
-		-- OBSTACLE RAYCAST: Stops at Trees, Walls & Terrain, ignores all Humanoids/Enemies
-		local rayParams = RaycastParams.new()
-		rayParams.FilterType = Enum.RaycastFilterType.Exclude
-		rayParams.IgnoreWater = true
-
-		local ignoreList: { Instance } = { character }
-		for _, entity in ipairs(workspace:GetDescendants()) do
-			if entity:IsA("Model") and entity:FindFirstChildOfClass("Humanoid") then
-				table.insert(ignoreList, entity)
-			end
-		end
-		rayParams.FilterDescendantsInstances = ignoreList
-
-		local obstacleHit = workspace:Raycast(hrp.Position + Vector3.new(0, 1, 0), charForward * targetTravelDist, rayParams)
-		local effectiveDist = targetTravelDist
-		if obstacleHit and obstacleHit.Normal.Y < 0.65 then
-			effectiveDist = math.max(4.0, obstacleHit.Distance - 2.0)
-		end
-
-		local actualDashDuration = effectiveDist / dashSpeed
 
 		if camera then
 			TweenService:Create(camera, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = 76.0 }):Play()
 		end
 
-		-- Launch forward velocity
-		hrp.AssemblyLinearVelocity = charForward * dashSpeed
-		hrp.AssemblyAngularVelocity = Vector3.zero
-
+		-- Spawn visual afterimages
 		task.spawn(function()
 			for _ = 1, 3 do
 				task.wait(0.05)
@@ -804,7 +804,7 @@ local function ReleaseUltimateF()
 			end
 		end)
 
-		-- Mid-dash execution at ~45% of travel path
+		-- Play Mid-Air Slash Animation with Smooth Blend (FadeTime 0.08)
 		local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
 		if not slashTrackF then
 			local animObj = Instance.new("Animation")
@@ -812,57 +812,22 @@ local function ReleaseUltimateF()
 			slashTrackF = animator:LoadAnimation(animObj)
 			slashTrackF.Priority = Enum.AnimationPriority.Action4
 		end
+		slashTrackF:Play(0.08)
+		slashTrackF:AdjustSpeed(1.3)
 
-		task.delay(actualDashDuration * 0.45, function()
-			if not hrp.Parent then return end
+		-- FIRE SERVER AUTHORITATIVE BLINK EXECUTION
+		-- Server creates LinearVelocity constraint, clamps Y, decays force, and damages enemies
+		local midPointPos = hrp.Position + charForward * 14.0 + Vector3.new(0, -0.40, 0)
+		combatActionRemote:FireServer({
+			Action = "F",
+			SkillKey = "F",
+			AimDirection = charForward,
+			Origin = midPointPos,
+		})
 
-			slashTrackF:Play(0.02)
-			slashTrackF:AdjustSpeed(1.4)
-
-			local midPointPos = hrp.Position + Vector3.new(0, -0.40, 0)
-
-			combatActionRemote:FireServer({
-				Action = "F",
-				SkillKey = "F",
-				AimDirection = charForward,
-				Origin = midPointPos,
-			})
-		end)
-
-		-- =====================================================================
-		-- DASH FINISH: SEAMLESS RECOVERY (NO TRIPPING, NATURAL LOCOMOTION)
-		-- =====================================================================
-		task.delay(actualDashDuration, function()
-			if not hrp.Parent then return end
-
-			-- Clear rotational spin
-			hrp.AssemblyAngularVelocity = Vector3.zero
-
-			-- Clean upright orientation lock
-			local _, currentYaw, _ = hrp.CFrame:ToOrientation()
-			hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, currentYaw, 0)
-
-			-- ZERO OUT VELOCITY (Lets Humanoid handle walking/running with no physics fights)
-			hrp.AssemblyLinearVelocity = Vector3.zero
-
-			-- Quick 0.20s slice recovery window (<0.40s total skill time)
-			task.delay(0.20, function()
-				if slashTrackF then slashTrackF:Stop(0.10) end
-
-				character:SetAttribute("IsAttacking", false)
-
-				-- AUTOMATIC SPRINT RESUMPTION (Pure Humanoid Locomotion)
-				local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
-				if wasSprintingBeforeF and hum.MoveDirection.Magnitude > 0.05 then
-					isSprinting = true
-					hum.WalkSpeed = sprintSpeed
-				else
-					isSprinting = false
-					hum.WalkSpeed = walkSpeed
-				end
-
-				isExecutingSkillF = false
-			end)
+		-- Clean recovery: stop slash track after 0.35s
+		task.delay(0.35, function()
+			if slashTrackF then slashTrackF:Stop(0.15) end
 		end)
 	end)
 end
@@ -893,7 +858,7 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	if character and character:GetAttribute("IsDashing") == true then return end
+	if character and (character:GetAttribute("IsDashing") == true or character:GetAttribute("IsBlinking") == true) then return end
 
 	if input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.RightControl then
 		InputController.ToggleSprint()
