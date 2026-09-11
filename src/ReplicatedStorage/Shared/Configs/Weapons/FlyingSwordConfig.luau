@@ -2,7 +2,7 @@
 --[[
     FlyingSwordConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/Weapons/FlyingSwordConfig.luau
-    Defines 5-Hit M1 combo, Skills (Q, E, F Heavy Slam), Block/Parry (T), and Dash.
+    Defines 5-Hit M1 combo, Skills (Q, E, F Ultimate Domain), Block/Parry (T), and Dash.
 ]]
 
 export type ComboStep = {
@@ -33,6 +33,8 @@ export type SkillDef = {
 	ActiveDuration: number,
 	Recovery: number,
 	ProjectileSpeed: number?,
+	DashSpeed: number?,
+	DashDistance: number?,
 }
 
 export type PostureConfig = {
@@ -67,21 +69,22 @@ local FlyingSwordConfig = {
 
 	Skills = {
 		Q = {
-			Name = "Sword Tempest",
+			Name = "Purple Sword Tempest",
 			Damage = 60,
 			ArenaDamage = 160,
 			PostureDamage = 50,
-			Cooldown = 3.0,
+			Cooldown = 3.5,
 			QiCostPercent = 0.15,
-			Range = Vector3.new(14, 10, 14),
-			Offset = Vector3.new(0, 0, 0),
-			Knockback = Vector3.new(0, 15, -25),
-			Windup = 0.10,
-			ActiveDuration = 0.25,
+			Range = Vector3.new(16, 8, 36),
+			Offset = Vector3.new(0, 0, -18),
+			Knockback = Vector3.new(0, 14, -22),
+			Windup = 0.30,
+			ActiveDuration = 0.55,
 			Recovery = 0.20,
+			ProjectileSpeed = 70,
 		},
 		E = {
-			Name = "Telekinesis Thrust",
+			Name = "Piercing Void Thrust",
 			Damage = 80,
 			ArenaDamage = 220,
 			PostureDamage = 50,
@@ -96,18 +99,20 @@ local FlyingSwordConfig = {
 			ProjectileSpeed = 120,
 		},
 		F = {
-			Name = "Falling Sky Slam",
-			Damage = 50,
-			ArenaDamage = 140,
-			PostureDamage = 45,
-			Cooldown = 2.5,
-			QiCostPercent = 0.10,
-			Range = Vector3.new(10, 8, 10),
-			Offset = Vector3.new(0, 0, -5),
-			Knockback = Vector3.new(0, 22, -18),
-			Windup = 0.10,
-			ActiveDuration = 0.18,
-			Recovery = 0.22,
+			Name = "100-Slash Flash Domain",
+			Damage = 100,               -- Total multi-tick damage (5 x 20)
+			ArenaDamage = 240,
+			PostureDamage = 70,
+			Cooldown = 5.5,             -- 5.5s cooldown
+			QiCostPercent = 0.20,       -- 20% Max Qi cost
+			Range = Vector3.new(36, 16, 36), -- 36-stud massive sphere diameter
+			Offset = Vector3.new(0, 0, -25), -- Centered at mid-dash point
+			Knockback = Vector3.new(0, 16, -26),
+			Windup = 0.20,              -- Min charge time
+			ActiveDuration = 0.70,      -- Sphere shred duration
+			Recovery = 0.35,
+			DashSpeed = 220,            -- Flash step velocity
+			DashDistance = 42,          -- Total reach
 		},
 		T = {
 			Name = "Block & Parry",

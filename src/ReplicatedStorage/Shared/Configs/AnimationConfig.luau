@@ -3,7 +3,6 @@
     AnimationConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/AnimationConfig.luau
     Central animation registry for ASCEND (Pure Sword Cultivator R6).
-    Includes 2-Stage Qi Dash loop, 5-Hit M1 Broadsword Combo, and Block/Parry/Stun poses.
 ]]
 
 export type AnimDef = {
@@ -12,6 +11,7 @@ export type AnimDef = {
 	FadeTime: number,
 	CastDuration: number,
 	WalkSpeedDampen: number?,
+	ChargeAnimationId: string?,
 }
 
 local AnimationConfig = {
@@ -27,12 +27,8 @@ local AnimationConfig = {
 		CrouchIdle = "rbxassetid://121105579761179",
 		CrouchWalk = "rbxassetid://139963626951619",
 		Meditation = "rbxassetid://129333803961409",
-
-		-- 2-Stage Repeatable Qi Dash Animations
 		Dash_1 = "rbxassetid://118004062849712",
 		Dash_2 = "rbxassetid://87494050060721",
-
-		-- Flying Sword In-Flight Mode Animation
 		Flight = "rbxassetid://81098622855235",
 	},
 
@@ -47,9 +43,16 @@ local AnimationConfig = {
 		Parry = { AnimationId = "rbxassetid://5763723309", Speed = 1.6, FadeTime = 0.02, CastDuration = 0.28 },
 		Stun  = { AnimationId = "rbxassetid://", Speed = 1.0, FadeTime = 0.05, CastDuration = 0.50 },
 
-		Q = { AnimationId = "rbxassetid://132236998171530", Speed = 1.0, FadeTime = 0.02, CastDuration = 0.43 },
+		Q = { AnimationId = "rbxassetid://111677132360566", Speed = 1.0, FadeTime = 0.06, CastDuration = 0.55, WalkSpeedDampen = 5 },
 		E = { AnimationId = "rbxassetid://93342220169849", Speed = 1.0, FadeTime = 0.03, CastDuration = 0.25 },
-		F = { AnimationId = "rbxassetid://93342220169849", Speed = 1.0, FadeTime = 0.03, CastDuration = 0.25 },
+		F = {
+			AnimationId = "rbxassetid://111677132360566",      -- Mid-dash slash
+			ChargeAnimationId = "rbxassetid://84905841522350", -- Stance hold
+			Speed = 1.0,
+			FadeTime = 0.04,
+			CastDuration = 0.70,
+			WalkSpeedDampen = 0,
+		},
 	},
 }
 

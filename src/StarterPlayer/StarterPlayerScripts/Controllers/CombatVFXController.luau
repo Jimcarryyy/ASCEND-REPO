@@ -6,6 +6,9 @@
       1. Xianxia Floating Damage Numbers (Pure text, no icons)
       2. Floating Sword Intent Combo & Unleashed Text Popups (Pure text, no icons)
       3. Slash VFX, Camera Shake, Hitstop, Parry Clashes & Block Sparks
+      4. Triple-Wave Purple Sawblade Vortex (Q Skill) at Calibrated Torso Height
+      5. Massive 36-Stud Purple 100-Slash Sphere Domain (F Skill)
+      6. Victim & Caster POV Camera Impact Shudder
 ]]
 
 local Players = game:GetService("Players")
@@ -26,8 +29,15 @@ local combatActionRemote: RemoteEvent
 local vfxFolder = ReplicatedStorage:WaitForChild("VFX", 5) :: Folder?
 
 local SWING_AIR_SOUND_ID = "rbxassetid://79218449800283"
-local HIT_IMPACT_SOUND_ID = "rbxassetid://140462043853173"
+local HIT_IMPACT_SOUND_ID = "rbxassetid://135448977656112"
 local PARRY_CLASH_SOUND_ID = "rbxassetid://9114223175"
+local SLASH_RELEASE_SFX = "rbxassetid://109735549169421"
+
+local PURPLE_GRADIENT = ColorSequence.new({
+	ColorSequenceKeypoint.new(0.0, Color3.fromRGB(245, 200, 255)),
+	ColorSequenceKeypoint.new(0.35, Color3.fromRGB(180, 50, 255)),
+	ColorSequenceKeypoint.new(1.0, Color3.fromRGB(90, 10, 160)),
+})
 
 local shakeIntensity = 0
 local shakeDecay = 8
@@ -56,6 +66,31 @@ local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 	end)
 
 	Debris:AddItem(soundPart, 2.5)
+end
+
+local function ScaleParticleSize(pe: ParticleEmitter, factor: number)
+	local oldSeq = pe.Size
+	local newKps = {}
+	for _, kp in ipairs(oldSeq.Keypoints) do
+		table.insert(newKps, NumberSequenceKeypoint.new(kp.Time, kp.Value * factor, kp.Envelope * factor))
+	end
+	pe.Size = NumberSequence.new(newKps)
+end
+
+function CombatVFXController.AddCameraShake(intensity: number)
+	shakeIntensity = math.clamp(shakeIntensity + intensity, 0, 1.8)
+end
+
+function CombatVFXController.OnLocalPlayerDamaged(damage: number, isCrit: boolean)
+	CombatVFXController.AddCameraShake(if isCrit then 0.95 else 0.75)
+
+	if camera then
+		task.spawn(function()
+			local origFOV = camera.FieldOfView
+			camera.FieldOfView = origFOV + (if isCrit then 4.0 else 2.5)
+			TweenService:Create(camera, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = origFOV }):Play()
+		end)
+	end
 end
 
 function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFrame: CFrame?)
@@ -144,6 +179,156 @@ function CombatVFXController.SpawnIntentComboPopup(position: Vector3, comboCount
 	end)
 end
 
+function CombatVFXController.SpawnTriplePurpleTwirl(originPos: Vector3, direction: Vector3, isLocalCaster: boolean)
+	local twirlPrefab = vfxFolder and vfxFolder:FindFirstChild("SwordTwirl")
+	if not twirlPrefab then return end
+
+	local projContainer = workspace:FindFirstChild("ActiveTwirlProjectiles")
+	if not projContainer then
+		projContainer = Instance.new("Folder")
+		projContainer.Name = "ActiveTwirlProjectiles"
+		projContainer.Parent = workspace
+	end
+
+	if isLocalCaster then
+		CombatVFXController.AddCameraShake(0.65)
+		if camera then
+			task.spawn(function()
+				local origFOV = camera.FieldOfView
+				camera.FieldOfView = origFOV - 2.5
+				TweenService:Create(camera, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { FieldOfView = origFOV }):Play()
+			end)
+		end
+	end
+
+	local torsoHeightOrigin = originPos + Vector3.new(0, -0.40, 0)
+
+	for waveIndex = 1, 3 do
+		task.delay((waveIndex - 1) * 0.08, function()
+			local tiltAngle = (waveIndex == 2 and 7) or (waveIndex == 3 and -7) or 0
+			local spawnPos = torsoHeightOrigin + direction * (1.8 + waveIndex * 0.4) + Vector3.new(0, (waveIndex - 2) * 0.12, 0)
+			local spawnCF = CFrame.lookAt(spawnPos, spawnPos + direction) * CFrame.Angles(0, 0, math.rad(tiltAngle))
+
+			local proj = Instance.new("Part")
+			proj.Name = "TwirlWave_" .. waveIndex
+			proj.Size = Vector3.new(9, 1.2, 9)
+			proj.Transparency = 1
+			proj.CanCollide = false
+			proj.CanTouch = false
+			proj.CanQuery = false
+			proj.Anchored = true
+			proj.CFrame = spawnCF
+			proj.Parent = projContainer
+
+			local twirl = twirlPrefab:Clone()
+			twirl.Parent = proj
+
+			for _, pe in ipairs(twirl:GetDescendants()) do
+				if pe:IsA("ParticleEmitter") then
+					pe.LockedToPart = true
+					pe.Enabled = true
+					pe.Color = PURPLE_GRADIENT
+					ScaleParticleSize(pe, 2.8)
+					if pe.Rate == 0 then pe.Rate = 24 end
+					pe:Emit(2)
+				end
+			end
+
+			local glow = Instance.new("PointLight")
+			glow.Color = Color3.fromRGB(190, 60, 255)
+			glow.Brightness = 3.8
+			glow.Range = 20
+			glow.Parent = proj
+
+			local elapsed = 0
+			local lifetime = 36 / 70
+			local currentCF = spawnCF
+
+			local conn: RBXScriptConnection?
+			conn = RunService.Heartbeat:Connect(function(dt)
+				elapsed += dt
+				local nextPos = currentCF.Position + direction * (70 * dt)
+				currentCF = CFrame.new(nextPos) * (currentCF - currentCF.Position)
+				proj.CFrame = currentCF
+
+				if elapsed >= lifetime then
+					if conn then conn:Disconnect() end
+					for _, pe in ipairs(twirl:GetDescendants()) do
+						if pe:IsA("ParticleEmitter") then pe.Enabled = false end
+					end
+					Debris:AddItem(proj, 0.3)
+				end
+			end)
+		end)
+	end
+end
+
+function CombatVFXController.SpawnUltimateSlashSphere(spherePos: Vector3, isLocalCaster: boolean)
+	local ultPrefab = (vfxFolder and vfxFolder:FindFirstChild("UltimateSkill"))
+		or (ReplicatedStorage:FindFirstChild("UltimateSkill", true) :: Instance?)
+
+	if not ultPrefab then return end
+
+	local fxContainer = workspace:FindFirstChild("ActiveUltimateVFX") or Instance.new("Folder", workspace)
+	fxContainer.Name = "ActiveUltimateVFX"
+
+	local vfxHolder = Instance.new("Part")
+	vfxHolder.Name = "UltimateSlashSphere"
+	vfxHolder.Size = Vector3.new(2, 2, 2)
+	vfxHolder.Transparency = 1
+	vfxHolder.Anchored = true
+	vfxHolder.CanCollide = false
+	vfxHolder.CanTouch = false
+	vfxHolder.CanQuery = false
+	vfxHolder.CFrame = CFrame.new(spherePos)
+	vfxHolder.Parent = fxContainer
+
+	local clonedVFX = ultPrefab:Clone()
+	clonedVFX.Parent = vfxHolder
+
+	if clonedVFX:IsA("Attachment") or clonedVFX:IsA("Bone") then
+		clonedVFX.CFrame = CFrame.identity
+	end
+
+	local activeEmitters = {}
+	for _, desc in ipairs(clonedVFX:GetDescendants()) do
+		if desc:IsA("Attachment") then
+			if desc.Name == "Bottom" then
+				desc.Position = Vector3.new(0, -2.0, 0)
+			else
+				desc.Position = Vector3.zero
+			end
+		elseif desc:IsA("ParticleEmitter") then
+			desc.Enabled = true
+			desc.LockedToPart = false
+			desc.Color = PURPLE_GRADIENT
+			ScaleParticleSize(desc, 2.2)
+			table.insert(activeEmitters, desc)
+
+			if desc.Rate == 0 then desc.Rate = 40 end
+			desc:Emit(6)
+		end
+	end
+
+	if isLocalCaster then
+		CombatVFXController.AddCameraShake(1.4)
+		if camera then
+			task.spawn(function()
+				local origFOV = camera.FieldOfView
+				camera.FieldOfView = origFOV - 4.5
+				TweenService:Create(camera, TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { FieldOfView = origFOV }):Play()
+			end)
+		end
+	end
+
+	Play3DSound(SLASH_RELEASE_SFX, spherePos, 2.8)
+
+	task.delay(0.70, function()
+		for _, pe in ipairs(activeEmitters) do pe.Enabled = false end
+		Debris:AddItem(vfxHolder, 0.8)
+	end)
+end
+
 function CombatVFXController.Init()
 	combatVFXRemote = RemoteEvents.GetRemote("CombatVFX")
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
@@ -152,13 +337,38 @@ function CombatVFXController.Init()
 		local attackerChar = attacker.Character
 		local hrp = if attackerChar then attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 		local origin = if hrp then hrp.Position else Vector3.zero
+		local isLocal = (attacker == player)
 
 		if skillKey == "M1" and attacker ~= player then
 			Play3DSound(SWING_AIR_SOUND_ID, origin, 0.7)
 		end
 
+		-- Q Skill: 3x Purple Sawblade Vortex
+		if skillKey == "Q" and hrp then
+			local aimDir = (hrp.CFrame.LookVector * Vector3.new(1, 0, 1)).Unit
+			if type(payload) == "table" and payload.AimDirection then
+				aimDir = payload.AimDirection
+			end
+			CombatVFXController.SpawnTriplePurpleTwirl(hrp.Position, aimDir, isLocal)
+		end
+
+		-- F Skill: 36-Stud Purple 100-Slash Sphere Domain
+		if skillKey == "F" then
+			local spherePos = if type(payload) == "table" and payload.Origin then payload.Origin else (origin + Vector3.new(0, -0.4, 0))
+			CombatVFXController.SpawnUltimateSlashSphere(spherePos, isLocal)
+		end
+
+		-- Hits & Damage Popups
 		if type(payload) == "table" and payload.HasHit == true and payload.TargetPosition ~= nil then
 			local targetPos: Vector3 = payload.TargetPosition
+
+			if payload.Hits then
+				for _, hitData in ipairs(payload.Hits) do
+					if hitData.Character == player.Character then
+						CombatVFXController.OnLocalPlayerDamaged(payload.Damage or 20, payload.IsCrit == true)
+					end
+				end
+			end
 
 			if payload.WasParried then
 				CombatVFXController.SpawnParryClash(targetPos)
@@ -173,14 +383,13 @@ function CombatVFXController.Init()
 				if attacker == player then CombatVFXController.AddCameraShake(0.15) end
 				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, false, Color3.fromRGB(175, 195, 220), "BLOCKED")
 			else
-				Play3DSound(HIT_IMPACT_SOUND_ID, targetPos, 0.95)
+				Play3DSound(HIT_IMPACT_SOUND_ID, targetPos, 1.2)
 				CombatVFXController.SpawnSlashHitVFX(targetPos, hrp and hrp.CFrame)
 
 				if attacker == player then
 					CombatVFXController.AddCameraShake(payload.IsCrit and 0.45 or 0.25)
 					CombatVFXController.ApplyHitstop(payload.IsCrit and 0.06 or 0.04)
 
-					-- Spawn Floating Sword Intent Combo Badge (Pure text)
 					CombatVFXController.SpawnIntentComboPopup(
 						targetPos,
 						payload.ComboCount or 1,
@@ -220,7 +429,7 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (Clean Text Combat Popups Active).")
+	print("[ASCEND] CombatVFXController Initialized (Clean Text Combat Popups & Ultimate Domain Active).")
 end
 
 function CombatVFXController.ApplyHitstop(duration: number)
@@ -301,10 +510,6 @@ function CombatVFXController.SpawnBlockSparks(position: Vector3)
 	pe:Emit(15)
 
 	Debris:AddItem(sparkPart, 0.5)
-end
-
-function CombatVFXController.AddCameraShake(intensity: number)
-	shakeIntensity = math.clamp(shakeIntensity + intensity, 0, 1.5)
 end
 
 function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number, isCrit: boolean?, customColor: Color3?, prefixText: string?)

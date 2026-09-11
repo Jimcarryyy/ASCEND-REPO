@@ -7,6 +7,10 @@
     - Harmonic Running Camera Shake (stride-synced vertical bounce, lateral sway & roll)
     - Dynamic Speed-Tunnel FOV (70° -> 76° on sprint)
     - 3D Flight & Proximity Obstacle Cushion preserved
+    - Permanent Anti-Trip Ground Physics Lock (FallingDown & Ragdoll permanently disabled)
+    - Instant Velocity Arrest on Charge (Zero sliding/tripping when pressing F mid-sprint)
+    - Natural Humanoid Locomotion Handoff (0.2s pause -> seamless sprint resumption)
+    - 28-Stud Balanced Flash-Step Range
 ]]
 
 local Players = game:GetService("Players")
@@ -15,15 +19,18 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
+local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 
 export type ActionPayload = {
 	SkillKey: string,
 	ComboIndex: number?,
 	DashIndex: number?,
 	AimDirection: Vector3,
+	Origin: Vector3?,
 	Timestamp: number,
 }
 
@@ -54,34 +61,37 @@ local currentAttackLockout = 0
 local m1ComboIndex = 1
 local COMBO_TIMEOUT = 1.3
 
---------------------------------------------------------------------------------
--- 3D FLIGHT, HOVER & DRIFT CONSTANTS
---------------------------------------------------------------------------------
-local flightLinearVel: LinearVelocity? = nil
-local flightOrientation: AlignOrientation? = nil
-local flightAttachment: Attachment? = nil
+local lastSkillQTime = 0
+local isCastingSkillQ = false
+local SWORD_RELEASE_SFX = "rbxassetid://109735549169421"
 
-local FLIGHT_SPEED = 75.0               -- Horizontal flight velocity (studs/s)
-local VERTICAL_FLIGHT_SPEED = 42.0      -- Ascend/Descend speed (Spacebar / Ctrl)
-local IDLE_DRIFT_DESCENT = -2.5         -- Natural slow downward glide when idle mid-air
-local FLIGHT_YAW_OFFSET = 90            -- Aligns sword length with camera forward
+-- Ultimate F State
+local isHoldingF = false
+local isExecutingSkillF = false
+local lastSkillFTime = 0
+local chargeStartTimeF = 0
+local wasSprintingBeforeF = false
+local chargeTrackF: AnimationTrack? = nil
+local slashTrackF: AnimationTrack? = nil
 
--- Ground Hover Cushion
+local FLIGHT_SPEED = 75.0
+local VERTICAL_FLIGHT_SPEED = 42.0
+local IDLE_DRIFT_DESCENT = -2.5
+local FLIGHT_YAW_OFFSET = 90
 local MIN_HOVER_ALTITUDE = 6.5
 local HOVER_SPRING_STRENGTH = 18.0
-
--- Solid Model & Terrain Obstacle Cushion
 local MIN_OBSTACLE_BUFFER = 8.5
 local OBSTACLE_SPRING_STRENGTH = 15.0
 
 local isAscending = false
 local isDescending = false
 
---------------------------------------------------------------------------------
--- SPRINT HEAD-BOBBING & DYNAMIC FOV
---------------------------------------------------------------------------------
 local currentFovTarget = 70.0
 local currentHeadBobWeight = 0.0
+
+local flightLinearVel: LinearVelocity? = nil
+local flightOrientation: AlignOrientation? = nil
+local flightAttachment: Attachment? = nil
 
 local function IsTouchDevice(): boolean
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
@@ -100,14 +110,13 @@ local function EmitToast(message: string)
 	end
 end
 
--- BOOSTED LOCOMOTION SPEEDS (Fast, athletic sprint)
 function InputController.GetLocomotionSpeeds(): (number, number)
 	local character = player.Character
 	local inArena = character and (character:GetAttribute("InArena") == true)
 	if inArena then
-		return 16, 34 -- Arena: 16 Walk / 34 Sprint
+		return 16, 34
 	else
-		return 18, 44 -- Open World: 18 Walk / 44 Sprint
+		return 18, 44
 	end
 end
 
@@ -133,9 +142,6 @@ local function IsAnyMenuOpen(): boolean
 	return false
 end
 
--- =============================================================================
--- 3D FLIGHT LOCOMOTION & HOVER ENGINE
--- =============================================================================
 local function StartFlightLocomotion(character: Model)
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -215,6 +221,38 @@ local function StopFlightLocomotion(character: Model)
 	end
 end
 
+local function SpawnGhostAfterimage(character: Model)
+	local fxContainer = workspace:FindFirstChild("ActiveUltimateVFX") or Instance.new("Folder", workspace)
+	fxContainer.Name = "ActiveUltimateVFX"
+
+	local ghost = Instance.new("Model")
+	ghost.Name = "ShunpoGhost"
+
+	for _, part in ipairs(character:GetChildren()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			local ghostPart = Instance.new("Part")
+			ghostPart.Size = part.Size
+			ghostPart.CFrame = part.CFrame
+			ghostPart.Color = Color3.fromRGB(190, 60, 255)
+			ghostPart.Material = Enum.Material.Neon
+			ghostPart.Transparency = 0.45
+			ghostPart.CanCollide = false
+			ghostPart.CanTouch = false
+			ghostPart.CanQuery = false
+			ghostPart.Anchored = true
+			ghostPart.Parent = ghost
+
+			TweenService:Create(ghostPart, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Transparency = 1,
+				Size = ghostPart.Size * 1.05
+			}):Play()
+		end
+	end
+
+	ghost.Parent = fxContainer
+	Debris:AddItem(ghost, 0.28)
+end
+
 function InputController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
@@ -228,8 +266,28 @@ function InputController.Init()
 		m1ComboIndex = 1
 		currentAttackLockout = 0
 		currentHeadBobWeight = 0.0
+		isCastingSkillQ = false
+		isHoldingF = false
+		isExecutingSkillF = false
+		wasSprintingBeforeF = false
+		chargeTrackF = nil
+		slashTrackF = nil
+
+		-- PERMANENT ANTI-TRIP LOCK
+		local humanoid = character:WaitForChild("Humanoid") :: Humanoid
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+
 		StopFlightLocomotion(character)
 	end)
+
+	if player.Character then
+		local hum = player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+			hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+		end
+	end
 
 	updateCultivationRemote.OnClientEvent:Connect(function(data: any)
 		if type(data) == "table" and data.IsMeditating ~= nil then
@@ -256,9 +314,7 @@ function InputController.Init()
 		local isFlying = (character:GetAttribute("IsFlying") == true)
 		local isDashing = (character:GetAttribute("IsDashing") == true)
 
-		------------------------------------------------------------------------
 		-- 1. FLIGHT LOCOMOTION & HOVER
-		------------------------------------------------------------------------
 		if isFlying then
 			if not flightLinearVel or not flightOrientation then
 				StartFlightLocomotion(character)
@@ -331,15 +387,13 @@ function InputController.Init()
 			end
 		end
 
-		------------------------------------------------------------------------
 		-- 2. GROUND FOOTWORK & SPRINT SPEED-TUNNEL CAMERA
-		------------------------------------------------------------------------
 		local isAttacking = character:GetAttribute("IsAttacking") == true
 		local isStunned = character:GetAttribute("IsStunned") == true 
 			or character:GetAttribute("CCState") == "Stunned" 
 			or character:GetAttribute("CCState") == "GuardBroken"
 
-		if isAttacking or isBlocking or isMeditating or isStunned or isDashing then
+		if isAttacking or isBlocking or isMeditating or isStunned or isDashing or isCastingSkillQ or isExecutingSkillF or isHoldingF then
 			return
 		end
 
@@ -364,17 +418,15 @@ function InputController.Init()
 			end
 		end
 
-		-- Dynamic Sprint FOV (Smooth Speed Tunnel)
 		local targetFov = (isSprinting and isMoving and onGround) and 76.0 or 70.0
 		currentFovTarget = currentFovTarget + (targetFov - currentFovTarget) * math.clamp(dt * 8, 0, 1)
 		camera.FieldOfView = currentFovTarget
 
-		-- Harmonic Running Camera Shake (Step-Synced Head-Bobbing)
 		local targetBobWeight = (isSprinting and isMoving and onGround) and 1.0 or 0.0
 		currentHeadBobWeight = currentHeadBobWeight + (targetBobWeight - currentHeadBobWeight) * math.clamp(dt * 10, 0, 1)
 
 		if currentHeadBobWeight > 0.02 then
-			local stepTime = os.clock() * 13.5 -- Stride frequency
+			local stepTime = os.clock() * 13.5
 			local yBob = math.sin(stepTime * 2) * (0.07 * currentHeadBobWeight)
 			local xBob = math.cos(stepTime) * (0.04 * currentHeadBobWeight)
 			local rollBob = math.cos(stepTime) * math.rad(0.75 * currentHeadBobWeight)
@@ -395,7 +447,7 @@ function InputController.SetEnabled(state: boolean)
 end
 
 function InputController.ToggleSprint()
-	if isMeditating or not enabled or isBlocking then return end
+	if isMeditating or not enabled or isBlocking or isCastingSkillQ or isExecutingSkillF then return end
 	local character = player.Character
 	if character and (character:GetAttribute("IsDashing") == true or character:GetAttribute("IsFlying") == true) then return end
 
@@ -407,7 +459,7 @@ function InputController.ToggleSprint()
 end
 
 function InputController.StartSprint()
-	if isMeditating or not enabled or isBlocking then return end
+	if isMeditating or not enabled or isBlocking or isCastingSkillQ or isExecutingSkillF then return end
 	local character = player.Character
 	if character and character:GetAttribute("IsFlying") == true then return end
 
@@ -431,7 +483,7 @@ end
 
 function InputController.StartBlock()
 	local character = player.Character
-	if isMeditating or not enabled or isBlocking then return end
+	if isMeditating or not enabled or isBlocking or isCastingSkillQ or isExecutingSkillF then return end
 	if character and (character:GetAttribute("IsFlying") == true or character:GetAttribute("IsDashing") == true or character:GetAttribute("IsAttacking") == true) then return end
 
 	isBlocking = true
@@ -477,13 +529,14 @@ function InputController.GetTargetPayload(skillKey: string, comboIndex: number?,
 		ComboIndex = comboIndex,
 		DashIndex = dashIndex,
 		AimDirection = aimDir,
+		Origin = origin,
 		Timestamp = os.clock(),
 	}
 end
 
 function InputController.TriggerDash()
 	local character = player.Character
-	if isMeditating or not enabled or isBlocking then return end
+	if isMeditating or not enabled or isBlocking or isCastingSkillQ or isExecutingSkillF then return end
 	if character and character:GetAttribute("IsFlying") == true then return end
 
 	local now = os.clock()
@@ -507,7 +560,7 @@ end
 
 function InputController.TriggerM1()
 	local character = player.Character
-	if not enabled or isMeditating or isBlocking or IsAnyMenuOpen() then return end
+	if not enabled or isMeditating or isBlocking or IsAnyMenuOpen() or isCastingSkillQ or isExecutingSkillF then return end
 	if character and character:GetAttribute("IsFlying") == true then return end
 
 	local now = os.clock()
@@ -540,16 +593,278 @@ function InputController.TriggerSkill(skillKey: string)
 	if not enabled or isMeditating or isBlocking or IsAnyMenuOpen() then return end
 	if character and character:GetAttribute("IsFlying") == true then return end
 
-	local AnimationController = require(script.Parent.AnimationController)
-	AnimationController.PlayAttackAnimation(skillKey, nil)
+	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local hum = character and character:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum or hum.Health <= 0 then return end
 
-	local payload = InputController.GetTargetPayload(skillKey)
-	combatActionRemote:FireServer(payload)
+	local curQi = character:GetAttribute("Qi") or 0
+	local maxQi = character:GetAttribute("MaxQi") or 100
+	local skillData = FlyingSwordConfig.Skills[skillKey]
+	local costPercent = if skillData then skillData.QiCostPercent else 0
+	local requiredQi = math.ceil(maxQi * costPercent)
+
+	if curQi < requiredQi then
+		EmitToast(string.format("Insufficient Qi! (%d/%d required)", math.floor(curQi), requiredQi))
+		return
+	end
+
+	local now = os.clock()
+	local cd = if skillKey == "Q" then 3.5 else (if skillKey == "F" then 5.5 else (skillData and skillData.Cooldown or 2.0))
+
+	if skillKey == "Q" then
+		if isCastingSkillQ or (now - lastSkillQTime) < cd then return end
+		isCastingSkillQ = true
+		lastSkillQTime = now
+
+		local wasSprintingBeforeCast = isSprinting
+		hum.WalkSpeed = 3.5
+
+		local AnimationController = require(script.Parent.AnimationController)
+		AnimationController.PlayAttackAnimation(skillKey, nil)
+
+		local SkillBarController = require(script.Parent.SkillBarController)
+		if SkillBarController.TriggerCooldown then
+			SkillBarController.TriggerCooldown(skillKey, cd)
+		end
+
+		local charForward = (hrp.CFrame.LookVector * Vector3.new(1, 0, 1)).Unit
+		local payload = InputController.GetTargetPayload(skillKey)
+		payload.AimDirection = charForward
+
+		task.delay(0.30, function()
+			if not hrp.Parent then return end
+			hrp.AssemblyLinearVelocity = charForward * 20 + Vector3.new(0, 2, 0)
+
+			local sound = Instance.new("Sound")
+			sound.SoundId = SWORD_RELEASE_SFX
+			sound.Volume = 1.3
+			sound.Parent = hrp
+			sound:Play()
+			Debris:AddItem(sound, 2.5)
+
+			combatActionRemote:FireServer(payload)
+
+			task.delay(0.18, function()
+				if hum and hum.Parent then
+					local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
+					if wasSprintingBeforeCast and hum.MoveDirection.Magnitude > 0.05 then
+						isSprinting = true
+						hum.WalkSpeed = sprintSpeed
+					else
+						isSprinting = false
+						hum.WalkSpeed = walkSpeed
+					end
+				end
+				isCastingSkillQ = false
+			end)
+		end)
+	elseif skillKey == "F" then
+		return
+	else
+		local AnimationController = require(script.Parent.AnimationController)
+		AnimationController.PlayAttackAnimation(skillKey, nil)
+
+		local payload = InputController.GetTargetPayload(skillKey)
+		combatActionRemote:FireServer(payload)
+
+		local SkillBarController = require(script.Parent.SkillBarController)
+		if SkillBarController.TriggerCooldown then
+			SkillBarController.TriggerCooldown(skillKey, cd)
+		end
+	end
+end
+
+-- =============================================================================
+-- ULTIMATE SKILL F: CHARGE, SHUNPO BLINK & 100-SLASH SPHERE (ANTI-TRIP FIXED)
+-- =============================================================================
+local function StartChargingUltimateF()
+	local character = player.Character
+	if not enabled or isMeditating or isBlocking or IsAnyMenuOpen() or isExecutingSkillF then return end
+	if character and character:GetAttribute("IsFlying") == true then return end
+
+	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local hum = character and character:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum or hum.Health <= 0 then return end
+
+	local now = os.clock()
+	local cd = FlyingSwordConfig.Skills.F.Cooldown or 5.5
+	if isHoldingF or (now - lastSkillFTime) < cd then return end
+
+	local curQi = character:GetAttribute("Qi") or 0
+	local maxQi = character:GetAttribute("MaxQi") or 100
+	local requiredQi = math.ceil(maxQi * FlyingSwordConfig.Skills.F.QiCostPercent)
+
+	if curQi < requiredQi then
+		EmitToast(string.format("Insufficient Qi! (%d/%d required)", math.floor(curQi), requiredQi))
+		return
+	end
+
+	isHoldingF = true
+	chargeStartTimeF = now
+	wasSprintingBeforeF = isSprinting
+
+	-- INSTANT MOMENTUM ARREST: Prevents sliding/tripping forward when pressing F mid-sprint
+	hrp.AssemblyLinearVelocity = Vector3.new(0, math.min(0, hrp.AssemblyLinearVelocity.Y), 0)
+	hrp.AssemblyAngularVelocity = Vector3.zero
+	hum.WalkSpeed = 0
+
+	character:SetAttribute("IsAttacking", true)
+
+	local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
+	if not chargeTrackF then
+		local animObj = Instance.new("Animation")
+		animObj.AnimationId = AnimationConfig.FlyingSword.F.ChargeAnimationId or "rbxassetid://84905841522350"
+		chargeTrackF = animator:LoadAnimation(animObj)
+		chargeTrackF.Looped = true
+		chargeTrackF.Priority = Enum.AnimationPriority.Action3
+	end
+
+	chargeTrackF:Play(0.06)
+	chargeTrackF:AdjustSpeed(1.0)
+
+	if camera then
+		TweenService:Create(camera, TweenInfo.new(0.35, Enum.EasingStyle.Sine), { FieldOfView = 65.0 }):Play()
+	end
+
+	-- Freeze pose indefinitely on final charge frame
+	task.spawn(function()
+		local freezeTarget = if chargeTrackF.Length > 0.3 then (chargeTrackF.Length * 0.85) else 0.24
+		local elapsed = 0
+		while isHoldingF and elapsed < freezeTarget do
+			local dt = task.wait()
+			elapsed += dt
+		end
+		if isHoldingF and chargeTrackF.IsPlaying then
+			chargeTrackF:AdjustSpeed(0)
+		end
+	end)
+end
+
+local function ReleaseUltimateF()
+	if not isHoldingF or isExecutingSkillF then return end
+	local character = player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local hum = character and character:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum or hum.Health <= 0 then return end
+
+	local holdDuration = os.clock() - chargeStartTimeF
+	local remainingWait = math.max(0, 0.20 - holdDuration)
+
+	isHoldingF = false
+	isExecutingSkillF = true
+	lastSkillFTime = os.clock()
 
 	local SkillBarController = require(script.Parent.SkillBarController)
 	if SkillBarController.TriggerCooldown then
-		SkillBarController.TriggerCooldown(skillKey, 2.0)
+		SkillBarController.TriggerCooldown("F", FlyingSwordConfig.Skills.F.Cooldown or 5.5)
 	end
+
+	task.delay(remainingWait, function()
+		if chargeTrackF then chargeTrackF:Stop(0.04) end
+
+		local charForward = (hrp.CFrame.LookVector * Vector3.new(1, 0, 1)).Unit
+		local targetTravelDist = FlyingSwordConfig.Skills.F.DashDistance or 28.0 -- Tuned to 28 studs
+		local dashSpeed = FlyingSwordConfig.Skills.F.DashSpeed or 150.0
+
+		-- OBSTACLE RAYCAST: Stops at Trees, Walls & Terrain, ignores all Humanoids/Enemies
+		local rayParams = RaycastParams.new()
+		rayParams.FilterType = Enum.RaycastFilterType.Exclude
+		rayParams.IgnoreWater = true
+
+		local ignoreList: { Instance } = { character }
+		for _, entity in ipairs(workspace:GetDescendants()) do
+			if entity:IsA("Model") and entity:FindFirstChildOfClass("Humanoid") then
+				table.insert(ignoreList, entity)
+			end
+		end
+		rayParams.FilterDescendantsInstances = ignoreList
+
+		local obstacleHit = workspace:Raycast(hrp.Position + Vector3.new(0, 1, 0), charForward * targetTravelDist, rayParams)
+		local effectiveDist = targetTravelDist
+		if obstacleHit and obstacleHit.Normal.Y < 0.65 then
+			effectiveDist = math.max(4.0, obstacleHit.Distance - 2.0)
+		end
+
+		local actualDashDuration = effectiveDist / dashSpeed
+
+		if camera then
+			TweenService:Create(camera, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = 76.0 }):Play()
+		end
+
+		-- Launch forward velocity
+		hrp.AssemblyLinearVelocity = charForward * dashSpeed
+		hrp.AssemblyAngularVelocity = Vector3.zero
+
+		task.spawn(function()
+			for _ = 1, 3 do
+				task.wait(0.05)
+				if hrp and hrp.Parent then
+					SpawnGhostAfterimage(character)
+				end
+			end
+		end)
+
+		-- Mid-dash execution at ~45% of travel path
+		local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
+		if not slashTrackF then
+			local animObj = Instance.new("Animation")
+			animObj.AnimationId = AnimationConfig.FlyingSword.F.AnimationId
+			slashTrackF = animator:LoadAnimation(animObj)
+			slashTrackF.Priority = Enum.AnimationPriority.Action4
+		end
+
+		task.delay(actualDashDuration * 0.45, function()
+			if not hrp.Parent then return end
+
+			slashTrackF:Play(0.02)
+			slashTrackF:AdjustSpeed(1.4)
+
+			local midPointPos = hrp.Position + Vector3.new(0, -0.40, 0)
+
+			combatActionRemote:FireServer({
+				Action = "F",
+				SkillKey = "F",
+				AimDirection = charForward,
+				Origin = midPointPos,
+			})
+		end)
+
+		-- =====================================================================
+		-- DASH FINISH: SEAMLESS RECOVERY (NO TRIPPING, NATURAL LOCOMOTION)
+		-- =====================================================================
+		task.delay(actualDashDuration, function()
+			if not hrp.Parent then return end
+
+			-- Clear rotational spin
+			hrp.AssemblyAngularVelocity = Vector3.zero
+
+			-- Clean upright orientation lock
+			local _, currentYaw, _ = hrp.CFrame:ToOrientation()
+			hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, currentYaw, 0)
+
+			-- ZERO OUT VELOCITY (Lets Humanoid handle walking/running with no physics fights)
+			hrp.AssemblyLinearVelocity = Vector3.zero
+
+			-- Quick 0.20s slice recovery window (<0.40s total skill time)
+			task.delay(0.20, function()
+				if slashTrackF then slashTrackF:Stop(0.10) end
+
+				character:SetAttribute("IsAttacking", false)
+
+				-- AUTOMATIC SPRINT RESUMPTION (Pure Humanoid Locomotion)
+				local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
+				if wasSprintingBeforeF and hum.MoveDirection.Magnitude > 0.05 then
+					isSprinting = true
+					hum.WalkSpeed = sprintSpeed
+				else
+					isSprinting = false
+					hum.WalkSpeed = walkSpeed
+				end
+
+				isExecutingSkillF = false
+			end)
+		end)
+	end)
 end
 
 function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean)
@@ -558,7 +873,6 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 	local character = player.Character
 	local isFlying = character and character:GetAttribute("IsFlying") == true
 
-	-- V: Sword Flight Toggle
 	if input.KeyCode == Enum.KeyCode.V then
 		if isMeditating then return end
 		local now = os.clock()
@@ -568,7 +882,6 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	-- Flight Key Controls
 	if isFlying then
 		if input.KeyCode == Enum.KeyCode.Space then
 			isAscending = true
@@ -582,25 +895,21 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 
 	if character and character:GetAttribute("IsDashing") == true then return end
 
-	-- 1. CTRL: Toggle Run / Sprint
 	if input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.RightControl then
 		InputController.ToggleSprint()
 		return
 	end
 
-	-- 2. T Key: Block & Parry
 	if input.KeyCode == Enum.KeyCode.T then
 		InputController.StartBlock()
 		return
 	end
 
-	-- 3. LeftShift: Qi Dash
 	if input.KeyCode == Enum.KeyCode.LeftShift then
 		InputController.TriggerDash()
 		return
 	end
 
-	-- 4. C: Meditation
 	if input.KeyCode == Enum.KeyCode.C then
 		local now = os.clock()
 		if now - lastCPress < 0.8 then return end
@@ -617,7 +926,6 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	-- 5. R: Sheath / Draw Toggle
 	if input.KeyCode == Enum.KeyCode.R then
 		if isMeditating then return end
 		local now = os.clock()
@@ -627,9 +935,8 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	if not enabled or isMeditating or isBlocking then return end
+	if not enabled or isMeditating or isBlocking or isCastingSkillQ or isExecutingSkillF then return end
 
-	-- 6. B: Breakthrough Request
 	if input.KeyCode == Enum.KeyCode.B then
 		local curQi = character and character:GetAttribute("Qi") or 0
 		local maxQi = character and character:GetAttribute("MaxQi") or 100
@@ -642,7 +949,25 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	-- 7. MouseButton1: M1 Combo Strike
+	-- Q: Purple Sword Tempest
+	if input.KeyCode == Enum.KeyCode.Q then
+		InputController.TriggerSkill("Q")
+		return
+	end
+
+	-- E: Thrust
+	if input.KeyCode == Enum.KeyCode.E then
+		InputController.TriggerSkill("E")
+		return
+	end
+
+	-- F: Ultimate Skill (Start Charging)
+	if input.KeyCode == Enum.KeyCode.F then
+		StartChargingUltimateF()
+		return
+	end
+
+	-- M1 Combo
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		InputController.TriggerM1()
 		return
@@ -663,6 +988,11 @@ function InputController.OnInputEnded(input: InputObject, gameProcessed: boolean
 
 	if input.KeyCode == Enum.KeyCode.T then
 		InputController.StopBlock()
+	end
+
+	-- F: Release Charge & Unleash Ultimate
+	if input.KeyCode == Enum.KeyCode.F then
+		ReleaseUltimateF()
 	end
 end
 

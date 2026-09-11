@@ -20,7 +20,8 @@ type ActiveMob = {
 	Humanoid: Humanoid,
 	RootPart: BasePart,
 	Config: any,
-	AnchorPart: BasePart,
+	AnchorPart: BasePart?,
+	SpawnPos: Vector3,
 	SpawnRadius: number,
 	RespawnTime: number,
 	State: MobState,
@@ -41,25 +42,50 @@ type ActiveMob = {
 
 local activeMobs: { ActiveMob } = {}
 
--- Safe config resolver (handles MobConfig.Mobs, GetMobConfig, or direct table)
+-- Real MobConfig resolver (No fallbacks)
 local function GetMobConfig(mobId: string): any
-	if (MobConfig :: any).Mobs and (MobConfig :: any).Mobs[mobId] then
-		return (MobConfig :: any).Mobs[mobId]
-	elseif type((MobConfig :: any).GetMobConfig) == "function" then
-		return (MobConfig :: any).GetMobConfig(mobId)
-	else
-		return (MobConfig :: any)[mobId]
+	local cleanId = string.match(tostring(mobId), "^%s*(.-)%s*$") or tostring(mobId)
+
+	-- 1. Official getter function
+	if type(MobConfig.GetMobConfig) == "function" then
+		local res = MobConfig.GetMobConfig(cleanId)
+		if res then return res end
 	end
+	if type(MobConfig.GetMob) == "function" then
+		local res = MobConfig.GetMob(cleanId)
+		if res then return res end
+	end
+
+	-- 2. Direct dictionary lookup
+	if type(MobConfig.Mobs) == "table" and MobConfig.Mobs[cleanId] then
+		return MobConfig.Mobs[cleanId]
+	end
+	if MobConfig[cleanId] then
+		return MobConfig[cleanId]
+	end
+
+	-- 3. Case-insensitive search
+	local lowerTarget = cleanId:lower()
+	local targets = { MobConfig.Mobs, MobConfig }
+	for _, tbl in ipairs(targets) do
+		if type(tbl) == "table" then
+			for k, v in pairs(tbl) do
+				if type(k) == "string" and k:lower() == lowerTarget and type(v) == "table" then
+					return v
+				end
+			end
+		end
+	end
+
+	return nil
 end
 
--- Spatial grid for fast, low-cost player lookups
+-- Spatial player lookup grid
 local playerGrid: { [string]: { Player } } = {}
 local GRID_CELL_SIZE = 50
 
 local function GetGridKey(pos: Vector3): string
-	local cx = math.floor(pos.X / GRID_CELL_SIZE)
-	local cz = math.floor(pos.Z / GRID_CELL_SIZE)
-	return cx .. ":" .. cz
+	return math.floor(pos.X / GRID_CELL_SIZE) .. ":" .. math.floor(pos.Z / GRID_CELL_SIZE)
 end
 
 local function RebuildPlayerGrid()
@@ -71,9 +97,7 @@ local function RebuildPlayerGrid()
 			local hum = char:FindFirstChild("Humanoid") :: Humanoid?
 			if hrp and hum and hum.Health > 0 then
 				local key = GetGridKey(hrp.Position)
-				if not playerGrid[key] then
-					playerGrid[key] = {}
-				end
+				if not playerGrid[key] then playerGrid[key] = {} end
 				table.insert(playerGrid[key], player)
 			end
 		end
@@ -101,7 +125,6 @@ local function GetNearbyPlayers(pos: Vector3, radius: number): { Player }
 			end
 		end
 	end
-
 	return found
 end
 
@@ -147,95 +170,10 @@ local function CreateHealthUI(model: Model, displayName: string): (BillboardGui?
 	return bb, fill
 end
 
-local function CreateFallbackR6Rig(mobId: string, displayName: string, config: any): Model
-	local model = Instance.new("Model")
-	model.Name = mobId
-
-	local hrp = Instance.new("Part")
-	hrp.Name = "HumanoidRootPart"
-	hrp.Size = Vector3.new(2, 2, 1)
-	hrp.Transparency = 1
-	hrp.CanCollide = false
-	hrp.Parent = model
-	model.PrimaryPart = hrp
-
-	local torso = Instance.new("Part")
-	torso.Name = "Torso"
-	torso.Size = Vector3.new(2, 2, 1)
-	torso.Color = Color3.fromRGB(60, 40, 50)
-	torso.Parent = model
-
-	local head = Instance.new("Part")
-	head.Name = "Head"
-	head.Size = Vector3.new(2, 1, 1)
-	head.Color = Color3.fromRGB(200, 180, 160)
-	head.Parent = model
-
-	local headMesh = Instance.new("SpecialMesh")
-	headMesh.MeshType = Enum.MeshType.Head
-	headMesh.Scale = Vector3.new(1.25, 1.25, 1.25)
-	headMesh.Parent = head
-
-	local rArm = Instance.new("Part")
-	rArm.Name = "Right Arm"
-	rArm.Size = Vector3.new(1, 2, 1)
-	rArm.Color = Color3.fromRGB(200, 180, 160)
-	rArm.Parent = model
-
-	local lArm = Instance.new("Part")
-	lArm.Name = "Left Arm"
-	lArm.Size = Vector3.new(1, 2, 1)
-	lArm.Color = Color3.fromRGB(200, 180, 160)
-	lArm.Parent = model
-
-	local rLeg = Instance.new("Part")
-	rLeg.Name = "Right Leg"
-	rLeg.Size = Vector3.new(1, 2, 1)
-	rLeg.Color = Color3.fromRGB(40, 40, 45)
-	rLeg.Parent = model
-
-	local lLeg = Instance.new("Part")
-	lLeg.Name = "Left Leg"
-	lLeg.Size = Vector3.new(1, 2, 1)
-	lLeg.Color = Color3.fromRGB(40, 40, 45)
-	lLeg.Parent = model
-
-	local function AddMotor(name: string, p0: BasePart, p1: BasePart, c0: CFrame, c1: CFrame)
-		local m = Instance.new("Motor6D")
-		m.Name = name
-		m.Part0 = p0
-		m.Part1 = p1
-		m.C0 = c0
-		m.C1 = c1
-		m.Parent = p0
-	end
-
-	AddMotor("RootJoint", hrp, torso, CFrame.new(0, 0, 0) * CFrame.Angles(-math.pi/2, 0, math.pi), CFrame.new(0, 0, 0) * CFrame.Angles(-math.pi/2, 0, math.pi))
-	AddMotor("Neck", torso, head, CFrame.new(0, 1, 0) * CFrame.Angles(-math.pi/2, 0, math.pi), CFrame.new(0, -0.5, 0) * CFrame.Angles(-math.pi/2, 0, math.pi))
-	AddMotor("Right Shoulder", torso, rArm, CFrame.new(1, 0.5, 0) * CFrame.Angles(0, math.pi/2, 0), CFrame.new(-0.5, 0.5, 0) * CFrame.Angles(0, math.pi/2, 0))
-	AddMotor("Left Shoulder", torso, lArm, CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, -math.pi/2, 0), CFrame.new(0.5, 0.5, 0) * CFrame.Angles(0, -math.pi/2, 0))
-	AddMotor("Right Hip", torso, rLeg, CFrame.new(1, -1, 0) * CFrame.Angles(0, math.pi/2, 0), CFrame.new(0.5, 1, 0) * CFrame.Angles(0, math.pi/2, 0))
-	AddMotor("Left Hip", torso, lLeg, CFrame.new(-1, -1, 0) * CFrame.Angles(0, -math.pi/2, 0), CFrame.new(-0.5, 1, 0) * CFrame.Angles(0, -math.pi/2, 0))
-
-	local humanoid = Instance.new("Humanoid")
-	humanoid.RigType = Enum.HumanoidRigType.R6
-	humanoid.MaxHealth = config.MaxHealth
-	humanoid.Health = config.MaxHealth
-	humanoid.WalkSpeed = config.WalkSpeed
-	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-	humanoid.Parent = model
-
-	return model
-end
-
 local function OnMobDied(mob: ActiveMob)
-	if mob.WalkTrack then
-		pcall(function() mob.WalkTrack:Stop(0.1) end)
-	end
+	if mob.WalkTrack then pcall(function() mob.WalkTrack:Stop(0.1) end) end
 	if mob.AttackTracks then
-		for _, track in ipairs(mob.AttackTracks) do
-			pcall(function() track:Stop(0.1) end)
-		end
+		for _, track in ipairs(mob.AttackTracks) do pcall(function() track:Stop(0.1) end) end
 	end
 
 	local killer = mob.LastDamagePlayer
@@ -251,24 +189,24 @@ local function OnMobDied(mob: ActiveMob)
 			multiplier = 1 + (realmIdx - 1) * 0.35
 		end
 
-		local ssReward = math.round((config.Rewards and config.Rewards.SpiritStones or 10) * multiplier)
-		local qiReward = math.round((config.Rewards and config.Rewards.CultivatedQi or 20) * multiplier)
+		local ssReward = math.round((config.BaseSpiritStones or (config.Rewards and config.Rewards.SpiritStones) or 15) * multiplier)
+		local qiReward = math.round((config.BaseQiReward or (config.Rewards and config.Rewards.CultivatedQi) or 35) * multiplier)
 
 		if profile and profile.Stats then
 			profile.Stats.SpiritStones = (profile.Stats.SpiritStones or 0) + ssReward
 		end
 
 		if profile and profile.Cultivation then
-			profile.Cultivation.Qi = math.min(
-				(profile.Cultivation.Qi or 0) + qiReward,
-				profile.Cultivation.MaxQi or 1000
-			)
+			profile.Cultivation.Qi = math.min((profile.Cultivation.Qi or 0) + qiReward, profile.Cultivation.MaxQi or 1000)
 		end
 
-		if config.Drops then
-			for _, drop in ipairs(config.Drops) do
-				local roll = math.random() * 100
-				if roll <= drop.Chance then
+		local drops = config.DropTable or config.Drops
+		if drops then
+			for _, drop in ipairs(drops) do
+				local roll = math.random()
+				local chance = drop.Chance
+				if chance > 1 then chance = chance / 100 end
+				if roll <= chance then
 					local count = math.random(drop.MinCount or 1, drop.MaxCount or 1)
 					InventoryManager.AddItem(killer, drop.ItemId, count)
 				end
@@ -297,35 +235,52 @@ end
 function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius: number, respawnTime: number)
 	local config = GetMobConfig(mobId)
 	if not config then
-		warn(string.format("[MobAIManager] Could not find config for mob: '%s' in MobConfig.Mobs!", tostring(mobId)))
+		warn(string.format("[MobAIManager] ERROR: '%s' not found in MobConfig. Check spelling in MobConfig.luau!", tostring(mobId)))
 		return
 	end
 
 	local angle = math.random() * math.pi * 2
 	local dist = math.random() * (spawnRadius * 0.5)
-	local spawnPos = anchorPart.Position + Vector3.new(math.cos(angle) * dist, 2, math.sin(angle) * dist)
+	local targetX = anchorPart.Position.X + math.cos(angle) * dist
+	local targetZ = anchorPart.Position.Z + math.sin(angle) * dist
 
-	-- 1. Grab master template from ReplicatedStorage.MobModels
-	local model: Model
+	-- Raycast down to find ground level
+	local rayOrigin = Vector3.new(targetX, anchorPart.Position.Y + 30, targetZ)
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Include
+	rayParams.FilterDescendantsInstances = { Workspace }
+	rayParams.IgnoreWater = true
+	local hit = Workspace:Raycast(rayOrigin, Vector3.new(0, -60, 0), rayParams)
+	local spawnY = if hit then hit.Position.Y + 3.5 else anchorPart.Position.Y + 3.5
+	local finalSpawnPos = Vector3.new(targetX, spawnY, targetZ)
+
+	-- Clone template from ReplicatedStorage.MobModels
+	local model: Model? = nil
 	local mobFolder = ReplicatedStorage:FindFirstChild("MobModels")
 	local template = mobFolder and mobFolder:FindFirstChild(mobId)
 
 	if template and template:IsA("Model") then
 		model = template:Clone()
 	else
-		model = CreateFallbackR6Rig(mobId, config.DisplayName, config)
+		warn(string.format("[MobAIManager] Template '%s' missing in ReplicatedStorage.MobModels!", mobId))
+		return
 	end
 
-	model:PivotTo(CFrame.new(spawnPos))
+	model:PivotTo(CFrame.new(finalSpawnPos))
 
-	-- Unanchor all parts so the mob can walk freely
 	for _, desc in ipairs(model:GetDescendants()) do
 		if desc:IsA("BasePart") then
 			desc.Anchored = false
 		end
 	end
 
-	model.Parent = Workspace
+	-- PARENT DIRECTLY TO MobSpawns FOLDER
+	local spawnContainer = anchorPart.Parent
+	if spawnContainer and spawnContainer.Name == "MobSpawns" then
+		model.Parent = spawnContainer
+	else
+		model.Parent = Workspace:FindFirstChild("MobSpawns") or Workspace
+	end
 
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	local rootPart = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -340,7 +295,7 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	humanoid.Health = config.MaxHealth
 	humanoid.WalkSpeed = config.WalkSpeed
 
-	-- 2. Setup Health UI
+	-- Health UI
 	local healthGui = model:FindFirstChild("MobHealthUI", true) :: BillboardGui?
 	local healthBar = nil
 	if healthGui then
@@ -350,18 +305,13 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		healthGui, healthBar = CreateHealthUI(model, config.DisplayName)
 	end
 
-	-- 3. Load Animation Tracks
-	local animator = humanoid:FindFirstChildOfClass("Animator")
-	if not animator then
-		animator = Instance.new("Animator")
-		animator.Parent = humanoid
-	end
-
+	-- Animation Tracks
+	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
 	local walkTrack: AnimationTrack? = nil
 	local attackTracks: { AnimationTrack } = {}
 
 	local animFolder = model:FindFirstChild("Animations")
-	if animator and animFolder then
+	if animFolder then
 		local walkAnim = animFolder:FindFirstChild("WalkAnimation") :: Animation?
 		if walkAnim and walkAnim.AnimationId ~= "" then
 			pcall(function()
@@ -391,6 +341,7 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		RootPart = rootPart,
 		Config = config,
 		AnchorPart = anchorPart,
+		SpawnPos = finalSpawnPos,
 		SpawnRadius = spawnRadius,
 		RespawnTime = respawnTime,
 		State = "Patrol",
@@ -400,7 +351,7 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		Waypoints = {},
 		LastAttackTime = 0,
 		LastPatrolTime = os.clock() + math.random(1, 4),
-		PatrolTarget = spawnPos,
+		PatrolTarget = finalSpawnPos,
 		LastDamagePlayer = nil,
 		LastDamageTime = 0,
 		HealthGui = healthGui,
@@ -422,7 +373,7 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		OnMobDied(mob)
 	end)
 
-	print(string.format("[MobAIManager] Successfully spawned '%s' at (%.1f, %.1f, %.1f)!", mobId, spawnPos.X, spawnPos.Y, spawnPos.Z))
+	print(string.format("[MobAIManager] Spawned real '%s' (HP: %.0f, Dmg: %.0f) into MobSpawns folder at (%.1f, %.1f, %.1f)!", config.DisplayName, config.MaxHealth, config.BaseDamage, finalSpawnPos.X, finalSpawnPos.Y, finalSpawnPos.Z))
 end
 
 function MobAIManager.RecordDamage(mobModel: Model, attacker: Player)
@@ -454,7 +405,7 @@ local function StepAI()
 		end
 
 		local rootPos = rootPart.Position
-		local anchorPos = anchor.Position
+		local anchorPos = anchor and anchor.Position or mob.SpawnPos
 		local distFromAnchor = (rootPos - anchorPos).Magnitude
 
 		if distFromAnchor > (mob.SpawnRadius * 2.2) and mob.State ~= "Leash" then
@@ -464,7 +415,7 @@ local function StepAI()
 
 		local state = mob.State
 
-		-- Animation Walk Cycle Update
+		-- Walk Animation update
 		if mob.WalkTrack then
 			local isMoving = humanoid.MoveDirection.Magnitude > 0.05
 			if isMoving and not mob.WalkTrack.IsPlaying then
@@ -476,7 +427,6 @@ local function StepAI()
 
 		if state == "Patrol" then
 			humanoid.WalkSpeed = config.WalkSpeed * 0.7
-
 			local candidates = GetNearbyPlayers(rootPos, config.AggroRadius)
 			if #candidates > 0 then
 				mob.TargetPlayer = candidates[1]
@@ -503,22 +453,11 @@ local function StepAI()
 				if dist <= config.AttackRange then
 					mob.State = "Attack"
 				else
-					local path = PathfindingService:CreatePath({
-						AgentRadius = 2.5,
-						AgentHeight = 5,
-						AgentCanJump = false,
-					})
-					local success = pcall(function()
-						path:ComputeAsync(rootPos, targetHrp.Position)
-					end)
-
+					local path = PathfindingService:CreatePath({ AgentRadius = 2.5, AgentHeight = 5, AgentCanJump = false })
+					local success = pcall(function() path:ComputeAsync(rootPos, targetHrp.Position) end)
 					if success and path.Status == Enum.PathStatus.Success then
 						local wps = path:GetWaypoints()
-						if #wps >= 2 then
-							humanoid:MoveTo(wps[2].Position)
-						else
-							humanoid:MoveTo(targetHrp.Position)
-						end
+						humanoid:MoveTo(wps[2] and wps[2].Position or targetHrp.Position)
 					else
 						humanoid:MoveTo(targetHrp.Position)
 					end
@@ -592,7 +531,7 @@ function MobAIManager.Init()
 		local maxCount = anchor:GetAttribute("MaxCount") :: number? or 3
 		local respawnTime = anchor:GetAttribute("RespawnTime") :: number? or 20
 
-		print(string.format("[MobAIManager] Activating Spawner anchor '%s' for '%s' (Count: %d, Radius: %d studs)...", anchor.Name, mobId, maxCount, spawnRadius))
+		print(string.format("[MobAIManager] Activating Spawner anchor '%s' for '%s' (Count: %d)...", anchor.Name, mobId, maxCount))
 
 		for _ = 1, maxCount do
 			MobAIManager.SpawnMob(mobId, anchor, spawnRadius, respawnTime)
@@ -600,10 +539,16 @@ function MobAIManager.Init()
 	end
 
 	for _, child in ipairs(spawnFolder:GetChildren()) do
-		InitSpawner(child)
+		if child:IsA("BasePart") then
+			InitSpawner(child)
+		end
 	end
 
-	spawnFolder.ChildAdded:Connect(InitSpawner)
+	spawnFolder.ChildAdded:Connect(function(child)
+		if child:IsA("BasePart") then
+			InitSpawner(child)
+		end
+	end)
 
 	task.spawn(function()
 		while true do
