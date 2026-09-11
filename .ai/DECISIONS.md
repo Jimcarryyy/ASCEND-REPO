@@ -435,3 +435,38 @@ This document records structural architectural decisions, design paradigms, secu
   3. Built and deployed **`CharacterStatsGui`** ($0.5, 0.5$ dead-center) with 4 tabs (`1. DAO REALM`, `2. COMBAT STATS`, `3. SPIRIT WEAPON`, `4. 3D AVATAR`) bound to keybind **`P`**.
   4. Enforced typography standard: `Enum.Font.Bangers` for headers and category badges; `Fondamento` for all stat descriptions and lore values.
 * **Consequences:** Unified the visual identity of all game menus with high-contrast, scalable, calligraphic Xianxia presentation.
+
+### ADR-054 — Q Skill: Purple Sword Tempest Dual-Hitbox Architecture
+* **Date:** 2026-09-11
+* **Status:** Accepted & Implemented
+* **Context:** The original Q skill (Sword Tempest / Volcanic Tempest) was a static radial tick that felt disconnected from the cultivator's sword motion and lacked forward pressure.
+* **Decision:**
+  1. Redesigned Q into a dual-hitbox projectile attack: point-blank melee slice ($0\text{--}7\text{ studs}$) + 3 consecutive traveling purple sawblade waves ($16\text{-stud}$ width, $36\text{-stud}$ fixed distance, $70\text{ studs/s}$).
+  2. Aligned release height strictly to mid-torso ($Y = -0.40\text{ studs}$ relative to HRP) matching the sword blade arc.
+  3. Integrated client-side Qi pre-check ($15\%$ Max Qi): prevents playing animations or audio if energy is insufficient.
+  4. Assigned Animation ID `rbxassetid://111677132360566`, release SFX `rbxassetid://109735549169421`, and hit SFX `rbxassetid://135448977656112`.
+* **Rationale:** Provides high-impact ranged zoning with physical martial arts weight while preserving server authority.
+
+### ADR-055 — F Skill: 100-Slash Flash Domain Ultimate & Phase-Dash Architecture
+* **Date:** 2026-09-11
+* **Status:** Accepted & Implemented
+* **Context:** The legacy F skill ("Falling Sky Slam") lacked visual grandeur and mechanical identity as a high-tier sword technique.
+* **Decision:**
+  1. Replaced F with the "100-Slash Flash Domain" ultimate skill.
+  2. Implemented hold-to-charge stance using `rbxassetid://84905841522350` (Looped = `true`, speed frozen at `0` on charge frame), locking the cultivator in a braced pose until release.
+  3. Release executes a $28\text{-stud}$ flash-step dash at $150\text{ studs/s}$ with purple silhouette afterimages.
+  4. Obstacle raycasting ignores Humanoid models (allowing the cultivator to phase straight through enemies) while strictly stopping $2\text{ studs}$ in front of Trees, Rocks, Walls, and Terrain.
+  5. At the $14\text{-stud}$ midpoint, executes a $0.05\text{s}$ anime micro-hitstop, triggers mid-air slash `rbxassetid://111677132360566`, and detonates the $36\text{-stud}$ purple 100-slash sphere (`UltimateSkill` with `Wind1` and `Slashes1`).
+  6. Assigned dedicated Ultimate SFX `rbxassetid://18781431019` (volume 2.8 in 3D).
+* **Rationale:** Delivers the authentic anime flash-step sword fantasy where the swordsman cuts through the enemy pack and the sphere of slashes detonates behind them.
+
+### ADR-056 — Permanent Anti-Trip Ground Physics Standard
+* **Date:** 2026-09-11
+* **Status:** Accepted & Implemented
+* **Context:** Re-enabling `FallingDown` and `Ragdoll` humanoid states or applying sudden velocity changes on running R6 characters caused severe physics torque, causing characters to trip and faceplant into the ground.
+* **Decision:**
+  1. Permanently disabled `HumanoidStateType.FallingDown` and `Ragdoll` across all character lifecycles.
+  2. Prohibited artificial CFrame ground-snapping post-dash; ground alignment is handled naturally by the Humanoid physics engine.
+  3. When charging skills mid-sprint, horizontal velocity is arrested immediately (`Vector3.new(0, Y, 0)`), preventing forward momentum from tripping the character.
+  4. Implemented automatic sprint state memory: pre-skill sprint state is recorded and automatically restored upon recovery without requiring player key re-presses.
+* **Rationale:** Eliminates unintended ragdolls and stumbling on stepped terrain and during fast combat locomotion.

@@ -443,3 +443,21 @@ This document records historical feature additions, engine enhancements, balance
 - **`CultivationController:142` Syntax Error:** Removed stray backslash that prevented client controller booting.
 - **Deacon Zhao Sect Pavilion Prompt:** Resolved hierarchy lookup bug in `SectController.luau` so pressing `E` on Deacon Zhao opens `SectPavilionGui` with 0ms lag.
 - **Movement Sound Governor:** Muted phantom footstep audio during flight collisions and mid-air jump spamming.
+
+## [2026-09-11] — Combat Skills Overhaul, Gathering HUD Integration & Mob Spawner Engine
+
+### Added
+- **Q Skill (Purple Sword Tempest):** Implemented server-authoritative skill in `FlyingSwordConfig.luau`, `AnimationConfig.luau`, `InputController.luau`, `FlyingSwordServer.luau`, and `CombatVFXController.luau`. Features dual hitbox (point-blank melee slice + 3x traveling sawblade waves @ 70 studs/s, 36-stud reach), 15% Qi cost, camera shake, release SFX (`rbxassetid://109735549169421`), and hit SFX (`rbxassetid://135448977656112`).
+- **F Skill (100-Slash Flash Domain):** Implemented Ultimate skill on `F` key replacing Falling Sky Slam. Hold `F` to charge stance (`rbxassetid://84905841522350`, locked pose, 20% Qi cost); release to flash-step ($150\text{ studs/s}$ across $28\text{ studs}$) phasing through enemies while raycast-respecting trees/walls/terrain; midpoint micro-hitstop ($0.05\text{s}$) triggering mid-air slash (`rbxassetid://111677132360566`) and 36-stud purple 100-slash sphere (`UltimateSkill`); dedicated audio (`rbxassetid://18781431019`).
+- **Automatic Sprint Resumption:** Cultivator automatically returns to a full $44\text{ studs/s}$ sprint after casting `Q` or `F` if movement was active prior to cast, with less than $0.25\text{s}$ post-skill recovery pause.
+- **R6 RogueDisciple Rig:** Fully rigged R6 enemy template in `ReplicatedStorage.MobModels.RogueDisciple` with standard Motor6D joints, 19 native attachments, welded geometric clothing, and equipped `MortalIronJian` via `RightGrip`.
+- **GatheringHUD 1-Click Harvesting:** Bound `StarterGui.GatheringHUD` with smooth progress bar fill, custom floating Xianxia billboard prompt, and suppressed default Roblox UI (`HoldDuration = 0`, `Style = Custom`). Attached elemental PointLight glows across all 5 gathering nodes.
+
+### Fixed
+- **Anti-Trip Ground Physics:** Permanently disabled `HumanoidStateType.FallingDown` and `Ragdoll` across character lifecycles. Zeroed horizontal velocity on charge and eliminated artificial CFrame ground snaps, completely preventing forward ragdoll tumbles when casting mid-sprint.
+- **Obstacle Collision on Dashes:** Fixed bug where phasing through enemies caused characters to phase through trees, rocks, and terrain. Implemented forward obstacle raycast that specifically ignores Humanoids but stops cleanly 2 studs in front of static environment models.
+- **ServerMain Initialization:** Resolved missing `MobAIManager.Init()` call in `ServerMain.server.luau` that previously prevented all enemy spawners from running.
+- **MobConfig Data Lookup:** Resolved silent spawn failure where `MobConfig[mobId]` returned `nil`. Updated `MobAIManager.luau` to call `MobConfig.GetMob(mobId)` and read real properties (`BaseSpiritStones`, `BaseQiReward`, `DropTable`).
+- **Gathering Crashes:** Fixed `GatheringController.luau` line 6 client crash by removing invalid server `State.InventoryManager` require and resolved `RemoteEvents` infinite yield. Fixed `GatheringManager.luau` nil index crash using schema-safe `GetNodeConfig` resolver.
+- **Tree Collision & Axis Alignment:** Cleaned foliage collision across tree models (`CanCollide = false`, trunks = `Hull`). Fixed Blender FBX Z-up orientation matrix bug that previously knocked trees 90° flat on their sides.
+- **Foliage Wind Shaking:** Renamed internal meshes of gathering herbs from `"Grass"` to `"HerbMesh"` to bypass unwanted `WindEnvironmentController.luau` gust shaking.

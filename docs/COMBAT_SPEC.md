@@ -15,14 +15,19 @@
 
 All Flying Swords use the same universal 6-slot input layout with high-impact visual feedback:
 
-| Input | Action / Skill Name | Combat Identity & Visual Render |
-| :---: | :--- | :--- |
-| **`LMB`** | **Light Sword Slashes** | 3-step wide arc slashes with floating damage numbers and gold/red sparks. |
-| **`Shift`**| **Windstep Dash** | Fast, invincible directional travel dash with a motion blur trail. |
-| **`F`** | **Magma Cleave** | Launches **3 consecutive sharp molten crescent moon waves** forward (Right Arc $\rightarrow$ Left Arc $\rightarrow$ Heavy Central Moon)! |
-| **`Q`** | **Volcanic Tempest** | $360^\circ$ radial magma eruption pushing mobs back and auto-sucking nearby herb drops. |
-| **`E`** | **Homing Telekinesis Thrust**| Fires a long-range flying sword projectile that homes in on the target. |
-| **`R`** | **Celestial Sunfall (Ultimate)**| A giant 25-stud molten magma crescent moon blade drops from the sky with camera shake! |
+<!-- INSERT UNDER SECTION: ## 1. Universal 1-Pack Skillset -->
+
+### Updated Flying Sword Active Skills (Phase 8.5 Revision)
+
+| Input | Skill Name | Qi Cost (% Max Qi) | Cooldown | Base Damage | Reach / Speed | Visual & Audio Identity |
+| :---: | :--- | :---: | :---: | :---: | :---: | :--- |
+| **`M1`** | Broadsword Combo | **0%** | 0.38s–0.65s | 15/15/20/25/45 | 8–11 studs | 5-hit R6 broadsword chain. WalkSpeed = 8. Generates +25% Intent per hit. |
+| **`Q`** | **Sword Tempest** | **15%** | 3.5s | 25 (Melee) + 54 (3x Waves) | 36 studs @ 70 studs/s | Dual hitbox: point-blank melee cleave (0–7 studs) + 3 traveling purple sawblades. Release SFX: `109735549169421`, Hit SFX: `135448977656112`. Auto-resumes sprint. |
+| **`E`** | Piercing Void Thrust | **12%** | 5.0s | 80 | 25 studs @ 120 studs/s | High-speed penetrating sword beam. Knocks targets back 40 studs. |
+| **`F`** | **100-Slash Flash Domain** | **20%** | 5.5s | 100 (5 ticks x 20) | 28 studs @ 150 studs/s | Hold F to charge stance (`84905841522350`, locked pose); release to flash-step through enemies (stops at trees/terrain). At 14-stud midpoint, triggers 0.05s micro-hitstop, mid-air slash (`111677132360566`), and 36-stud purple 100-slash sphere (`UltimateSkill`). Audio: `18781431019`. Anti-trip locked. Auto-resumes sprint. |
+| **`T`** | Block & Perfect Parry | **0%** | 0.5s | 0 | Frontal 180° | Hold to block (80% mitigation). Tap within 0.22s for Perfect Parry (100% negation, 0.5s stun on attacker, +5% Qi). |
+| **`Shift`**| Windstep Dash | **0%** | 3.0s | 0 | 20 studs @ 150 studs/s | 2-stage flash-step burst with +1.2 stud elevation lift and Celestial Cyan afterimages. |
+
 
 ## 3. Dynamic Skill Qi Costs & Damage Power Scaling
 

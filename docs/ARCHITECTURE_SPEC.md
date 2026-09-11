@@ -225,3 +225,25 @@ Dialogue with Instructor Wu can trigger full DPS counter resets across all dummi
 Client Controller: StarterGuideController.luau
 World Target: ProximityPrompt on Sect_NPC_ElderQing ("Seek Guidance").
 GUI: Opens StarterGui.StarterGuideGui featuring 4 tabbed interactive frames: Controls, Cultivation, Sword Intent, and Sect Duties.
+
+<!-- UPDATE SECTION 3.1: Server Lifecycle (ServerMain.server.luau) -->
+
+### 3.1 Server Lifecycle (ServerMain.server.luau Revision)
+Upon server startup, `ServerMain.server.luau` sequentially initializes all 16 server engines:
+1. `RemoteEvents.Init()` — Centralized network remotes.
+2. Core State & Combat: `CombatStateManager`, `WeaponManager`, `CultivationManager`, `InventoryManager`, `PlayerDataManager`.
+3. World & Cultivation Facilities: `GatheringManager`, `AlchemyManager`, `EnvironmentTimeManager`, `TreeCollisionManager`, `VendorManager`, `BlacksmithManager`, `TeaHouseManager`, `SectManager`.
+4. Combat Encounters & Spawners:
+   - `ArenaManager.Init()` — 1v1 Sparring Arena.
+   - `MarketplaceManager.Init()` — Gamepass & receipt ledger.
+   - `MobAIManager.Init()` — **[ACTIVE]** Scans `workspace.MobSpawns`, activates camp anchors (`Spawner_RogueDisciples`), and runs spatial culling AI loop (0.25s).
+
+<!-- INSERT UNDER SECTION 1.1: Client-Server Authoritative Boundary -->
+
+### 1.5 Server-Authoritative High-Speed Movement (Dash & Blink Engine)
+To eliminate client physics desync and ground-tripping:
+- **Zero Client Velocity Injection:** Clients are strictly prohibited from directly modifying `AssemblyLinearVelocity` or hard-teleporting `HumanoidRootPart.CFrame` during movement skills.
+- **Server-Managed Physics:** The server instantiates a temporary `Attachment` and `LinearVelocity` (`ForceLimitMode.PerAxis`, $Y = 0$) on `HumanoidRootPart`.
+- **Y-Velocity Clamping:** The server clamps `AssemblyLinearVelocity.Y` between $[-2, 2]$ prior to force application to prevent launching into the sky or driving into the ground.
+- **Deceleration Decay:** Velocities decay smoothly via `TweenService` over the final $35\%$ of travel duration before constraint destruction.
+- **Attribute Gating:** Locomotion scripts in `RenderStepped` check `IsBlinking` and `IsChargingF`, preventing `WalkSpeed` updates from conflicting with physics forces.

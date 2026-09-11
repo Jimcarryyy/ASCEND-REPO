@@ -3,31 +3,30 @@
 ## Purpose
 This document defines the single active operational focus of development for ASCEND. Historical task threads are permanently archived in `CHANGELOG.md`.
 
-**Current Milestone:** Phase 8.3 — MasterHUDGui Live Integration & Flying Sword Flight Mode  
+**Current Milestone:** Phase 8.5 — Combat Engine Hardening & Skills Overhaul  
 **Active Timestamp:** September 2026  
-**Active Role Context:** Systems Architect & UI/UX Designer  
+**Active Role Context:** Systems Architect, Combat & Progression Designer, VFX & Visual Polish Expert  
 
 ---
 
-## 🎯 ACTIVE TASK: MasterHUDGui Live Binding & Controller Consolidation
+## 🎯 ACTIVE TASK: Combat Skills Integration & Physics Stabilization
 
-The full 16-station `Workspace.Functional_Stations` suite, the 19-character `Workspace.NPCs` roster (including the 7 Sword Pillars), and all 12 facility/status ScreenGuis in `StarterGui` have been generated and debugged. 
-
-The immediate active priority is verifying and finalizing the live event bindings on **`MasterHUDGui`**:
+Following the successful implementation and testing of the `Q` Skill (Purple Sword Tempest) and `F` Skill (100-Slash Flash Domain):
 
 ### Active Verification & Acceptance Checklist
-- [x] Consolidate `VitalsContainer` (HP, Qi, Intent) into `SkillBarController.luau`.
-- [x] Connect `BottomCenterFrame.HotbarContainer` (10 skill slots) with live cooldown sweeps and keybind triggers.
-- [x] Connect `TopRightCurrencyFrame` to live Spirit Stones and Contribution Points ($CP$).
-- [x] Connect `TopLeftDutyTracker` (`Frame1`, `Frame2`, `Frame3`) to `QuestTrackerController.luau`.
-- [x] Shift `TopLeftDutyTracker` by $+56\text{px}$ down to clear Roblox CoreGui topbar buttons.
-- [x] Disable legacy standalone HUDs (`CurrencyGUI`, `SkillsGUI`, `BottomMenuGui`, `SectMissionGui`, `QIZoneNotifGui`, `GlobalToastNotifGui`).
-- [x] Verify all 12 modals (`DisplayOrder = 50`, $Y = 0.38$) render cleanly above the bottom HUD without overlap.
+- [x] Fix `GatheringManager.luau` nil index crash using universal `GetNodeConfig` resolver.
+- [x] Fix `GatheringController.luau` client startup crash (remove server `State` require, resolve `RemoteEvents` module).
+- [x] Initialize `MobAIManager` in `ServerMain.server.luau` and resolve `MobConfig.GetMob` lookup for `RogueDisciple`.
+- [x] Implement server-authoritative `Q` Skill: 3x purple traveling sawblade waves ($36\text{ studs}$, $70\text{ studs/s}$), dual hitbox, release sound (`109735549169421`), and hit sound (`135448977656112`).
+- [x] Implement `F` Ultimate Skill: Stance charge lock (`84905841522350`), 28-stud flash-step dash phasing through enemies while respecting terrain/trees, mid-dash slash (`111677132360566`), 36-stud purple 100-slash sphere (`UltimateSkill`), and dedicated sound (`18781431019`).
+- [x] Fix character tripping/ragdoll bugs on high-speed dashes (permanent `FallingDown` lock, zero-torque braking, automatic sprint resumption).
+- [ ] Patch `ServerScriptService.Server.Combat.HitboxManager.luau` line 228 nil call bug when attacks hit Mob/NPC targets.
+- [ ] Implement remaining VFX suite skills from `ReplicatedStorage.VFX` (`ActiveShield` on `T`, `ShieldBreakEffects` on GuardBreak, `SwordIntentAnim`, `FireSlashSkill`).
+- [ ] Reconcile `R` keybind between Sheath/Draw and Ultimate `Celestial Sunfall`.
 
 ---
 
-## 🚀 QUEUED NEXT: Flying Sword Flight Mode (御剑飞行)
-Following HUD sign-off:
-1. Wire `V` key toggle in `InputController.luau` and `SkillBarController.luau`.
-2. Attach flying sword horizontally beneath character feet using `HumanoidRootPart.BodyBackAttachment` / `FlightSwordMount`.
-3. Implement 3D omnidirectional flight physics with banking turns and realm-scaled speed ($65 \rightarrow 140+\text{ studs/s}$).
+## 🚀 QUEUED NEXT: Defensive Combat Suite & Shield VFX
+1. Wire `ActiveShield` and `ShieldBreakEffects` to `T` Block / Guard-Break mechanics.
+2. Complete `HitboxManager.luau` server audit for NPC/Mob hit resolution.
+3. Wire `FireSlashSkill` and `SwordIntentAnim` into weapon combo / skill variants.

@@ -1,105 +1,13 @@
 # ASCEND — Project Status Overview
 
-## Purpose
-This document provides the authoritative, single-state operational status of the ASCEND repository. It reflects the live codebase across all 16 server managers, 20 client controllers, shared configurations, and functional world stations, incorporating all bugfixes, world shifts, and design mandates up through Phase 8.2.
-
-**Consolidation Date:** September 2026 (Post-Developer Message 183)  
-**Master Persistence Key:** `ASCEND_PlayerData_V2`  
-**Avatar Rig Standard:** Roblox R6 Standard Rig  
-**Palette Standard:** Dark Obsidian (`#111827`) & Antique Bronze-Gold (`#8B6B32` / `#C49A4A`)  
-**Typography Standard:** `Bangers` (Titles/Headers with Black UIStroke) & `Fundamento` (Body/Descriptions)  
-**Active Operational Focus:** Clean Desktop HUD Rebuild in Studio (`StarterGui.MasterHUDGui`)
-
----
-
-## Subsystem Health & Operational Readiness
-
-| Subsystem | Status | Core Script / Module Architecture | Implementation Details & Live Capabilities |
-| :--- | :---: | :--- | :--- |
-| **Desktop HUD Suite** | 🟡 Active Rebuild | `StarterGui.MasterHUDGui`, `HUDController`, `SkillBarController`, `QuestTrackerController` | Legacy HUD hidden due to modal overlap. Active rebuild in progress: 5-cluster desktop layout (Toasts top-center, Vitals/Skills bottom-center, Duties top-left, Currency top-right, Menu tray bottom-left). `DisplayOrder = 1`. |
-| **Sword Combat Engine** | 🟢 Operational | `CombatStateManager`, `HitboxManager`, `WeaponManager`, `FlyingSwordServer`, `FlyingSwordConfig` | 5-hit broadsword M1 chain with footwork damping (`WalkSpeed = 8`). Looping Sword Intent (+25%/hit, 1.75× empowered strike at 100%). `T` Guard (80% mitigation) & Perfect Parry (0.22s window, 100% negation, +5% Qi). 100-pt Posture & Guard-Break (1.2s stun, +25% vulnerability). 0.6s hyperarmor buffer. |
-| **Blacksmithing Facility** | 🟢 Operational | `BlacksmithManager`, `BlacksmithController`, `StarterGui.BlacksmithGui` | Bound to `Sect_NPC_MadameTie` & `Master Blacksmith Anvil`. Weapon refinement up to +10 (+5% base ATK per level). Blade sharpening (100 Spirit Stones, +10% Crit for 15 min). Crash fixed (`nil` index on prompt hook resolved). |
-| **Spirit Tea Pavilion** | 🟢 Operational | `TeaHouseManager`, `TeaHouseController`, `StarterGui.TeaHouseGui` | Bound to `Sect_NPC_XiaoLing`. 3 distinct brews: Jade Dew (+250 Qi, +10% Meditate speed), Crimson Ginseng (+500 HP, +15% Health regen), Dragon Well (+15% Sword Intent gain). Crash fixed (`math.min` nil check resolved). |
-| **Training Grounds & Sparring** | 🟢 Operational | `ImmortalDummyHandler`, `SparringGuidanceController`, `StarterGui.SparringGuidanceGui` | 3 Ironwood Dummies in `Workspace.Functional_Stations.Sect_TrainingGround`. Server-authoritative damage logging, rolling 5s DPS calculation, floating damage numbers overhead. NPC guidance at `Sect_NPC_InstructorWu`. Reset DPS hook active. |
-| **Starter Guidance System** | 🟢 Operational | `StarterGuideController`, `StarterGui.StarterGuideGui` | 4-tab interactive onboarding kiosk bound to `Sect_NPC_ElderQing`: Controls & Movement, Cultivation & Breakthroughs, Sword Intent & Blades, Sect Duties & Arena. Prompt collision bug fixed (no longer opens Sect Pavilion). |
-| **Cultivation Engine** | 🟢 Operational | `CultivationManager`, `CultivationConfig` | 10 Major Realms × 9 Orders (90 total stages). Tripartite Dantian architecture (`CurrentQi <= CultivatedQi <= MaxQiGoal`). 100% preserved Qi on breakthrough (`B` key). Percentage skill costs (M1: 0%, Shift: 3%, F: 10%, E: 12%, Q: 15%, R: 30%). |
-| **1v1 Sparring Arena** | 🟢 Operational | `ArenaManager`, `ArenaController`, `StarterGui.ArenaGUI` | Circular stone arena with impassable perimeter wall. Physical dual-pad standby (`DuelPad1` / `DuelPad2`), 3-second countdown with auto-abort, 1,000 HP stat normalization, non-lethal concession resolution, `RequestStreamAroundAsync` streaming protection. |
-| **Data Persistence** | 🟢 Operational | `PlayerDataManager` | Server-authoritative `DataStoreService` under key `ASCEND_PlayerData_V2`. 5-minute autosave loop, safe session locking, disconnect saves, and developer item injection hooks (`Han_jueee`). |
-| **Inventory & Items** | 🟢 Operational | `ItemConfig`, `InventoryManager`, `InventoryController`, `StarterGui.SpiritPouchInventoryGui` | 60-slot storage, 2D high-res weapon icons across 8 sword tiers, quality-grade metadata stacking, manual slot movement, item inspection modal. |
-| **World Gathering** | 🟢 Operational | `GatheringConfig`, `GatheringManager`, `GatheringController` | Weighted herb age rolls (1-Yr, 10-Yr, 100-Yr, 1,000-Yr). Persistent water spring collection (`KeepModelVisible = true`). Screen toasts on harvest. |
-| **Spirit Cauldron Alchemy** | 🟢 Operational | `AlchemyConfig`, `AlchemyManager`, `AlchemyController`, `StarterGui.AlchemyCauldronGui` | 3-slot manual herb combination, needle-slider flame minigame, quality-grade pill output (Standard -> Sovereign Immortal), persistent Alchemy EXP & rank progression. Migrated from hardcoded code UI to Studio-authoritative GUI. |
-| **Sect Economy & Duties** | 🟢 Operational | `SectConfig`, `SectManager`, `VendorManager`, `SectController`, `QuestTrackerController` | 6 Disciple ranks, 3-tier daily duties (Herbs, Alchemy, Sparring), market buying/selling, exact Contribution Point syncing (`1,970 CP`), daily stipends. |
-| **R6 Locomotion Engine** | 🟢 Operational | `src/StarterPlayer/StarterCharacterScripts/Animate.client.luau` | Custom R6 movement pipeline overriding default scripts. Idle yaw pinning, velocity-synced walk/run audio, cliff-fall height filter, jump recovery debounce, anti-ragdoll state locking. |
-| **Environment & Day/Night**| 🟢 Operational | `EnvironmentTimeManager`, `TreeCollisionManager`, `WindEnvironmentController` | 12-minute 4-phase day/night lighting cycle, trunk-only collision filtering, organic desynchronized wind sway with spatial culling (<160 studs). |
-| **Zone Mobs & AI** | 🟢 Operational | `MobConfig`, `MobAIManager` | R6 humanoid mobs (`RogueDisciple`, `DemonWolf`, `IronhideBoar`), pathfinding state machine, leash mechanics, realm-scaled rewards. |
-| **Monetization Engine** | 🟡 Testing | `MonetizationConfig`, `MarketplaceManager` | Gamepass perk verification and DevProduct receipt handling. Live Creator Dashboard asset IDs require final production audit. |
-| **Flying Sword Flight Mode** | 🟡 Queued Next | `FlyingSwordConfig`, `InputController` | `V`-key flight toggle, horizontal foot mount, omnidirectional 3D flight physics, realm-scaled speed (65 -> 140+ studs/s). |
-
----
-
-## Zone 1 (Jade Pure Sect) Interactive NPC Roster
-
-| NPC Identifier | World Elevation Tier | Station / Structure | Bound Function / System | Associated Controller / Manager |
-| :--- | :---: | :--- | :--- | :--- |
-| `Sect_NPC_MadameTie` | Tier 1 (Lower) | Blacksmith Forge / Anvil | Weapon Refinement (+10) & Blade Sharpening | `BlacksmithManager` / `BlacksmithController` |
-| `Sect_NPC_XiaoLing` | Tier 1 (Lower) | Spirit Tea Pavilion | 3 Spirit Teas, Instant Recovery & Timed Buffs | `TeaHouseManager` / `TeaHouseController` |
-| `Sect_NPC_InstructorWu`| Tier 1 (Lower) | Sect Training Grounds | Sparring Trials & Training Dummy DPS Tracking | `SparringGuidanceController` / `ImmortalDummyHandler` |
-| `Sect_NPC_ElderQing` | Tier 1 (Lower) | Sect Central Plaza | 4-Tab Interactive Starter & Systems Guide | `StarterGuideController` |
-| `Sect_NPC_MasterShen` | Tier 1 (Lower) | Bronze Alchemy Cauldron | Cauldron Crafting & Flame Temperature Minigame | `AlchemyManager` / `AlchemyController` |
-| `Sect_NPC_DeaconZhao` | Tier 1 (Lower) | Sect Notice Board | 3-Tier Daily Duties & Bounty Submissions | `SectManager` / `QuestTrackerController` |
-| `Sect_NPC_StewardJin` | Tier 1 (Lower) | Sect Exchange Pavilion | Dynamic Weapon Catalog & Loot Merchant | `VendorManager` / `MarketController` |
-| `Sect_NPC_DaoistFeng` | Tier 1 (Lower) | Wilderness Gateway | Zone 2 Beast Domain Portal Transition | `WorldManager` (Planned) |
-| `Ancestor Han` | Tier 1 (Lower) | Hidden Seclusion Alcove| Seclusion Cultivation Boost Multiplier | `CultivationManager` |
-| `Elder Liang` | Tier 3 (Upper) | Sect Elder Pavilion | Grand Sword Elder / Disciple Advancement | `SectManager` |
-| `Supreme Sect Leader` | Tier 3 (Upper) | Sovereign Palace Dais | Sect Sovereign (Black Robe Aesthetic) | Lore / Ambient |
-| `Top 7 Pillars of Sect`| Tier 3 (Upper) | Sovereign Bastion | 7 Elite Lore Masters (7 Paths of the Blade) | Lore / Ambient |
-
----
-
-## Verified Central Network Architecture (`RemoteEvents.luau`)
-
-All communication flows strictly through the 22 centralized RemoteEvents:
-- **Combat & Locomotion (5):** `CombatAction`, `UpdateSkillState`, `SyncCooldown`, `CombatVFX`, `BossStateUpdate`
-- **Cultivation & Progression (2):** `UpdateCultivation`, `DialogueEvent`
-- **Economy & Inventory (4):** `InventoryAction`, `UpdateInventory`, `MarketAction`, `MonetizationAction`
-- **World & Lower Layer Facilities (4):** `GatheringAction`, `AlchemyAction`, `BlacksmithAction`, `TeaHouseAction`
-- **Sect & Duties (4):** `SectAction`, `UpdateSect`, `QuestAction`, `UpdateQuestTracker`
-- **1v1 Sparring Arena (3):** `ArenaAction`, `ArenaRegister`, `ArenaMatchUpdate`
-
-# ASCEND — Project Status Overview
-
 ## Status Summary
-* **Current Milestone:** Phase 8.3 — MasterHUDGui Live Integration & World Finalization
-* **Sect Architecture:** Jade Pure Sword Sect (3-Tier Stepped Mountain Fortress)
-* **Master Persistence Key:** `ASCEND_PlayerData_V2`
-* **Avatar Rig Standard:** Roblox R6 Standard Rig (All Native Attachments Active)
-* **Palette Standard:** Cobblestone (`#9B968C`) + Dark Slate (`#282D37`) + Antique Brass (`#C3A55F`)
-* **Typography Standard:** `Bangers` (Titles/Headers) & `Fondamento` (Body/Stats)
-
----
-
-## Subsystem Health & Operational Readiness
-
-| Subsystem | Status | Core Script / Module Architecture | Implementation Details & Live Capabilities |
-| :--- | :---: | :--- | :--- |
-| **Master HUD Suite** | 🟢 Operational | `StarterGui.MasterHUDGui`, `SkillBarController`, `HUDController`, `QuestTrackerController` | Unified 5-cluster HUD. Live HP/Qi/Intent bars, 10-slot skill bar with cooldown sweeps, live CP & Spirit Stones, Sect Duty tracker, and bottom nav buttons. `DisplayOrder = 10`. |
-| **Functional Stations Suite** | 🟢 Operational | `Workspace.Functional_Stations` (16 Stations) | 100% rebuilt and verified: Spawn Dais, Training Ground (3 Immortal Dummies), Alchemy Station, Mission/Leaderboard Stele, Guard House, Blacksmith Forge, Tea Pavilion, Sword Altar Complete, Duelist Pavilions, Solitary Arena, Treasury Shopfront, Bank Vault Stash, Wilderness Portal, Patriarch Throne, Council Pavilion, Seclusion Dais. |
-| **Sect NPC Suite** | 🟢 Operational | `Workspace.NPCs` (19 NPCs + 7 Pillars) | All 3 tiers populated with R6 rigs, native attachments, unanchored animation-ready limbs, welded geometric clothing, and Bangers UI. |
-| **Blacksmithing Facility** | 🟢 Operational | `BlacksmithManager`, `BlacksmithController`, `StarterGui.BlacksmithGui` | Weapon refinement up to +10 (+5% ATK/level) and Blade Sharpening (+10% Crit for 15 min). Prompt hook fixed. |
-| **Spirit Tea Pavilion** | 🟢 Operational | `TeaHouseManager`, `TeaHouseController`, `StarterGui.TeaHouseGui` | 3 spirit brews (Jade Dew, Crimson Ginseng, Dragon Well) with instant recovery and 10–15 min timed buffs. |
-| **Spirit Cauldron Alchemy** | 🟢 Operational | `AlchemyConfig`, `AlchemyManager`, `AlchemyController`, `StarterGui.AlchemyGui` | Static 3-panel UI in StarterGui. Auto-mounts 3D EightTrigramsCauldron with smoke VFX. Manual 3-slot combination, live herb icons, and quality pill metadata. |
-| **1v1 Sparring Arena** | 🟢 Operational | `ArenaManager`, `ArenaController`, `Sect_Solitary_SwordArena` | Sealed 120-stud flat circular arena with forcefield barrier. Dual-pad queue via `Sect_Duelist_Pavilion` with 3-second countdown and 1,000 HP stat normalization. |
-
-# ASCEND — Project Status Overview
-
-## Status Summary
-* **Current Milestone:** Phase 8.4 — Flying Sword Flight Mode, Locomotion & UI Overhaul Complete
+* **Current Milestone:** Phase 8.5 — Combat Engine Hardening & Skills Overhaul
 * **Sect Architecture:** Jade Pure Sword Sect (3-Tier Stepped Mountain Fortress)
 * **Master Persistence Key:** `ASCEND_PlayerData_V3`
 * **Avatar Rig Standard:** Roblox R6 Standard Rig (All Native Attachments Active)
 * **Palette Standard:** Dark Obsidian (`#10141C`) + Antique Gold (`#C3A55F` / `#F5AF2D`) + Celestial Azure (`#38BDF8`)
 * **Typography Standard:** `Bangers` (Titles/Headers/Badges) & `Fondamento` (Body/Descriptions/Values)
-* **Active Operational Focus:** World Placement Audit & Creator Dashboard Monetization Verification
+* **Active Operational Focus:** Combat Skills Integration (Q & F Skills) & Hitbox Manager Hardening
 
 ---
 
@@ -107,17 +15,13 @@ All communication flows strictly through the 22 centralized RemoteEvents:
 
 | Subsystem | Status | Core Script / Module Architecture | Implementation Details & Live Capabilities |
 | :--- | :---: | :--- | :--- |
-| **Flying Sword Flight Mode** | 🟢 Operational | `WeaponManager`, `InputController`, `AnimationController`, `ReplicatedStorage.FlyingSword` | Server-authoritative `V`-key flight toggle. Horizontal foot mount via `RigidConstraint` & `AnimationConstraint`. 3D omnidirectional flight at 75 studs/s, anti-clip ground clearance cushion (6.5 studs), obstacle deflector (8.5 studs), Spacebar ascend, Ctrl descend, and slow idle drift (-2.5 studs/s). Celestial Thunder trail, sparks, and light VFX active. |
-| **Sword Combat Engine** | 🟢 Operational | `CombatStateManager`, `HitboxManager`, `WeaponManager`, `FlyingSwordServer`, `FlyingSwordConfig` | 5-hit broadsword M1 chain with footwork damping (`WalkSpeed = 8`). Looping Sword Intent (+25%/hit, 1.75× empowered strike at 100%). `T` Guard (80% mitigation) & Perfect Parry (0.22s window, 100% negation, +5% Qi). 100-pt Posture & Guard-Break (1.2s stun, +25% vulnerability). 0.6s hyperarmor buffer. |
-| **Locomotion & Qi Dash** | 🟢 Operational | `src/StarterPlayer/StarterCharacterScripts/Animate.client.luau`, `AnimationController` | 44 studs/s high-impact sprint, harmonic stride-synced head-bobbing, dynamic speed-tunnel FOV (70° -> 76°). 150 studs/s anti-trip Qi Dash with +1.2 stud elevation lift, upright orientation lock, camera speed-warp, and Celestial Cyan ghost afterimages. |
-| **Character Profile & Stats** | 🟢 Operational | `CharacterStatsController`, `StarterGui.CharacterStatsGui` | Dedicated 4-tab modal (`P` key toggle). Live 3D turntable avatar viewport, realm power multiplier calculation, Dantian Qi bar, live Max HP/Poise, Blacksmith refinement grade (+Grade = +5%/lvl), and total effective strike calculation. |
-| **Master HUD Suite** | 🟢 Operational | `StarterGui.MasterHUDGui`, `SkillBarController`, `HUDController`, `QuestTrackerController` | Unified 5-cluster HUD. Live HP/Qi/Intent bars, 10-slot desktop skill bar, full 10-button `MobileScatterCluster` (hold-to-block, taps, dual cooldown sweeps), live CP & Spirit Stones, Sect Duty tracker, and bottom nav buttons. `DisplayOrder = 10`. |
-| **Overhead UI System** | 🟢 Operational | `OverheadUIController` | Sleek 11px jade gradient health bar with 1px dark slate border and micro-corners. Centered Fredoka One numeric readout (`637.9k / 637.9k`). Overhead Qi bar stripped. Strict player-only filter (NPCs/dummies excluded). |
-| **Cultivation & Meditation** | 🟢 Operational | `CultivationManager`, `CultivationConfig`, `CultivationController` | 10 Major Realms × 9 Orders (90 total stages). Floating Daoist meditation (+2.8 studs elevation on `C` key) with ground raycast landing. Pre-warmed lotus animation loading (zero first-press standing bug). Tripartite Dantian (`CurrentQi <= CultivatedQi <= MaxQiGoal`). |
-| **Blacksmithing Facility** | 🟢 Operational | `BlacksmithManager`, `BlacksmithController`, `StarterGui.BlacksmithGui` | 9-slice textured obsidian window (`115367926298823`). Weapon refinement up to +10 (+5% ATK/level) and Blade Sharpening (+10% Crit for 15 min). High-contrast glowing buttons. |
-| **Spirit Tea Pavilion** | 🟢 Operational | `TeaHouseManager`, `TeaHouseController`, `StarterGui.TeaHouseGui` | 9-slice textured obsidian window. 3 spirit brews (Jade Dew, Crimson Ginseng, Dragon Well) with instant recovery and timed buffs. High-contrast jade Brew button. |
-| **Sect Duties & Pavilion** | 🟢 Operational | `SectConfig`, `SectManager`, `SectController`, `StarterGui.SectPavilionGui` | 9-slice textured obsidian window. Bound to Deacon Zhao and bottom HUD tray. Disciple identification, daily stipends, rank promotions, and 3-tier daily duties. |
-| **Spirit Cauldron Alchemy** | 🟢 Operational | `AlchemyConfig`, `AlchemyManager`, `AlchemyController`, `StarterGui.AlchemyGui` | 9-slice textured obsidian window. 3D EightTrigramsCauldron mounting, manual 3-slot combination, flame temperature minigame, quality pill metadata. |
-| **1v1 Sparring Arena** | 🟢 Operational | `ArenaManager`, `ArenaController`, `Sect_Solitary_SwordArena` | Sealed 120-stud flat circular arena with forcefield barrier. Dual-pad queue via `Sect_Duelist_Pavilion` with 3-second countdown and 1,000 HP stat normalization. |
+| **Combat Engine (Skills)** | 🟢 Operational | `FlyingSwordConfig`, `AnimationConfig`, `InputController`, `FlyingSwordServer`, `CombatVFXController` | **Q Skill (Purple Tempest):** Dual hitbox (point-blank melee + 3x traveling sawblades @ 70 studs/s, 36-stud reach), 15% Qi cost, auto-sprint resumption.<br>**F Skill (100-Slash Domain):** Hold F charge lock (`84905841522350`), 28-stud flash-step dash @ 150 studs/s phasing through enemies, midpoint slash (`111677132360566`), 36-stud purple 100-slash sphere (`UltimateSkill`), audio (`18781431019`), anti-trip ground physics lock. |
+| **Sword Combat (M1/Defense)**| 🟢 Operational | `CombatStateManager`, `HitboxManager`, `WeaponManager` | 5-hit broadsword M1 chain with footwork damping (`WalkSpeed = 8`). Looping Sword Intent (+25%/hit, 1.75× empowered strike at 100%). `T` Guard (70% mitigation) & Perfect Parry (0.22s window, 100% negation, +5% Qi). 100-pt Posture & Guard-Break (1.2s stun, +25% vulnerability). 0.6s hyperarmor buffer. |
+| **Locomotion & Qi Dash** | 🟢 Operational | `Animate.client.luau`, `AnimationController`, `InputController` | 44 studs/s high-impact sprint, harmonic step-synced head-bobbing, dynamic speed-tunnel FOV (70° -> 76°). 150 studs/s anti-trip Qi Dash (`LeftShift`). Permanent anti-trip protection (`FallingDown` & `Ragdoll` disabled). |
+| **Flying Sword Flight Mode** | 🟢 Operational | `WeaponManager`, `InputController`, `ReplicatedStorage.FlyingSword` | Server-authoritative `V`-key flight toggle. Horizontal foot mount via `RigidConstraint` & `AnimationConstraint`. 3D omnidirectional flight at 75 studs/s, ground clearance cushion (6.5 studs), obstacle deflector (8.5 studs), Spacebar ascend, Ctrl descend, and slow idle drift (-2.5 studs/s). |
+| **World Gathering** | 🟢 Operational | `GatheringConfig`, `GatheringManager`, `GatheringController`, `StarterGui.GatheringHUD` | 5 configured nodes (`SpiritGrass`, `DragonBloodVine`, `GaleWindLotus`, `CelestialSpring`, `JadeOre`). 1-Click channeled harvest bar via `GatheringHUD`, custom floating billboard prompt, suppressed default Roblox prompt bubble. Elemental PointLights attached. |
+| **Zone Mobs & AI Engine** | 🟢 Operational | `MobConfig`, `MobAIManager`, `workspace.MobSpawns` | R6 `RogueDisciple` with standard joints, 19 attachments, and geometric clothing. Server spawner anchors in `workspace.MobSpawns`. Real data resolution via `MobConfig.GetMob(mobId)`. Pathfinding state machine, leashing, and realm-scaled rewards. |
+| **Environment & World Physics**| 🟢 Operational | `EnvironmentTimeManager`, `TreeCollisionManager`, `WindEnvironmentController` | 12-minute 4-phase day/night lighting cycle. Tree canopy collision set to `CanCollide = false`, trunks to `Hull`. Wind sway bypass on gathering nodes (`HerbMesh`). |
+| **Master HUD Suite** | 🟢 Operational | `StarterGui.MasterHUDGui`, `SkillBarController`, `HUDController`, `QuestTrackerController` | Unified 5-cluster HUD. Live HP/Qi/Intent bars, 10-slot desktop skill bar, full 10-button `MobileScatterCluster`, live CP & Spirit Stones, Sect Duty tracker, and bottom nav buttons. `DisplayOrder = 10`. |
 | **Data Persistence** | 🟢 Operational | `PlayerDataManager` | Server-authoritative `DataStoreService` under key `ASCEND_PlayerData_V3`. Cloud DataStore sanitization (purges corrupted FlyingSword entries). Developer arsenal injection (`Han_jueee`). |
-| **Monetization Engine** | 🟡 Testing | `MonetizationConfig`, `MarketplaceManager` | Gamepass perk verification and DevProduct receipt handling. Live Creator Dashboard asset IDs require final production audit. |
+| **Sect Facilities Suite** | 🟢 Operational | `BlacksmithManager`, `TeaHouseManager`, `SectManager`, `VendorManager`, `ArenaManager`, `AlchemyManager` | 16 functional stations in `Workspace.Functional_Stations`. Weapon refinement (+10), blade sharpening, 3 spirit teas, daily duties, dynamic market catalog, 1v1 sparring arena, and 3-slot cauldron alchemy. |

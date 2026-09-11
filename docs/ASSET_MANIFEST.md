@@ -120,6 +120,20 @@ All 12 2D icons are uploaded to Roblox Studio and registered in `UIAssets.luau` 
 | **Parry Metal Clash** | `rbxassetid://9114223175` | `1.00` | 3D audio on Perfect Parry deflection or sword clashing. |
 | **Hit Impact Sound** | `rbxassetid://140462043853173` | `0.95` | Positional impact audio on confirmed sword hit. |
 
+<!-- INSERT UNDER SECTION: ## Additive Asset Manifest — Audio & VFX -->
+
+### Combat Skills Audio & VFX Registry (Phase 8.5)
+
+| Asset Name | Asset ID / Type | Classification | Usage / Trigger |
+| :--- | :--- | :--- | :--- |
+| **Sword Release Whoosh** | `rbxassetid://109735549169421` | Sound (Audio) | High-frequency cutting whoosh on Q & F sword release. |
+| **Combat Hit Impact** | `rbxassetid://135448977656112` | Sound (Audio) | Crisp, heavy impact shred SFX played strictly on confirmed hit. |
+| **Ultimate Domain Roar** | `rbxassetid://18781431019` | Sound (Audio) | Resonant 3D spatial detonation sound for the 100-slash sphere (F Skill). |
+| **Stance Charge Pose** | `rbxassetid://84905841522350` | Animation (R6) | Grounded charging martial stance held while holding F key. |
+| **Mid-Air Slash Attack** | `rbxassetid://111677132360566` | Animation (R6) | High-speed forward slash used for M1 finisher, Q skill, and F midpoint. |
+| **SwordTwirl** | `ReplicatedStorage.VFX.SwordTwirl` | Particle Attachment | Circular rotating sawblade effect (`RoughSwishThing`), recolored purple (Q Skill). |
+| **UltimateSkill** | `ReplicatedStorage.VFX.UltimateSkill` | Model / Attachment | 36-stud spherical dome of 100 criss-crossing razor slashes (`Wind1` + `Slashes1`) recolored purple (F Skill). |
+
 ### 2. 2D Rarity Color Palette (`UIAssets.RarityCardColors`)
 * **Mortal / Common:** `#64748B` (Text: `#FFFFFF`)
 * **Spiritual / Uncommon:** `#10B981` (Text: `#FFFFFF`)

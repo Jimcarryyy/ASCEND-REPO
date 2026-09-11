@@ -3,63 +3,42 @@
 ## Purpose
 This document outlines planned upcoming engineering and design milestones for ASCEND, ordered strictly by priority.
 
-**Consolidation Date:** September 2026 (Post-Developer Message 183)
+**Consolidation Date:** September 2026
 
 ---
 
-## Phase 8.2 Roadmap: Desktop HUD Rebuild & Core Polish
+## Phase 8.5 Roadmap: Combat Skills & Combat Feel Hardening
 
 ### 1. Immediate Priority (Active Milestone)
-- **Desktop HUD Construction in Studio (`StarterGui.MasterHUDGui`):**
-  - Build the 5-cluster Desktop HUD layout natively in Studio:
-    - *Top-Center:* Floating status & harvest toast notification container.
-    - *Bottom-Center:* Dual-gradient HP bar (`#10B981`), Azure Qi bar (`#3B82F6`), Amber Sword Intent gauge (`#F59E0B`), and 6-slot skill hotbar (`M1`, `Q`, `E`, `F`, `T`, `Shift`).
-    - *Top-Left:* Daily Sect Duty tracker card.
-    - *Top-Right:* Currency counters for Spirit Stones and Contribution Points (CP).
-    - *Bottom-Left:* Navigation button tray (`[Bag]`, `[Sect]`, `[Map]`, `[Meditate]`, `[Settings]`).
-  - Set `DisplayOrder = 1` and enforce typography: `Bangers` with black `UIStroke` for headers/labels and `Fundamento` for body stats.
-- **Client Controller Re-wiring:**
-  - Update `HUDController.luau`, `SkillBarController.luau`, and `QuestTrackerController.luau` to bind directly to the new `MasterHUDGui` elements without runtime `Instance.new` generation.
-  - Verify seamless toggle behavior between the HUD and lower facility modals (`BlacksmithGui`, `TeaHouseGui`, `SparringGuidanceGui`, `StarterGuideGui`, `AlchemyCauldronGui`).
+- **Patch `HitboxManager.luau` Line 228:**
+  - Audit `HitboxManager.ApplyCombatResolution` to handle `hit.Character` targets that are Mobs/NPCs (where `Players:GetPlayerFromCharacter(hit.Character)` is `nil`), preventing server crashes during combat.
+- **VFX Skill Pipeline Integration:**
+  - Integrate the remaining assets in `ReplicatedStorage.VFX` into live gameplay:
+    - `ActiveShield` $\rightarrow$ Wire to `T` Block (Hold) in `CombatVFXController.luau`.
+    - `ShieldBreakEffects` $\rightarrow$ Trigger when Posture hits 0 on players and mobs.
+    - `SwordIntentAnim` $\rightarrow$ Wire to 100% Sword Intent Empowered M1 Strike.
+    - `FireSlashSkill` $\rightarrow$ Map to elemental blade variant or skill slot.
+- **Keybind Conflict Resolution:**
+  - Resolve `R` keybind conflict: Currently bound to `Draw/Sheath` on HUD while documented as `Celestial Sunfall` ultimate in `COMBAT_SPEC.md`.
 
-### 2. High Priority (Upcoming Core Feature)
-- **Flying Sword Flight Mode (御剑飞行):**
-  - Implement `V` key flight toggle in `InputController.luau` (with corresponding mobile touch button).
-  - Attach flying sword horizontally beneath character feet using `HumanoidRootPart.FlightSwordMount`.
-  - Build 3D omnidirectional flight physics with dynamic roll banking on turns.
-  - Scale flight speed dynamically by Cultivation Realm (`65` studs/s at Qi Condensation -> `140+` studs/s at Immortal Ascension).
+### 2. High Priority (Mob Encounters & Combat Balance)
+- **Zone 1 Mob Spawner Distribution:**
+  - Place `Spawner_RogueDisciples` pads in designated wilderness camps outside the Sect walls.
+  - Add mob definitions and spawn anchors for `DemonWolf` and `IronhideBoar` using `MobConfig.luau`.
+- **Combat Audio Balance Pass:**
+  - Balance volume curves for `SWORD_RELEASE_SFX` (`109735549169421`), `HIT_IMPACT_SOUND_ID` (`135448977656112`), and `ULTIMATE_SFX_ID` (`18781431019`).
 
-### 3. Medium Priority (World Dressing & Production Audit)
-- **Zone 1 World Asset & NPC Placement Audit:**
-  - Finalize placement of `workspace.MarketVendors`, `workspace.QuestNPCs`, `workspace.MobSpawns`, and `workspace.GatheringNodes`.
-  - Ensure all 9 Zone 1 NPCs have calibrated R6 rigs, idle animations, weapon back-mounts, and ProximityPrompts.
-  - Verify smooth collision on all stairs, wedges, and plinths across the 3 elevation tiers to ensure zero character tripping.
+### 3. Medium Priority (World Dressing & Monetization)
+- **Zone 1 Foliage & Dressing Finalization:**
+  - Scatter pine and stylized trees across remaining empty terrain zones using the calibrated non-colliding canopy rules.
+  - Ensure all 16 `Functional_Stations` have clean collision bounds and verified ProximityPrompts.
 - **Creator Dashboard Monetization Audit:**
   - Audit live Gamepass IDs and DevProduct IDs in `MonetizationConfig.luau` against active Roblox Creator Dashboard assets.
 
 ---
 
-## Future Roadmap (Phase 9+)
+## Open Items From This Session
 
-- **Zone 2 Wilderness (Verdant Bamboo & Beast Domain):**
-  - Activate transition through the Wilderness Portal (`DaoistFeng`).
-  - Roaming beast AI: Ironhide Boars, Shadow Wind Wolves, and rare vintage herb groves (100-Yr / 1,000-Yr).
-- **Sect Leaderboards:**
-  - Merge and activate `LeaderboardManager.luau` with dual `OrderedDataStore` backends for Top Cultivators (Realm/Order) and Sect Contribution Points.
-- **Heavenly Tribulation Lightning Visuals:**
-  - Dynamic lightning arc strikes and screen flash shaders during Major Breakthroughs (Order 9 -> Order 1 of next Realm).
-
-  ## Active Production Roadmap — Post-Phase 8.4
-
-### Priority 1: Creator Dashboard Monetization Audit (Medium Priority)
-- [ ] Cross-check live Gamepass IDs in `MonetizationConfig.luau` against Roblox Creator Dashboard (`2x Qi Speed`, `Auto-Meditation`, `Tribulation Shield`, `+20 Pouch Slots`, `VIP Elder`).
-- [ ] Audit DevProduct IDs for Spirit Stone pouches and instant recovery pills.
-
-### Priority 2: Zone 1 World Dressing & Station Audit (Medium Priority)
-- [ ] In Studio edit mode, verify that all 16 `Functional_Stations` in `Workspace.Functional_Stations` have valid collision blocks.
-- [ ] Verify proximity prompts across all 19 NPCs in `Workspace.NPCs`.
-- [ ] Ensure `SwordAltarGachaGui` has valid connection to the Sword Altar dais on Tier 2.
-
-### Priority 3: Heavenly Tribulation Visual Effects (Phase 9 Preview)
-- [ ] Add dynamic lightning bolts and sky darkening in `CultivationManager.luau` when players attempt major realm breakthroughs (e.g. Core -> Nascent Soul).
-- [ ] Implement ascension blastwave VFX on breakthrough success.
+- [ ] **`HitboxManager:228` Server Nil Error:** Investigate line 228 of `src/ServerScriptService/Server/Combat/HitboxManager.luau`. Currently wrapped via `pcall` in `FlyingSwordServer.luau`, but needs clean NPC target handling in the manager itself.
+- [ ] **R Keybind Resolution:** Decide whether to move Draw/Sheath to another hotkey (e.g. `Z` or double-tap) so `R` can be freed for an Ultimate skill, or keep `R` as Draw/Sheath and use `F` as the primary Ultimate slot.
+- [ ] **`ReplicatedStorage.VFX` Organization:** Move `UltimateSkill`, `ActiveShield`, `ShieldBreakEffects`, `SwordIntentAnim`, and `FireSlashSkill` into a standardized subfolder in `ReplicatedStorage.VFX` to ensure consistent client preloading.
