@@ -7,7 +7,7 @@
     - Zeroed physics velocities on teleport
     - Physical Dual-Pad Standing Detection (DuelPad1 & DuelPad2)
     - 3-Second Visual Countdown with Instant Step-off Cancellation
-    - 1,000 HP Normalized Combat with clean non-lethal defeat resolution
+    - Full Cultivation Health restoration on duel exit (Eliminates 100 HP reset bug)
 ]]
 
 local Players = game:GetService("Players")
@@ -34,7 +34,6 @@ local ArenaManager = {}
 local arenaRemote: RemoteEvent
 local activeDuels: { [Player]: ActiveDuel } = {}
 
--- Pad Standby & Countdown State
 local pad1Player: Player? = nil
 local pad2Player: Player? = nil
 local countdownActive: boolean = false
@@ -67,7 +66,6 @@ function ArenaManager.Init()
 		end
 	end)
 
-	-- 10Hz Monitor Loop
 	task.spawn(function()
 		while true do
 			task.wait(0.2)
@@ -76,7 +74,7 @@ function ArenaManager.Init()
 		end
 	end)
 
-	print("[ASCEND] ArenaManager Initialized (Live Streaming Protection Active).")
+	print("[ASCEND] ArenaManager Initialized (Realm Stat Restoration Active).")
 end
 
 function ArenaManager.GetArenaFolder(): Folder?
@@ -98,17 +96,6 @@ function ArenaManager.EnsureAnchoredArenaParts()
 	end
 end
 
-function ArenaManager.GetTargetCFrame(partName: string, fallbackCFrame: CFrame): CFrame
-	local folder = ArenaManager.GetArenaFolder()
-	if folder then
-		local part = folder:FindFirstChild(partName, true) :: BasePart?
-		if part then
-			return part.CFrame + Vector3.new(0, 3.5, 0)
-		end
-	end
-	return fallbackCFrame
-end
-
 function ArenaManager.TeleportToLobby(player: Player)
 	local char = player.Character
 	if not char then return end
@@ -123,7 +110,6 @@ function ArenaManager.TeleportToLobby(player: Player)
 			then lobbyPart.CFrame + Vector3.new(0, 3.5, 0) 
 			else hrp.CFrame + Vector3.new(0, 5, 0)
 
-		-- Production Streaming Protection
 		pcall(function()
 			player:RequestStreamAroundAsync(targetCFrame.Position, 2)
 		end)
@@ -136,9 +122,6 @@ function ArenaManager.TeleportToLobby(player: Player)
 	end
 end
 
--- =============================================================================
--- DUAL-PAD DETECTION & COUNTDOWN
--- =============================================================================
 local function IsPlayerOnPad(player: Player, padPart: BasePart): boolean
 	local char = player.Character
 	local hrp = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
@@ -156,9 +139,8 @@ local function IsPlayerOnPad(player: Player, padPart: BasePart): boolean
 end
 
 function ArenaManager.CheckDuelPads()
-	-- Recursively find DuelPad1 and DuelPad2 across Functional_Stations and Workspace
-	local pad1 = Workspace:FindFirstChild("DuelPad1", true) or (Workspace.Functional_Stations and Workspace.Functional_Stations:FindFirstChild("DuelPad1", true))
-	local pad2 = Workspace:FindFirstChild("DuelPad2", true) or (Workspace.Functional_Stations and Workspace.Functional_Stations:FindFirstChild("DuelPad2", true))
+	local pad1 = Workspace:FindFirstChild("DuelPad1", true) or (Workspace:FindFirstChild("Functional_Stations") and Workspace.Functional_Stations:FindFirstChild("DuelPad1", true))
+	local pad2 = Workspace:FindFirstChild("DuelPad2", true) or (Workspace:FindFirstChild("Functional_Stations") and Workspace.Functional_Stations:FindFirstChild("DuelPad2", true))
 	
 	if not pad1 or not pad2 then return end
 
@@ -229,11 +211,7 @@ function ArenaManager.CancelCountdown()
 	end
 end
 
--- =============================================================================
--- IN-RING 1v1 DUEL EXECUTION (STREAMING SAFE)
--- =============================================================================
 function ArenaManager.StartDuel(p1: Player, p2: Player)
-	-- Automatically locate spawn nodes inside Sect_Solitary_SwordArena
 	local arena = Workspace:FindFirstChild("Sect_Solitary_SwordArena", true)
 	local p1Node = arena and arena:FindFirstChild("SpawnNode_Challenger_Cyan", true) :: BasePart?
 	local p2Node = arena and arena:FindFirstChild("SpawnNode_Defender_Red", true) :: BasePart?
@@ -347,9 +325,8 @@ function ArenaManager.EndDuel(duel: ActiveDuel, winner: Player?, reason: string)
 				hrp.AssemblyAngularVelocity = Vector3.zero
 				char:PivotTo(duel.SpectatorSpawn)
 
-				hum.MaxHealth = 100
-				hum.Health = 100
-				hum.WalkSpeed = 18
+				-- RESTORE FULL CULTIVATION REALM STATS (Never hardcode 100 HP)
+				CultivationManager.ApplyRealmStats(p)
 			end
 		end
 

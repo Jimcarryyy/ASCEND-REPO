@@ -15,7 +15,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
-export type ActionState = "Idle" | "Windup" | "Active" | "Recovery" | "Blocking" | "Dashing"
+export type ActionState = "Idle" | "Windup" | "Active" | "ChargingF" | "Recovery" | "Blocking" | "Dashing"
 export type CCState = "None" | "Staggered" | "Stunned" | "GuardBroken" | "CCImmune"
 
 export type PlayerCombatState = {
@@ -32,6 +32,7 @@ export type PlayerCombatState = {
 	InCombatEndTime: number,
 	Cooldowns: { [string]: number },
 	ActiveStrike: { SkillKey: string, StartTime: number }?,
+	LastReplicatedPosture: number,
 }
 
 local CombatStateManager = {}
@@ -89,7 +90,13 @@ function CombatStateManager.Init()
 			return
 		end
 
-		-- 4. Combat Skills / M1
+		-- 4. Ultimate F Charge Initiation
+		if payload.Action == "StartChargeF" or payload.SkillKey == "StartChargeF" then
+			CombatStateManager.HandleStartChargeF(player)
+			return
+		end
+
+		-- 5. Combat Skills / M1
 		if type(payload.SkillKey) == "string" then
 			CombatStateManager.HandleSkillRequest(player, payload.SkillKey, payload)
 		end
@@ -113,6 +120,7 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 		InCombatEndTime = 0,
 		Cooldowns = {},
 		ActiveStrike = nil,
+		LastReplicatedPosture = FlyingSwordConfig.Posture.MaxPosture,
 	}
 
 	player.CharacterAdded:Connect(function(character)
@@ -124,6 +132,7 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 			state.RecoveryEndTime = 0
 			state.IsBlocking = false
 			state.Posture = state.MaxPosture
+			state.LastReplicatedPosture = state.MaxPosture
 			state.IFrameEndTime = 0
 			state.InCombatEndTime = 0
 			state.ActiveStrike = nil
@@ -132,6 +141,9 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 		character:SetAttribute("CCState", "None")
 		character:SetAttribute("IsBlocking", false)
 		character:SetAttribute("IsFlying", false)
+		character:SetAttribute("IsChargingF", false)
+		character:SetAttribute("IsBlinking", false)
+		character:SetAttribute("Posture", FlyingSwordConfig.Posture.MaxPosture)
 	end)
 end
 
@@ -180,7 +192,11 @@ function CombatStateManager.UpdateHeartbeat(dt: number)
 			if (now - state.LastBlockReleaseTime) >= FlyingSwordConfig.Posture.RegenDelay then
 				if state.Posture < state.MaxPosture then
 					state.Posture = math.min(state.MaxPosture, state.Posture + (FlyingSwordConfig.Posture.RegenRate * dt))
-					char:SetAttribute("Posture", math.floor(state.Posture))
+					local roundedPosture = math.floor(state.Posture)
+					if roundedPosture ~= state.LastReplicatedPosture then
+						state.LastReplicatedPosture = roundedPosture
+						char:SetAttribute("Posture", roundedPosture)
+					end
 				end
 			end
 		end
@@ -230,6 +246,8 @@ function CombatStateManager.ApplyCC(player: Player, ccType: CCState, duration: n
 	if char then
 		char:SetAttribute("CCState", ccType)
 		char:SetAttribute("IsBlocking", false)
+		char:SetAttribute("IsChargingF", false)
+		char:SetAttribute("IsBlinking", false)
 
 		-- Dismount if stunned or guard-broken during flight
 		if char:GetAttribute("IsFlying") == true then
@@ -361,6 +379,36 @@ function CombatStateManager.ExecuteDash(player: Player, payload: any)
 end
 
 -- =============================================================================
+-- 5b. ULTIMATE F CHARGE GATEWAY
+-- =============================================================================
+function CombatStateManager.HandleStartChargeF(player: Player): boolean
+	local state = playerStates[player]
+	if not state then return false end
+
+	if state.CCState == "Stunned" or state.CCState == "GuardBroken" then return false end
+
+	-- Authoritative Qi Gate for Ultimate Charge
+	local cultMgr = require(ServerScriptService.Server.Cultivation.CultivationManager)
+	local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
+	if not pData then return false end
+
+	local cultivatedCap = pData.CultivatedQi or 1000
+	local costPercent = (FlyingSwordConfig.Skills.F and FlyingSwordConfig.Skills.F.QiCostPercent) or 0.20
+	local requiredQi = math.floor(cultivatedCap * costPercent)
+
+	if (pData.CurrentQi or 0) < requiredQi then
+		return false
+	end
+
+	state.ActionState = "ChargingF"
+	state.RecoveryEndTime = 0
+
+	local FlyingSwordServer = require(ServerScriptService.Server.Combat.Weapons.FlyingSwordServer)
+	FlyingSwordServer.StartChargeF(player)
+	return true
+end
+
+-- =============================================================================
 -- 6. SKILL & M1 EXECUTION GATEWAY (ANTI-ANIMATION CANCELING)
 -- =============================================================================
 function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string, payload: any?): boolean
@@ -374,7 +422,13 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 
 	-- CC and Lockout Gate
 	if state.CCState == "Stunned" or state.CCState == "GuardBroken" then return false end
-	if state.ActionState == "Windup" or state.ActionState == "Recovery" then return false end
+
+	-- Seamless F Execution Interrupt: bypass recovery lockout if releasing charge
+	if skillKey == "F" and state.ActionState == "ChargingF" then
+		-- Allow immediate release transition
+	elseif state.ActionState == "Windup" or state.ActionState == "Recovery" then
+		return false
+	end
 
 	-- Dismount if attacking during flight
 	if character:GetAttribute("IsFlying") == true then
@@ -395,7 +449,7 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 		WeaponManager.SetWeaponState(player, "Hand")
 	end
 
-	-- Dynamic Qi Consumption (For Q and E skills)
+	-- Dynamic Qi Consumption (For Q, E, and F skills)
 	if skillKey ~= "M1" then
 		local cultMgr = require(ServerScriptService.Server.Cultivation.CultivationManager)
 		local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil

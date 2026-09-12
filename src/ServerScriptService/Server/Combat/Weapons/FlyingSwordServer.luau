@@ -45,7 +45,7 @@ local function ResolveAimDirection(payload: any?, fallback: Vector3): Vector3
 end
 
 -- =============================================================================
--- SERVER-AUTHORITATIVE BLINK PHYSICS ENGINE (MIRRORS WORKING SHIFT DASH)
+-- SERVER-AUTHORITATIVE BLINK PHYSICS ENGINE
 -- =============================================================================
 function FlyingSwordServer.StartChargeF(player: Player)
 	local character = player.Character
@@ -92,20 +92,18 @@ function FlyingSwordServer.ExecuteBlinkMovement(player: Player, charForward: Vec
 	linearVel.Name = "BlinkLinearVelocity"
 	linearVel.Attachment0 = rootAttachment
 	linearVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
-	-- ZERO Y-FORCE: Physically impossible to push character into ground or launch into sky
 	linearVel.MaxAxesForce = Vector3.new(350000, 0, 350000)
 	linearVel.VectorVelocity = charForward * speed
 	linearVel.RelativeTo = Enum.ActuatorRelativeTo.World
 	linearVel.Parent = hrp
 
 	local totalDuration = travelDistance / speed
-	local sustainDuration = totalDuration * 0.65 -- Full speed duration
-	local decayDuration = totalDuration * 0.35   -- Smooth deceleration duration
+	local sustainDuration = totalDuration * 0.65
+	local decayDuration = totalDuration * 0.35
 
 	task.delay(sustainDuration, function()
 		if not linearVel.Parent then return end
 
-		-- 4. Smooth Decay via TweenService before Destroy()
 		local decayTween = TweenService:Create(
 			linearVel,
 			TweenInfo.new(decayDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -115,7 +113,7 @@ function FlyingSwordServer.ExecuteBlinkMovement(player: Player, charForward: Vec
 		decayTween:Play()
 
 		decayTween.Completed:Connect(function()
-			-- 5. Cleanup Constraints
+			-- 5. Cleanup Constraints cleanly without snapping CFrame backward
 			if linearVel then linearVel:Destroy() end
 			if rootAttachment then rootAttachment:Destroy() end
 			activeBlinkTweens[player] = nil
@@ -123,10 +121,6 @@ function FlyingSwordServer.ExecuteBlinkMovement(player: Player, charForward: Vec
 			if hrp and hrp.Parent then
 				hrp.AssemblyLinearVelocity = Vector3.new(0, math.clamp(hrp.AssemblyLinearVelocity.Y, -2, 2), 0)
 				hrp.AssemblyAngularVelocity = Vector3.zero
-
-				-- Clean upright orientation lock
-				local _, currentYaw, _ = hrp.CFrame:ToOrientation()
-				hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, currentYaw, 0)
 			end
 
 			-- 6. Restore Movement Attributes only AFTER decay completes
@@ -365,7 +359,7 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 		-- =============================================================
 		-- SKILL F: SERVER-AUTHORITATIVE BLINK & 100-SLASH SPHERE
 		-- =============================================================
-		local travelDist = skillData.DashDistance or 28.0
+		local travelDist = skillData.DashDistance or 42.0
 		local speed = skillData.DashSpeed or 150.0
 
 		-- 1. Authoritative Physics Movement Execution

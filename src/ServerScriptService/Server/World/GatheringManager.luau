@@ -3,7 +3,7 @@
     GatheringManager.luau
     Location: src/ServerScriptService/Server/World/GatheringManager.luau
     Server-authoritative manager for world resource harvesting nodes.
-    Grants randomized herb ages, updates Sect Quests, and triggers harvest audio/toasts on client.
+    Grants randomized herb ages, updates Sect Quests, and replicates depletion state to clients.
 ]]
 
 local Players = game:GetService("Players")
@@ -23,7 +23,6 @@ local activeHarvests: { [Player]: boolean } = {}
 
 local gatheringActionRemote: RemoteEvent
 
--- Universal schema-safe config getter (handles both GetNodeConfig and .Nodes)
 local function GetConfig(nodeType: string): any
 	if type((GatheringConfig :: any).GetNodeConfig) == "function" then
 		return (GatheringConfig :: any).GetNodeConfig(nodeType)
@@ -37,7 +36,6 @@ end
 function GatheringManager.Init()
 	gatheringActionRemote = RemoteEvents.GetRemote("GatheringAction")
 
-	-- 1. Check workspace.GatheringNodes Folder
 	local folder = workspace:FindFirstChild("GatheringNodes")
 	if folder then
 		for _, child in ipairs(folder:GetChildren()) do
@@ -48,7 +46,6 @@ function GatheringManager.Init()
 		end)
 	end
 
-	-- 2. Check CollectionService Tag "GatheringNode"
 	for _, nodeModel in ipairs(CollectionService:GetTagged("GatheringNode")) do
 		GatheringManager.SetupNodeModel(nodeModel)
 	end
@@ -57,7 +54,7 @@ function GatheringManager.Init()
 		GatheringManager.SetupNodeModel(instance)
 	end)
 
-	print("[ASCEND] GatheringManager Engine Initialized (Server-Authoritative Prompt Triggers, Randomized Herb Ages & Quest Sync Enabled).")
+	print("[ASCEND] GatheringManager Engine Initialized (Server-Authoritative Prompt Triggers, Depletion Sync & Quest Sync Enabled).")
 end
 
 function GatheringManager.SetupNodeModel(nodeInstance: Instance)
@@ -71,6 +68,8 @@ function GatheringManager.SetupNodeModel(nodeInstance: Instance)
 		nodeInstance.PrimaryPart = nodeInstance:FindFirstChildWhichIsA("BasePart")
 	end
 
+	nodeInstance:SetAttribute("Depleted", false)
+
 	local prompt = nodeInstance:FindFirstChildOfClass("ProximityPrompt")
 	if not prompt then
 		prompt = Instance.new("ProximityPrompt")
@@ -80,10 +79,10 @@ function GatheringManager.SetupNodeModel(nodeInstance: Instance)
 
 	prompt.ObjectText = config.NodeName
 	prompt.ActionText = config.PromptText
-	prompt.HoldDuration = 0 -- 1-Click trigger (client plays channeled bar)
+	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = config.MaxDistance
 	prompt.RequiresLineOfSight = false
-	prompt.Style = Enum.ProximityPromptStyle.Custom -- Suppresses default Roblox bubble
+	prompt.Style = Enum.ProximityPromptStyle.Custom
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 
 	if not prompt:GetAttribute("_GatheringServerConnected") then
@@ -117,16 +116,16 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	activeHarvests[player] = true
 	local prompt = nodeInstance:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then prompt.Enabled = false end
+	nodeInstance:SetAttribute("Depleted", true)
 
-	-- Channeled harvest delay
 	task.wait(config.HarvestDuration or 1.8)
 
-	-- Validate player didn't die or run away during channeling
 	local stillAlive = character:FindFirstChild("Humanoid") and (character.Humanoid :: Humanoid).Health > 0
 	local stillNearby = (hrp.Position - (primaryPart :: BasePart).Position).Magnitude <= (config.MaxDistance + 6)
 
 	if not stillAlive or not stillNearby then
 		activeHarvests[player] = nil
+		nodeInstance:SetAttribute("Depleted", false)
 		if prompt then prompt.Enabled = true end
 		return
 	end
@@ -134,7 +133,6 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	depletedNodes[nodeInstance] = true
 	activeHarvests[player] = nil
 
-	-- Fade model out on harvest ONLY if KeepModelVisible is false
 	if not config.KeepModelVisible then
 		for _, descendant in ipairs(nodeInstance:GetDescendants()) do
 			if descendant:IsA("BasePart") then
@@ -145,7 +143,6 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 		end
 	end
 
-	-- Weighted Random Roll for Herb Age
 	local dropList = config.AgeDrops or config.Drops
 	local selectedItemId = "SpiritGrass_1Yr"
 
@@ -156,7 +153,7 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 
 		for _, drop in ipairs(dropList) do
 			local chance = drop.Chance
-			if chance > 1 then chance = chance / 100 end -- converts 60 -> 0.60 if needed
+			if chance > 1 then chance = chance / 100 end
 			cumulativeChance += chance
 			if roll <= cumulativeChance then
 				selectedItemId = drop.ItemId
@@ -165,14 +162,12 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 		end
 	end
 
-	-- Grant Loot & Sync Sect Duty
 	InventoryManager.AddItem(player, selectedItemId, 1)
 	SectManager.AddQuestProgress(player, "Gather", config.NodeName, 1)
 	SectManager.AddQuestProgress(player, "Gather", nodeType, 1)
 
 	print(string.format("[GatheringManager] %s harvested %s from %s", player.Name, selectedItemId, config.NodeName))
 
-	-- Notify Client
 	gatheringActionRemote:FireClient(player, {
 		Action = "HarvestSuccess",
 		ItemId = selectedItemId,
@@ -182,6 +177,7 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	-- Respawn Node after delay
 	task.delay(config.RespawnTime or 12.0, function()
 		depletedNodes[nodeInstance] = nil
+		nodeInstance:SetAttribute("Depleted", false)
 		if prompt then prompt.Enabled = true end
 
 		if not config.KeepModelVisible then

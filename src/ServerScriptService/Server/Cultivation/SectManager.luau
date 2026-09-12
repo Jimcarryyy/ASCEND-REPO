@@ -2,7 +2,10 @@
 --[[
     SectManager.luau
     Location: src/ServerScriptService/Server/Cultivation/SectManager.luau
-    Server-authoritative Sect Management Engine.
+    Server-authoritative Sect Management Engine:
+      - 3-Tier Sect Duties (DefeatMob, Gather, CraftDan)
+      - Promotion pipeline
+      - Daily stipend claims
 ]]
 
 local Players = game:GetService("Players")
@@ -57,11 +60,6 @@ local PROMOTION_CHAIN: { SectConfig.DiscipleRank } = {
 local function GetRealmTier(realmTier: CultivationConfig.RealmTier): number
 	local info = CultivationConfig[realmTier]
 	return if info then info.Tier else 1
-end
-
-local function GetRealmDisplayName(realmTier: CultivationConfig.RealmTier): string
-	local info = CultivationConfig[realmTier]
-	return if info then info.Name else tostring(realmTier)
 end
 
 function SectManager.Init()
@@ -132,7 +130,6 @@ end
 function SectManager.SetupQuestElderPrompt()
 	local function BindPrompt(prompt: ProximityPrompt)
 		local action = prompt.ActionText:lower()
-		-- Strictly binds ONLY to Deacon Zhao / Notice Board!
 		if action == "view missions" or action == "sect affairs" or action == "receive sect duties" or (prompt.Parent and prompt.Parent.Name == "Sect_NPC_DeaconZhao") then
 			prompt.Triggered:Connect(function(player: Player)
 				SectManager.OpenSectMenuForPlayer(player)
@@ -207,6 +204,10 @@ function SectManager.AddQuestProgress(player: Player, questType: "Gather" | "Cul
 			end
 		end
 	end
+end
+
+function SectManager.UpdateQuestProgress(player: Player, questType: "Gather" | "Cultivate" | "DefeatMob" | "CraftDan", targetId: string, amount: number)
+	SectManager.AddQuestProgress(player, questType, targetId, amount)
 end
 
 function SectManager.ProcessSubmitQuest(player: Player, questId: any)

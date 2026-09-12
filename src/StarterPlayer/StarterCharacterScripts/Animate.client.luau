@@ -298,7 +298,7 @@ Humanoid.StateChanged:Connect(function(_, newState)
 	end
 end)
 
--- Continuous Locomotion Loop with Flight & Meditation Suppression
+-- Continuous Locomotion Loop with Flight, Meditation & Combat Movement Suppression
 RunService.RenderStepped:Connect(function()
 	if not Character.Parent or not Humanoid.Parent or not RootPart then return end
 
@@ -309,6 +309,18 @@ RunService.RenderStepped:Connect(function()
 			activeLocomotionTrack:Stop(0.05)
 			activeLocomotionTrack = nil
 		end
+		targetIdleYaw = nil
+		return
+	end
+
+	-- COMBAT MOVEMENT OVERRIDE: Never fight active dashes, blinks, or charge stances
+	local isCombatMoving = Character:GetAttribute("IsBlinking") == true
+		or Character:GetAttribute("IsChargingF") == true
+		or Character:GetAttribute("IsDashing") == true
+
+	if isCombatMoving then
+		StopMovementAudio()
+		targetIdleYaw = nil
 		return
 	end
 

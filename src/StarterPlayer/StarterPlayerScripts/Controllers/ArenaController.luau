@@ -2,10 +2,11 @@
 --[[
     ArenaController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/ArenaController.luau
-    Directly bound to StarterGui.ArenaGUI:
-    - Replaces all hardcoded UI with your custom Studio ArenaGUI
-    - TELEPORT button warps disciple to the Arena Lobby Grounds
-    - Listens for Dual-Pad match countdowns and live duel HUDs
+    Directly bound to StarterGui Arena interfaces:
+      - Safe fallback resolution (ArenaGUI / ArenaRegistrationGui / SparringGuidanceGui)
+      - Crash-proof modal toggling (Zero nil crashes if GUI is absent)
+      - Teleports to Arena Lobby or displays guidance toast
+      - Listens for Dual-Pad match countdowns and live duel HUDs
 ]]
 
 local Players = game:GetService("Players")
@@ -23,20 +24,33 @@ local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 
 local arenaRemote: RemoteEvent
 
--- UI References (Bound directly to your ArenaGUI)
-local arenaGui: ScreenGui
-local overlayBackdrop: Frame
-local mainFrame: GuiObject
-local headerFrame: Frame
-local closeButton: GuiButton
-local descriptionFrame: Frame
-local descriptionLabel: TextLabel
-local buttonFrame: Frame
-local teleportButton: GuiButton
+-- UI References
+local arenaGui: ScreenGui?
+local overlayBackdrop: Frame?
+local mainFrame: GuiObject?
+local headerFrame: Frame?
+local closeButton: GuiButton?
+local descriptionFrame: Frame?
+local descriptionLabel: TextLabel?
+local buttonFrame: Frame?
+local teleportButton: GuiButton?
 local teleportTextLabel: TextLabel?
 
 local countdownToast: TextLabel?
 local isOpen: boolean = false
+
+local function EmitToast(msg: string)
+	local controllers = player.PlayerScripts:FindFirstChild("Controllers")
+	if controllers then
+		local hudCtrl = controllers:FindFirstChild("HUDController")
+		if hudCtrl then
+			local req = require(hudCtrl) :: any
+			if req and req.ShowToast then
+				req.ShowToast(msg)
+			end
+		end
+	end
+end
 
 local function IsPositionInsideGui(guiObject: GuiObject, x: number, y: number): boolean
 	local pos = guiObject.AbsolutePosition
@@ -47,55 +61,21 @@ end
 function ArenaController.Init()
 	arenaRemote = RemoteEvents.GetRemote("ArenaAction")
 
-	arenaGui = (playerGui:WaitForChild("ArenaGUI", 10) or playerGui:WaitForChild("ArenaRegistrationGui", 10)) :: ScreenGui
+	-- Safe Multi-Gui Resolver
+	arenaGui = playerGui:FindFirstChild("ArenaGUI") :: ScreenGui?
+		or playerGui:FindFirstChild("ArenaRegistrationGui") :: ScreenGui?
+		or playerGui:FindFirstChild("SparringGuidanceGui") :: ScreenGui?
+
 	if not arenaGui then
-		warn("[ArenaController] ArenaGUI not found in PlayerGui!")
-		return
-	end
-
-	arenaGui.DisplayOrder = 10
-	arenaGui.Enabled = false
-
-	overlayBackdrop = arenaGui:WaitForChild("OverlayBackdrop", 5) :: Frame
-	mainFrame = arenaGui:WaitForChild("MainFrame", 5) :: GuiObject
-	mainFrame.Active = true
-
-	-- 1. Header & Close Button
-	headerFrame = mainFrame:WaitForChild("HeaderFrame", 5) :: Frame
-	closeButton = (headerFrame:FindFirstChild("CloseImageButton") or headerFrame:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
-
-	-- 2. Description Frame
-	descriptionFrame = mainFrame:WaitForChild("DescriptionFrame", 5) :: Frame
-	descriptionLabel = descriptionFrame:WaitForChild("DescriptionLabel", 5) :: TextLabel
-
-	-- 3. Button Frame & Teleport Button
-	buttonFrame = mainFrame:WaitForChild("ButtonFrame", 5) :: Frame
-	teleportButton = (buttonFrame:FindFirstChild("UseImageButton") or buttonFrame:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
-	teleportTextLabel = teleportButton:FindFirstChild("UseTextLabel") or teleportButton:FindFirstChildOfClass("TextLabel")
-
-	-- Bind Button Events
-	if closeButton then
-		closeButton.MouseButton1Click:Connect(function()
-			ArenaController.Close()
-		end)
-	end
-
-	if overlayBackdrop then
-		overlayBackdrop.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				local clickPos = input.Position
-				if not IsPositionInsideGui(mainFrame, clickPos.X, clickPos.Y) then
-					ArenaController.Close()
-				end
+		task.spawn(function()
+			arenaGui = (playerGui:WaitForChild("ArenaGUI", 3) or playerGui:WaitForChild("ArenaRegistrationGui", 3) or playerGui:WaitForChild("SparringGuidanceGui", 3)) :: ScreenGui?
+			if arenaGui then
+				ArenaController.BindGui(arenaGui)
 			end
 		end)
+	else
+		ArenaController.BindGui(arenaGui)
 	end
-
-	-- Teleport Button Click
-	teleportButton.MouseButton1Click:Connect(function()
-		arenaRemote:FireServer({ Action = "TeleportToLobby" })
-		ArenaController.Close()
-	end)
 
 	-- Listen for Server Arena Events
 	arenaRemote.OnClientEvent:Connect(function(payload: any)
@@ -116,7 +96,49 @@ function ArenaController.Init()
 		end
 	end)
 
-	print("[ASCEND] ArenaController Initialized (Studio ArenaGUI Connected).")
+	print("[ASCEND] ArenaController Initialized (Crash-Proof Gateway Active).")
+end
+
+function ArenaController.BindGui(gui: ScreenGui)
+	arenaGui = gui
+	arenaGui.DisplayOrder = 10
+	arenaGui.Enabled = false
+
+	overlayBackdrop = arenaGui:FindFirstChild("OverlayBackdrop", true) :: Frame?
+	mainFrame = arenaGui:FindFirstChild("MainFrame", true) :: GuiObject?
+	if mainFrame then mainFrame.Active = true end
+
+	-- 1. Header & Close Button
+	headerFrame = mainFrame and mainFrame:FindFirstChild("HeaderFrame", true) :: Frame?
+	closeButton = if headerFrame then (headerFrame:FindFirstChild("CloseImageButton") or headerFrame:FindFirstChildWhichIsA("GuiButton")) :: GuiButton? else nil
+
+	-- 2. Button Frame & Teleport Button
+	buttonFrame = mainFrame and mainFrame:FindFirstChild("ButtonFrame", true) :: Frame?
+	teleportButton = if buttonFrame then (buttonFrame:FindFirstChild("UseImageButton") or buttonFrame:FindFirstChildWhichIsA("GuiButton")) :: GuiButton? else nil
+
+	if closeButton then
+		closeButton.MouseButton1Click:Connect(function()
+			ArenaController.Close()
+		end)
+	end
+
+	if overlayBackdrop and mainFrame then
+		overlayBackdrop.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				local clickPos = input.Position
+				if mainFrame and not IsPositionInsideGui(mainFrame, clickPos.X, clickPos.Y) then
+					ArenaController.Close()
+				end
+			end
+		end)
+	end
+
+	if teleportButton then
+		teleportButton.MouseButton1Click:Connect(function()
+			arenaRemote:FireServer({ Action = "TeleportToLobby" })
+			ArenaController.Close()
+		end)
+	end
 end
 
 function ArenaController.OpenRegistrationModal()
@@ -132,16 +154,25 @@ function ArenaController.ToggleModal()
 end
 
 function ArenaController.Open()
+	if not arenaGui then
+		-- Fallback Action: Warps disciple directly to the sparring arena lobby
+		EmitToast("Teleporting to Sparring Arena Lobby...")
+		arenaRemote:FireServer({ Action = "TeleportToLobby" })
+		return
+	end
+
 	isOpen = true
 	arenaGui.Enabled = true
-	mainFrame.Visible = true
+	if mainFrame then mainFrame.Visible = true end
 	if overlayBackdrop then overlayBackdrop.Visible = true end
 end
 
 function ArenaController.Close()
 	isOpen = false
-	arenaGui.Enabled = false
-	mainFrame.Visible = false
+	if arenaGui then
+		arenaGui.Enabled = false
+	end
+	if mainFrame then mainFrame.Visible = false end
 	if overlayBackdrop then overlayBackdrop.Visible = false end
 end
 
@@ -153,6 +184,9 @@ function ArenaController.ShowCountdown(seconds: number)
 end
 
 function ArenaController.ShowCountdownMessage(text: string, color: Color3)
+	local container = arenaGui or playerGui:FindFirstChild("MasterHUDGui")
+	if not container then return end
+
 	if not countdownToast or not countdownToast.Parent then
 		countdownToast = Instance.new("TextLabel")
 		countdownToast.Name = "ArenaCountdownToast"
@@ -160,12 +194,12 @@ function ArenaController.ShowCountdownMessage(text: string, color: Color3)
 		countdownToast.Position = UDim2.new(0.5, 0, 0.25, 0)
 		countdownToast.AnchorPoint = Vector2.new(0.5, 0.5)
 		countdownToast.BackgroundTransparency = 1
-		countdownToast.Font = Enum.Font.LuckiestGuy
+		countdownToast.Font = Enum.Font.Bangers
 		countdownToast.TextSize = 28
 		countdownToast.TextStrokeTransparency = 0
 		countdownToast.TextStrokeColor3 = Color3.fromRGB(20, 20, 20)
 		countdownToast.ZIndex = 50
-		countdownToast.Parent = arenaGui
+		countdownToast.Parent = container
 	end
 
 	countdownToast.Text = text

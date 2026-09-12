@@ -7,6 +7,7 @@
         LeftFootAttachment from ReplicatedStorage.FlyingSword.Mesh1.0.
       - RigidConstraint + AnimationConstraint flight mounting.
       - Hides combat sword during flight to eliminate visual clutter.
+      - Replicates character:SetAttribute("EquippedWeapon", weaponId) for dynamic VFX color binding.
       - Disables jumping and restores physics on dismount.
 ]]
 
@@ -256,6 +257,9 @@ function WeaponManager.EquipWeapon(player: Player, weaponId: string, initialStat
 		WeaponId = weaponId,
 	}
 
+	-- Replicate weapon ID to all clients so VFX controllers can read it instantly
+	character:SetAttribute("EquippedWeapon", weaponId)
+
 	WeaponManager.SetWeaponState(player, targetState)
 end
 
@@ -285,16 +289,13 @@ function WeaponManager.ToggleFlight(player: Player)
 		------------------------------------------------------------------------
 		character:SetAttribute("IsFlying", false)
 
-		-- Destroy flying sword model from feet
 		if activeFlightSwords[player] then
 			activeFlightSwords[player]:Destroy()
 			activeFlightSwords[player] = nil
 		end
 
-		-- Restore combat weapon visibility
 		WeaponManager.SetWeaponState(player, "Hand")
 
-		-- Restore normal jumping & ground walkspeed
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
 		humanoid.JumpPower = 50
 		humanoid.JumpHeight = 7.2
@@ -317,7 +318,6 @@ function WeaponManager.ToggleFlight(player: Player)
 			return
 		end
 
-		-- Clone the dedicated FlyingSword
 		local flightModel = flightTemplate:Clone()
 		flightModel.Name = "ActiveFlightSword"
 
@@ -328,7 +328,6 @@ function WeaponManager.ToggleFlight(player: Player)
 			return
 		end
 
-		-- 1. Locate FeetAttachment on the sword
 		local feetAtt = flightMesh:FindFirstChild("FeetAttachment", true) :: Attachment?
 		if not feetAtt then
 			warn("[WeaponManager] 'FeetAttachment' not found in FlyingSword!")
@@ -336,7 +335,6 @@ function WeaponManager.ToggleFlight(player: Player)
 			return
 		end
 
-		-- 2. REPLACE default LeftFootAttachment on character with pre-defined one from sword
 		local customLeftAtt = flightMesh:FindFirstChild("LeftFootAttachment", true) :: Attachment?
 		if not customLeftAtt then
 			warn("[WeaponManager] 'LeftFootAttachment' not found in FlyingSword!")
@@ -344,23 +342,19 @@ function WeaponManager.ToggleFlight(player: Player)
 			return
 		end
 
-		-- Remove default character attachment if present to prevent misaligned weld
 		local existingAtt = leftLeg:FindFirstChild("LeftFootAttachment")
 		if existingAtt then
 			existingAtt:Destroy()
 		end
 
-		-- Transfer the custom pre-defined attachment to character's Left Leg
 		local leftFootAtt = customLeftAtt:Clone()
 		leftFootAtt.Name = "LeftFootAttachment"
 		leftFootAtt.Parent = leftLeg
 
-		-- Ensure mesh is unanchored and massless
 		flightMesh.Anchored = false
 		flightMesh.CanCollide = false
 		flightMesh.Massless = true
 
-		-- Connect BOTH RigidConstraint (physics weld) & AnimationConstraint
 		local rigid = Instance.new("RigidConstraint")
 		rigid.Name = "FlightRigidWeld"
 		rigid.Attachment0 = leftFootAtt
@@ -380,15 +374,12 @@ function WeaponManager.ToggleFlight(player: Player)
 		flightModel.Parent = character
 		activeFlightSwords[player] = flightModel
 
-		-- Hide combat weapon completely while flying
 		WeaponManager.SetWeaponState(player, "Hidden", true)
 
-		-- Disable jumping during flight
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
 		humanoid.JumpPower = 0
 		humanoid.JumpHeight = 0
 
-		-- Moderate flight speed (48 studs/s base)
 		character:SetAttribute("IsFlying", true)
 		humanoid.WalkSpeed = 48
 		print(string.format("🚀 [%s] Mounted FlyingSword at 48 studs/s.", player.Name))

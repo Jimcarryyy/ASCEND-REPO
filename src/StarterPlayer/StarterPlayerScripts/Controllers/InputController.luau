@@ -7,10 +7,13 @@
     - Harmonic Running Camera Shake (stride-synced vertical bounce, lateral sway & roll)
     - Dynamic Speed-Tunnel FOV (70° -> 76° on sprint)
     - 3D Flight & Proximity Obstacle Cushion preserved
-    - Client-Side Animation Blending (Proper FadeTime & Priorities, no hard cuts)
-    - Zero Client Velocity Injection: Movement is strictly Server-Authoritative
-    - Gated Locomotion (IsBlinking / IsChargingF attributes respected in RenderStepped)
-    - Automatic Sprint Resumption after F decay completes
+    - Instant-Trigger F Ultimate (No hold-to-charge: instant click activates)
+    - Air-Cushion Elevation (+2.2 studs airborne float like Dash, zero floor drag)
+    - Lag-Hardened Downward Raycast with Slope-Normal Validation (Normal.Y > 0.65)
+    - Permanent 4-State Anti-Trip Lockout (FallingDown, Ragdoll, PlatformStanding, GettingUp disabled)
+    - MaxSlopeAngle = 89 to eliminate terrain seam tripping
+    - Dynamic Weapon-Attuned Afterimage Colors
+    - Seamless Sprint Resumption after F completes
 ]]
 
 local Players = game:GetService("Players")
@@ -24,6 +27,7 @@ local Debris = game:GetService("Debris")
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
 local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
+local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 
 export type ActionPayload = {
 	SkillKey: string,
@@ -65,11 +69,9 @@ local lastSkillQTime = 0
 local isCastingSkillQ = false
 local SWORD_RELEASE_SFX = "rbxassetid://109735549169421"
 
--- Ultimate F State
-local isHoldingF = false
+-- Ultimate F State (Instant click execution)
 local isExecutingSkillF = false
 local lastSkillFTime = 0
-local chargeStartTimeF = 0
 local wasSprintingBeforeF = false
 local chargeTrackF: AnimationTrack? = nil
 local slashTrackF: AnimationTrack? = nil
@@ -228,12 +230,15 @@ local function SpawnGhostAfterimage(character: Model)
 	local ghost = Instance.new("Model")
 	ghost.Name = "ShunpoGhost"
 
+	local weaponId = character:GetAttribute("EquippedWeapon") :: string?
+	local palette = ItemConfig.GetWeaponPalette(weaponId)
+
 	for _, part in ipairs(character:GetChildren()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
 			local ghostPart = Instance.new("Part")
 			ghostPart.Size = part.Size
 			ghostPart.CFrame = part.CFrame
-			ghostPart.Color = Color3.fromRGB(190, 60, 255)
+			ghostPart.Color = palette.PrimaryColor
 			ghostPart.Material = Enum.Material.Neon
 			ghostPart.Transparency = 0.45
 			ghostPart.CanCollide = false
@@ -253,6 +258,14 @@ local function SpawnGhostAfterimage(character: Model)
 	Debris:AddItem(ghost, 0.28)
 end
 
+local function EnforceAntiTripProperties(humanoid: Humanoid)
+	humanoid.MaxSlopeAngle = 89
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+end
+
 function InputController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
@@ -267,16 +280,13 @@ function InputController.Init()
 		currentAttackLockout = 0
 		currentHeadBobWeight = 0.0
 		isCastingSkillQ = false
-		isHoldingF = false
 		isExecutingSkillF = false
 		wasSprintingBeforeF = false
 		chargeTrackF = nil
 		slashTrackF = nil
 
-		-- PERMANENT ANTI-TRIP ENFORCEMENT: Never allow character to trip into ragdoll
 		local humanoid = character:WaitForChild("Humanoid") :: Humanoid
-		humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-		humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+		EnforceAntiTripProperties(humanoid)
 
 		StopFlightLocomotion(character)
 	end)
@@ -284,8 +294,7 @@ function InputController.Init()
 	if player.Character then
 		local hum = player.Character:FindFirstChildOfClass("Humanoid")
 		if hum then
-			hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-			hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+			EnforceAntiTripProperties(hum)
 		end
 	end
 
@@ -294,25 +303,6 @@ function InputController.Init()
 			isMeditating = (data.IsMeditating == true)
 			if isMeditating and isSprinting then InputController.StopSprint() end
 			if isMeditating and isBlocking then InputController.StopBlock() end
-		end
-	end)
-
-	-- Listener for Server Completion of F Skill
-	combatActionRemote.OnClientEvent:Connect(function(attacker: Player, skillKey: string, payload: any?)
-		if attacker == player and skillKey == "F_Finished" then
-			local character = player.Character
-			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-			if humanoid and humanoid.Health > 0 then
-				local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
-				if wasSprintingBeforeF and humanoid.MoveDirection.Magnitude > 0.05 then
-					isSprinting = true
-					humanoid.WalkSpeed = sprintSpeed
-				else
-					isSprinting = false
-					humanoid.WalkSpeed = walkSpeed
-				end
-			end
-			isExecutingSkillF = false
 		end
 	end)
 
@@ -333,7 +323,6 @@ function InputController.Init()
 		local isFlying = (character:GetAttribute("IsFlying") == true)
 		local isDashing = (character:GetAttribute("IsDashing") == true)
 		local isBlinking = (character:GetAttribute("IsBlinking") == true)
-		local isChargingF = (character:GetAttribute("IsChargingF") == true)
 
 		-- 1. FLIGHT LOCOMOTION & HOVER
 		if isFlying then
@@ -409,13 +398,12 @@ function InputController.Init()
 		end
 
 		-- 2. GROUND FOOTWORK: STRICT ATTRIBUTE GATING
-		-- While charging, blinking, or casting, WalkSpeed logic does not interfere with physics
 		local isAttacking = character:GetAttribute("IsAttacking") == true
 		local isStunned = character:GetAttribute("IsStunned") == true 
 			or character:GetAttribute("CCState") == "Stunned" 
 			or character:GetAttribute("CCState") == "GuardBroken"
 
-		if isAttacking or isBlocking or isMeditating or isStunned or isDashing or isBlinking or isChargingF or isCastingSkillQ or isExecutingSkillF or isHoldingF then
+		if isAttacking or isBlocking or isMeditating or isStunned or isDashing or isBlinking or isCastingSkillQ or isExecutingSkillF then
 			return
 		end
 
@@ -641,7 +629,6 @@ function InputController.TriggerSkill(skillKey: string)
 		local wasSprintingBeforeCast = isSprinting
 		hum.WalkSpeed = 3.5
 
-		-- Smooth Animation Transition (FadeTime 0.10)
 		local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
 		local qAnimObj = Instance.new("Animation")
 		qAnimObj.AnimationId = AnimationConfig.FlyingSword.Q.AnimationId
@@ -660,7 +647,6 @@ function InputController.TriggerSkill(skillKey: string)
 
 		task.delay(0.30, function()
 			if not hrp.Parent then return end
-			hrp.AssemblyLinearVelocity = charForward * 20 + Vector3.new(0, 1.5, 0)
 
 			local sound = Instance.new("Sound")
 			sound.SoundId = SWORD_RELEASE_SFX
@@ -671,7 +657,6 @@ function InputController.TriggerSkill(skillKey: string)
 
 			combatActionRemote:FireServer(payload)
 
-			-- Smooth recovery: fade out track over 0.18s
 			task.delay(0.18, function()
 				if qTrack then qTrack:Stop(0.18) end
 				if hum and hum.Parent then
@@ -704,9 +689,9 @@ function InputController.TriggerSkill(skillKey: string)
 end
 
 -- =============================================================================
--- ULTIMATE SKILL F: CHARGE, SHUNPO BLINK & SERVER VELOCITY EXECUTION
+-- ULTIMATE SKILL F: INSTANT CLICK AIR-CUSHION BLINK & LAG-HARDENED GROUND SNAP
 -- =============================================================================
-local function StartChargingUltimateF()
+local function TriggerUltimateF()
 	local character = player.Character
 	if not enabled or isMeditating or isBlocking or IsAnyMenuOpen() or isExecutingSkillF then return end
 	if character and (character:GetAttribute("IsFlying") == true or character:GetAttribute("IsBlinking") == true) then return end
@@ -717,7 +702,7 @@ local function StartChargingUltimateF()
 
 	local now = os.clock()
 	local cd = FlyingSwordConfig.Skills.F.Cooldown or 5.5
-	if isHoldingF or (now - lastSkillFTime) < cd then return end
+	if (now - lastSkillFTime) < cd then return end
 
 	local curQi = character:GetAttribute("Qi") or 0
 	local maxQi = character:GetAttribute("MaxQi") or 100
@@ -728,95 +713,108 @@ local function StartChargingUltimateF()
 		return
 	end
 
-	isHoldingF = true
-	chargeStartTimeF = now
+	isExecutingSkillF = true
+	lastSkillFTime = now
 	wasSprintingBeforeF = isSprinting
 
-	-- Notify Server to anchor state and clamp velocity authoritatively
-	combatActionRemote:FireServer({ Action = "StartChargeF", SkillKey = "StartChargeF" })
+	local SkillBarController = require(script.Parent.SkillBarController)
+	if SkillBarController.TriggerCooldown then
+		SkillBarController.TriggerCooldown("F", cd)
+	end
 
+	local charForward = (hrp.CFrame.LookVector * Vector3.new(1, 0, 1)).Unit
+	if charForward.Magnitude < 0.001 then charForward = hrp.CFrame.LookVector end
+
+	-- 1. INSTANT ELEVATION LIFT (+2.2 studs into Freefall: eliminates floor friction completely)
+	local F_FLOAT_LIFT = 2.2
+	hrp.CFrame = hrp.CFrame + Vector3.new(0, F_FLOAT_LIFT, 0)
+	hum:ChangeState(Enum.HumanoidStateType.Freefall)
+
+	hum.AutoRotate = false
+	hum.WalkSpeed = 0
+	character:SetAttribute("IsBlinking", true)
+
+	hrp.AssemblyLinearVelocity = Vector3.new(0, math.clamp(hrp.AssemblyLinearVelocity.Y, -1, 2), 0)
+	hrp.AssemblyAngularVelocity = Vector3.zero
+
+	-- 2. Upright Alignment Lock
+	local rootAtt = hrp:FindFirstChild("RootAttachment") :: Attachment?
+	if not rootAtt then
+		rootAtt = Instance.new("Attachment")
+		rootAtt.Name = "RootAttachment"
+		rootAtt.Parent = hrp
+	end
+
+	local blinkOrientation = Instance.new("AlignOrientation")
+	blinkOrientation.Name = "F_BlinkOrientation"
+	blinkOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	blinkOrientation.Attachment0 = rootAtt
+	blinkOrientation.MaxTorque = 10000000
+	blinkOrientation.Responsiveness = 40
+	blinkOrientation.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + charForward)
+	blinkOrientation.Parent = hrp
+
+	-- 3. Airborne Stance Windup Pose (Quick 0.12s burst)
 	local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
 	if not chargeTrackF then
 		local animObj = Instance.new("Animation")
 		animObj.AnimationId = AnimationConfig.FlyingSword.F.ChargeAnimationId or "rbxassetid://84905841522350"
 		chargeTrackF = animator:LoadAnimation(animObj)
-		chargeTrackF.Looped = true
 		chargeTrackF.Priority = Enum.AnimationPriority.Action3
 	end
-
-	-- Smooth blend into charge stance (FadeTime 0.15)
-	chargeTrackF:Play(0.15)
-	chargeTrackF:AdjustSpeed(1.0)
+	chargeTrackF:Play(0.06, 1, 1.4)
 
 	if camera then
-		TweenService:Create(camera, TweenInfo.new(0.35, Enum.EasingStyle.Sine), { FieldOfView = 65.0 }):Play()
+		TweenService:Create(camera, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = 65.0 }):Play()
 	end
 
-	task.spawn(function()
-		local freezeTarget = if chargeTrackF.Length > 0.3 then (chargeTrackF.Length * 0.85) else 0.24
-		local elapsed = 0
-		while isHoldingF and elapsed < freezeTarget do
-			local dt = task.wait()
-			elapsed += dt
+	-- 4. Unleash Blink Impulse & Slash Follow-Through
+	task.delay(0.12, function()
+		if not hrp.Parent or not hum.Parent or hum.Health <= 0 then
+			isExecutingSkillF = false
+			character:SetAttribute("IsBlinking", false)
+			if blinkOrientation and blinkOrientation.Parent then blinkOrientation:Destroy() end
+			return
 		end
-		if isHoldingF and chargeTrackF.IsPlaying then
-			chargeTrackF:AdjustSpeed(0)
+
+		if chargeTrackF and chargeTrackF.IsPlaying then
+			chargeTrackF:Stop(0.08)
 		end
-	end)
-end
-
-local function ReleaseUltimateF()
-	if not isHoldingF or isExecutingSkillF then return end
-	local character = player.Character
-	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local hum = character and character:FindFirstChildOfClass("Humanoid")
-	if not hrp or not hum or hum.Health <= 0 then return end
-
-	local holdDuration = os.clock() - chargeStartTimeF
-	local remainingWait = math.max(0, 0.20 - holdDuration)
-
-	isHoldingF = false
-	isExecutingSkillF = true
-	lastSkillFTime = os.clock()
-
-	local SkillBarController = require(script.Parent.SkillBarController)
-	if SkillBarController.TriggerCooldown then
-		SkillBarController.TriggerCooldown("F", FlyingSwordConfig.Skills.F.Cooldown or 5.5)
-	end
-
-	task.delay(remainingWait, function()
-		-- Smooth blend out of charge track (FadeTime 0.10)
-		if chargeTrackF then chargeTrackF:Stop(0.10) end
-
-		local charForward = (hrp.CFrame.LookVector * Vector3.new(1, 0, 1)).Unit
 
 		if camera then
-			TweenService:Create(camera, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = 76.0 }):Play()
+			TweenService:Create(camera, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = 76.0 }):Play()
 		end
 
-		-- Spawn visual afterimages
-		task.spawn(function()
-			for _ = 1, 3 do
-				task.wait(0.05)
-				if hrp and hrp.Parent then
-					SpawnGhostAfterimage(character)
-				end
-			end
-		end)
-
-		-- Play Mid-Air Slash Animation with Smooth Blend (FadeTime 0.08)
-		local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
 		if not slashTrackF then
 			local animObj = Instance.new("Animation")
 			animObj.AnimationId = AnimationConfig.FlyingSword.F.AnimationId
 			slashTrackF = animator:LoadAnimation(animObj)
 			slashTrackF.Priority = Enum.AnimationPriority.Action4
 		end
-		slashTrackF:Play(0.08)
+		slashTrackF:Play(0.06)
 		slashTrackF:AdjustSpeed(1.3)
 
-		-- FIRE SERVER AUTHORITATIVE BLINK EXECUTION
-		-- Server creates LinearVelocity constraint, clamps Y, decays force, and damages enemies
+		task.spawn(function()
+			for _ = 1, 3 do
+				task.wait(0.04)
+				if hrp and hrp.Parent then
+					SpawnGhostAfterimage(character)
+				end
+			end
+		end)
+
+		local BLINK_SPEED = 145.0
+		local BLINK_DURATION = 0.22
+
+		local linearVel = Instance.new("LinearVelocity")
+		linearVel.Name = "F_BlinkVelocity"
+		linearVel.Attachment0 = rootAtt
+		linearVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+		linearVel.MaxAxesForce = Vector3.new(350000, 50000, 350000)
+		linearVel.VectorVelocity = Vector3.new(charForward.X * BLINK_SPEED, 0, charForward.Z * BLINK_SPEED)
+		linearVel.RelativeTo = Enum.ActuatorRelativeTo.World
+		linearVel.Parent = hrp
+
 		local midPointPos = hrp.Position + charForward * 14.0 + Vector3.new(0, -0.40, 0)
 		combatActionRemote:FireServer({
 			Action = "F",
@@ -825,9 +823,70 @@ local function ReleaseUltimateF()
 			Origin = midPointPos,
 		})
 
-		-- Clean recovery: stop slash track after 0.35s
-		task.delay(0.35, function()
-			if slashTrackF then slashTrackF:Stop(0.15) end
+		local decayTween = TweenService:Create(
+			linearVel,
+			TweenInfo.new(BLINK_DURATION * 0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+			{ VectorVelocity = Vector3.new(charForward.X * 12, 0, charForward.Z * 12) }
+		)
+
+		task.delay(BLINK_DURATION * 0.55, function()
+			decayTween:Play()
+		end)
+
+		decayTween.Completed:Connect(function()
+			if linearVel and linearVel.Parent then linearVel:Destroy() end
+			if blinkOrientation and blinkOrientation.Parent then blinkOrientation:Destroy() end
+			if rootAtt and rootAtt.Name == "RootAttachment" and #rootAtt:GetChildren() == 0 then
+				rootAtt:Destroy()
+			end
+
+			-- Hold air cushion through slash recovery, then snap naturally to ground!
+			task.delay(0.12, function()
+				if hrp.Parent and hum.Parent and hum.Health > 0 then
+					-- RAYCAST DOWN WITH SLOPE-NORMAL HARDENING (Normal.Y > 0.65)
+					local rayParams = RaycastParams.new()
+					rayParams.FilterType = Enum.RaycastFilterType.Exclude
+					rayParams.FilterDescendantsInstances = { character }
+					local groundHit = Workspace:Raycast(hrp.Position, Vector3.new(0, -12, 0), rayParams)
+
+					local _, currentYaw, _ = hrp.CFrame:ToOrientation()
+
+					if groundHit and groundHit.Normal.Y > 0.65 then
+						-- Landed on walkable floor: snap flush to ground
+						local targetY = groundHit.Position.Y + 3.0
+						hrp.CFrame = CFrame.new(Vector3.new(hrp.Position.X, targetY, hrp.Position.Z)) * CFrame.Angles(0, currentYaw, 0)
+					else
+						-- Steep drop, cliff face or rock edge: preserve current level altitude safely
+						hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, currentYaw, 0)
+					end
+
+					-- Absorb kinetic inertia completely before switching back to Running
+					hrp.AssemblyLinearVelocity = Vector3.zero
+					hrp.AssemblyAngularVelocity = Vector3.zero
+
+					hum:ChangeState(Enum.HumanoidStateType.Running)
+					hum.AutoRotate = true
+
+					-- Seamlessly restore running state
+					local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
+					if wasSprintingBeforeF and hum.MoveDirection.Magnitude > 0.05 then
+						isSprinting = true
+						hum.WalkSpeed = sprintSpeed
+					else
+						isSprinting = false
+						hum.WalkSpeed = walkSpeed
+					end
+				end
+
+				character:SetAttribute("IsBlinking", false)
+				isExecutingSkillF = false
+
+				if slashTrackF then
+					task.delay(0.08, function()
+						if slashTrackF then slashTrackF:Stop(0.10) end
+					end)
+				end
+			end)
 		end)
 	end)
 end
@@ -914,25 +973,22 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	-- Q: Purple Sword Tempest
 	if input.KeyCode == Enum.KeyCode.Q then
 		InputController.TriggerSkill("Q")
 		return
 	end
 
-	-- E: Thrust
 	if input.KeyCode == Enum.KeyCode.E then
 		InputController.TriggerSkill("E")
 		return
 	end
 
-	-- F: Ultimate Skill (Start Charging)
+	-- F: Instant Activation
 	if input.KeyCode == Enum.KeyCode.F then
-		StartChargingUltimateF()
+		TriggerUltimateF()
 		return
 	end
 
-	-- M1 Combo
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		InputController.TriggerM1()
 		return
@@ -953,11 +1009,6 @@ function InputController.OnInputEnded(input: InputObject, gameProcessed: boolean
 
 	if input.KeyCode == Enum.KeyCode.T then
 		InputController.StopBlock()
-	end
-
-	-- F: Release Charge & Unleash Ultimate
-	if input.KeyCode == Enum.KeyCode.F then
-		ReleaseUltimateF()
 	end
 end
 

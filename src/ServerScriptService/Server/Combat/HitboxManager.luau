@@ -3,7 +3,8 @@
     HitboxManager.luau
     Location: src/ServerScriptService/Server/Combat/HitboxManager.luau
     Authoritative spatial engine with Velocity Lag Compensation,
-    I-Frame checks, Posture/Guard-Break resolution, and Sword Clashes.
+    I-Frame checks, Posture/Guard-Break resolution, Sword Clashes,
+    and Universal Player/Mob Attack Support.
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -82,7 +83,7 @@ function HitboxManager.CastCompensatedBox(
 end
 
 function HitboxManager.ApplyCombatResolution(
-	attackerPlayer: Player,
+	attackerPlayer: Player?,
 	targetResult: HitResult,
 	rawDamage: number,
 	postureDamage: number,
@@ -93,12 +94,13 @@ function HitboxManager.ApplyCombatResolution(
 	local targetChar = targetResult.Character
 	local humanoid = targetResult.Humanoid
 	local targetHrp = targetChar:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local attackerChar = attackerPlayer.Character
+
+	local attackerChar = if attackerPlayer then attackerPlayer.Character else nil
 	local attackerHrp = if attackerChar then attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 
 	local targetPlayer = targetResult.TargetPlayer
 	local targetState = if targetPlayer then CombatStateManager.GetState(targetPlayer) else nil
-	local attackerState = CombatStateManager.GetState(attackerPlayer)
+	local attackerState = if attackerPlayer then CombatStateManager.GetState(attackerPlayer) else nil
 
 	local now = os.clock()
 
@@ -143,12 +145,12 @@ function HitboxManager.ApplyCombatResolution(
 	local finalDamage = rawDamage
 	local finalKnockback = knockbackVector
 
-	-- 3. Guard & Perfect Parry Resolution
-	if targetState and targetState.IsBlocking and targetHrp and attackerHrp then
-		local toAttacker = (attackerHrp.Position - targetHrp.Position).Unit
+	-- 3. Guard & Perfect Parry Resolution (Supports both Player & Mob Attackers)
+	if targetState and targetState.IsBlocking and targetHrp then
+		local toAttacker = if attackerHrp then (attackerHrp.Position - targetHrp.Position).Unit else targetHrp.CFrame.LookVector
 		local dot = targetHrp.CFrame.LookVector:Dot(toAttacker)
 
-		if dot >= 0 then -- Front 180-degree guard arc
+		if dot >= -0.2 then -- Front guard arc
 			local parryWindow = FlyingSwordConfig.Posture.ParryWindow
 			local blockElapsed = now - targetState.BlockStartTime
 
@@ -160,8 +162,10 @@ function HitboxManager.ApplyCombatResolution(
 				finalDamage = 0
 				finalKnockback = nil
 
-				-- Attacker Stagger (Subject to CC-Immunity)
-				CombatStateManager.ApplyCC(attackerPlayer, "Stunned", FlyingSwordConfig.Posture.ParryStunDuration)
+				-- Attacker Stagger (If attacker is a player)
+				if attackerPlayer then
+					CombatStateManager.ApplyCC(attackerPlayer, "Stunned", FlyingSwordConfig.Posture.ParryStunDuration)
+				end
 
 				-- Defender Qi Reward (+5%)
 				if targetPlayer then
@@ -190,7 +194,9 @@ function HitboxManager.ApplyCombatResolution(
 					-- GUARD BREAK!
 					wasGuardBroken = true
 					targetState.Posture = 30 -- Reset small buffer
-					CombatStateManager.ApplyCC(targetPlayer, "GuardBroken", FlyingSwordConfig.Posture.GuardBreakStunDuration)
+					if targetPlayer then
+						CombatStateManager.ApplyCC(targetPlayer, "GuardBroken", FlyingSwordConfig.Posture.GuardBreakStunDuration)
+					end
 					finalDamage = math.floor(rawDamage * (1 + FlyingSwordConfig.Posture.GuardBreakBonusDamagePercent))
 
 					if combatVFXRemote then
@@ -218,12 +224,12 @@ function HitboxManager.ApplyCombatResolution(
 	-- Apply Damage (Tag both in combat)
 	if finalDamage > 0 then
 		humanoid:TakeDamage(finalDamage)
-		CombatStateManager.TagInCombat(attackerPlayer)
+		if attackerPlayer then
+			CombatStateManager.TagInCombat(attackerPlayer)
+		end
 		if targetPlayer then
 			CombatStateManager.TagInCombat(targetPlayer)
 		else
-			-- Target has no controlling player (a mob/NPC) — record who actually damaged it
-			-- so MobAIManager can credit the correct killer instead of guessing.
 			local MobAIManager = require(ServerScriptService.Server.Combat.MobAIManager)
 			MobAIManager.RegisterDamage(targetChar, attackerPlayer, finalDamage)
 		end
@@ -231,13 +237,14 @@ function HitboxManager.ApplyCombatResolution(
 
 	-- Apply Physical Knockback
 	if finalKnockback and targetHrp and finalKnockback.Magnitude > 0 then
-		local orientation = if attackerHrp then attackerHrp.CFrame else CFrame.new()
+		local orientation = if attackerHrp then attackerHrp.CFrame else CFrame.lookAt(targetHrp.Position, targetHrp.Position - finalKnockback)
 		local worldKnockback = orientation:VectorToWorldSpace(finalKnockback)
 
 		local attachment = Instance.new("Attachment")
 		attachment.Parent = targetHrp
 
 		local linearVel = Instance.new("LinearVelocity")
+		linearVel.Name = "KnockbackVel"
 		linearVel.Attachment0 = attachment
 		linearVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
 		linearVel.MaxAxesForce = Vector3.new(250000, 100000, 250000)

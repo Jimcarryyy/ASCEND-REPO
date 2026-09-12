@@ -4,6 +4,7 @@
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
     Handles:
       - Lightning Flash-Step Dash with Elevation Hover & Anti-Trip Orientation Lock.
+      - Dynamic Weapon-Attuned Dash Silhouette Colors (Mortal Steel, Azure, Void, Radiant Gold).
       - Sword slash particle emissions directly from equipped blade tip.
       - Movement Sound Governor (zero stuck footsteps on flight/jump spam).
       - Flight mode animation & suppression of ground animations.
@@ -18,6 +19,7 @@ local Debris = game:GetService("Debris")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
+local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 
 local AnimationController = {}
 AnimationController.__index = AnimationController
@@ -43,11 +45,11 @@ local meditationRequestId = 0
 --------------------------------------------------------------------------------
 -- LIGHTNING DASH CONSTANTS (Explosive Impulse & Anti-Trip Protection)
 --------------------------------------------------------------------------------
-local DASH_BURST_DURATION = 0.16        -- Snappy 0.16s burst
-local DASH_PEAK_SPEED = 150.0           -- Instant explosive velocity
+local DASH_BURST_DURATION = 0.16
+local DASH_PEAK_SPEED = 150.0
 local DASH_WALL_SLOW_SPEED = 14.0
 local DASH_WALL_CHECK_DISTANCE = 5.0
-local DASH_FLOAT_LIFT = 1.2             -- Elevates character 1.2 studs to clear ground friction
+local DASH_FLOAT_LIFT = 1.2
 
 local function PlayLocalSFX(soundId: string, volume: number?, speed: number?)
 	local character = player.Character
@@ -93,18 +95,21 @@ function AnimationController.EmitSwordSlash(character: Model)
 end
 
 -- =============================================================================
--- LIGHTNING DASH VISUAL POLISH: AFTERIMAGES & CAMERA IMPACT
+-- LIGHTNING DASH VISUAL POLISH: AFTERIMAGES (ATTUNED TO EQUIPPED SWORD)
 -- =============================================================================
 local function SpawnDashAfterimage(character: Model)
 	local afterimageModel = Instance.new("Model")
 	afterimageModel.Name = "DashGhostSilhouette"
+
+	local weaponId = character:GetAttribute("EquippedWeapon") :: string?
+	local palette = ItemConfig.GetWeaponPalette(weaponId)
 
 	for _, part in ipairs(character:GetChildren()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
 			local ghost = Instance.new("Part")
 			ghost.Size = part.Size
 			ghost.CFrame = part.CFrame
-			ghost.Color = Color3.fromRGB(56, 189, 248) -- Celestial Electric Cyan (#38BDF8)
+			ghost.Color = palette.PrimaryColor
 			ghost.Material = Enum.Material.Neon
 			ghost.Transparency = 0.42
 			ghost.Anchored = true
@@ -127,7 +132,6 @@ local function TriggerDashCameraFX()
 	local camera = Workspace.CurrentCamera
 	if not camera then return end
 
-	-- 1. FOV Speed-Warp
 	local baseFov = 70
 	local warpFov = 79
 	local fovTweenIn = TweenService:Create(camera, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -140,7 +144,6 @@ local function TriggerDashCameraFX()
 		}):Play()
 	end)
 
-	-- 2. Micro-Trauma Camera Shake
 	local shakeStartTime = os.clock()
 	local shakeDuration = 0.14
 	local shakeConn: RBXScriptConnection? = nil
@@ -529,7 +532,7 @@ function AnimationController.PerformDash(dashStep: number)
 	end
 	dashDir = Vector3.new(dashDir.X, 0, dashDir.Z).Unit
 
-	-- 2. Anti-Trip Elevation Lift (Raises character +1.2 studs so feet don't drag on ground)
+	-- 2. Anti-Trip Elevation Lift
 	hrp.CFrame = hrp.CFrame + Vector3.new(0, DASH_FLOAT_LIFT, 0)
 
 	-- 3. Temporarily disable ground-friction solver to prevent tripping
@@ -549,7 +552,7 @@ function AnimationController.PerformDash(dashStep: number)
 		attach.Parent = hrp
 	end
 
-	-- 4. High-Torque Upright Lock (Makes it physically impossible to tumble or flip)
+	-- 4. High-Torque Upright Lock
 	local dashOrientation = Instance.new("AlignOrientation")
 	dashOrientation.Name = "DashOrientationLock"
 	dashOrientation.Attachment0 = attach
@@ -575,7 +578,6 @@ function AnimationController.PerformDash(dashStep: number)
 	humanoid.WalkSpeed = 0
 	humanoid.AutoRotate = false
 
-	-- Midpoint second ghost silhouette
 	task.delay(0.06, function()
 		if character.Parent and character:GetAttribute("IsDashing") == true then
 			SpawnDashAfterimage(character)
@@ -601,7 +603,6 @@ function AnimationController.PerformDash(dashStep: number)
 		end
 	end)
 
-	-- Snappy brake & clean ground landing
 	task.delay(DASH_BURST_DURATION, function()
 		if dashHeartbeatConn then dashHeartbeatConn:Disconnect() end
 

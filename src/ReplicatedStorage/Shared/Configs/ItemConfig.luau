@@ -4,6 +4,7 @@
     Location: src/ReplicatedStorage/Shared/Configs/ItemConfig.luau
     Central configuration repository for all items in ASCEND:
     - 8 Sword Tiers (Mortal, Azure Cloud, Flowing Qi, Verdant Jade, Violet Soul, Void Star, Azure Patriarch, Radiant Immortal)
+    - Dynamic Weapon VFX Color Palettes (Primary, Secondary, Glow, and Particle Gradient)
     - Full Alchemy Pills, Herbs & Monster Materials
 ]]
 
@@ -11,6 +12,13 @@ local UIAssets = require(script.Parent.UIAssets)
 
 export type ItemRarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic" | "Divine" | "Immortal" | "Celestial"
 export type ItemType = "Weapon" | "Consumable" | "Material" | "Currency" | "Crest"
+
+export type WeaponVFXPalette = {
+	PrimaryColor: Color3,
+	SecondaryColor: Color3,
+	GlowColor: Color3,
+	Gradient: ColorSequence,
+}
 
 export type ItemDefinition = {
 	Id: string,
@@ -26,6 +34,99 @@ export type ItemDefinition = {
 }
 
 local ItemConfig = {}
+
+-- =============================================================================
+-- WEAPON ELEMENTAL VFX COLOR PALETTES
+-- =============================================================================
+local WEAPON_PALETTES: { [string]: WeaponVFXPalette } = {
+	["MortalIronJian"] = {
+		PrimaryColor = Color3.fromRGB(220, 225, 235),
+		SecondaryColor = Color3.fromRGB(140, 150, 165),
+		GlowColor = Color3.fromRGB(200, 215, 230),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(245, 248, 255)),
+			ColorSequenceKeypoint.new(0.4, Color3.fromRGB(200, 210, 225)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(120, 135, 150)),
+		}),
+	},
+	["AzureCloudDiscipleJian"] = {
+		PrimaryColor = Color3.fromRGB(56, 189, 248),
+		SecondaryColor = Color3.fromRGB(14, 116, 144),
+		GlowColor = Color3.fromRGB(125, 211, 252),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(224, 242, 254)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(56, 189, 248)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(14, 116, 144)),
+		}),
+	},
+	["FlowingQiSpiritSword"] = {
+		PrimaryColor = Color3.fromRGB(14, 165, 233),
+		SecondaryColor = Color3.fromRGB(3, 105, 161),
+		GlowColor = Color3.fromRGB(56, 189, 248),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(186, 230, 253)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(14, 165, 233)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(3, 105, 161)),
+		}),
+	},
+	["VerdantJadeFlyingSword"] = {
+		PrimaryColor = Color3.fromRGB(52, 211, 153),
+		SecondaryColor = Color3.fromRGB(5, 150, 105),
+		GlowColor = Color3.fromRGB(110, 231, 183),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(209, 250, 229)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(52, 211, 153)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(4, 120, 87)),
+		}),
+	},
+	["VioletSoulSovereignJian"] = {
+		PrimaryColor = Color3.fromRGB(192, 132, 252),
+		SecondaryColor = Color3.fromRGB(126, 34, 206),
+		GlowColor = Color3.fromRGB(216, 180, 254),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(245, 200, 255)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(180, 50, 255)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(90, 10, 160)),
+		}),
+	},
+	["VoidStarCleaverDao"] = {
+		PrimaryColor = Color3.fromRGB(168, 85, 247),
+		SecondaryColor = Color3.fromRGB(88, 28, 135),
+		GlowColor = Color3.fromRGB(147, 51, 234),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(235, 190, 255)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(147, 51, 234)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(59, 7, 100)),
+		}),
+	},
+	["AzurePatriarchHeritageJian"] = {
+		PrimaryColor = Color3.fromRGB(34, 211, 238),
+		SecondaryColor = Color3.fromRGB(14, 116, 144),
+		GlowColor = Color3.fromRGB(103, 232, 249),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(207, 250, 254)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(34, 211, 238)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(8, 145, 178)),
+		}),
+	},
+	["RadiantImmortalSovereignJian"] = {
+		PrimaryColor = Color3.fromRGB(250, 204, 21),
+		SecondaryColor = Color3.fromRGB(217, 119, 6),
+		GlowColor = Color3.fromRGB(254, 240, 138),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(254, 249, 195)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(250, 204, 21)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(180, 83, 9)),
+		}),
+	},
+}
+
+local DEFAULT_PALETTE: WeaponVFXPalette = WEAPON_PALETTES["MortalIronJian"]
+
+function ItemConfig.GetWeaponPalette(weaponId: string?): WeaponVFXPalette
+	if not weaponId then return DEFAULT_PALETTE end
+	return WEAPON_PALETTES[weaponId] or DEFAULT_PALETTE
+end
 
 local ITEMS: { [string]: ItemDefinition } = {
 	-- REFINED PILLS & DANS
