@@ -3,9 +3,9 @@
     CultivationManager.luau
     Location: src/ServerScriptService/Server/Cultivation/CultivationManager.luau
     Server-authoritative cultivation state engine for ASCEND.
-    Binds ReplicatedStorage.VFX["Full body aura"] during Meditation & Tribulation breakthroughs.
-    Features: Floating Daoist levitation during meditation (elevates 2.8 studs above ground)
-    and clean ground re-alignment upon standing.
+    - Synchronous zero-delay CharacterAdded stat binding (Eliminates the 100 HP respawn bug)
+    - Full body aura lifecycle during Meditation & Tribulation breakthroughs
+    - Authoritative Qi loop & breakthrough mechanics
 ]]
 
 local Players = game:GetService("Players")
@@ -123,7 +123,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Engine Initialized (Clean Aura Lifecycle & Sheath Sync Active).")
+	print("[ASCEND] CultivationManager Engine Initialized (Synchronous Respawn Health Binding Active).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -143,8 +143,19 @@ function CultivationManager.OnPlayerAdded(player: Player)
 		}
 	end
 
+	-- Synchronous Health Binding on Respawn (Zero-Delay)
 	player.CharacterAdded:Connect(function(character)
-		task.wait(0.2)
+		local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
+		if humanoid then
+			local pData = playerData[player]
+			if pData then
+				local maxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
+				humanoid.MaxHealth = maxHp
+				humanoid.Health = maxHp
+				character:SetAttribute("MaxHealth", maxHp)
+				character:SetAttribute("Health", maxHp)
+			end
+		end
 		CultivationManager.ApplyRealmStats(player)
 	end)
 end
@@ -214,9 +225,9 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	pData.CultivatedQi = math.clamp(pData.CultivatedQi or (maxQiGoal * 0.20), 1, maxQiGoal)
 	pData.CurrentQi = math.clamp(pData.CurrentQi or pData.CultivatedQi, 0, pData.CultivatedQi)
 
+	local maxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		local maxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
 		humanoid.MaxHealth = maxHp
 		humanoid.Health = maxHp
 	end
@@ -224,6 +235,8 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	local realmInfo = CultivationConfig[pData.Realm]
 	local realmText = if realmInfo then string.format("%s - Order %d", realmInfo.Name, pData.Order) else "Qi Condensation - Order 1"
 	
+	character:SetAttribute("MaxHealth", maxHp)
+	character:SetAttribute("Health", maxHp)
 	character:SetAttribute("Realm", realmText)
 	player:SetAttribute("Realm", realmText)
 	player:SetAttribute("Order", pData.Order)
@@ -234,7 +247,7 @@ end
 
 function CultivationManager.ConsumeQi(player: Player, amount: number): boolean
 	local pData = playerData[player]
-	if not pData then return end
+	if not pData then return false end
 
 	if pData.CurrentQi < amount then
 		return false
@@ -252,7 +265,6 @@ function CultivationManager.ToggleMeditation(player: Player)
 	local character = player.Character
 	if not character then return end
 
-	-- Block meditation while flying
 	if character:GetAttribute("IsFlying") == true then
 		return
 	end
@@ -263,7 +275,6 @@ function CultivationManager.ToggleMeditation(player: Player)
 	lastToggleTimestamp[player] = now
 
 	pData.IsMeditating = not pData.IsMeditating
-
 	local weaponMgr = getWeaponManager()
 
 	if pData.IsMeditating then
@@ -312,10 +323,8 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	local rayResult = Workspace:Raycast(hrp.Position, Vector3.new(0, -25, 0), raycastParams)
 	local groundY = if rayResult then rayResult.Position.Y else (hrp.Position.Y - 3.0)
 
-	-- ELEVATE TO FLOATING HEIGHT: Positions HRP at groundY + 4.8 so the cross-legged pose hovers cleanly
 	hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 4.8, hrp.Position.Z) * hrp.CFrame.Rotation
 
-	-- Locate "Full body aura" from ReplicatedStorage.VFX
 	local auraTemplate = (vfxFolder and vfxFolder:FindFirstChild("Full body aura"))
 		or (ReplicatedStorage:FindFirstChild("Full body aura", true) :: Instance?)
 
@@ -352,7 +361,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 end
 
 function CultivationManager.StopGroundedMeditation(player: Player, character: Model)
-	-- 1. Cleanly disable and destroy the entire aura model
 	for _, child in ipairs(character:GetChildren()) do
 		if child.Name == "QiMeditationAura" or child.Name == "QiMeditationHighlight" then
 			for _, emitter in ipairs(child:GetDescendants()) do
@@ -366,7 +374,6 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 		end
 	end
 
-	-- 2. Destroy any stray attachments that might have been linked to root
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if hrp then
 		for _, child in ipairs(hrp:GetChildren()) do
@@ -375,7 +382,6 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 			end
 		end
 
-		-- Clean landing raycast: places character flush at groundY + 3.0 before unanchoring
 		local raycastParams = RaycastParams.new()
 		raycastParams.FilterDescendantsInstances = { character }
 		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
