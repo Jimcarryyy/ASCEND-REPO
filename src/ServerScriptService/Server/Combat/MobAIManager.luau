@@ -256,6 +256,8 @@ local function OnMobDied(mob: ActiveMob)
 			CultivationManager.AddInternalQi(killer, qiReward)
 		end
 
+		-- Track awarded drops for client notification
+		local awardedDrops: { { Name: string, Count: number } } = {}
 		local drops = config.DropTable or config.Drops
 		if drops then
 			for _, drop in ipairs(drops) do
@@ -265,7 +267,37 @@ local function OnMobDied(mob: ActiveMob)
 				if roll <= chance then
 					local count = math.random(drop.MinCount or 1, drop.MaxCount or 1)
 					InventoryManager.AddItem(killer, drop.ItemId, count)
+					table.insert(awardedDrops, {
+						Name = drop.ItemId,
+						Count = count,
+					})
 				end
+			end
+		end
+
+		-- 🚀 Fire kill notification to the killer
+		local combatActionRemote = RemoteEvents.GetRemote("CombatAction")
+		if combatActionRemote then
+			combatActionRemote:FireClient(killer, nil, "MobDefeated", {
+				MobName = config.DisplayName or mob.Id,
+				IsBoss = config.IsBoss == true,
+				Stones = ssReward,
+				Qi = qiReward,
+				Drops = awardedDrops,
+			})
+		end
+
+		-- If World Boss, broadcast to entire server
+		if config.IsBoss then
+			local TextChatService = game:GetService("TextChatService")
+			local textChannels = TextChatService:FindFirstChild("TextChannels")
+			local general = textChannels and textChannels:FindFirstChild("RBXGeneral") :: TextChannel?
+			if general then
+				general:DisplaySystemMessage(string.format(
+					"<font color='#FFD700'><b>[WORLD DECREE] Cultivator %s has vanquished World Boss %s!</b></font>",
+					killer.DisplayName,
+					config.DisplayName or mob.Id
+				))
 			end
 		end
 

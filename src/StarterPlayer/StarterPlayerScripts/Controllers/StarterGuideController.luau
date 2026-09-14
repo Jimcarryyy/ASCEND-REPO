@@ -3,13 +3,17 @@
     StarterGuideController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/StarterGuideController.luau
     Client UI controller for StarterGui.StarterGuideGui.
+    - Bound to 'G' keybind and Sect_NPC_ElderQing ProximityPrompt
+    - Section 1 updated with complete authoritative keybind directory
 ]]
 
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local SoundService = game:GetService("SoundService")
 
 local localPlayer = Players.LocalPlayer
-local playerGui = localPlayer:WaitForChild("PlayerGui")
+local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
 local StarterGuideController = {}
 
@@ -23,17 +27,29 @@ local contentPanel: Frame?
 local tabBar: Frame?
 
 local isInitialized = false
+local isOpen = false
+
+local PANEL_CLICK_SFX = "rbxassetid://138567614125924"
+
+local function PlayClickSound()
+	local s = Instance.new("Sound")
+	s.SoundId = PANEL_CLICK_SFX
+	s.Volume = 0.55
+	s.Parent = SoundService
+	s:Play()
+	game:GetService("Debris"):AddItem(s, 1.0)
+end
 
 local TAB_DATA = {
 	[1] = {
 		Header = "SECTION 1: MARTIAL COMBAT & MOVEMENT CONTROLS",
 		Rows = {
-			{ key = "[M1 Attack]", desc = "Perform 5-hit Light Sword Combo (Rapidly builds Sword Intent)" },
-			{ key = "[R - Draw / Sheathe]", desc = "Draw your flying sword to enter active martial combat stance" },
-			{ key = "[B - Guard Break]", desc = "Heavy posture-breaking strike to shatter blocking opponents" },
-			{ key = "[V - Sword Flight]", desc = "Mount your flying sword to soar across the sect mountain tiers" },
-			{ key = "[C - Qi Meditation]", desc = "Sit in seclusion to absorb ambient Spirit Qi and restore meridians" },
-			{ key = "[Shift - Dash Evade]", desc = "High-speed tactical dash with invulnerability frames" },
+			{ key = "[M1 / Shift / T]", desc = "Combat Suite: 5-Hit Light Combo, Dash Evade (i-frames), Block & Parry" },
+			{ key = "[Q / E / F]", desc = "Martial Arts: Purple Tempest, Piercing Void Thrust, 100-Slash Domain" },
+			{ key = "[C / B / V]", desc = "Dao Arts: Qi Meditation, Realm Breakthrough, Mount Flying Sword" },
+			{ key = "[Tab / I - Pouch]", desc = "Open Spirit Pouch inventory to inspect Dan pills, herbs, and equipment" },
+			{ key = "[G - Guide / M - Sect]", desc = "Toggle this Martial Guide manual (G) and Sect Pavilion duties (M)" },
+			{ key = "[P - Stats / R - Sheathe]", desc = "Open Authoritative Dao Stats (P) and Draw / Sheathe equipped sword (R)" },
 		}
 	},
 	[2] = {
@@ -127,6 +143,7 @@ local function EnsureUI(): boolean
 			local tabBtn = tabBar:FindFirstChild("Tab_" .. i)
 			if tabBtn and tabBtn:IsA("TextButton") then
 				tabBtn.Activated:Connect(function()
+					PlayClickSound()
 					ShowTab(i)
 				end)
 			end
@@ -135,13 +152,15 @@ local function EnsureUI(): boolean
 
 	if closeBtn then
 		closeBtn.Activated:Connect(function()
-			if backdrop then backdrop.Visible = false end
+			PlayClickSound()
+			StarterGuideController.Close()
 		end)
 	end
 
 	if confirmBtn then
 		confirmBtn.Activated:Connect(function()
-			if backdrop then backdrop.Visible = false end
+			PlayClickSound()
+			StarterGuideController.Close()
 		end)
 	end
 
@@ -149,21 +168,49 @@ local function EnsureUI(): boolean
 	return true
 end
 
+function StarterGuideController.Open()
+	if not EnsureUI() then return end
+	isOpen = true
+	if backdrop then backdrop.Visible = true end
+end
+
+function StarterGuideController.Close()
+	isOpen = false
+	if backdrop then backdrop.Visible = false end
+end
+
+function StarterGuideController.Toggle()
+	if isOpen then
+		StarterGuideController.Close()
+	else
+		StarterGuideController.Open()
+	end
+end
+
 function StarterGuideController.Init()
 	EnsureUI()
-	if backdrop then backdrop.Visible = false end
+	StarterGuideController.Close()
 
+	-- 1. 'G' Keybind Listener
+	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+		if gameProcessed then return end
+		if input.KeyCode == Enum.KeyCode.G then
+			PlayClickSound()
+			StarterGuideController.Toggle()
+		end
+	end)
+
+	-- 2. NPC ProximityPrompt Listener
 	ProximityPromptService.PromptTriggered:Connect(function(prompt, who)
 		if who ~= localPlayer then return end
 		local act = prompt.ActionText:lower()
 		if act == "seek guidance" or (prompt.Parent and prompt.Parent.Name == "Sect_NPC_ElderQing") then
-			if EnsureUI() and backdrop then
-				backdrop.Visible = true
-			end
+			PlayClickSound()
+			StarterGuideController.Open()
 		end
 	end)
 
-	print("[ASCEND] StarterGuideController Initialized.")
+	print("[ASCEND] StarterGuideController Initialized ('G' Keybind Active).")
 end
 
 return StarterGuideController

@@ -6,7 +6,7 @@
     - 100% Dynamic data-binding to pre-built StarterGuide-style template (ADR-041).
     - 4-Tab navigation (Dao Realm, Combat Stats, Spirit Weapon, 3D Avatar Manifest).
     - Live 3D turntable ViewportFrame of character & equipped weapon.
-    - Toggled via "P" key or public API.
+    - Universal Panel Click Audio (rbxassetid://138567614125924) on 'P' toggle.
 ]]
 
 local Players = game:GetService("Players")
@@ -14,6 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
 
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
@@ -22,6 +23,18 @@ local CharacterStatsController = {}
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
+
+local PANEL_CLICK_SOUND_ID = "rbxassetid://138567614125924"
+
+local function PlayPanelClickSFX()
+	local sound = Instance.new("Sound")
+	sound.SoundId = PANEL_CLICK_SOUND_ID
+	sound.Volume = 0.55
+	sound.PlaybackSpeed = math.random(98, 102) / 100
+	sound.Parent = SoundService
+	sound:Play()
+	game:GetService("Debris"):AddItem(sound, 1.2)
+end
 
 -- UI References
 local gui: ScreenGui?
@@ -57,18 +70,14 @@ local vpCamera: Camera?
 local vpModel: Model?
 local turntableConn: RBXScriptConnection?
 
--- Tab Colors (Matching StarterGuideGui)
-local C_ACT_BG  = Color3.fromRGB(0, 150, 190)   -- #0096be
-local C_ACT_STR = Color3.fromRGB(0, 220, 255)   -- #00dcff
-local C_INA_BG  = Color3.fromRGB(25, 32, 44)    -- #19202c
-local C_INA_STR = Color3.fromRGB(50, 65, 85)    -- #324155
-local C_INA_TXT = Color3.fromRGB(180, 200, 220) -- #b4c8dc
+local C_ACT_BG  = Color3.fromRGB(0, 150, 190)
+local C_ACT_STR = Color3.fromRGB(0, 220, 255)
+local C_INA_BG  = Color3.fromRGB(25, 32, 44)
+local C_INA_STR = Color3.fromRGB(50, 65, 85)
+local C_INA_TXT = Color3.fromRGB(180, 200, 220)
 
 local isInitialized = false
 
---------------------------------------------------------------------------------
--- FORMATTERS
---------------------------------------------------------------------------------
 local function FormatNum(num: number): string
 	if CultivationConfig and CultivationConfig.FormatNumber then
 		return CultivationConfig.FormatNumber(num)
@@ -92,9 +101,6 @@ local function FormatComma(n: number): string
 	return formatted
 end
 
---------------------------------------------------------------------------------
--- ENSURE UI HOOKS
---------------------------------------------------------------------------------
 local function EnsureUI(): boolean
 	if isInitialized and gui and window then return true end
 
@@ -112,7 +118,6 @@ local function EnsureUI(): boolean
 	tabBar = window:FindFirstChild("TabBar") :: Frame?
 	confirmBtn = window:FindFirstChild("ConfirmButton") :: TextButton?
 
-	-- Hook Tabs
 	if tabBar then
 		tabs = {
 			tabBar:FindFirstChild("Tab_1") :: TextButton,
@@ -122,7 +127,6 @@ local function EnsureUI(): boolean
 		}
 	end
 
-	-- Hook Panels
 	panels = {
 		window:FindFirstChild("Panel_1_DaoRealm") :: Frame,
 		window:FindFirstChild("Panel_2_CombatStats") :: Frame,
@@ -130,7 +134,6 @@ local function EnsureUI(): boolean
 		window:FindFirstChild("Panel_4_AvatarManifest") :: Frame,
 	}
 
-	-- Hook Panel 1 Rows
 	local panel1 = panels[1]
 	if panel1 then
 		p1Header = panel1:FindFirstChild("TabHeader") :: TextLabel?
@@ -150,7 +153,6 @@ local function EnsureUI(): boolean
 		end
 	end
 
-	-- Hook Panel 2 Rows
 	local panel2 = panels[2]
 	if panel2 then
 		p2Header = panel2:FindFirstChild("TabHeader") :: TextLabel?
@@ -162,7 +164,6 @@ local function EnsureUI(): boolean
 		end
 	end
 
-	-- Hook Panel 3 Rows
 	local panel3 = panels[3]
 	if panel3 then
 		p3Header = panel3:FindFirstChild("TabHeader") :: TextLabel?
@@ -174,30 +175,28 @@ local function EnsureUI(): boolean
 		end
 	end
 
-	-- Hook Panel 4 (3D Viewport)
 	local panel4 = panels[4]
 	if panel4 then
 		p4Header = panel4:FindFirstChild("TabHeader") :: TextLabel?
 		viewportFrame = panel4:FindFirstChild("CharacterViewport") :: ViewportFrame?
 	end
 
-	-- Bind Tab Clicking
 	for idx, btn in ipairs(tabs) do
 		if btn then
 			btn.Activated:Connect(function()
+				PlayPanelClickSFX()
 				CharacterStatsController.SwitchTab(idx)
 			end)
 		end
 	end
 
-	-- Bind Close Button
 	if closeBtn then
 		closeBtn.Activated:Connect(function()
+			PlayPanelClickSFX()
 			CharacterStatsController.Close()
 		end)
 	end
 
-	-- Bind Backdrop Dismiss
 	backdrop.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			local mousePos = UserInputService:GetMouseLocation()
@@ -208,6 +207,7 @@ local function EnsureUI(): boolean
 				local maxY = minY + window.AbsoluteSize.Y
 
 				if mousePos.X < minX or mousePos.X > maxX or mousePos.Y < minY or mousePos.Y > maxY then
+					PlayPanelClickSFX()
 					CharacterStatsController.Close()
 				end
 			end
@@ -218,9 +218,6 @@ local function EnsureUI(): boolean
 	return true
 end
 
---------------------------------------------------------------------------------
--- TAB SWITCHING ENGINE
---------------------------------------------------------------------------------
 function CharacterStatsController.SwitchTab(idx: number)
 	if not EnsureUI() then return end
 	activeTabIdx = idx
@@ -249,9 +246,6 @@ function CharacterStatsController.SwitchTab(idx: number)
 	end
 end
 
---------------------------------------------------------------------------------
--- 3D VIEWPORT TURNTABLE RIG SETUP (Panel 4)
---------------------------------------------------------------------------------
 function CharacterStatsController.Setup3DViewport()
 	if not viewportFrame then return end
 
@@ -312,9 +306,6 @@ function CharacterStatsController.Teardown3DViewport()
 	end
 end
 
---------------------------------------------------------------------------------
--- DYNAMIC REAL-TIME STATS SYNCHRONIZATION
---------------------------------------------------------------------------------
 function CharacterStatsController.Refresh()
 	if not EnsureUI() then return end
 
@@ -322,7 +313,6 @@ function CharacterStatsController.Refresh()
 	if not char then return end
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
 
-	-- 1. Identity & Cultivation Attributes
 	local realmRaw = tostring(char:GetAttribute("Realm") or player:GetAttribute("Realm") or "Qi Condensation - Order 1")
 	local sectRank = tostring(char:GetAttribute("SectRank") or player:GetAttribute("SectRank") or "Inner Disciple")
 	local sect = tostring(char:GetAttribute("Sect") or player:GetAttribute("Sect") or "Azure Cloud Sect")
@@ -333,7 +323,6 @@ function CharacterStatsController.Refresh()
 	local curQi = tonumber(char:GetAttribute("Qi") or player:GetAttribute("Qi") or 100) or 100
 	local targetQi = tonumber(char:GetAttribute("TargetQi") or 1000) or 1000
 
-	-- Calculate Realm Multiplier
 	local order = tonumber(player:GetAttribute("Order") or char:GetAttribute("Order") or 1) or 1
 	local matchOrder = realmRaw:match("Order%s+(%d+)")
 	if matchOrder then order = tonumber(matchOrder) or order end
@@ -355,12 +344,10 @@ function CharacterStatsController.Refresh()
 		powerMultiplier = CultivationConfig.GetPowerMultiplier(realmTierEnum, order)
 	end
 
-	-- 2. Combat Physique Attributes
 	local maxHp = humanoid and humanoid.MaxHealth or 100
 	local poise = tonumber(char:GetAttribute("MaxPosture") or 100) or 100
 	local intent = tonumber(char:GetAttribute("SwordIntent") or 100) or 100
 
-	-- 3. Weapon & Forge Attributes
 	local wepId = tostring(char:GetAttribute("EquippedWeapon") or "VoidStarCleaverDao")
 	local wepDef = ItemConfig.GetItem(wepId)
 	local wepDisplayName = wepDef and wepDef.Name or "Void Star Cleaver Dao"
@@ -368,13 +355,11 @@ function CharacterStatsController.Refresh()
 	local wepSpeed = wepDef and wepDef.Speed or 1.25
 	local rarity = wepDef and wepDef.Rarity or "Mythic"
 
-	-- Blacksmith Refinement
 	local refineLevel = tonumber(char:GetAttribute("WeaponRefinement") or player:GetAttribute("WeaponRefinement") or 3) or 3
 	local refineMult = 1.0 + (refineLevel * 0.05)
 	local effectiveBaseDmg = math.floor(baseDmg * refineMult)
 	local empoweredDmg = math.floor(effectiveBaseDmg * powerMultiplier)
 
-	-- Whetstone Sharpening Status
 	local sharpenedUntil = tonumber(char:GetAttribute("BladeSharpenedUntil") or 0) or 0
 	local now = os.clock()
 	local isSharpened = (sharpenedUntil > now)
@@ -383,9 +368,6 @@ function CharacterStatsController.Refresh()
 	local secLeft = remSec % 60
 	local critChance = 5 + (if isSharpened then 10 else 0)
 
-	----------------------------------------------------------------------------
-	-- APPLY TO PANEL 1 (DAO REALM)
-	----------------------------------------------------------------------------
 	if p1DescLabels["Row_1"] then p1DescLabels["Row_1"].Text = string.format("%s (%s)", player.Name, sect) end
 	if p1DescLabels["Row_2"] then p1DescLabels["Row_2"].Text = string.format("%s (Tier 1 Grounds)", sectRank) end
 	if p1DescLabels["Row_3"] then p1DescLabels["Row_3"].Text = realmRaw end
@@ -403,9 +385,6 @@ function CharacterStatsController.Refresh()
 		}):Play()
 	end
 
-	----------------------------------------------------------------------------
-	-- APPLY TO PANEL 2 (COMBAT STATS)
-	----------------------------------------------------------------------------
 	if p2DescLabels["Row_1"] then p2DescLabels["Row_1"].Text = string.format("%s Total Life Force (HP)", FormatComma(maxHp)) end
 	if p2DescLabels["Row_2"] then p2DescLabels["Row_2"].Text = string.format("%d Max Posture (0.25s Perfect Parry Window)", poise) end
 	if p2DescLabels["Row_3"] then p2DescLabels["Row_3"].Text = "18 Base Walk  •  44 studs/s High-Impact Sprint" end
@@ -413,9 +392,6 @@ function CharacterStatsController.Refresh()
 	if p2DescLabels["Row_5"] then p2DescLabels["Row_5"].Text = string.format("%d%% Maximum Intent Gauge (1.75x Damage Surge)", intent) end
 	if p2DescLabels["Row_6"] then p2DescLabels["Row_6"].Text = string.format("%d%% Strike (5%% Base Trait%s)", critChance, if isSharpened then " + 10% Whetstone Buff" else "") end
 
-	----------------------------------------------------------------------------
-	-- APPLY TO PANEL 3 (SPIRIT WEAPON)
-	----------------------------------------------------------------------------
 	if p3DescLabels["Row_1"] then p3DescLabels["Row_1"].Text = string.format("%s (%s Grade)", wepDisplayName, rarity) end
 	if p3DescLabels["Row_2"] then p3DescLabels["Row_2"].Text = string.format("%d Physical Strike Damage per Hit", baseDmg) end
 	if p3DescLabels["Row_3"] then p3DescLabels["Row_3"].Text = string.format("%.2fx Fluid Swing Cadence", wepSpeed) end
@@ -427,19 +403,14 @@ function CharacterStatsController.Refresh()
 			else "Inactive (Sharpen at Madame Tie's Anvil)"
 	end
 
-	----------------------------------------------------------------------------
-	-- APPLY TO BOTTOM ACTION BANNER
-	----------------------------------------------------------------------------
 	if confirmBtn then
 		confirmBtn.Text = string.format("TOTAL STRIKE OUTPUT: %s BASE • %s REALM EMPOWERED OUTPUT", FormatComma(effectiveBaseDmg), FormatComma(empoweredDmg))
 	end
 end
 
---------------------------------------------------------------------------------
--- OPEN / CLOSE MODAL
---------------------------------------------------------------------------------
 function CharacterStatsController.Open()
 	if not EnsureUI() then return end
+	PlayPanelClickSFX()
 	if gui then gui.Enabled = true end
 	if backdrop then backdrop.Visible = true end
 
@@ -449,6 +420,7 @@ end
 
 function CharacterStatsController.Close()
 	if not EnsureUI() then return end
+	PlayPanelClickSFX()
 	if gui then gui.Enabled = false end
 	if backdrop then backdrop.Visible = false end
 
@@ -464,17 +436,13 @@ function CharacterStatsController.Toggle()
 	end
 end
 
---------------------------------------------------------------------------------
--- INITIALIZATION
---------------------------------------------------------------------------------
 function CharacterStatsController.Init()
 	EnsureUI()
 	if gui then gui.Enabled = false end
 	if backdrop then backdrop.Visible = false end
 
-	-- "P" Key Toggle Listener
+	-- "P" Key Toggle Listener with Universal Sound
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then return end
 		if UserInputService:GetFocusedTextBox() ~= nil then return end
 
 		if input.KeyCode == Enum.KeyCode.P then
@@ -482,7 +450,6 @@ function CharacterStatsController.Init()
 		end
 	end)
 
-	-- Auto-refresh stats when character attributes update
 	player.CharacterAdded:Connect(function(character)
 		character:GetAttributeChangedSignal("Realm"):Connect(function()
 			if gui and gui.Enabled then CharacterStatsController.Refresh() end
@@ -498,7 +465,7 @@ function CharacterStatsController.Init()
 		end)
 	end)
 
-	print("[ASCEND] CharacterStatsController Initialized (Dynamic Data Binding Active on 'P').")
+	print("[ASCEND] CharacterStatsController Initialized (Dynamic Data Binding & SFX Active on 'P').")
 end
 
 return CharacterStatsController

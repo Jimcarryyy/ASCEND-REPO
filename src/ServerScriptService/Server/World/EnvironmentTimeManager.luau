@@ -2,38 +2,32 @@
 --[[
     EnvironmentTimeManager.luau
     Location: src/ServerScriptService/Server/World/EnvironmentTimeManager.luau
-    Server-authoritative time cycle and dynamic lighting engine tailored for a
-    Murim / Xianxia Sword-Cultivation atmosphere (12-Minute Cycle).
-
-    Design intent: cooler, muted, mist-shrouded palette (temple ink-wash) instead
-    of a bright pastel fantasy look, plus real fog + a Sky instance to hide the
-    map's exposed edges/void at a distance rather than exposing them.
+    Server-authoritative environmental lighting & dynamic wind engine for ASCEND.
+    - 24-Minute Weighted Cycle: 75% Bright Day & Dusk (18 mins) / 25% Celestial Night (6 mins)
+    - High-Visibility "Celestial Moonlit Sapphire" Night (Zero pitch-black shadows)
+    - Authoritative workspace.GlobalWind simulation (Powers wind lines & plant sways)
 ]]
 
 local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 
 local EnvironmentTimeManager = {}
 
--- CONFIGURATION (Standard Roblox Day/Night Cycle Duration: 12 Minutes)
-local MINUTES_PER_DAY_CYCLE = 12
-local STARTING_CLOCK_TIME = 7.0 -- Misty dawn on server start, fits the murim mood better than midday
+local MINUTES_PER_DAY_CYCLE = 24
+local STARTING_CLOCK_TIME = 13.0 -- Start at clear, vibrant midday
 
--- Fog tuning: these distances are a starting point, NOT measured against your actual
--- map scale (that lives in the .rbxl place, not in source-controlled scripts, so it
--- can't be verified from the repo). Tune FogStart/FogEnd in Studio against how far
--- your map edges actually sit from typical player positions.
-local FOG_START_STUDS = 150
-local FOG_END_STUDS = 700
+-- Distant Fog Bounds: Never drowns near or mid-range terrain
+local FOG_START_STUDS = 800
+local FOG_END_STUDS = 2200
 
 local atmosphere: Atmosphere
 local bloom: BloomEffect
 local sunRays: SunRaysEffect
 local colorCorrection: ColorCorrectionEffect
-local depthOfField: DepthOfFieldEffect
 local sky: Sky
 
-local function GetOrCreate<T>(className: string, name: string): Instance
+local function GetOrCreate(className: string, name: string): Instance
 	local existing = Lighting:FindFirstChild(name)
 	if existing then
 		return existing
@@ -49,123 +43,136 @@ function EnvironmentTimeManager.Init()
 	Lighting.ShadowSoftness = 0.2
 	Lighting.ClockTime = STARTING_CLOCK_TIME
 
-	-- Classic fog: the direct fix for "can see outside the map." Distance fog
-	-- fades geometry to FogColor before the player's view reaches the exposed edges.
+	-- Initial Distant Fog Setup
 	Lighting.FogStart = FOG_START_STUDS
 	Lighting.FogEnd = FOG_END_STUDS
-	Lighting.FogColor = Color3.fromRGB(150, 160, 170)
+	Lighting.FogColor = Color3.fromRGB(190, 215, 235)
 
-	-- Sky instance so the horizon past the fog is a stylized sky, not Studio's default void.
 	sky = GetOrCreate("Sky", "MurimSky") :: Sky
 	sky.CelestialBodiesShown = true
-	sky.StarCount = 3000
+	sky.StarCount = 4500
 	sky.SunAngularSize = 11
-	sky.MoonAngularSize = 12
-	-- NOTE: no custom SkyboxBk/Dn/Ft/Lf/Rt/Up texture ids are set here — doing so
-	-- would require real uploaded skybox images, which don't exist in this repo.
-	-- A painted mountain-silhouette skybox would be the strongest single upgrade
-	-- to this scene; flagging it as a follow-up rather than guessing asset ids.
+	sky.MoonAngularSize = 14
 
 	atmosphere = GetOrCreate("Atmosphere", "MurimAtmosphere") :: Atmosphere
-	atmosphere.Density = 0.35
-	atmosphere.Offset = 0.15
-	atmosphere.Color = Color3.fromRGB(150, 165, 175)
-	atmosphere.Decay = Color3.fromRGB(120, 110, 130)
-	atmosphere.Glare = 0.15
-	atmosphere.Haze = 2.4
+	atmosphere.Density = 0.16
+	atmosphere.Offset = 0.10
+	atmosphere.Color = Color3.fromRGB(195, 220, 240)
+	atmosphere.Decay = Color3.fromRGB(220, 210, 200)
+	atmosphere.Glare = 0.12
+	atmosphere.Haze = 0.2
 
 	bloom = GetOrCreate("BloomEffect", "MurimBloom") :: BloomEffect
-	bloom.Intensity = 0.4
-	bloom.Size = 24
+	bloom.Intensity = 0.35
+	bloom.Size = 18
 	bloom.Threshold = 1.1
 
 	sunRays = GetOrCreate("SunRaysEffect", "MurimSunRays") :: SunRaysEffect
-	sunRays.Intensity = 0.2
-	sunRays.Spread = 0.75
+	sunRays.Intensity = 0.18
+	sunRays.Spread = 0.70
 
-	-- Ink-wash color grading: desaturated, slightly cool, higher contrast so the
-	-- scene reads as a deliberate painterly palette rather than default-bright Studio colors.
 	colorCorrection = GetOrCreate("ColorCorrectionEffect", "MurimColorGrading") :: ColorCorrectionEffect
-	colorCorrection.Saturation = -0.35
-	colorCorrection.Contrast = 0.12
-	colorCorrection.Brightness = -0.02
-	colorCorrection.TintColor = Color3.fromRGB(225, 235, 240)
+	colorCorrection.Saturation = 0.08
+	colorCorrection.Contrast = 0.08
+	colorCorrection.Brightness = 0.00
+	colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
 
-	-- Subtle depth blur helps distant fog-obscured geometry read as atmospheric
-	-- rather than as an obvious pop-in/fog wall.
-	depthOfField = GetOrCreate("DepthOfFieldEffect", "MurimDepthOfField") :: DepthOfFieldEffect
-	depthOfField.FarIntensity = 0.15
-	depthOfField.FocusDistance = 60
-	depthOfField.InFocusRadius = 40
-	depthOfField.NearIntensity = 0
+	local existingDof = Lighting:FindFirstChild("MurimDepthOfField")
+	if existingDof then existingDof:Destroy() end
 
-	-- Time Progression Loop (12-Minute Cycle)
+	-- 🚀 Authoritative Global Wind Simulation (Simulates mountain gusts)
+	task.spawn(function()
+		local windClock = 0
+		while true do
+			windClock += 0.5
+			local noiseX = math.noise(windClock * 0.08, 0, 0)
+			local noiseZ = math.noise(0, windClock * 0.08, 0)
+			local gustSpeed = 14 + (math.clamp(math.sin(windClock * 0.25) * 12 + noiseX * 10, -4, 18))
+			local windDir = Vector3.new(0.8 + noiseX * 0.3, 0, 0.5 + noiseZ * 0.3).Unit
+			Workspace.GlobalWind = windDir * gustSpeed
+			task.wait(0.5)
+		end
+	end)
+
+	-- Time Progression Loop (Weighted 24-Minute Cycle)
 	local secondsPerCycle = MINUTES_PER_DAY_CYCLE * 60
-	local clockTimeIncrementPerSecond = 24 / secondsPerCycle
+	local baseClockRate = 24 / secondsPerCycle
 
 	RunService.Heartbeat:Connect(function(deltaTime: number)
-		local newTime = (Lighting.ClockTime + (clockTimeIncrementPerSecond * deltaTime)) % 24
+		local current = Lighting.ClockTime
+		-- Weighted progression: Day runs at 0.75x speed (longer), Night runs at 1.4x speed (quicker)
+		local isDay = (current >= 6.0 and current < 19.5)
+		local rateMultiplier = if isDay then 0.78 else 1.45
+		local newTime = (current + (baseClockRate * rateMultiplier * deltaTime)) % 24
+
 		Lighting.ClockTime = newTime
 		EnvironmentTimeManager.UpdateStylizedLighting(newTime)
 	end)
 
-	print(string.format("[ASCEND] EnvironmentTimeManager Engine Initialized (Murim Atmosphere, %d-Min Day Cycle, Fog-Masked Horizon).", MINUTES_PER_DAY_CYCLE))
+	print(string.format("[ASCEND] EnvironmentTimeManager Initialized (%d-Min Weighted Cycle, High-Vis Night & Global Wind Active).", MINUTES_PER_DAY_CYCLE))
 end
 
 function EnvironmentTimeManager.UpdateStylizedLighting(clockTime: number)
-	if clockTime >= 6.0 and clockTime < 8.0 then
-		-- MISTY DAWN (06:00 - 08:00) — pale, cool, heavy ground mist
-		local alpha = (clockTime - 6.0) / 2.0
-		Lighting.Brightness = math.clamp(1.0 + alpha * 0.6, 1.0, 1.6)
-		Lighting.OutdoorAmbient = Color3.fromRGB(140, 150, 165):Lerp(Color3.fromRGB(165, 175, 185), alpha)
-		Lighting.Ambient = Color3.fromRGB(85, 95, 115):Lerp(Color3.fromRGB(110, 120, 135), alpha)
-		Lighting.ColorShift_Top = Color3.fromRGB(210, 200, 200):Lerp(Color3.fromRGB(220, 215, 210), alpha)
-		Lighting.ColorShift_Bottom = Color3.fromRGB(140, 130, 150):Lerp(Color3.fromRGB(160, 165, 175), alpha)
-		atmosphere.Density = math.clamp(0.55 - alpha * 0.15, 0.40, 0.55)
-		atmosphere.Color = Color3.fromRGB(170, 175, 180):Lerp(Color3.fromRGB(150, 165, 175), alpha)
-		Lighting.FogStart = math.clamp(90 - alpha * 40, 50, 90)
-		Lighting.FogEnd = math.clamp(500 - alpha * 100, 400, 500)
-		Lighting.FogColor = Color3.fromRGB(175, 180, 185)
-
-	elseif clockTime >= 8.0 and clockTime < 16.5 then
-		-- OVERCAST DAY (08:00 - 16:30) — muted daylight, still hazy, never bright/pastel
-		Lighting.Brightness = 1.7
-		Lighting.OutdoorAmbient = Color3.fromRGB(165, 175, 185)
-		Lighting.Ambient = Color3.fromRGB(110, 120, 135)
-		Lighting.ColorShift_Top = Color3.fromRGB(220, 215, 210)
-		Lighting.ColorShift_Bottom = Color3.fromRGB(160, 165, 175)
-		atmosphere.Density = 0.35
-		atmosphere.Color = Color3.fromRGB(150, 165, 175)
+	if clockTime >= 6.0 and clockTime < 8.5 then
+		-- DAWN: Fresh morning sun
+		local alpha = (clockTime - 6.0) / 2.5
+		Lighting.Brightness = 2.0 + (alpha * 0.5)
+		Lighting.OutdoorAmbient = Color3.fromRGB(160, 175, 195):Lerp(Color3.fromRGB(190, 200, 215), alpha)
+		Lighting.Ambient = Color3.fromRGB(115, 125, 140):Lerp(Color3.fromRGB(140, 150, 165), alpha)
+		Lighting.ColorShift_Top = Color3.fromRGB(255, 235, 215):Lerp(Color3.fromRGB(255, 250, 240), alpha)
+		Lighting.ColorShift_Bottom = Color3.fromRGB(165, 160, 170)
+		atmosphere.Density = 0.18
+		atmosphere.Haze = 0.25
 		Lighting.FogStart = FOG_START_STUDS
 		Lighting.FogEnd = FOG_END_STUDS
-		Lighting.FogColor = Color3.fromRGB(150, 160, 170)
+		Lighting.FogColor = Color3.fromRGB(215, 225, 235)
+		colorCorrection.Saturation = 0.08
+		colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
 
-	elseif clockTime >= 16.5 and clockTime < 19.0 then
-		-- DUSK (16:30 - 19:00) — deep golden-grey twilight, temple-lantern warmth without going pastel
-		local alpha = (clockTime - 16.5) / 2.5
-		Lighting.Brightness = math.clamp(1.7 - alpha * 0.9, 0.8, 1.7)
-		Lighting.OutdoorAmbient = Color3.fromRGB(165, 175, 185):Lerp(Color3.fromRGB(95, 80, 95), alpha)
-		Lighting.Ambient = Color3.fromRGB(110, 120, 135):Lerp(Color3.fromRGB(55, 45, 65), alpha)
-		Lighting.ColorShift_Top = Color3.fromRGB(220, 215, 210):Lerp(Color3.fromRGB(200, 130, 80), alpha)
-		Lighting.ColorShift_Bottom = Color3.fromRGB(160, 165, 175):Lerp(Color3.fromRGB(110, 75, 120), alpha)
-		atmosphere.Density = math.clamp(0.35 + alpha * 0.25, 0.35, 0.60)
-		atmosphere.Color = Color3.fromRGB(150, 165, 175):Lerp(Color3.fromRGB(190, 130, 100), alpha)
-		Lighting.FogStart = math.clamp(FOG_START_STUDS - alpha * 60, 90, FOG_START_STUDS)
-		Lighting.FogEnd = math.clamp(FOG_END_STUDS - alpha * 150, 550, FOG_END_STUDS)
-		Lighting.FogColor = Color3.fromRGB(150, 160, 170):Lerp(Color3.fromRGB(140, 110, 120), alpha)
+	elseif clockTime >= 8.5 and clockTime < 16.5 then
+		-- MIDDAY: Crisp, bright stylized daylight
+		Lighting.Brightness = 2.6
+		Lighting.OutdoorAmbient = Color3.fromRGB(195, 205, 218)
+		Lighting.Ambient = Color3.fromRGB(145, 155, 168)
+		Lighting.ColorShift_Top = Color3.fromRGB(255, 250, 242)
+		Lighting.ColorShift_Bottom = Color3.fromRGB(175, 180, 188)
+		atmosphere.Density = 0.15
+		atmosphere.Haze = 0.18
+		Lighting.FogStart = FOG_START_STUDS
+		Lighting.FogEnd = FOG_END_STUDS
+		Lighting.FogColor = Color3.fromRGB(195, 220, 240)
+		colorCorrection.Saturation = 0.10
+		colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
+
+	elseif clockTime >= 16.5 and clockTime < 19.5 then
+		-- DUSK: Warm martial golden hour
+		local alpha = (clockTime - 16.5) / 3.0
+		Lighting.Brightness = 2.6 - (alpha * 0.8)
+		Lighting.OutdoorAmbient = Color3.fromRGB(195, 205, 218):Lerp(Color3.fromRGB(160, 130, 130), alpha)
+		Lighting.Ambient = Color3.fromRGB(145, 155, 168):Lerp(Color3.fromRGB(110, 85, 95), alpha)
+		Lighting.ColorShift_Top = Color3.fromRGB(255, 250, 242):Lerp(Color3.fromRGB(255, 175, 100), alpha)
+		Lighting.ColorShift_Bottom = Color3.fromRGB(175, 180, 188):Lerp(Color3.fromRGB(150, 100, 130), alpha)
+		atmosphere.Density = 0.18
+		atmosphere.Haze = 0.35
+		Lighting.FogStart = FOG_START_STUDS - 100
+		Lighting.FogEnd = FOG_END_STUDS - 200
+		Lighting.FogColor = Color3.fromRGB(235, 175, 145)
+		colorCorrection.Saturation = 0.12
 
 	else
-		-- MOONLIT NIGHT (19:00 - 06:00) — deep blue-grey, faint mist glow, sword-cultivator-at-night mood
-		Lighting.Brightness = 0.75
-		Lighting.OutdoorAmbient = Color3.fromRGB(50, 60, 85)
-		Lighting.Ambient = Color3.fromRGB(35, 40, 60)
-		Lighting.ColorShift_Top = Color3.fromRGB(90, 110, 160)
-		Lighting.ColorShift_Bottom = Color3.fromRGB(35, 40, 65)
-		atmosphere.Density = 0.50
-		atmosphere.Color = Color3.fromRGB(45, 55, 85)
-		Lighting.FogStart = 80
-		Lighting.FogEnd = 450
-		Lighting.FogColor = Color3.fromRGB(30, 35, 55)
+		-- 🚀 CELESTIAL MOONLIT NIGHT (High Visibility, Zero Pitch-Black Darkness)
+		Lighting.Brightness = 1.9 -- High brightness powered by full moon
+		Lighting.OutdoorAmbient = Color3.fromRGB(118, 138, 178) -- Luminous blue-gray ambient light
+		Lighting.Ambient = Color3.fromRGB(95, 112, 145)
+		Lighting.ColorShift_Top = Color3.fromRGB(175, 210, 255) -- Cool celestial moonbeams
+		Lighting.ColorShift_Bottom = Color3.fromRGB(75, 88, 115)
+		atmosphere.Density = 0.15 -- Clear, crisp atmosphere (no dark fog smog)
+		atmosphere.Haze = 0.15
+		Lighting.FogStart = 750 -- Pushed far away
+		Lighting.FogEnd = 2000
+		Lighting.FogColor = Color3.fromRGB(90, 115, 160) -- Glowing night-sky fog
+		colorCorrection.Saturation = 0.12 -- Keeps world colorful under moonlight
+		colorCorrection.TintColor = Color3.fromRGB(240, 245, 255)
 	end
 end
 

@@ -31,7 +31,8 @@ local CONTROLLER_NAMES = {
 	"TeaHouseController",
 	"StarterGuideController",
 	"SparringGuidanceController",
-	"CharacterStatsController", 
+	"CharacterStatsController",
+	"MusicController", -- 🚀 New Dynamic Proximity Combat BGM Controller
 }
 
 local function InitializeClient()
@@ -52,7 +53,7 @@ local function InitializeClient()
 		end
 	end
 
-	print("[ASCEND] All Client Controllers Initialized Concurrently (Including Lower Layer Facilities).")
+	print("[ASCEND] All Client Controllers Initialized Concurrently (Including Dynamic Combat Music).")
 end
 
 InitializeClient()

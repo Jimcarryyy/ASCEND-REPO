@@ -9,12 +9,15 @@
       4. Slash VFX with Procedural Slashmark Fallback (Guaranteed split-second hitmark)
       5. Camera Impact Shudder & Screen Hit Flash on Damage Received
       6. Parry Clashes, Block Sparks & Blade Impact Audio (Full Mob & Player Support)
+      7. Heavenly Tribulation Lightning Bolts, Ground Telegraphs & Ascension Light Pillars
+      8. 🚀 Interactive Martial Trees: Pure High-Frequency Shudder & Fluttering Leaves (Verified Audio)
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -33,9 +36,16 @@ local SWING_AIR_SOUND_ID = "rbxassetid://79218449800283"
 local HIT_IMPACT_SOUND_ID = "rbxassetid://135448977656112"
 local PARRY_CLASH_SOUND_ID = "rbxassetid://9114223175"
 local SLASH_RELEASE_SFX = "rbxassetid://109735549169421"
+local THUNDER_STRIKE_SFX = "rbxassetid://138090596"
+local ASCENSION_GONG_SFX = "rbxassetid://131237241"
+local TREE_RUSTLE_SFX = "rbxassetid://566593606" -- Verified wood/foliage impact sound
 
 local shakeIntensity = 0
 local shakeDecay = 8
+
+-- Tree Vibration Cache (Guarantees zero cumulative drift and zero tipping)
+local treeOriginalPivots: { [Model]: CFrame } = {}
+local treeIsVibrating: { [Model]: boolean } = {}
 
 local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 	local soundPart = Instance.new("Part")
@@ -55,9 +65,12 @@ local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 	sound.RollOffMinDistance = 5
 	sound.Parent = soundPart
 
-	sound:Play()
 	sound.Ended:Connect(function()
 		soundPart:Destroy()
+	end)
+
+	pcall(function()
+		sound:Play()
 	end)
 
 	Debris:AddItem(soundPart, 2.5)
@@ -73,11 +86,128 @@ local function ScaleParticleSize(pe: ParticleEmitter, factor: number)
 end
 
 function CombatVFXController.AddCameraShake(intensity: number)
+	if player:GetAttribute("CombatCameraShake") == false then return end
 	shakeIntensity = math.clamp(shakeIntensity + intensity, 0, 1.8)
 end
 
 -- =============================================================================
--- VISCERAL HIT FEEDBACK: CAMERA SHUDDER & SCREEN HIT FLASH
+-- INTERACTIVE TREE VIBRATION & FALLING LEAVES (ZERO TIPPING)
+-- =============================================================================
+function CombatVFXController.TriggerTreeReaction(tree: Model, strikeOrigin: Vector3)
+	if treeIsVibrating[tree] then return end
+	treeIsVibrating[tree] = true
+
+	local origPivot = treeOriginalPivots[tree]
+	if not origPivot then
+		origPivot = tree:GetPivot()
+		treeOriginalPivots[tree] = origPivot
+	end
+
+	local primary = tree.PrimaryPart or tree:FindFirstChildWhichIsA("BasePart")
+	if not primary then
+		treeIsVibrating[tree] = nil
+		return
+	end
+
+	local bbCFrame, bbSize = tree:GetBoundingBox()
+	local canopyTop = bbCFrame.Position + Vector3.new(0, bbSize.Y * 0.35, 0)
+
+	-- 1. Read canopy color to dynamically tint the leaves
+	local leafColor = Color3.fromRGB(52, 211, 153)
+	for _, child in ipairs(tree:GetChildren()) do
+		if child:IsA("BasePart") and not string.find(child.Name:lower(), "trunk") then
+			leafColor = child.Color
+			break
+		end
+	end
+
+	-- 2. Emit Falling Leaves from Canopy
+	local leafEmitterPart = Instance.new("Part")
+	leafEmitterPart.Name = "TreeLeafEmitter"
+	leafEmitterPart.Position = canopyTop
+	leafEmitterPart.Size = Vector3.new(bbSize.X * 0.7, 1, bbSize.Z * 0.7)
+	leafEmitterPart.Transparency = 1
+	leafEmitterPart.Anchored = true
+	leafEmitterPart.CanCollide = false
+	leafEmitterPart.CanTouch = false
+	leafEmitterPart.CanQuery = false
+	leafEmitterPart.Parent = workspace
+
+	local leaves = Instance.new("ParticleEmitter")
+	leaves.Texture = "rbxassetid://258127045"
+	leaves.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0.0, leafColor),
+		ColorSequenceKeypoint.new(1.0, leafColor:Lerp(Color3.fromRGB(255, 255, 255), 0.2)),
+	})
+	leaves.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0.0, 0.75),
+		NumberSequenceKeypoint.new(0.8, 0.65),
+		NumberSequenceKeypoint.new(1.0, 0.0),
+	})
+	leaves.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0.0, 0.1),
+		NumberSequenceKeypoint.new(0.8, 0.2),
+		NumberSequenceKeypoint.new(1.0, 1.0),
+	})
+	leaves.Lifetime = NumberRange.new(1.8, 2.6)
+	leaves.Rate = 0
+	leaves.Speed = NumberRange.new(2, 6)
+	leaves.Acceleration = Vector3.new(math.random(-3, 3), -12, math.random(-3, 3))
+	leaves.Rotation = NumberRange.new(0, 360)
+	leaves.RotSpeed = NumberRange.new(-75, 75)
+	leaves.SpreadAngle = Vector2.new(180, 180)
+	leaves.Parent = leafEmitterPart
+
+	leaves:Emit(math.random(14, 22))
+	Debris:AddItem(leafEmitterPart, 3.0)
+
+	Play3DSound(TREE_RUSTLE_SFX, canopyTop, 0.85)
+
+	-- 3. Pure Lateral Vibration Shudder (Zero Angular Tilt, Zero Tipping)
+	task.spawn(function()
+		local duration = 0.20
+		local elapsed = 0
+		local maxJitter = 0.22 -- studs of lateral vibration
+
+		while elapsed < duration do
+			local dt = RunService.RenderStepped:Wait()
+			elapsed += dt
+			local damp = 1 - (elapsed / duration)
+			local jitterOffset = Vector3.new(
+				(math.random() * 2 - 1) * maxJitter * damp,
+				0,
+				(math.random() * 2 - 1) * maxJitter * damp
+			)
+			if tree.Parent then
+				tree:PivotTo(origPivot + jitterOffset)
+			end
+		end
+
+		if tree.Parent then
+			tree:PivotTo(origPivot)
+		end
+		task.wait(0.15)
+		treeIsVibrating[tree] = nil
+	end)
+end
+
+function CombatVFXController.CheckAndTriggerNearbyTrees(strikePos: Vector3, radius: number)
+	local taggedTrees = CollectionService:GetTagged("InteractiveTree")
+	for _, inst in ipairs(taggedTrees) do
+		if inst:IsA("Model") then
+			local primary = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+			if primary then
+				local dist = (primary.Position - strikePos).Magnitude
+				if dist <= radius then
+					CombatVFXController.TriggerTreeReaction(inst, strikePos)
+				end
+			end
+		end
+	end
+end
+
+-- =============================================================================
+-- COMBAT RESOLUTION & HIT FEEDBACK
 -- =============================================================================
 function CombatVFXController.OnLocalPlayerDamaged(damage: number, isCrit: boolean)
 	CombatVFXController.AddCameraShake(if isCrit then 1.1 else 0.85)
@@ -90,7 +220,6 @@ function CombatVFXController.OnLocalPlayerDamaged(damage: number, isCrit: boolea
 		end)
 	end
 
-	-- Screen Hit Flash Indicator
 	task.spawn(function()
 		local playerGui = player:FindFirstChildOfClass("PlayerGui")
 		if not playerGui then return end
@@ -123,8 +252,120 @@ function CombatVFXController.OnLocalPlayerDamaged(damage: number, isCrit: boolea
 end
 
 -- =============================================================================
--- SLASH HITMARK GENERATOR (WITH AUTOMATIC PROCEDURAL FALLBACK)
+-- HEAVENLY TRIBULATION & ASCENSION VFX SUITE
 -- =============================================================================
+function CombatVFXController.SpawnTribulationTelegraph(pos: Vector3, duration: number, auraColor: Color3)
+	local ring = Instance.new("Part")
+	ring.Name = "TribulationTelegraphRing"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.2, 2.0, 2.0)
+	ring.CFrame = CFrame.new(pos + Vector3.new(0, 0.1, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Color = auraColor
+	ring.Material = Enum.Material.Neon
+	ring.Transparency = 0.4
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanTouch = false
+	ring.Parent = workspace
+
+	local tween = TweenService:Create(ring, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.2, 10.0, 10.0),
+		Transparency = 0.1,
+	})
+	tween:Play()
+	tween.Completed:Connect(function()
+		ring:Destroy()
+	end)
+
+	Debris:AddItem(ring, duration + 0.2)
+end
+
+function CombatVFXController.SpawnTribulationStrike(targetPos: Vector3, auraColor: Color3)
+	local cloudHeight = 24
+	local bolt = Instance.new("Part")
+	bolt.Name = "TribulationLightningBolt"
+	bolt.Size = Vector3.new(1.2, cloudHeight, 1.2)
+	bolt.CFrame = CFrame.new(targetPos + Vector3.new(0, cloudHeight / 2, 0))
+	bolt.Color = auraColor
+	bolt.Material = Enum.Material.Neon
+	bolt.Anchored = true
+	bolt.CanCollide = false
+	bolt.CanTouch = false
+	bolt.Parent = workspace
+
+	Play3DSound(THUNDER_STRIKE_SFX, targetPos, 2.5)
+	CombatVFXController.AddCameraShake(1.2)
+
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Texture = "rbxassetid://242200234"
+	sparks.Color = ColorSequence.new(auraColor)
+	sparks.Size = NumberSequence.new(0.8, 0)
+	sparks.Lifetime = NumberRange.new(0.2, 0.4)
+	sparks.Rate = 0
+	sparks.Speed = NumberRange.new(20, 45)
+	sparks.SpreadAngle = Vector2.new(180, 180)
+	sparks.Parent = bolt
+	sparks:Emit(35)
+
+	local fadeTween = TweenService:Create(bolt, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(2.4, cloudHeight, 2.4),
+		Transparency = 1,
+	})
+	fadeTween:Play()
+	fadeTween.Completed:Connect(function()
+		bolt:Destroy()
+	end)
+
+	Debris:AddItem(bolt, 0.5)
+end
+
+function CombatVFXController.SpawnAscensionPillar(pos: Vector3, auraColor: Color3)
+	local pillar = Instance.new("Part")
+	pillar.Name = "AscensionLightPillar"
+	pillar.Shape = Enum.PartType.Cylinder
+	pillar.Size = Vector3.new(80, 4, 4)
+	pillar.CFrame = CFrame.new(pos + Vector3.new(0, 38, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	pillar.Color = auraColor
+	pillar.Material = Enum.Material.Neon
+	pillar.Transparency = 0.2
+	pillar.Anchored = true
+	pillar.CanCollide = false
+	pillar.CanTouch = false
+	pillar.Parent = workspace
+
+	Play3DSound(ASCENSION_GONG_SFX, pos, 3.0)
+	CombatVFXController.AddCameraShake(1.5)
+
+	local shockwave = Instance.new("Part")
+	shockwave.Name = "AscensionShockwave"
+	shockwave.Shape = Enum.PartType.Cylinder
+	shockwave.Size = Vector3.new(0.3, 3, 3)
+	shockwave.CFrame = CFrame.new(pos + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	shockwave.Color = auraColor
+	shockwave.Material = Enum.Material.Neon
+	shockwave.Anchored = true
+	shockwave.CanCollide = false
+	shockwave.Parent = workspace
+
+	TweenService:Create(shockwave, TweenInfo.new(0.85, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.3, 36, 36),
+		Transparency = 1,
+	}):Play()
+
+	local pillarTween = TweenService:Create(pillar, TweenInfo.new(2.0, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		Size = Vector3.new(80, 16, 16),
+		Transparency = 1,
+	})
+	pillarTween:Play()
+	pillarTween.Completed:Connect(function()
+		pillar:Destroy()
+		shockwave:Destroy()
+	end)
+
+	Debris:AddItem(pillar, 2.5)
+	Debris:AddItem(shockwave, 1.0)
+end
+
 function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFrame: CFrame?, weaponId: string?)
 	local palette = ItemConfig.GetWeaponPalette(weaponId)
 
@@ -155,7 +396,6 @@ function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFra
 			end
 		end
 	else
-		-- PROCEDURAL SPLIT-SECOND BLADE SLASHMARK & SPARK BURST
 		local slashMesh = Instance.new("Part")
 		slashMesh.Name = "ProceduralSlashSlice"
 		slashMesh.Size = Vector3.new(4.2, 0.15, 0.15)
@@ -399,8 +639,41 @@ function CombatVFXController.Init()
 		local isLocal = (attacker == player)
 		local weaponId = attackerChar and attackerChar:GetAttribute("EquippedWeapon") :: string?
 
-		if skillKey == "M1" and attacker ~= player and attacker ~= nil then
-			Play3DSound(SWING_AIR_SOUND_ID, origin, 0.7)
+		-- 1. Heavenly Tribulation Telegraph Warning Circle
+		if skillKey == "TribulationTelegraph" and type(payload) == "table" and payload.TargetPosition then
+			CombatVFXController.SpawnTribulationTelegraph(
+				payload.TargetPosition,
+				payload.TelegraphTime or 1.2,
+				payload.AuraColor or Color3.fromRGB(0, 220, 255)
+			)
+			return
+		end
+
+		-- 2. Heavenly Tribulation Lightning Strike
+		if skillKey == "TribulationStrike" and type(payload) == "table" and payload.TargetPosition then
+			CombatVFXController.SpawnTribulationStrike(
+				payload.TargetPosition,
+				payload.AuraColor or Color3.fromRGB(0, 220, 255)
+			)
+			if payload.Damage and payload.Damage > 0 then
+				CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, true, payload.AuraColor, "TRIBULATION!")
+			end
+			return
+		end
+
+		-- 3. Grand Ascension Light Pillar Burst
+		if skillKey == "AscensionBurst" and type(payload) == "table" then
+			local burstPos = if hrp then hrp.Position else (player.Character and player.Character:GetPivot().Position or Vector3.zero)
+			CombatVFXController.SpawnAscensionPillar(burstPos, payload.AuraColor or Color3.fromRGB(255, 215, 0))
+			return
+		end
+
+		-- 4. Martial Attacks & Dynamic Tree Interactions
+		if skillKey == "M1" then
+			if attacker ~= player and attacker ~= nil then
+				Play3DSound(SWING_AIR_SOUND_ID, origin, 0.7)
+			end
+			CombatVFXController.CheckAndTriggerNearbyTrees(origin, 14)
 		end
 
 		if skillKey == "Q" and hrp then
@@ -409,17 +682,21 @@ function CombatVFXController.Init()
 				aimDir = payload.AimDirection
 			end
 			CombatVFXController.SpawnTriplePurpleTwirl(hrp.Position, aimDir, isLocal, weaponId)
+			CombatVFXController.CheckAndTriggerNearbyTrees(origin, 26)
 		end
 
 		if skillKey == "F" then
 			local spherePos = if type(payload) == "table" and payload.Origin then payload.Origin else (origin + Vector3.new(0, -0.4, 0))
 			CombatVFXController.SpawnUltimateSlashSphere(spherePos, isLocal, weaponId)
+			CombatVFXController.CheckAndTriggerNearbyTrees(spherePos, 32)
 		end
 
-		-- Hits, Damage Popups & Full Audio/Slash VFX (Supports both Player & Mob Attacks)
+		-- Hits, Damage Popups & Full Audio/Slash VFX
 		if type(payload) == "table" and payload.HasHit == true and payload.TargetPosition ~= nil then
 			local targetPos: Vector3 = payload.TargetPosition
 			local hitOrientation = if hrp then hrp.CFrame else (payload.AttackerCFrame or nil)
+
+			CombatVFXController.CheckAndTriggerNearbyTrees(targetPos, 12)
 
 			if payload.Hits then
 				for _, hitData in ipairs(payload.Hits) do
@@ -442,7 +719,6 @@ function CombatVFXController.Init()
 				CombatVFXController.AddCameraShake(0.20)
 				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, false, Color3.fromRGB(175, 195, 220), "BLOCKED")
 			else
-				-- Play blade flesh impact sound and spawn chest slash hitmarks
 				Play3DSound(HIT_IMPACT_SOUND_ID, targetPos, 1.3)
 				CombatVFXController.SpawnSlashHitVFX(targetPos, hitOrientation, weaponId)
 
@@ -489,7 +765,7 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (Procedural Slashmark Fallback, Audio Impact & Screen Flash Active).")
+	print("[ASCEND] CombatVFXController Initialized (Martial Tree Micro-Vibration Active).")
 end
 
 function CombatVFXController.ApplyHitstop(duration: number)

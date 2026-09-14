@@ -3,14 +3,16 @@
     InventoryController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
     Directly bound to StarterGui.SpiritPouchInventoryGui:
+    - Dedicated 'Tab' and 'I' Keybinds (CoreGui PlayerList suppressed)
     - Dual-device adaptive grid: 6 slots/row on PC ({0, 100}, {0, 100}), 4 slots/row on Phone ({0, 56}, {0, 56})
     - 2D High-Resolution Weapon Showcase for all 8 Sword Tiers (Replaces 3D ViewportFrames)
     - Full Support for Divine and Immortal tier rarities
     - Key Normalization Fix: Guarantees saved DataStore items display immediately on login
-    - Integrated Panel Click Audio (rbxassetid://138567614125924)
+    - Universal Panel Click Audio (rbxassetid://138567614125924)
 ]]
 
 local Players = game:GetService("Players")
+local StarterGui = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -33,7 +35,7 @@ local itemsFolder = ReplicatedStorage:FindFirstChild("Items") or ReplicatedStora
 local inventoryActionRemote: RemoteEvent
 local updateInventoryRemote: RemoteEvent
 
--- Panel Click Audio
+-- Universal Panel Click Audio
 local PANEL_CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
 
 local function PlayPanelClickSFX()
@@ -142,9 +144,6 @@ local function GetItemIconAsset(itemId: string): string?
 	return nil
 end
 
--- =============================================================================
--- FUZZY SPACE-INSENSITIVE 3D MODEL RESOLVER (For non-weapon models)
--- =============================================================================
 local function Find3DItemModel(itemId: string): Instance?
 	local cleanTarget = itemId:gsub("%s+", ""):lower()
 
@@ -174,9 +173,6 @@ local function Find3DItemModel(itemId: string): Instance?
 	return nil
 end
 
--- =============================================================================
--- 3D VIEWPORT RENDERER
--- =============================================================================
 local function Setup3DViewport(viewport: ViewportFrame, itemModel: Instance, spin: boolean): (() -> ())?
 	viewport:ClearAllChildren()
 
@@ -246,6 +242,17 @@ end
 function InventoryController.Init()
 	inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
 	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
+
+	-- 🚀 Disable default CoreGui PlayerList so Tab is exclusively claimed by the Spirit Pouch
+	task.spawn(function()
+		for attempt = 1, 6 do
+			local success = pcall(function()
+				StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
+			end)
+			if success then break end
+			task.wait(0.2)
+		end
+	end)
 
 	screenGui = playerGui:WaitForChild("SpiritPouchInventoryGui", 10) :: ScreenGui
 	if not screenGui then
@@ -430,14 +437,17 @@ function InventoryController.Init()
 		inventoryActionRemote:FireServer({ Action = "RequestSync" })
 	end)
 
+	-- 🚀 Bypasses default Roblox PlayerList/Camera consumption while respecting active text boxes
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-		if gameProcessed then return end
+		if UserInputService:GetFocusedTextBox() ~= nil then return end
+
 		if input.KeyCode == Enum.KeyCode.Tab or input.KeyCode == Enum.KeyCode.I then
+			PlayPanelClickSFX()
 			InventoryController.Toggle()
 		end
 	end)
 
-	print("[ASCEND] InventoryController Initialized (2D High-Res Weapon Icons Active).")
+	print("[ASCEND] InventoryController Initialized ('Tab' and 'I' Keybinds Active).")
 end
 
 -- =============================================================================
@@ -494,6 +504,7 @@ end
 
 function InventoryController.Open()
 	isOpen = true
+	PlayPanelClickSFX()
 	screenGui.Enabled = true
 	mainFrame.Visible = true
 	if overlayBackdrop then overlayBackdrop.Visible = true end
@@ -506,6 +517,7 @@ end
 function InventoryController.Close()
 	if not isOpen then return end
 	isOpen = false
+	PlayPanelClickSFX()
 	screenGui.Enabled = false
 	mainFrame.Visible = false
 	if overlayBackdrop then overlayBackdrop.Visible = false end
@@ -644,7 +656,6 @@ function InventoryController.RenderGrid()
 				itemIcon.Visible = true
 			end
 		else
-			-- Fallback 3D Model Check for Non-Weapons
 			local item3DModel = Find3DItemModel(entry.ItemId)
 			if item3DModel then
 				if itemIcon then itemIcon.Visible = false end
@@ -713,7 +724,7 @@ function InventoryController.RenderGrid()
 end
 
 -- =============================================================================
--- UPDATE INSPECTION CARD (2D WEAPON ASSET PREVIEW)
+-- UPDATE INSPECTION CARD
 -- =============================================================================
 function InventoryController.UpdateInspection(itemDef: any, count: number, quality: string?)
 	if not itemDef then
@@ -738,7 +749,6 @@ function InventoryController.UpdateInspection(itemDef: any, count: number, quali
 	local iconAsset = GetItemIconAsset(itemDef.Id or itemDef.Name)
 
 	if isWeapon and iconAsset then
-		-- 2D Image Showcase for Weapons
 		if inspectionViewport then
 			inspectionViewport.Visible = false
 			inspectionViewport:ClearAllChildren()
@@ -750,7 +760,6 @@ function InventoryController.UpdateInspection(itemDef: any, count: number, quali
 			itemIconLarge.Visible = true
 		end
 	else
-		-- 3D Fallback for Non-Weapons
 		local item3DModel = Find3DItemModel(itemDef.Id or itemDef.Name)
 		if item3DModel and inspectionViewport then
 			if itemIconLarge then itemIconLarge.Visible = false end

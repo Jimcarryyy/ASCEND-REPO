@@ -3,8 +3,11 @@
     Animate.client.luau
     Location: src/StarterPlayer/StarterCharacterScripts/Animate.client.luau
     Master R6 Movement Animation & Audio Sync Engine for ASCEND.
-    Features: Rock-solid Idle Yaw Pinning, Anti-ragdoll protection, clean locomotion audio,
-    and complete Flight Mode isolation (zero running animations/sounds during flight + instant fall on dismount).
+    Features:
+      - Rock-solid Idle Yaw Pinning & Anti-ragdoll protection
+      - 🚀 Dynamic Surface Running Audio: Switches between Grass (rbxassetid://92240090015142) and Stone
+      - Flight Mode isolation (zero running animations/sounds during flight + instant fall on dismount)
+      - Complete meditation locomotion suppression
 ]]
 
 local Character = script.Parent :: Model
@@ -36,8 +39,9 @@ Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
 Humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
 
 -- Custom Looped Movement Audio IDs
-local WALK_SOUND_ID = "rbxassetid://4416041299"       -- 5.851s Looped Walk Audio
-local RUN_SOUND_ID  = "rbxassetid://79250663775359" -- 4.284s Looped Run Audio
+local WALK_SOUND_ID       = "rbxassetid://4416041299"       -- 5.851s Looped Walk Audio
+local RUN_STONE_SOUND_ID  = "rbxassetid://79250663775359" -- Looped Stone/Hard Surface Run Audio
+local RUN_GRASS_SOUND_ID  = "rbxassetid://92240090015142" -- Dynamic Grass Run Audio
 
 local currentLocomotionState = "None"
 local activeLocomotionTrack: AnimationTrack? = nil
@@ -56,12 +60,19 @@ customWalkSound.Looped = true
 customWalkSound.Volume = 0.65
 customWalkSound.Parent = RootPart
 
-local customRunSound = Instance.new("Sound")
-customRunSound.Name = "CustomRunAudio"
-customRunSound.SoundId = RUN_SOUND_ID
-customRunSound.Looped = true
-customRunSound.Volume = 0.75
-customRunSound.Parent = RootPart
+local customRunStoneSound = Instance.new("Sound")
+customRunStoneSound.Name = "CustomRunStoneAudio"
+customRunStoneSound.SoundId = RUN_STONE_SOUND_ID
+customRunStoneSound.Looped = true
+customRunStoneSound.Volume = 0.75
+customRunStoneSound.Parent = RootPart
+
+local customRunGrassSound = Instance.new("Sound")
+customRunGrassSound.Name = "CustomRunGrassAudio"
+customRunGrassSound.SoundId = RUN_GRASS_SOUND_ID
+customRunGrassSound.Looped = true
+customRunGrassSound.Volume = 0.75
+customRunGrassSound.Parent = RootPart
 
 -- Mute Roblox's Default Running Sound
 task.spawn(function()
@@ -185,7 +196,32 @@ SetLocomotionState("Idle")
 
 local function StopMovementAudio()
 	if customWalkSound.IsPlaying then customWalkSound:Stop() end
-	if customRunSound.IsPlaying then customRunSound:Stop() end
+	if customRunStoneSound.IsPlaying then customRunStoneSound:Stop() end
+	if customRunGrassSound.IsPlaying then customRunGrassSound:Stop() end
+end
+
+-- =============================================================================
+-- DYNAMIC SURFACE RUNNING AUDIO CONTROLLER
+-- =============================================================================
+local function IsGrassSurface(mat: Enum.Material): boolean
+	return mat == Enum.Material.Grass
+		or mat == Enum.Material.LeafyGrass
+		or mat == Enum.Material.Ground
+		or mat == Enum.Material.Mud
+end
+
+local function PlayActiveRunAudio()
+	local onGrass = IsGrassSurface(Humanoid.FloorMaterial)
+
+	if onGrass then
+		if customRunStoneSound.IsPlaying then customRunStoneSound:Stop() end
+		customRunGrassSound.PlaybackSpeed = 1.0
+		if not customRunGrassSound.IsPlaying then customRunGrassSound:Play() end
+	else
+		if customRunGrassSound.IsPlaying then customRunGrassSound:Stop() end
+		customRunStoneSound.PlaybackSpeed = 1.0
+		if not customRunStoneSound.IsPlaying then customRunStoneSound:Play() end
+	end
 end
 
 local function StopAllLocomotionTracks()
@@ -209,7 +245,6 @@ Character:GetAttributeChangedSignal("IsFlying"):Connect(function()
 	if isFlying then
 		StopAllLocomotionTracks()
 	else
-		-- If in air when dismounting, trigger falling animation immediately!
 		if Humanoid.FloorMaterial == Enum.Material.Air or Humanoid:GetState() == Enum.HumanoidStateType.Freefall then
 			SetLocomotionState("Fall")
 		else
@@ -298,7 +333,7 @@ Humanoid.StateChanged:Connect(function(_, newState)
 	end
 end)
 
--- Continuous Locomotion Loop with Flight, Meditation & Combat Movement Suppression
+-- Continuous Locomotion Loop
 RunService.RenderStepped:Connect(function()
 	if not Character.Parent or not Humanoid.Parent or not RootPart then return end
 
@@ -340,11 +375,12 @@ RunService.RenderStepped:Connect(function()
 		if isSprinting then
 			SetLocomotionState("Run")
 			if customWalkSound.IsPlaying then customWalkSound:Stop() end
-			customRunSound.PlaybackSpeed = 1.0
-			if not customRunSound.IsPlaying then customRunSound:Play() end
+			-- 🚀 Dynamic Grass vs Stone Surface Audio Selection
+			PlayActiveRunAudio()
 		else
 			SetLocomotionState("Walk")
-			if customRunSound.IsPlaying then customRunSound:Stop() end
+			if customRunStoneSound.IsPlaying then customRunStoneSound:Stop() end
+			if customRunGrassSound.IsPlaying then customRunGrassSound:Stop() end
 			customWalkSound.PlaybackSpeed = math.clamp(Humanoid.WalkSpeed / 18.0, 0.8, 1.4)
 			if not customWalkSound.IsPlaying then customWalkSound:Play() end
 		end

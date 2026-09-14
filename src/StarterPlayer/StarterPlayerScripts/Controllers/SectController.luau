@@ -2,15 +2,16 @@
 --[[
     SectController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SectController.luau
-    Client UI controller for the Sect Elder Pavilion (青云宗务堂):
+    Client UI controller for the Sect Elder Pavilion:
+    - 'M' Keybind shortcut to toggle Sect Duties & Stipend from anywhere
     - Instant ProximityPrompt trigger for Deacon Zhao & Notice Board
     - Robust hierarchy finding for MainFrame inside OverlayBackdrop
-    - DisplayOrder = 50 modal layering
     - Full sync for Disciple profile, Daily Stipends, Promotions, and 3-Tier Duties
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local SoundService = game:GetService("SoundService")
 
@@ -85,7 +86,6 @@ local liveQuestsData: { [string]: any } = {}
 local isOpen: boolean = false
 local isInitialized: boolean = false
 
--- Ordered Quest List Key Mapping
 local QUEST_INDEX_ORDER = {
 	[1] = "Quest_GatherSpiritGrass",
 	[2] = "Quest_RefineDan",
@@ -121,24 +121,17 @@ local function EnsureUI(): boolean
 	screenGui.IgnoreGuiInset = true
 
 	overlayBackdrop = screenGui:FindFirstChild("OverlayBackdrop") :: Frame?
-	
-	-- Robust MainFrame Resolution (Handles both direct child and nested in OverlayBackdrop)
 	mainFrame = (screenGui:FindFirstChild("MainFrame") or (overlayBackdrop and overlayBackdrop:FindFirstChild("MainFrame")) or screenGui:FindFirstChildWhichIsA("Frame", true)) :: Frame?
 	if not mainFrame then return false end
 	mainFrame.Active = true
 
-	-- Header Frame & Close Button
 	headerFrame = mainFrame:FindFirstChild("HeaderFrame") :: Frame?
 	if headerFrame then
 		closeButton = (headerFrame:FindFirstChild("CloseImageButton") or headerFrame:FindFirstChildWhichIsA("GuiButton")) :: GuiButton?
 	end
 
-	-- =========================================================================
-	-- LEFT COLUMN (FirstFrame)
-	-- =========================================================================
 	firstFrame = mainFrame:FindFirstChild("FirstFrame") :: Frame?
 	if firstFrame then
-		-- SubFrame1: Profile Card
 		local sub1 = firstFrame:FindFirstChild("SubFrame1") :: Frame?
 		if sub1 then
 			local discipleFrame = sub1:FindFirstChild("DiscipleFrame") :: Frame?
@@ -149,7 +142,6 @@ local function EnsureUI(): boolean
 			end
 		end
 
-		-- SubFrame2: Daily Stipend
 		local sub2 = firstFrame:FindFirstChild("SubFrame2") :: Frame?
 		if sub2 then
 			stipendDescription = sub2:FindFirstChild("RewardDescription") :: TextLabel?
@@ -159,7 +151,6 @@ local function EnsureUI(): boolean
 			end
 		end
 
-		-- SubFrame3: Promotion
 		local sub3 = firstFrame:FindFirstChild("SubFrame3") :: Frame?
 		if sub3 then
 			promotionButton = (sub3:FindFirstChild("ImageButton") or sub3:FindFirstChildWhichIsA("GuiButton")) :: GuiButton?
@@ -169,9 +160,6 @@ local function EnsureUI(): boolean
 		end
 	end
 
-	-- =========================================================================
-	-- RIGHT COLUMN (SecondFrame - 3 Quest Cards)
-	-- =========================================================================
 	secondFrame = mainFrame:FindFirstChild("SecondFrame") :: Frame?
 	table.clear(questCards)
 
@@ -218,9 +206,6 @@ local function EnsureUI(): boolean
 		end
 	end
 
-	-- =========================================================================
-	-- BIND BUTTON INTERACTIONS
-	-- =========================================================================
 	if closeButton then
 		closeButton.Activated:Connect(function()
 			PlayPanelClickSFX()
@@ -260,10 +245,18 @@ end
 
 function SectController.Init()
 	EnsureUI()
-
 	sectRemote = RemoteEvents.GetRemote("SectAction")
 
-	-- 1. Client Proximity Prompt Listener for Deacon Zhao
+	-- 1. 'M' Keybind Listener
+	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+		if gameProcessed then return end
+		if input.KeyCode == Enum.KeyCode.M then
+			PlayPanelClickSFX()
+			SectController.Toggle()
+		end
+	end)
+
+	-- 2. ProximityPrompt Listener
 	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, triggeringPlayer: Player)
 		if triggeringPlayer == player then
 			local action = prompt.ActionText:lower()
@@ -275,7 +268,7 @@ function SectController.Init()
 		end
 	end)
 
-	-- 2. Server Event Listener
+	-- 3. Server Event Listener
 	sectRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" or not payload.Action then return end
 
@@ -308,7 +301,7 @@ function SectController.Init()
 		sectRemote:FireServer({ Action = "RequestSectData" })
 	end)
 
-	print("[ASCEND] SectController Initialized (Client ProximityPrompt & Server Sync Active).")
+	print("[ASCEND] SectController Initialized ('M' Keybind Active).")
 end
 
 function SectController.Open()
@@ -339,15 +332,11 @@ function SectController.Toggle()
 	end
 end
 
--- =============================================================================
--- UPDATE LIVE UI WITH REAL DATASTORE & SECT VALUES
--- =============================================================================
 function SectController.UpdateUI()
 	if not isInitialized then EnsureUI() end
 
 	local rankDef = SectConfig.GetRank(currentRankId :: any)
 
-	-- 1. Profile Card
 	if discipleUserName then
 		discipleUserName.Text = player.DisplayName:upper()
 	end
@@ -378,12 +367,10 @@ function SectController.UpdateUI()
 	local nextRankDef = SectConfig.GetRank(nextRankId :: any)
 	local targetCP = math.max(1, nextRankDef.RequiredContribution or 500)
 
-	-- 2. Daily Stipend Info
 	if stipendDescription then
 		stipendDescription.Text = string.format("%d Spirit Stones + Daily Dan", rankDef.DailyStipendStones or 100)
 	end
 
-	-- 3. Promotion Button State
 	local isHighestRank = (currentRankId == PROMOTION_ORDER[#PROMOTION_ORDER])
 	local meetsCP = currentContribution >= targetCP
 	local isEligible = not isHighestRank and meetsCP
@@ -405,7 +392,6 @@ function SectController.UpdateUI()
 		end
 	end
 
-	-- 4. Update 3 Quest Cards
 	for _, card in ipairs(questCards) do
 		local qLive = liveQuestsData[card.QuestId]
 

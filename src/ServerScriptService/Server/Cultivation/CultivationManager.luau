@@ -5,13 +5,14 @@
     Server-authoritative cultivation state engine for ASCEND.
     - Synchronous zero-delay CharacterAdded stat binding (Eliminates the 100 HP respawn bug)
     - Full body aura lifecycle during Meditation & Tribulation breakthroughs
-    - Authoritative Qi loop & breakthrough mechanics
+    - Authoritative Qi loop, Heavenly Tribulation & Server-wide Ascension Announcements
 ]]
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local TextChatService = game:GetService("TextChatService")
 
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -45,6 +46,19 @@ local function getWeaponManager(): any
 		weaponManagerRef = require(ServerScriptService.Server.Combat.WeaponManager)
 	end
 	return weaponManagerRef
+end
+
+local function BroadcastHeavenlyAnnouncement(message: string)
+	local textChannels = TextChatService:FindFirstChild("TextChannels")
+	local generalChannel = textChannels and textChannels:FindFirstChild("RBXGeneral") :: TextChannel?
+	if generalChannel then
+		generalChannel:DisplaySystemMessage(string.format("<font color='#FFD700'><b>%s</b></font>", message))
+	end
+
+	combatActionRemote:FireAllClients(nil, "ServerAnnouncement", {
+		Message = message,
+		Color = Color3.fromRGB(255, 215, 0),
+	})
 end
 
 local function GetQiNodeMultiplier(character: Model): number
@@ -123,7 +137,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Engine Initialized (Synchronous Respawn Health Binding Active).")
+	print("[ASCEND] CultivationManager Engine Initialized (Heavenly Announcements & Attribute Sync Active).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -143,7 +157,6 @@ function CultivationManager.OnPlayerAdded(player: Player)
 		}
 	end
 
-	-- Synchronous Health Binding on Respawn (Zero-Delay)
 	player.CharacterAdded:Connect(function(character)
 		local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
 		if humanoid then
@@ -154,6 +167,7 @@ function CultivationManager.OnPlayerAdded(player: Player)
 				humanoid.Health = maxHp
 				character:SetAttribute("MaxHealth", maxHp)
 				character:SetAttribute("Health", maxHp)
+				character:SetAttribute("IsMeditating", pData.IsMeditating)
 			end
 		end
 		CultivationManager.ApplyRealmStats(player)
@@ -238,6 +252,7 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	character:SetAttribute("MaxHealth", maxHp)
 	character:SetAttribute("Health", maxHp)
 	character:SetAttribute("Realm", realmText)
+	character:SetAttribute("IsMeditating", pData.IsMeditating)
 	player:SetAttribute("Realm", realmText)
 	player:SetAttribute("Order", pData.Order)
 	character:SetAttribute("AlchemyRank", character:GetAttribute("AlchemyRank") or "Mortal Alchemist - Rank 1")
@@ -289,6 +304,7 @@ function CultivationManager.ToggleMeditation(player: Player)
 		CultivationManager.StopGroundedMeditation(player, character)
 	end
 
+	character:SetAttribute("IsMeditating", pData.IsMeditating)
 	CultivationManager.SyncClient(player)
 end
 
@@ -305,6 +321,7 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	humanoid.WalkSpeed = 0
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
+	character:SetAttribute("IsMeditating", true)
 
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "QiMeditationHighlight"
@@ -395,6 +412,8 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 		hrp.Anchored = false
 	end
 
+	character:SetAttribute("IsMeditating", false)
+
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.WalkSpeed = 18
@@ -410,22 +429,41 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	if pData.CultivatedQi < pData.MaxQiGoal then
 		updateCultivationRemote:FireClient(player, {
 			Action = "BreakthroughRejected",
-			Message = "Keep cultivating! Your Qi isn't ready for breakthrough yet."
+			Message = "Keep cultivating! Your Qi isn't ready for breakthrough yet.",
+			CurrentQi = pData.CultivatedQi,
+			TargetQi = pData.MaxQiGoal,
+			Percentage = math.floor((pData.CultivatedQi / math.max(1, pData.MaxQiGoal)) * 100),
 		})
 		return false
 	end
 
+	-- Minor Order Breakthrough (Orders 1 through 8)
 	if pData.Order < 9 then
+		local oldMaxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
+		local oldMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
+
 		pData.Order += 1
 		CultivationManager.ApplyRealmStats(player)
 		CultivationManager.SyncClient(player)
+
+		local newMaxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
+		local newMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
+		local powerMult = CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order)
+
 		updateCultivationRemote:FireClient(player, {
 			Action = "BreakthroughSuccess",
+			IsMajor = false,
+			Realm = pData.Realm,
+			RealmName = CultivationConfig[pData.Realm].Name,
 			Order = pData.Order,
+			HpGain = math.max(0, newMaxHp - oldMaxHp),
+			QiGain = math.max(0, newMaxQi - oldMaxQi),
+			PowerMultiplier = powerMult,
 		})
 		return true
 	end
 
+	-- Major Realm Breakthrough (Order 9 -> Next Realm Order 1)
 	local nextRealmMap: { [CultivationConfig.RealmTier]: CultivationConfig.RealmTier } = {
 		QiCondensation = "FoundationEstablishment",
 		FoundationEstablishment = "GoldenCore",
@@ -441,18 +479,36 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	local nextRealm = nextRealmMap[pData.Realm]
 	if not nextRealm then return false end
 
+	local oldMaxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
+	local oldMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
 	local tribulationSpec = CultivationConfig[pData.Realm].Tribulation
 
 	if tribulationSpec.StrikeCount <= 0 then
 		pData.Realm = nextRealm
 		pData.Order = 1
+		pData.CultivatedQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
+		pData.CurrentQi = pData.CultivatedQi
+
 		CultivationManager.ApplyRealmStats(player)
 		CultivationManager.SyncClient(player)
+
+		local newMaxHp = CultivationConfig.GetOrderMaxHealth(nextRealm, 1)
+		local newMaxQi = CultivationConfig.GetOrderTargetQi(nextRealm, 1)
+		local powerMult = CultivationConfig.GetPowerMultiplier(nextRealm, 1)
+		local realmName = CultivationConfig[nextRealm].Name
+
 		updateCultivationRemote:FireClient(player, {
 			Action = "BreakthroughSuccess",
+			IsMajor = true,
 			Realm = nextRealm,
+			RealmName = realmName,
 			Order = 1,
+			HpGain = math.max(0, newMaxHp - oldMaxHp),
+			QiGain = math.max(0, newMaxQi - oldMaxQi),
+			PowerMultiplier = powerMult,
 		})
+
+		BroadcastHeavenlyAnnouncement(string.format("[HEAVENLY DAO] Cultivator %s (@%s) has ascended to %s!", player.DisplayName, player.Name, realmName))
 		return true
 	end
 
@@ -520,18 +576,33 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			pData.Order = 1
 			pData.IsTribulationActive = false
 			pData.TribulationWave = 0
+			pData.CultivatedQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
+			pData.CurrentQi = pData.CultivatedQi
 
 			CultivationManager.StopGroundedMeditation(player, character)
 			CultivationManager.ApplyRealmStats(player)
 
+			local newMaxHp = CultivationConfig.GetOrderMaxHealth(nextRealm, 1)
+			local newMaxQi = CultivationConfig.GetOrderTargetQi(nextRealm, 1)
+			local powerMult = CultivationConfig.GetPowerMultiplier(nextRealm, 1)
+			local realmName = CultivationConfig[nextRealm].Name
+
 			combatActionRemote:FireAllClients(player, "AscensionBurst", {
 				AuraColor = CultivationConfig[nextRealm].AuraColor,
 			})
+
 			updateCultivationRemote:FireClient(player, {
 				Action = "BreakthroughSuccess",
+				IsMajor = true,
 				Realm = nextRealm,
+				RealmName = realmName,
 				Order = 1,
+				HpGain = math.max(0, newMaxHp - oldMaxHp),
+				QiGain = math.max(0, newMaxQi - oldMaxQi),
+				PowerMultiplier = powerMult,
 			})
+
+			BroadcastHeavenlyAnnouncement(string.format("[HEAVENLY DAO] Cultivator %s (@%s) has transcended Heavenly Tribulation and ascended to %s!", player.DisplayName, player.Name, realmName))
 		else
 			pData.IsTribulationActive = false
 			pData.TribulationWave = 0
@@ -583,6 +654,7 @@ function CultivationManager.SyncClient(player: Player)
 		character:SetAttribute("TargetQi", maxQiGoal)
 		character:SetAttribute("Realm", realmText)
 		character:SetAttribute("Level", totalLevel)
+		character:SetAttribute("IsMeditating", pData.IsMeditating)
 	end
 
 	player:SetAttribute("Realm", realmText)
