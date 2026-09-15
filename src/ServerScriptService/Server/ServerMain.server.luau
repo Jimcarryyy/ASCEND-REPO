@@ -2,8 +2,7 @@
 --[[
     ServerMain.server.luau
     Location: src/ServerScriptService/Server/ServerMain.server.luau
-    Master server bootstrap for ASCEND. Initializes the centralized remote network
-    and all core cultivation, combat, world, and state management engines.
+    Master server bootstrap for ASCEND.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,13 +18,14 @@ local AlchemyManager = require(ServerScriptService.Server.Cultivation.AlchemyMan
 local EnvironmentTimeManager = require(ServerScriptService.Server.World.EnvironmentTimeManager)
 local TreeCollisionManager = require(ServerScriptService.Server.World.TreeCollisionManager)
 local VendorManager = require(ServerScriptService.Server.World.VendorManager)
-local BlacksmithManager = require(ServerScriptService.Server.World.BlacksmithManager)
-local TeaHouseManager = require(ServerScriptService.Server.World.TeaHouseManager)
+-- local BlacksmithManager = require(ServerScriptService.Server.World.BlacksmithManager)
+-- local TeaHouseManager = require(ServerScriptService.Server.World.TeaHouseManager)
 local SectManager = require(ServerScriptService.Server.Cultivation.SectManager)
 local MobAIManager = require(ServerScriptService.Server.Combat.MobAIManager)
 local ArenaManager = require(ServerScriptService.Server.Combat.ArenaManager)
-local MarketplaceManager = require(ServerScriptService.Server.State.MarketplaceManager)
+-- local MarketplaceManager = require(ServerScriptService.Server.State.MarketplaceManager)
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+local SwordAltarManager = require(ServerScriptService.Server.World.SwordAltarManager)
 
 local function InitializeServer()
 	-- 1. Initialize Network Remotes First
@@ -44,16 +44,17 @@ local function InitializeServer()
 	EnvironmentTimeManager.Init()
 	TreeCollisionManager.Init()
 	VendorManager.Init()
-	BlacksmithManager.Init()
-	TeaHouseManager.Init()
+	-- BlacksmithManager.Init()
+	-- TeaHouseManager.Init()
 	SectManager.Init()
+	SwordAltarManager.Init()
 
 	-- 4. Combat Encounters & Arena
 	ArenaManager.Init()
-	MarketplaceManager.Init()
+	-- MarketplaceManager.Init()
 	MobAIManager.Init() -- Single initialization for Mob Spawners & AI Loop
 
-	print("[ASCEND] Master Server Engine Initialized Successfully! (All Core, World & Mob AI Managers Active)")
+	print("[ASCEND] Master Server Engine Initialized Successfully! (Core, Gathering, Alchemy, Arena & Mob AI Active)")
 end
 
 InitializeServer()

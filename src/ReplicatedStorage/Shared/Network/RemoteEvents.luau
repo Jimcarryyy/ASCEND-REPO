@@ -17,8 +17,13 @@ export type RemoteName =
 	| "UpdateInventory"
 	| "BossStateUpdate"
 	| "UpdateCultivation"
+	| "CultivationAction"
+	| "BreakthroughResult"
 	| "AlchemyAction"
 	| "CombatVFX"
+	| "FocusTarget"
+	| "SkillCast"
+	| "WeaponState"
 	| "GatheringAction"
 	| "SectAction"
 	| "MarketAction"
@@ -32,6 +37,7 @@ export type RemoteName =
 	| "UpdateSect"
 	| "BlacksmithAction"
 	| "TeaHouseAction"
+	| "AltarAction"
 
 local ALL_REMOTES: { RemoteName } = {
 	"CombatAction",
@@ -41,8 +47,13 @@ local ALL_REMOTES: { RemoteName } = {
 	"UpdateInventory",
 	"BossStateUpdate",
 	"UpdateCultivation",
+	"CultivationAction",
+	"BreakthroughResult",
 	"AlchemyAction",
 	"CombatVFX",
+	"FocusTarget",
+	"SkillCast",
+	"WeaponState",
 	"GatheringAction",
 	"SectAction",
 	"MarketAction",
@@ -56,6 +67,7 @@ local ALL_REMOTES: { RemoteName } = {
 	"UpdateSect",
 	"BlacksmithAction",
 	"TeaHouseAction",
+	"AltarAction",
 }
 
 local RemoteEvents = {}
@@ -85,6 +97,8 @@ function RemoteEvents.Init(): Folder
 				newRemote.Parent = newFolder
 			end
 		end
+
+		print(string.format("[RemoteEvents] Initialized %d Server RemoteEvents under ReplicatedStorage.Remotes.", #ALL_REMOTES))
 		return newFolder
 	else
 		local waitedFolder = ReplicatedStorage:WaitForChild("Remotes", 15) :: Folder?

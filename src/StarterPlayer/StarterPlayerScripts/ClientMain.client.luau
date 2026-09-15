@@ -3,7 +3,6 @@
     ClientMain.client.luau
     Location: src/StarterPlayer/StarterPlayerScripts/ClientMain.client.luau
     Master client bootstrap for ASCEND.
-    Initializes all client controllers concurrently in isolated threads.
 ]]
 
 local Players = game:GetService("Players")
@@ -11,7 +10,7 @@ local player = Players.LocalPlayer
 local controllersFolder = player:WaitForChild("PlayerScripts"):WaitForChild("Controllers") :: Folder
 
 local CONTROLLER_NAMES = {
-	"ModalWindowManager", -- 🚀 Must initialize early for window registration
+	"ModalWindowManager",
 	"AnimationController",
 	"InputController",
 	"CombatVFXController",
@@ -25,15 +24,17 @@ local CONTROLLER_NAMES = {
 	"MarketController",
 	"QuestTrackerController",
 	"ArenaController",
+	"SparringGuidanceController",
+	"BossHUDController",
+	"DeathReincarnationController",
+	"SwordAltarController",
+	"SettingsController", 
 	"SkillBarController",
 	"FocusTargetController",
 	"SectController",
-	"BlacksmithController",
-	"TeaHouseController",
 	"StarterGuideController",
 	"CharacterStatsController",
 	"MusicController",
-	"WeaponCodexController",
 }
 
 local function InitializeClient()
@@ -54,7 +55,7 @@ local function InitializeClient()
 		end
 	end
 
-	print("[ASCEND] All Client Controllers Initialized Concurrently (Single-Window System Active).")
+	print("[ASCEND] Client Initialized (Sect Shop & MarketController Active).")
 end
 
 InitializeClient()
