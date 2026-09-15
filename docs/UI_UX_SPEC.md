@@ -1,242 +1,243 @@
----
+# ASCEND — Authoritative UI/UX Design & Implementation Specification
 
-# 3. `docs/UI_UX_SPEC.md`
-
-```markdown
-# ASCEND — UI/UX Design System & Layout Specification
-
-## 1. Core Engineering Principles
-
-### 1.1 Studio-Authoritative Hierarchy (Strict Rule — ADR-041)
-**Runtime programmatic UI generation via `Instance.new` inside Lua scripts is strictly prohibited.**
-All GUI layouts, frames, buttons, gradients, text labels, and UIStrokes must be constructed inside Studio within `StarterGui`. Client controllers are strictly restricted to:
-- Listening to UI events (`Activated`, `MouseEnter`, `MouseLeave`).
-- Populating dynamic text, progress bar scales, and list templates.
-- Executing visual tweens (opacity fades, positional slides).
-- Toggling canvas visibility (`Enabled = true / false`).
-
-### 1.2 Standardized Typography System (ADR-042)
-- **Titles, Headers, Station Billboards & NPC Names:** `Enum.Font.Bangers`
-  - All Bangers text must include a solid black `UIStroke`:
-    - `UIStroke.Color = Color3.fromRGB(0, 0, 0)`
-    - `UIStroke.Thickness = 1.5` (Labels < 24pt) / `2.0` (Labels >= 24pt)
-- **Body Copy, Descriptions, Stats & Dialogue:** `Enum.Font.Fundamento`
-  - Clean, elegant readability tailored for Eastern Xianxia prose.
-
-### 1.3 DisplayOrder Layering Hierarchy (ADR-043)
-To eliminate overlapping modals and render priority conflicts, every ScreenGui in `StarterGui` must have an assigned `DisplayOrder`:
-
-| DisplayOrder | ScreenGui Name | Functional Purpose |
-| :---: | :--- | :--- |
-| **1** | `MasterHUDGui` | Persistent desktop/mobile gameplay HUD (Vitals, Skills, Currencies). |
-| **2** | `LowViewPortSkillsGUI` | Fallback skill cluster for compact mobile viewports. |
-| **5** | `OverheadUI` | World BillboardGuis for player, mob, and dummy vitals. |
-| **10** | `BlacksmithGui` | Weapon refinement (+10) and blade sharpening forge modal. |
-| **10** | `TeaHouseGui` | Spirit tea ordering and buff catalog modal. |
-| **10** | `SparringGuidanceGui` | Training dummy DPS tracking and sparring trial modal. |
-| **10** | `StarterGuideGui` | 4-tab interactive player onboarding guide modal. |
-| **10** | `SpiritPouchInventoryGui` | 60-slot storage, 2D weapon previews, and inspection window. |
-| **10** | `SectPavilionGui` | Sect duties, disciple rank promotions, and daily stipend modal. |
-| **10** | `AlchemyCauldronGui` | 3-slot herb combination and temperature minigame modal. |
-| **12** | `ArenaGUI` | Matchmaking status, countdown banners, and match resolution. |
-| **20** | `GlobalToastNotifGui` | Floating status messages and harvest notifications. |
-| **100** | `LoadingScreen` | ReplicatedFirst initial gate and asset preloader canvas. |
+> **Interface Design & Visual Standard Document**  
+> **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
+> **Source of Truth:** Live Luau Codebase (`src/StarterGui/` & `src/StarterPlayer/StarterPlayerScripts/Controllers/`)  
+> **Active Phase:** Phase 8.5 — Combat Engine Standardization & Defensive VFX Integration
 
 ---
 
-## 2. Color Token System (Dark Obsidian & Antique Gold — ADR-015)
+## 1. UI Architectural Foundations (ADR-041)
 
-| Token | Hex Value | RGB Value | Application |
-| :--- | :--- | :--- | :--- |
-| `DarkObsidian` | `#111827` | `17, 24, 39` | Master modal background, deep canvas fill. |
-| `MidnightSteel` | `#1C2638` | `28, 38, 56` | Item slot cards, panel surfaces, inner frames. |
-| `AntiqueGold` | `#C49A4A` | `196, 154, 74` | Modal borders, title underlines, primary buttons. |
-| `BronzeGold` | `#8B6B32` | `139, 107, 50` | Inactive button borders, secondary separators. |
-| `WarmIvory` | `#F1E8D2` | `241, 232, 210` | Primary header text, button labels, key stats. |
-| `MutedSilver` | `#9CA3AF` | `156, 163, 175` | Description copy, cooldown counters, subtitles. |
-| `JadeGreen` | `#10B981` | `16, 185, 129` | Health bar fill, positive buffs, successful forge. |
-| `AzureBlue` | `#3B82F6` | `59, 130, 246` | Qi bar fill, telekinesis accents, meditation motes. |
-| `AmberGold` | `#F59E0B` | `245, 158, 11` | Sword Intent bar fill, empowered strikes, criticals. |
-| `CrimsonRed` | `#EF4444` | `239, 68, 68` | Guard-break warning, damage taken, failed forge. |
-
----
-
-## 2. Master Xianxia UI Color Specification
-
-### 2.1 Core Palette Tokens
-- **Main Window Canvas (`GuideWindow`, `MainFrame`, `ForgeWindow`):** Vertical 90° gradient (`#141F36` $\rightarrow$ `#1E2D4A` $\rightarrow$ `#0B111E`).
-- **Sub-Panels / Cards (`ContentPanel`, `FirstFrame`, `SecondFrame`):** 45° diagonal gradient (`#121B2D` $\rightarrow$ `#18243C` $\rightarrow$ `#0E1524`).
-- **Solar Dao Gold (Prestige, Titles, Main Actions):** `#FFFBEB` $\rightarrow$ `#FDE047` $\rightarrow$ `#EAB308`.
-- **Celestial Spirit Cyan (Interactive, Badges, Subtitles):** `#22D3EE` $\rightarrow$ `#0EA5E9` $\rightarrow$ `#0369A1`.
-- **Cinnabar Crimson (Danger, Close [X], Combat Alerts):** `#FB7185` $\rightarrow$ `#E11D48` $\rightarrow$ `#9F1239`.
-- **Metallic Titanium Slate (Inactive States, Neutral Badges):** `#94A3B8` $\rightarrow$ `#475569` $\rightarrow$ `#1E293B`.
-- **Borders:** Razor-thin solid black `UIStroke` (`1.0px` to `1.2px`) with `ApplyStrokeMode = Border`.
-- **Zero `UICorner`:** Sharp, non-rounded rectangular geometry across all windows, tabs, and tags.
-
-### 2.2 Typography Rules
-- **Headers, Titles, Badges, Values:** `Enum.Font.Bangers` with black `UIStroke` (`1.4px` to `1.8px`).
-- **Body Text, Lore, Descriptions:** `Enum.Font.Fondamento` in pure white (`#FFFFFF`) or soft ivory (`#F8FAFC`).
-
-## 3. Master Desktop HUD Layout (`StarterGui.MasterHUDGui`)
+ASCEND enforces a strict **Studio-Authoritative Interface Architecture**:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ [TOP-LEFT]                          [TOP-CENTER]               [TOP-RIGHT]  │
-│ Sect Duty Tracker               Global Toast Banners          Spirit Stones │
-│ "Refine 3 Herbs (2/3)"         "Discovered 100-Yr Ginseng"         48,285   │
-│                                                               Contribution  │
-│                                                                 1,970 CP    │
-│                                                                             │
-│                                                                             │
-│                                                                             │
-│                                                                             │
-│                                                                             │
-│                                                                             │
-│ [BOTTOM-LEFT]                       [BOTTOM-CENTER]                         │
-│ Navigation Tray            HP  [████████████████████████] 1,500/1,500       │
-│ [Bag] [Sect] [Map]         QI  [████████████████████████]   850/850         │
-│ [Meditate] [Settings]      INT [██████████░░░░░░░░░░░░░░]   60% (3/5)       │
-│                            ┌───┬───┬───┬───┬───┬───┐                        │
-│                            │ M1│ Q │ E │ F │ T │Shift                       │
-│                            └───┴───┴───┴───┴───┴───┘                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-3.1 Cluster Breakdown
-Top-Center (Global Toast Notifications):
-Renders animated status toasts (vintage herb discoveries, pill refinement grade, tea drinking confirmation).
-Managed by HUDController.luau.
-Bottom-Center (Vitals & Action Hotbar):
-HP Bar: Dual-gradient jade fill (#10B981) with white text (CurrentHP / MaxHP).
-Qi Bar: Azure blue fill (#3B82F6) displaying internal energy.
-Sword Intent Bar: Segmented amber bar filling in 25% increments (4 hits = 100% discharge flash).
-Action Hotbar: 6 slots displaying keybinds (M1, Q, E, F, T, Shift) with radial cooldown sweeps.
-Managed by SkillBarController.luau.
-Top-Left (Sect Duty Tracker):
-Shows active daily duties from Deacon Zhao with real-time numeric tracking ((2/3)).
-Managed by QuestTrackerController.luau.
-Top-Right (Currencies & Identity):
-Displays Spirit Stones and Sect Contribution Points (CP) with gold/jade currency icons.
-Managed by SkillBarController.luau / SectController.luau.
-Bottom-Left (Navigation Menu Tray):
-Interactive button tray toggling modals: [Bag], [Sect], [Map], [Meditate], and [Settings].
-Managed by HUDController.luau.
-4. Lower Sect Facility Modals
-4.1 Blacksmithing Forge (StarterGui.BlacksmithGui)
-Station Target: Master Blacksmith Anvil / Sect_NPC_MadameTie.
-Panels:
-Equipped Weapon Card: Displays equipped sword name, rarity border, refinement level (+0 to +10), and base ATK bonus.
-Refine Action Panel: Displays material requirements (MountainIronIngot, Spirit Stones), success percentage chance, and "Refine Blade" action button.
-Blade Sharpening Panel: Displays 100 Spirit Stone cost, +10% Crit Chance description, and "Sharpen Blade" action button with active countdown timer.
-4.2 Spirit Tea Pavilion (StarterGui.TeaHouseGui)
-Station Target: Sect_NPC_XiaoLing.
-Panels:
-Tea Selection Grid: 3 interactive cards displaying Jade Dew, Crimson Ginseng, and Dragon Well.
-Details Panel: Outlines instant recovery values, timed buff duration (10–15 min), Spirit Stone price, and "Brew & Drink" action button.
-4.3 Training Grounds & Sparring Guidance (StarterGui.SparringGuidanceGui)
-Station Target: Sect_NPC_InstructorWu.
-Panels:
-Performance Tracker: Displays real-time and peak DPS recorded across the 3 Ironwood Dummies.
-Action Controls: "Start Sparring Trial" button (prompts 3-dummy combo challenge) and "Reset DPS" button (clears combat accumulators).
-4.4 Sect Starter Guide (StarterGui.StarterGuideGui)
-Station Target: Sect_NPC_ElderQing.
-Tabs (Bangers headers with black UIStroke):
-Controls & Movement: Keybind table (M1, CTRL, Shift, T, C, R, B, V, Q, E, F).
-Cultivation & Breakthroughs: Explains Dantian Qi accumulation, 2.0x Qi nodes, and heavenly tribulations.
-Sword Intent & Blades: Details the 5-hit combo, Sword Intent empowerment, and the 5 sword families.
-Sect Duties & Arena: Details daily duties, CP ranks, and the 1v1 Sparring Arena rules.
-
-
-## 3. Master Desktop & Mobile HUD Layout (`StarterGui.MasterHUDGui`)
-
-### DisplayOrder Standard: `MasterHUDGui.DisplayOrder = 10` (Modals = 50)
-
-```text
+│                             STARTERGUI INSTANCE                             │
+│       (Authored natively in Roblox Studio — Layout, Sizing, Anchors)        │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼  Scanned & Bound by
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ [TOP-LEFT]                          [TOP-CENTER]               [TOP-RIGHT]  │
-│ TopLeftDutyTracker                ToastContainer               BottomNavTray│
-│ "Herbal Foraging Duty 0/5"        "Discovered 100-Yr Ginseng"   [ Arena ]   │
-│ "Alchemy Refine       0/1"                                      [ Pouch ]   │
-│ "Sparring Discipline  0/3"                                      [ Guide ]   │
-│ ZoneFrame                                                       [ Mission ] │
-│ "Qi Condensation - 2.0x SPEED"                                              │
+│                          CLIENT CONTROLLER ENGINE                           │
+│        (HUDController, ModalWindowManager, CharacterStatsController)        │
 │                                                                             │
-│ [BOTTOM-LEFT]                       [BOTTOM-CENTER]                         │
-│ TopRightCurrencyFrame (340px)       BottomCenterFrame.HotbarContainer       │
-│ [ 💎 48.6K ]  [ 🛡️ 3,880 CP ]       ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐│
-│ VitalsContainer (340px)             │ B │ C │ E │ F │ M1│ Q │ R │SHF│ T │ V ││
-│ HP              2.02M / 2.02M       └───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘│
-│ QI              2.17M / 2.17M                                               │
-│ INT                    15/100                                               │
+│  - Never constructs UI hierarchies via Instance.new                         │
+│  - Binds UI event listeners (Activated, MouseEnter, MouseLeave)             │
+│  - Manages TweenService animations and property transitions                 │
+│  - Observes network remotes and syncs visual meters                         │
 └─────────────────────────────────────────────────────────────────────────────┘
-Complete 12-Modal Registry in StarterGui (DisplayOrder = 50, 
-Y
-=
-0.38
-Y=0.38
-):
-BlacksmithGui — Equipped blade preview, refinement up to +10, and blade sharpening buff.
-TeaHouseGui — Jade Dew (+250 Qi), Crimson Ginseng (+500 HP), and Dragon Well (+15% Intent rate).
-StarterGuideGui — 4-tab interactive guide (Controls, Realms & Qi, Sword Intent, Sect Duties).
-SparringGuidanceGui — Combat fundamentals, combo trial progress (0/3), and dummy DPS reset.
-AlchemyGui — 12-slot herb pouch grid, 3 cauldron combination slots, metrics preview, and formula guide.
-SwordAltarGachaGui — 1x/10x Flying sword awakening, pity counter (50-pull guarantee), and drop rates.
-ContributionShopGui — CP exchange store for flight manuals, breakthrough dans, and scabbards.
-BankVaultGui — 2-panel inventory transfer (Pouch vs. Vault Stash) + vault expansion.
-WildernessPortalGui — Zone 2 Beast Domain gate requirements, monster warnings, and teleport confirmation.
-PatriarchAudienceGui — Major realm breakthrough ceremonies, power multiplier previews, and 9-fold lightning warnings.
-CouncilElderDiscussionGui — 3-tab discourse hub for Elders Mu (Pills), Ba (Formations), and Ling (Scriptures).
-AncestorSeclusionGui — Seclusion tracker with 
+Core UI Development Rules
+Zero Programmatic Construction for Static UI: All frames, labels, buttons, image panels, and viewports must be created and styled natively within Roblox Studio under StarterGui. Luau scripts are strictly forbidden from building static window layouts with Instance.new.
+Controller Separation: Controllers only acquire references via :WaitForChild(), bind interactions, and execute dynamic state updates (e.g., width tweening, visibility toggles, text formatting).
+Strict Resolution Independence: All sizing must utilize a hybrid approach: Scale for responsiveness across Mobile/PC, coupled with UIAspectRatioConstraint and UISizeConstraint to prevent distortion on ultrawide monitors (governed by DeWidth.client.luau).
+2. Typography Standard (ADR-042)
+ASCEND enforces a strict two-tier typography rule across all user interfaces, world billboards, and dialogs:
+code
+Text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       TIER 1: HEADERS & ACTION TEXT                         │
+│  Font: Enum.Font.Bangers                                                    │
+│  Stroke: Mandatory UIStroke (Thickness: 1.5 - 2.0, Color: Color3(0, 0, 0))  │
+│  Usage: Window Titles, Skill Labels, Overhead Names, Damage Numbers,       │
+│         Station Prompts, Boss Banners                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                         TIER 2: BODY & LORE TEXT                            │
+│  Font: Enum.Font.Fundamento                                                 │
+│  Stroke: Optional subtle stroke (Thickness: 1.0, Transparency: 0.4)         │
+│  Usage: Item Descriptions, Cultivation Lore, NPC Dialogues, Quest Log,      │
+│         Detailed Attribute Breakdowns                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+Font Pairing Specifications
+Category	Primary Font	Size Range	Stroke Requirement	Usage Context
+Window Titles	Enum.Font.Bangers	
+22
+−
+32
+ pt
+22−32 pt
+Solid Black (1.5 - 2.0\text{ px})	Forge, Alchemy, Sect Codex titles.
+Action & Numbers	Enum.Font.Bangers	
+16
+−
+28
+ pt
+16−28 pt
+Solid Black (1.5 - 2.0\text{ px})	Combat damage, cooldown counters, keybind hints.
+Overhead Billboard	Enum.Font.Bangers	
+14
+−
+18
+ pt
+14−18 pt
+Solid Black (1.5\text{ px})	Cultivator nameplates and realm title tags.
+Dialogues & Lore	Enum.Font.Fundamento	
+14
+−
+18
+ pt
+14−18 pt
+None or Muted Shadow	Elder dialogues, quest briefs, item flavor text.
+Data Attributes	Enum.Font.Fundamento	
+13
+−
+16
+ pt
+13−16 pt
+None	Stat values, item requirements, inventory counts.
+3. Visual Framing Standard (9-Slice Panels)
+All window containers, dialogue backdrops, tooltips, and modal panels must use the standardized Xianxia ornamental 9-slice texture:
+Asset ID: rbxassetid://115367926298823
+ScaleType: Enum.ScaleType.Slice
+SliceCenter: Rect.new(30, 30, 70, 70)
+Standard Background Fill: Color3.fromRGB(18, 20, 26) (Dark Obsidian/Charcoal) with BackgroundTransparency = 0.15
+Accent Border Color: Color3.fromRGB(212, 175, 55) (Antique Gold) or Color3.fromRGB(56, 189, 248) (Jade Cyan)
+4. Color Palette & Token System
+code
+Text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             CORE COLOR TOKENS                               │
+│                                                                             │
+│  Emerald Health      : #10B981 (Active)  / #064E3B (Backdrop)               │
+│  Ocean Qi            : #0EA5E9 (Active)  / #0C4A6E (Backdrop)               │
+│  Posture Amber       : #F59E0B (Guarding)/ #EF4444 (Critical Break)          │
+│  Sword Intent Gold   : #FACC15 (100% Empowered) / #713F12 (Charging)        │
+│  Obsidian Charcoal   : #12141A (Container Background)                       │
+│  Antique Dao Gold    : #D4AF37 (Ornamental Borders & Accents)               │
+└─────────────────────────────────────────────────────────────────────────────┘
+5. Master HUD Architecture (MasterHUDGui)
+Governed by HUDController.luau, the HUD provides real-time combat status anchored cleanly in the viewport.
+code
+Text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ [Top Left]                                                   [Top Center]   │
+│ - Disciple Status Icon                                    BossHealthHUD     │
+│                                                       (Active in Encounters)│
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│ [Bottom Left: 340px Column Stack]                        [Bottom Center]    │
+│ ┌───────────────────────────────┐                       ┌─────────────────┐ │
+│ │ Cultivator Name & Realm Badge │                       │ Active Skillbar │ │
+│ ├───────────────────────────────┤                       │ [Q] [E] [F]     │ │
+│ │ Health Bar (Emerald Green)    │                       │ [Dash] [Guard]  │ │
+│ ├───────────────────────────────┤                       └─────────────────┘ │
+│ │ Qi Gauge (Celestial Cyan)     │                                           │
+│ ├───────────────────────────────┤                                           │
+│ │ Posture Meter (Amber Warning) │                                           │
+│ ├───────────────────────────────┤                                           │
+│ │ Sword Intent (4-Tier Gold)    │                                           │
+│ ├───────────────────────────────┤                                           │
+│ │ Cultivation Exp Progress Bar  │                                           │
+│ └───────────────────────────────┘                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+1. Bottom-Left 340px Column Stack Details
+The core vitals stack is anchored to the bottom-left corner with a standardized width of 340 pixels:
+Realm Header: Displays avatar icon, player username, and current Realm/Order badge (e.g., Foundation Establishment - Order 3).
+Health Meter: Smoothly tweens using TweenService (Quad out, 0.25s). Features a secondary white "lag bar" that displays received damage chunks.
+Qi Gauge: Renders available spiritual energy for skills and dashing. Flashes subtle cyan upon skill casting.
+Posture Meter: Visible while guarding or when posture is 
+<
+100
+%
+<100%
+. Transitions from Amber (#F59E0B) to Bright Crimson (#EF4444) when posture falls below 20%.
+Sword Intent Bar: Divided into 4 segments (
+25
+%
+25%
+ per segment). Flashes bright Solar Gold (#FACC15) with an active particle glow when fully charged (
+100
+%
+100%
+).
+Cultivation Progress Bar: Slim bottom track tracking current progress toward the next breakthrough.
+2. Skill Bar (SkillBarController.luau)
+Anchored bottom-center.
+Displays slots: Q (Tempest), E (Thrust), F (100-Slash Domain), Shift (Dash), T (Guard/Parry), C (Meditation), R (Draw/Sheath), V (Flight).
+Cooldowns render as a radial dark overlay with a centered countdown text in Bangers font.
+Flashes white for 0.15s upon becoming ready.
+6. Modal Window Stack Management (ADR-043)
+Managed centrally by ModalWindowManager.luau to eliminate overlapping interfaces and conflicting control states:
+code
+Text
+[Player Triggers UI View]
+                                  │
+                  ModalWindowManager.Open(viewName)
+                                  │
+         ┌────────────────────────┴────────────────────────┐
+         ▼                                                 ▼
+[Close Any Currently Open Modal]            [Configure Game State]
+- Tween Old View Off-Screen                 - Set UserInputService.MouseBehavior = Default
+- Unbind Old Dialog Listeners               - Lock Character Movement (WalkSpeed = 0)
+                                            - Blur Background Lighting (DepthOfField)
+                                                           │
+                                                           ▼
+                                              [Tween In New Modal View]
+Governed Modals
+CharacterStatsGui (P key)
+InventoryGui (B prompt or Bag icon)
+NoticeBoardGui (Tab or Deacon Zhao station)
+AlchemyGui (Master Shen cauldron)
+BlacksmithGui (Madame Tie forge)
+TeaHouseGui (Xiao Ling tea pavilion)
+StarterGuideGui (Elder Qing pavilion)
+ArenaGui (Arena master station)
+7. Floating Combat Text & Visual Feedback
+Rendered client-side via CombatVFXController.luau:
+code
+Text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           FLOATING COMBAT TEXT MATRIX                       │
+│                                                                             │
+│  Standard Hit : White #FFFFFF | Size 20 | Bangers | Black Stroke (1.5px)    │
+│  Crit / Intent: Gold  #FACC15 | Size 28 | Bangers | "SWORD INTENT! (1.75X)" │
+│  Blocked Hit  : Slate #94A3B8 | Size 18 | Bangers | "BLOCKED" (Muted)       │
+│  Parry Clash  : Gold  #FDE047 | Size 24 | Bangers | "PARRY!" + Gold Sparks  │
+│  Guard Broken : Red   #EF4444 | Size 30 | Bangers | "GUARD BROKEN!" (Shake) │
+└─────────────────────────────────────────────────────────────────────────────┘
+Animation & Physics
+Spawning: Spawns at hit location with a random horizontal offset (
+±
+1.2
+ studs
+±1.2 studs
+).
+Motion: Ascends 
 +
-5.0
-×
-+5.0×
- Qi multiplier and low-key cultivation wisdom.
-
- ## Section 9: Universal 9-Slice Textured Panel Standard (Phase 8.4)
-
-### 9.1 Background Panel Asset Token
-All major facility modals and character windows have been standardized to the custom Chinese bamboo & antique gold textured frame asset:
-* **Asset ID:** `rbxassetid://115367926298823`
-* **ScaleType:** `Enum.ScaleType.Slice`
-* **SliceCenter:** `Rect.new(146, 120, 878, 120)`
-* **SliceScale:** `1.0`
-* **BackgroundTransparency:** `1.0`
-* **BorderSizePixel:** `0`
-
-### 9.2 Layering & Alignment Standard
-* **Full-Screen Coverage:** All modal ScreenGuis must set `IgnoreGuiInset = true` so the dark backdrop (`ModalBackdrop`, `#000000` with $0.50\text{--}0.55$ transparency) covers 100% of the screen under CoreGui topbars.
-* **True Middle-Center Placement:** Modal main windows must be strictly positioned at:
-  * `AnchorPoint = Vector2.new(0.5, 0.5)`
-  * `Position = UDim2.new(0.5, 0, 0.5, 0)`
-* **DisplayOrder Hierarchy:**
-  * `MasterHUDGui`: `10`
-  * All Facility Modals (`BlacksmithGui`, `TeaHouseGui`, `SectPavilionGui`, `AlchemyGui`, `StarterGuideGui`, `CharacterStatsGui`): `50`
-  * Toast Notifications: `70`
-  * Loading Screen: `100`
-
-### 9.3 Inner Sub-Panel Styling
-To match the obsidian bamboo texture:
-* `BackgroundColor3`: `#0E1016` (Deep Warm Obsidian) with `0.20` transparency.
-* `UIStroke`: `#B4914B` (Antique Gold, $1.5\text{px}$) matching the corner sword medallions.
-* `UICorner`: `8px` radius.
-
-### 9.4 High-Contrast Action Buttons
-All modal confirmation and action buttons must feature high-contrast pure white text:
-* **Celestial Azure Actions (Sharpening / Stipends / Guide Enter):** `#0096BE` fill, `#00DCFF` ($2.0\text{px}$) outline, `#FFFFFF` Bangers text with $1.5\text{px}$ black stroke.
-* **Forged Amber Actions (Refinement / Promotions):** `#B45309` fill, `#FDE047` ($2.0\text{px}$) outline, `#FFFFFF` Bangers text with $1.5\text{px}$ black stroke.
-* **Radiant Jade Actions (Tea Brewing / Quest Claims):** `#10B981` fill, `#34D399` ($2.0\text{px}$) outline, `#FFFFFF` Bangers text with $1.5\text{px}$ black stroke.
-
-## 5. Specialized HUD Elements
-
-### 5.1 Overhead UI Standard (`OverheadUIController.luau`)
-- **Player Only:** Attaches strictly to player characters; ignored by mobs and training dummies.
-- **No Overhead Health Bar:** Health bar removed (tracked in Bottom-Left Vitals HUD).
-- **Two-Line Identity:**
-  - Line 1: Realm Name & Order (e.g. `SPIRIT SEVERING - ORDER 2`) in `Bangers` with Solar Gold gradient. Deduplicates order tags.
-  - Line 2: Sect Rank (e.g. `INNER DISCIPLE`) in `Bangers` with Luminous Silver-Cyan gradient.
-
-### 5.2 World Gathering HUD (`GatheringHUD`)
-- **Compact Dimensions:** Sized to `210 × 40` centered in lower screen.
-- **Clean Display:** Displays `"HARVESTING..."` without node name concatenation.
-- **Gradients:** Amber-Gold container background, Sunfire progress fill, and black outer borders.
-- **ProximityPrompt:** Resolves both BasePart and Model nodes; bounces into view on approach and suppresses instantly on interaction.
+3.5
+ studs
++3.5 studs
+ vertically over 
+0.75
+ seconds
+0.75 seconds
+ with Quad-Out easing.
+Fade: Linearly fades TextTransparency and TextStrokeTransparency from 
+0
+→
+1
+0→1
+ over the final 
+0.3
+ seconds
+0.3 seconds
+ before calling :Destroy().
+Hitstop: Applied to the local attacker on critical hits (
+0.04
+s
+0.04s
+) to deliver satisfying tactile impact.
+8. Master ScreenGui Registry (StarterGui)
+All 10 authoritative ScreenGuis residing in StarterGui:
+ScreenGui Name	Core Controller	Primary Responsibilities
+MasterHUDGui	HUDController.luau	Vitals stack, skill bar, intent gauge, dash indicator, flight state.
+CharacterStatsGui	CharacterStatsController.luau	Full-page cultivation sheet, attributes, title tags, realm progression details.
+InventoryGui	InventoryController.luau	30-slot grid inventory, weapon slotting, refinement display, item tooltips.
+AlchemyGui	AlchemyController.luau	Cauldron temperature needle, herb slotting, pill crafting animation.
+BlacksmithGui	BlacksmithController.luau	Madame Tie's blade upgrade UI, ore requirements, success rate preview.
+TeaHouseGui	TeaHouseController.luau	Xiao Ling's tea menu, spirit stone payment, active buff timer overlays.
+NoticeBoardGui	QuestTrackerController.luau	Sect daily duties, rank tiers (D, C, B, A), bounty claiming.
+StarterGuideGui	StarterGuideController.luau	Elder Qing's 4-tab interactive beginner codex and sect orientation.
+ArenaGui	ArenaController.luau	Competitive matchmaking queues, 1v1 duel countdowns, match results.
+BossHealthHUD	HUDController.luau	Top-center health bar, phased boss title, enrage timer, armor breaks.

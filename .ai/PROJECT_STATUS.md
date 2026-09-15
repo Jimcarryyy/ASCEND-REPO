@@ -1,27 +1,50 @@
-# ASCEND — Project Status Overview
+---
 
-## Status Summary
-* **Current Milestone:** Phase 8.5 — Combat Engine Hardening & Skills Overhaul
-* **Sect Architecture:** Jade Pure Sword Sect (3-Tier Stepped Mountain Fortress)
-* **Master Persistence Key:** `ASCEND_PlayerData_V3`
-* **Avatar Rig Standard:** Roblox R6 Standard Rig (All Native Attachments Active)
-* **Master UI Palette Standard:** Master Xianxia Color System (Celestial Midnight Navy `#141F36` / `#1E2D4A` / `#0B111E`, Solar Dao Gold `#FFFBEB` / `#FDE047` / `#EAB308`, Celestial Spirit Cyan `#22D3EE` / `#0EA5E9` / `#0369A1`, Twilight Card Slate `#121B2D` / `#18243C` / `#0E1524`, Cinnabar Crimson `#FB7185` / `#E11D48` / `#9F1239`)
-* **Typography Standard:** `Bangers` (Titles, Headers, Badges, Values) & `Fondamento` (Descriptions, Lore, Body)
-* **Active Operational Focus:** Skill E Overhaul & Defensive Shield VFX Integration
+### 2. `.ai/PROJECT_STATUS.md`
+
+Replace the entirety of `.ai/PROJECT_STATUS.md` with the following document:
+
+```markdown
+# ASCEND — Subsystem Health & Implementation Matrix
+
+> **Factual Subsystem Status**  
+> **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
+> **Source of Truth:** Live Luau Codebase (`src/`)  
+> **Active Phase:** Phase 8.5 — Combat Engine Standardization & Defensive VFX Integration
 
 ---
 
-## Subsystem Health & Operational Readiness
+## 📊 Subsystem Verification Matrix
 
-| Subsystem | Status | Core Script / Module Architecture | Implementation Details & Live Capabilities |
-| :--- | :---: | :--- | :--- |
-| **Combat Engine (Skills)** | 🟢 Operational | `FlyingSwordConfig`, `AnimationConfig`, `InputController`, `FlyingSwordServer`, `CombatVFXController` | **Q Skill (Purple Tempest):** Dual hitbox (melee cleave + 3x traveling sawblades @ 70 studs/s), 15% Qi cost, weapon-attuned colors, pure particle aesthetic (PointLight removed).<br>**F Skill (100-Slash Domain):** Instant 1-click trigger, +2.2 studs elevation lift into Freefall, `AlignOrientation` (10M torque), 145 studs/s burst over 0.22s (~28-32 studs), midpoint slash (`111677132360566`), 36-stud 100-slash sphere, slope-normal landing (`Normal.Y > 0.65`), auto-sprint resumption, zero rubber-banding. |
-| **Sword Combat (M1/Defense)**| 🟢 Operational | `CombatStateManager`, `HitboxManager`, `WeaponManager` | 5-hit broadsword M1 chain with footwork damping (`WalkSpeed = 8`). Looping Sword Intent (+25%/hit, 1.75× empowered strike at 100%). `T` Guard (80% mitigation) & Perfect Parry (0.22s window, 100% negation, +5% Qi). 100-pt Posture & Guard-Break (1.2s stun, +25% vulnerability). 0.6s hyperarmor buffer. Universal player/mob resolution. |
-| **Locomotion & Qi Dash** | 🟢 Operational | `Animate.client.luau`, `AnimationController`, `InputController` | 44 studs/s open-world sprint (34 studs/s Arena), step-synced head-bobbing, dynamic speed-tunnel FOV (70° -> 76°). 150 studs/s anti-trip Qi Dash (`LeftShift`). Permanent anti-trip protection (`FallingDown`, `Ragdoll`, `PlatformStanding`, `GettingUp` disabled; `MaxSlopeAngle = 89`). |
-| **Flying Sword Flight Mode** | 🟢 Operational | `WeaponManager`, `InputController`, `ReplicatedStorage.FlyingSword` | Server-authoritative `V`-key flight toggle. Horizontal foot mount via `RigidConstraint` & `AnimationConstraint`. 3D omnidirectional flight at 75 studs/s, ground clearance cushion (6.5 studs), obstacle deflector (8.5 studs), Spacebar ascend, Ctrl descend, and slow idle drift (-2.5 studs/s). |
-| **World Gathering** | 🟢 Operational | `GatheringConfig`, `GatheringManager`, `GatheringController`, `StarterGui.GatheringHUD` | 5 configured nodes (`SpiritGrass`, `DragonBloodVine`, `GaleWindLotus`, `CelestialSpring`, `JadeOre`). Compact 210x40 `GatheringHUD` with `"HARVESTING..."` label and vibrant Amber-Gold gradient. ProximityPrompts resolve both BasePart and Model nodes with elastic pop-in animations and instant suppression on interaction. |
-| **Zone Mobs & AI Engine** | 🟢 Operational | `MobConfig`, `MobAIManager`, `workspace.MobSpawns` | Full 5-tier R6 1-handed sword cultivator roster (`RogueDisciple`, `BloodShadowAssassin`, `CorruptedIronGuard`, `FallenInnerProdigy`, `Boss_FallenSwordGenius`). Velocity-driven martial walk during Patrol and sprint run during Chase. Smart teammate flocking & Boids separation. Mobs execute 5-step M1 combos with knockback, parry/block checks, camera shudder, audio, and slashmarks. |
-| **Master HUD Suite** | 🟢 Operational | `StarterGui.MasterHUDGui`, `SkillBarController`, `HUDController`, `QuestTrackerController` | Bottom-Left unified 340px column stack: Top 2x2 Menu Grid (`BottomNavTray`), Middle Currency Badges (`TopRightCurrencyFrame`), Bottom Vitals Bars (`VitalsContainer`). Sharp rectangular geometry (no `UICorner`). Solid white `Bangers` numbers on vibrant gradients. `ResetOnSpawn = false` with zombie listener garbage collection on respawn. |
-| **Overhead UI Suite** | 🟢 Operational | `OverheadUIController` | Clean player-only BillboardGui. Overhead HP bar removed. Displays Cultivation Realm & Order + Sect Rank in `Bangers` with vibrant vertical gradients and deduplicated order formatting. |
-| **Data Persistence** | 🟢 Operational | `PlayerDataManager`, `CultivationManager` | Server-authoritative `DataStoreService` under key `ASCEND_PlayerData_V3`. Synchronous full realm HP/Qi restoration on character spawn. |
-| **Sect Facilities Suite** | 🟢 Operational | `BlacksmithManager`, `TeaHouseManager`, `SectManager`, `VendorManager`, `ArenaManager`, `AlchemyManager` | 16 functional stations. Weapon refinement (+10), blade sharpening, 3 spirit teas, daily duties, dynamic market, 1v1 sparring arena, and 3-slot cauldron alchemy. `SectPavilionGui`, `StarterGuideGui`, and `BlacksmithGui` overhauled to the Master Xianxia Color System. |
+| Subsystem | Core Script(s) | Status | Factual Implementation State |
+| :--- | :--- | :---: | :--- |
+| **DataStore & Persistence** | `PlayerDataManager.luau` | **Verified Stable** | Running `ASCEND_PlayerData_V3` with automatic V2 migration, 300s auto-saves, and `BindToClose` shutdown flushes. |
+| **Network Infrastructure** | `RemoteEvents.luau` | **Verified Stable** | All 22 centralized `RemoteEvent` instances are instantiated and wired. |
+| **Basic Combat Chain (M1)** | `FlyingSwordServer.luau`<br>`InputController.luau` | **Verified Stable** | 5-hit combo operational with speed dampening (`WalkSpeed = 8`), hit buffering, and 1.3s combo reset timers. |
+| **Sword Intent Gauge** | `CombatStateManager.luau`<br>`CombatVFXController.luau` | **Verified Stable** | +25% Intent per landed M1 strike; 100% Intent delivers 1.75× critical strike; decay timer active. VFX animation hookup pending. |
+| **Guarding & Parrying** | `CombatStateManager.luau`<br>`HitboxManager.luau` | **Verified Stable** | 80% guard mitigation, 100% perfect parry ($0.22\text{s}$), posture drain, and guard break stagger operational. Shield model attachment pending. |
+| **Skill Q (Tempest)** | `FlyingSwordServer.luau`<br>`CombatVFXController.luau` | **Verified Stable** | Dual hitbox (point-blank cleave + 3 traveling sawblades) fully operational with purple VFX. |
+| **Skill E (Void Thrust)** | `FlyingSwordServer.luau`<br>`InputController.luau` | **Functional / Pending Polish** | Hitbox and damage work on server; needs traveling projectile beam (120 studs/s) and weapon-attuned color palette wiring. |
+| **Ultimate F (100-Slash)** | `FlyingSwordServer.luau`<br>`CombatVFXController.luau` | **Verified Stable** | Client elevation (+2.2 studs), forward flash (145 studs/s), and 36-stud 100-slash sphere detonation fully stabilized. |
+| **Flight Mode (V)** | `WeaponManager.luau`<br>`FlyingSwordServer.luau` | **Verified Stable** | 3D sword flight (75 studs/s), 6.5-stud ground cushion, and 8.5-stud obstacle buffer operational. |
+| **Cultivation Engine** | `CultivationConfig.luau`<br>`CultivationManager.luau` | **Verified Stable** | 10 Realms × 9 Orders (90 stages), seated meditation (`C`), environmental multipliers, and breakthrough triggers functional. |
+| **Heavenly Tribulation** | `CultivationManager.luau`<br>`EnvironmentTimeManager.luau`| **Verified Stable** | Major breakthroughs summon lightning strikes with 0.8s ground telegraphs, parryable damage, and ascension bursts. |
+| **Mob AI & Bestiary** | `MobAIManager.luau` | **Verified Stable** | Full-body R6 mob AI with Patrol, Alert, Chase, Boids flocking separation, and combo attacks. |
+| **World Boss Mo Chen** | `Boss_FallenSwordGenius` | **Engine Ready / HUD Pending** | Boss rig, AI, and two-phase combat scripted; pending connection to `BossHealthHUD`. |
+| **Master HUD Interface** | `HUDController.luau`<br>`MasterHUDGui` | **Verified Stable** | Bottom-left 340px column stack (Health, Qi, Posture, Intent, Exp) and skill bar live; Bangers typography enforced. |
+| **Modal UI Architecture** | `ModalWindowManager.luau` | **Verified Stable** | Mutually exclusive modal stack prevents UI overlaps and handles camera locks cleanly (ADR-043). |
+| **Crafting & Professions** | `BlacksmithManager.luau`<br>`AlchemyManager.luau`<br>`TeaHouseManager.luau` | **Functional** | Refinement (+1 to +10), herb cauldron crafting, and 3 spirit teas operational; pending visual minigame polish. |
+| **Gathering Nodes** | `GatheringManager.luau` | **Verified Stable** | World resource nodes (Ghost Grass, Ginseng, Iron Ore, etc.) functional with ProximityPrompts. |
+| **Martial Arena (PvP)** | `ArenaManager.luau`<br>`ArenaController.luau` | **Functional** | Queueing and stat-normalized competitive matches work; rating/leaderboards pending Phase 9. |
+
+---
+
+## 🔍 Known Technical Debt & Immediate Watchpoints
+
+1. **`HitboxManager.luau` Line ~228 Mob Target Resolution:**
+   - Must verify that non-player targets (NPCs and training dummies) safely resolve without attempting player-only methods like `Players:GetPlayerFromCharacter`.
+2. **`CombatVFXController.luau` Missing Handlers:**
+   - Visual effects for Skill `E` need to be added to the remote event listener.
+   - `BlockStart` and `BlockEnd` listeners need to be attached for `ActiveShield`.
+   - `payload.WasGuardBroken` needs to trigger `ShieldBreakEffects`.
+   - 100% Intent empowered hit needs to trigger `SwordIntentAnim`.

@@ -1,249 +1,180 @@
-# 2. `docs/ARCHITECTURE_SPEC.md`
+# ASCEND — Authoritative Technical Architecture Specification
 
-```markdown
-# ASCEND — Master Architecture Specification
-
-## 1. Core Engineering Principles
-
-### 1.1 Client-Server Authoritative Boundary
-- **Server Authority:** All combat damage verification, posture deduction, inventory mutations, cultivation breakthroughs, pill brewing outcomes, weapon refinements, and data persistence are strictly server-authoritative. The client functions purely as a prediction, input, audio, and display layer.
-- **Client Prediction:** M1 combo swings and dash animations trigger immediate local visual feedback. Hit registration, damage application, and CC states are validated and broadcast exclusively by the server via `CombatAction` and `CombatVFX`.
-
-### 1.2 Studio-Authoritative UI Standard (Strict Rule — ADR-041)
-**Runtime programmatic UI generation via `Instance.new` inside client controllers is strictly prohibited.**
-All GUI layouts, frames, buttons, text labels, and UIStrokes must reside natively within `StarterGui`. Client controllers are strictly restricted to:
-1. Acquiring references to existing UI instances in `PlayerGui`.
-2. Binding user interactions (`Activated`, `MouseButton1Click`, `MouseEnter`).
-3. Updating dynamic labels, health/Qi fill bars, and item card templates.
-4. Executing UI tweens (fades, slides, pulses).
-5. Toggling container visibility (`Enabled = true / false`).
-
-### 1.3 Strict DisplayOrder Layering Hierarchy (ADR-043)
-To eliminate overlapping modals and render priority conflicts, every ScreenGui in `StarterGui` must have an assigned `DisplayOrder`:
-
-| DisplayOrder | ScreenGui Name | Functional Purpose |
-| :---: | :--- | :--- |
-| **1** | `MasterHUDGui` | Persistent desktop & mobile HUD (Vitals, Skill Bar, Intent, Currencies). |
-| **2** | `LowViewPortSkillsGUI` | Compact mobile viewport skill cluster fallback. |
-| **5** | `OverheadUI` | BillboardGuis for player nameplates, mob health bars, and dummy DPS text. |
-| **10** | `BlacksmithGui` | Weapon refinement (+10) and blade sharpening forge interface. |
-| **10** | `TeaHouseGui` | Spirit tea ordering and timed buff catalog interface. |
-| **10** | `SparringGuidanceGui` | Training dummy DPS tracking and sparring trial interface. |
-| **10** | `StarterGuideGui` | 4-tab interactive player onboarding guide modal. |
-| **10** | `SpiritPouchInventoryGui` | 60-slot storage, 2D weapon showcase, and item inspection modal. |
-| **10** | `SectPavilionGui` | Sect daily duties, disciple rank promotions, and daily stipend modal. |
-| **10** | `AlchemyCauldronGui` | 3-slot herb combination and temperature needle minigame modal. |
-| **12** | `ArenaGUI` | 1v1 matchmaking banners, countdown timers, and match resolution. |
-| **20** | `GlobalToastNotifGui` | Center-top floating harvest and action status banners. |
-| **100** | `LoadingScreen` | ReplicatedFirst preloader canvas and initialization gate. |
-
-### 1.4 Centralized Network Architecture
-All client-server network traffic routes through the 22 centralized `RemoteEvent` instances instantiated and managed by `src/ReplicatedStorage/Shared/Network/RemoteEvents.luau`. Ad-hoc remote creation is strictly prohibited.
+> **System Architecture & Technical Topology Document**  
+> **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
+> **Source of Truth:** Live Luau Codebase (`src/`)  
+> **Active Phase:** Phase 8.5 — Combat Engine Standardization & Defensive VFX Integration
 
 ---
 
-## 2. Complete Repository File Structure
+## 1. System Topology & Architectural Philosophy
+
+ASCEND utilizes a strict client-server separation model designed for deterministic execution, high responsiveness, and complete protection against client-side exploitation.
 
 ```text
-ASCEND/
-├── src/
-│   ├── ReplicatedFirst/
-│   │   └── LoadingScreen.client.luau
-│   ├── ReplicatedStorage/
-│   │   └── Shared/
-│   │       ├── Configs/
-│   │       │   ├── AlchemyConfig.luau
-│   │       │   ├── AnimationConfig.luau
-│   │       │   ├── CultivationConfig.luau
-│   │       │   ├── GatheringConfig.luau
-│   │       │   ├── HUDSkinConfig.luau
-│   │       │   ├── InventoryConfig.luau
-│   │       │   ├── ItemConfig.luau
-│   │       │   ├── MobConfig.luau
-│   │       │   ├── MonetizationConfig.luau
-│   │       │   ├── RarityConfig.luau
-│   │       │   ├── SectConfig.luau
-│   │       │   ├── UIAssets.luau
-│   │       │   └── Weapons/
-│   │       │       └── FlyingSwordConfig.luau
-│   │       └── Network/
-│   │           └── RemoteEvents.luau
-│   ├── ServerScriptService/
-│   │   └── Server/
-│   │       ├── ServerMain.server.luau
-│   │       ├── Combat/
-│   │       │   ├── ArenaManager.luau
-│   │       │   ├── HitboxManager.luau
-│   │       │   ├── MobAIManager.luau
-│   │       │   ├── WeaponManager.luau
-│   │       │   └── Weapons/
-│   │       │       └── FlyingSwordServer.luau
-│   │       ├── Cultivation/
-│   │       │   ├── AlchemyManager.luau
-│   │       │   ├── CultivationManager.luau
-│   │       │   └── SectManager.luau
-│   │       ├── State/
-│   │       │   ├── CombatStateManager.luau
-│   │       │   ├── InventoryManager.luau
-│   │       │   ├── MarketplaceManager.luau
-│   │       │   └── PlayerDataManager.luau
-│   │       └── World/
-│   │           ├── BlacksmithManager.luau
-│   │           ├── EnvironmentTimeManager.luau
-│   │           ├── GatheringManager.luau
-│   │           ├── TeaHouseManager.luau
-│   │           ├── TreeCollisionManager.luau
-│   │           └── VendorManager.luau
-│   ├── StarterPlayer/
-│   │   ├── StarterCharacterScripts/
-│   │   │   └── Animate.client.luau
-│   │   └── StarterPlayerScripts/
-│   │       ├── ClientMain.client.luau
-│   │       ├── DeWidth.client.luau
-│   │       └── Controllers/
-│   │           ├── AlchemyController.luau
-│   │           ├── AnimationController.luau
-│   │           ├── ArenaController.luau
-│   │           ├── BlacksmithController.luau
-│   │           ├── CombatVFXController.luau
-│   │           ├── CultivationController.luau
-│   │           ├── FocusTargetController.luau
-│   │           ├── GatheringController.luau
-│   │           ├── HUDController.luau
-│   │           ├── InputController.luau
-│   │           ├── InventoryController.luau
-│   │           ├── MarketController.luau
-│   │           ├── OverheadUIController.luau
-│   │           ├── QuestTrackerController.luau
-│   │           ├── SectController.luau
-│   │           ├── SkillBarController.luau
-│   │           ├── SparringGuidanceController.luau
-│   │           ├── StarterGuideController.luau
-│   │           ├── TeaHouseController.luau
-│   │           └── WindEnvironmentController.luau
-│   └── Workspace/
-│       └── Functional_Stations/
-│           └── Sect_TrainingGround/
-│               ├── TrainingDummy_1/
-│               │   └── ImmortalDummyHandler.server.luau
-│               ├── TrainingDummy_2/
-│               │   └── ImmortalDummyHandler.server.luau
-│               └── TrainingDummy_3/
-│                   └── ImmortalDummyHandler.server.luau
-3. Server-Side Execution Model
-3.1 Server Lifecycle (ServerMain.server.luau)
-Upon server startup, ServerMain executes sequential initialization across all 16 server managers:
-Network Initialization: Invokes RemoteEvents.Init() to construct and register the 22 centralized remotes.
-Combat & Locomotion Managers:
-CombatStateManager.Init() — Posture, CC state machine, hyperarmor buffer.
-WeaponManager.Init() — Attachment rigging, 3D equip/unequip sound and sheathing.
-Cultivation & Core State:
-CultivationManager.Init() — Dantian tracking, realm multipliers, aura lifecycles.
-InventoryManager.Init() — 60-slot storage, item validation, stack calculations.
-PlayerDataManager.Init() — Connects to DataStoreService under key ASCEND_PlayerData_V2. Starts 5-minute auto-save loop and developer item injection hooks (Han_jueee).
-World & Profession Managers:
-GatheringManager.Init() — Vintage herb spawn nodes, harvest timers, toast broadcasting.
-AlchemyManager.Init() — Cauldron temperature minigame and pill crafting logic.
-EnvironmentTimeManager.Init() — 12-minute 4-phase day/night lighting cycle.
-TreeCollisionManager.Init() — Sets foliage CanCollide = false while maintaining solid trunks.
-VendorManager.Init() — Sect market buying/selling and dynamic catalog sync.
-BlacksmithManager.Init() — Weapon refinement (+10) and blade sharpening forge hooks.
-TeaHouseManager.Init() — Spirit tea brewing orders and timed buff attributes.
-Sect, AI & Arena Engagement:
-SectManager.Init() — 3-tier daily duties, CP sync, daily stipend claims.
-MobAIManager.Init() — Pathfinding state machine, leash boundaries, kill attribution.
-ArenaManager.Init() — Standby pads (DuelPad1/DuelPad2), 3s countdown, 1,000 HP normalization.
-MarketplaceManager.Init() — Gamepass perks and Developer Product receipt ledger.
-4. Client-Side Execution Model
-4.1 Client Lifecycle (ClientMain.client.luau)
-Client initialization executes concurrently via task.spawn(), preventing any single slow controller from blocking the client initialization pipeline:
-Concurrently boots all 20 controllers in StarterPlayer/StarterPlayerScripts/Controllers/.
-Initializes DeWidth.client.luau to manage mobile camera field-of-view and viewport adjustments.
-Bridges all controllers directly to pre-existing UI instances in PlayerGui.
-4.2 Custom R6 Locomotion Pipeline (Animate.client.luau)
-Permanently overrides Roblox's default character script inside StarterPlayer.StarterCharacterScripts:
-Idle Yaw Pinning: Locks character torso rotation to camera yaw when stationary or meditating.
-Velocity-Synced Audio: Dynamically plays footstep SFX synchronized to actual root velocity.
-Fall Height Filter: Eliminates false landing audio on small terrain undulations (<3 studs).
-Anti-Ragdoll State Locking: Prevents characters from entering falling ragdoll states upon dashing into obstacles or terrain walls.
-5. Lower Sect Hub Facilities Architecture
-5.1 Blacksmithing Refinement & Sharpening
-Server: BlacksmithManager.luau | Client: BlacksmithController.luau
-Network Remote: BlacksmithAction
-World Target: ProximityPrompt on Sect_NPC_MadameTie or Master Blacksmith Anvil.
-Refinement Execution:
-Upgrades equipped Flying Sword base attack power up to +10.
-Upgrades grant +5% base ATK per level:
-RefinementDamageMultiplier
-=
-1.0
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   CLIENT TOPOLOGY                                       │
+│                                                                                         │
+│  StarterPlayerScripts/ClientMain.client.luau (Client Lifecycle Coordinator)             │
+│  ├── InputController ──> Buffers inputs, predicts local animations & dashes             │
+│  ├── HUDController & Controllers (24 total) ──> Manages Studio-authoritative GUIs       │
+│  ├── CombatVFXController ──> Handles visual fx, sounds, camera shake, hitstop           │
+│  └── ModalWindowManager ──> Enforces mutually exclusive modal dialogues (ADR-043)        │
+└─────────────────────────────────────────┬───────────────────────────────────────────────┘
+                                          │  Network Boundary
+                                          │  (22 RemoteEvents in ReplicatedStorage)
+┌─────────────────────────────────────────┴───────────────────────────────────────────────┐
+│                                   SERVER TOPOLOGY                                       │
+│                                                                                         │
+│  ServerScriptService/ServerMain.server.luau (Server Lifecycle Coordinator)              │
+│  ├── PlayerDataManager ──> Manages ASCEND_PlayerData_V3 persistence                     │
+│  ├── CombatStateManager ──> Posture, Guard, Parry, and Stagger states                   │
+│  ├── FlyingSwordServer & WeaponManager ──> Authoritative combo/skill validation         │
+│  ├── HitboxManager ──> Compensated spatial spatial queries & damage application         │
+│  ├── CultivationManager ──> Qi generation, breakthroughs, and Tribulation lightning     │
+│  └── World Managers (Gathering, Blacksmith, Alchemy, TeaHouse, MobAI, Arena, etc.)      │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+Foundational Principles
+Server Authority Over Stats & Combat: The client is purely an input sensor and visual rendering engine. All cooldown verification, Qi resource checks, hitbox spatial sweeps, damage math, and posture breaks are executed and validated strictly on the server.
+Single-Weapon Architecture (ADR-038): The combat pipeline is built specifically around Flying Swords, eliminating multi-weapon branch bloat while delivering deep mechanical nuance through dynamic weapon palettes and intent mechanics.
+Studio-Authoritative UI (ADR-041): All user interfaces exist natively as Studio instances within StarterGui. Luau controllers never construct UI hierarchies via Instance.new; they only query, bind listeners, and tween properties.
+Modal Window Exclusivity (ADR-043): Every fullscreen/dialogue interface registers with ModalWindowManager.luau to prevent UI overlaps, lock movement, and cleanly release mouse control.
+2. Server Infrastructure (src/ServerScriptService/Server/)
+Initialized sequentially by ServerMain.server.luau:
+Combat Subsystem
+Manager	Path	Architectural Responsibilities
+FlyingSwordServer	Combat/Weapons/FlyingSwordServer.luau	Executes M1 combo sequence, Q Tempest, E Thrust, and F 100-Slash Domain. Calculates raw damage and consumes Sword Intent.
+HitboxManager	Combat/HitboxManager.luau	Latency-compensated spatial queries using WorldRoot:GetPartBoundsInBox. Handles friendly-fire rules and Mob/Player target normalization.
+WeaponManager	Combat/WeaponManager.luau	Manages weapon equipping, sheathing (R), welding between RightGripAttachment and BackSwordMount, and sheath states.
+MobAIManager	Combat/MobAIManager.luau	R6 mob state machines (Patrol, Alert, Chase, Flocking/Boids, Attack combos, Reset). Spawns and manages world enemies.
+ArenaManager	Combat/ArenaManager.luau	Manages 1v1 and Free-for-All arena instances, round states, normalized competitive damage scaling, and match boundaries.
+Cultivation Subsystem
+Manager	Path	Architectural Responsibilities
+CultivationManager	Cultivation/CultivationManager.luau	Validates seated meditation (C), applies environmental Qi multipliers, schedules Tribulation strikes, and executes major/minor breakthroughs.
+AlchemyManager	Cultivation/AlchemyManager.luau	Validates herb inputs at Master Shen's Cauldron, runs mini-game logic, and crafts cultivation pills.
+SectManager	Cultivation/SectManager.luau	Handles sect ranks, disciple duty boards, daily bounties, and Sect Contribution currency.
+State & Persistence Subsystem
+Manager	Path	Architectural Responsibilities
+PlayerDataManager	State/PlayerDataManager.luau	Manages ASCEND_PlayerData_V3 DataStore. Handles schema migration from V2, 300s auto-saves, and shutdown flushes via BindToClose.
+CombatStateManager	State/CombatStateManager.luau	Tracks guard states, parry windows (
+0.22
+s
+0.22s
+), posture points (
+100
+ base
+100 base
+), posture regen, and guard break staggers (
+1.8
+s
+1.8s
+).
+InventoryManager	State/InventoryManager.luau	Server inventory management, consumable usage, and equipment ownership records.
+MarketplaceManager	State/MarketplaceManager.luau	Manages currency transactions, vendor exchanges, and developer product/gamepass processing.
+World & Environment Subsystem
+Manager	Path	Architectural Responsibilities
+BlacksmithManager	World/BlacksmithManager.luau	Handles Madame Tie's Forge. Processes weapon refinement (
 +
-(
-RefineLevel
-×
-0.05
-)
-RefinementDamageMultiplier=1.0+(RefineLevel×0.05)
-Deducts 150 + (RefineLevel * 75) Spirit Stones and MountainIronIngot from inventory.
-Dynamically calculates success chance:
-SuccessRate
-=
-max
-⁡
-(
-0.35
-,
-0.95
-−
-RefineLevel
-×
-0.08
-)
-SuccessRate=max(0.35,0.95−RefineLevel×0.08)
-Failure consumes materials but preserves refinement level.
-Blade Sharpening Execution:
-Deducts 100 Spirit Stones.
-Assigns player:SetAttribute("BladeSharpenedUntil", os.clock() + 900).
-Assigns player:SetAttribute("SharpnessCritBonus", 0.10) (+10% Critical Strike Chance).
-5.2 Spirit Tea Pavilion
-Server: TeaHouseManager.luau | Client: TeaHouseController.luau
-Network Remote: TeaHouseAction
-World Target: ProximityPrompt on Sect_NPC_XiaoLing ("Order Spirit Tea").
-Catalog Execution:
-Jade Dew Spirit Tea (100 Stones): Calls CultivationManager.AddInternalQi(player, 250). Sets TeaMeditationBuffUntil (+10% meditation speed for 10 min).
-Crimson Ginseng Brew (150 Stones): Heals 500 HP immediately. Sets HealthRegenBonus = 0.15 for 10 min.
-Dragon Well Sword Tea (250 Stones): Sets TeaSwordIntentBuffUntil and TeaSwordIntentMultiplier = 1.15 (+15% Intent gain for 15 min).
-5.3 Training Grounds & Ironwood Dummies
-Dummy Script: ImmortalDummyHandler.server.luau (Runs on TrainingDummy_1, 2, 3 in Workspace.Functional_Stations.Sect_TrainingGround).
-Client Controller: SparringGuidanceController.luau (Bound to Sect_NPC_InstructorWu).
-Mechanics:
-Dummies have 10,000,000 HP with instant server-authoritative regeneration.
-Logs all incoming hit damage into a rolling 5-second circular timestamp buffer.
-Displays damage numbers and rolling DPS overhead via BillboardGui using Enum.Font.Bangers.
-Dialogue with Instructor Wu can trigger full DPS counter resets across all dummies.
-5.4 Sect Starter Guide
-Client Controller: StarterGuideController.luau
-World Target: ProximityPrompt on Sect_NPC_ElderQing ("Seek Guidance").
-GUI: Opens StarterGui.StarterGuideGui featuring 4 tabbed interactive frames: Controls, Cultivation, Sword Intent, and Sect Duties.
+1
+→
++
+10
++1→+10
+) and consumes ores.
+TeaHouseManager	World/TeaHouseManager.luau	Manages Xiao Ling's Spirit Tea Pavilion. Validates tea purchases and applies timed Qi/damage buff timers.
+GatheringManager	World/GatheringManager.luau	Manages world resource nodes (Ghost Grass, Golden Ginseng, Mortal Iron Ore, etc.) and harvesting timers.
+EnvironmentTimeManager	World/EnvironmentTimeManager.luau	Drives atmospheric day/night cycles and dims skies during Tribulation events.
+TreeCollisionManager	World/TreeCollisionManager.luau	Optimizes world geometry collision physics, disabling complex mesh hulls for high performance.
+VendorManager	World/VendorManager.luau	Manages generic world ProximityPrompts and dialogue interactions for utility NPCs.
+3. Client Infrastructure (src/StarterPlayer/StarterPlayerScripts/)
+Bootstrapped by ClientMain.client.luau following completion of LoadingScreen.client.luau:
+Client Controllers
+Controller	Primary Function
+InputController	Binds user inputs (M1, Shift, Ctrl, T, C, R, V, B, Q, E, F, P, Tab).
+AnimationController	Preloads, caches, and plays sword combo, dash, meditation, and skill animation tracks.
+CombatVFXController	Spawns damage numbers, slash ribbons, camera shake, hitstop, parry clash sparks, and aura effects.
+HUDController	Drives MasterHUD: dynamic Health bar, Qi gauge, Posture meter, and bottom-left 340px column stack.
+ModalWindowManager	Central stack controller managing mutually exclusive full-screen UI views (ADR-043).
+CharacterStatsController	Controls the CharacterStatsGui (P key) displaying Realm, Order, Attributes, and Stats.
+CultivationController	Handles local meditation visual states, breakthrough prompts (B), and tribulation telegraph circles.
+SkillBarController	Renders skill slot icons, cooldown sweeps, key labels, and activation flashes.
+ArenaController	Manages arena matchmaking prompts, countdown overlays, and match result screens.
+FocusTargetController	Provides soft-lock targeting indicators and camera aim-assist on nearby hostiles.
+OverheadUIController	Renders R6 billboard names, realm titles, sect affiliations, and mob health bars.
+InventoryController	Manages the grid inventory UI, item tooltips, and weapon equipping.
+BlacksmithController	Drives the weapon refinement UI at Madame Tie's Forge.
+AlchemyController	Drives the herb selection and cauldron minigame UI at Master Shen's station.
+TeaHouseController	Drives the Spirit Tea selection UI and active tea buff icons.
+MarketController	Manages vendor shop interfaces and item purchasing.
+QuestTrackerController	Displays active Sect Notice Board bounties and duty completion toasts.
+SectController	Displays sect rankings, elder dialogues, and contribution redemption menus.
+StarterGuideController	Drives Elder Qing's 4-tab interactive codex interface.
+SparringGuidanceController	Displays training dummy DPS meters and combo tutorials at the Sect Training Grounds.
+WeaponCodexController	Displays 3D previews and lore descriptions for unlocked Flying Swords.
+GatheringController	Displays harvesting progress bars and interaction prompts on world resource nodes.
+MusicController	Manages dynamic background music transitions between Sect, Wilds, and Combat states.
+WindEnvironmentController	Drives ambient wind trails, cherry blossom petal drifts, and atmospheric particles.
+4. Centralized Network Architecture (RemoteEvents.luau)
+All 22 RemoteEvent instances are instantiated once by RemoteEvents.luau inside ReplicatedStorage.Shared.Network:
+code
+Lua
+-- Authoritative RemoteEvent Directory
+local RemoteEvents = {
+    -- Combat & Movement Pipeline
+    CombatActionRemote     = Instance.new("RemoteEvent"),
+    CombatVFXRemote        = Instance.new("RemoteEvent"),
+    SwordFlightRemote      = Instance.new("RemoteEvent"),
+    BossEncounterRemote    = Instance.new("RemoteEvent"),
 
-<!-- UPDATE SECTION 3.1: Server Lifecycle (ServerMain.server.luau) -->
+    -- Cultivation & Progression Pipeline
+    CultivationActionRemote = Instance.new("RemoteEvent"),
+    CultivationStateRemote  = Instance.new("RemoteEvent"),
+    BreakthroughRemote      = Instance.new("RemoteEvent"),
+    TribulationRemote       = Instance.new("RemoteEvent"),
+    CharacterStatsRemote    = Instance.new("RemoteEvent"),
 
-### 3.1 Server Lifecycle (ServerMain.server.luau Revision)
-Upon server startup, `ServerMain.server.luau` sequentially initializes all 16 server engines:
-1. `RemoteEvents.Init()` — Centralized network remotes.
-2. Core State & Combat: `CombatStateManager`, `WeaponManager`, `CultivationManager`, `InventoryManager`, `PlayerDataManager`.
-3. World & Cultivation Facilities: `GatheringManager`, `AlchemyManager`, `EnvironmentTimeManager`, `TreeCollisionManager`, `VendorManager`, `BlacksmithManager`, `TeaHouseManager`, `SectManager`.
-4. Combat Encounters & Spawners:
-   - `ArenaManager.Init()` — 1v1 Sparring Arena.
-   - `MarketplaceManager.Init()` — Gamepass & receipt ledger.
-   - `MobAIManager.Init()` — **[ACTIVE]** Scans `workspace.MobSpawns`, activates camp anchors (`Spawner_RogueDisciples`), and runs spatial culling AI loop (0.25s).
+    -- Inventory & Economy Pipeline
+    InventoryActionRemote   = Instance.new("RemoteEvent"),
+    InventoryUpdateRemote   = Instance.new("RemoteEvent"),
+    MarketplaceActionRemote = Instance.new("RemoteEvent"),
 
-<!-- INSERT UNDER SECTION 1.1: Client-Server Authoritative Boundary -->
+    -- Sect & Questing Pipeline
+    SectActionRemote        = Instance.new("RemoteEvent"),
+    SectUpdateRemote        = Instance.new("RemoteEvent"),
+    NoticeBoardRemote       = Instance.new("RemoteEvent"),
 
-### 1.5 Server-Authoritative High-Speed Movement (Dash & Blink Engine)
-To eliminate client physics desync and ground-tripping:
-- **Zero Client Velocity Injection:** Clients are strictly prohibited from directly modifying `AssemblyLinearVelocity` or hard-teleporting `HumanoidRootPart.CFrame` during movement skills.
-- **Server-Managed Physics:** The server instantiates a temporary `Attachment` and `LinearVelocity` (`ForceLimitMode.PerAxis`, $Y = 0$) on `HumanoidRootPart`.
-- **Y-Velocity Clamping:** The server clamps `AssemblyLinearVelocity.Y` between $[-2, 2]$ prior to force application to prevent launching into the sky or driving into the ground.
-- **Deceleration Decay:** Velocities decay smoothly via `TweenService` over the final $35\%$ of travel duration before constraint destruction.
-- **Attribute Gating:** Locomotion scripts in `RenderStepped` check `IsBlinking` and `IsChargingF`, preventing `WalkSpeed` updates from conflicting with physics forces.
+    -- Professions & Gathering Pipeline
+    GatheringActionRemote   = Instance.new("RemoteEvent"),
+    AlchemyActionRemote     = Instance.new("RemoteEvent"),
+    BlacksmithActionRemote  = Instance.new("RemoteEvent"),
+    TeaHouseActionRemote    = Instance.new("RemoteEvent"),
+
+    -- Arena & Environment Pipeline
+    ArenaActionRemote       = Instance.new("RemoteEvent"),
+    ArenaStateRemote        = Instance.new("RemoteEvent"),
+    EnvironmentSyncRemote   = Instance.new("RemoteEvent"),
+}
+Remote Invocation Matrix
+code
+Text
+[Client] ──CombatActionRemote:FireServer({Action="Attack", SkillKey="M1", AimCFrame=...})──> [Server]
+                                                                                                 │
+                                                                         Validate State, Cooldown, Hitbox
+                                                                                                 │
+[Client] <──CombatActionRemote:FireAllClients(attacker, "Attack", {SkillKey="M1"})───────────────┤
+                                                                                                 │
+                                                                                      If Target Hit:
+[Client] <──CombatVFXRemote:FireAllClients({EffectType="DamageNumber", Damage=125, ...})─────────┘
+5. Boot Sequence & Initialization Order
+Server Initialization Sequence (ServerMain.server.luau)
+Shared Singletons: Initialize RemoteEvents.luau and verify all 22 remotes are parented under ReplicatedStorage.
+State & DataStores: Initialize PlayerDataManager.luau (ASCEND_PlayerData_V3). Connect player join (PlayerAdded), player leave (PlayerRemoving), and game shutdown (BindToClose).
+Core State Managers: Initialize CombatStateManager and InventoryManager.
+Combat Engines: Initialize HitboxManager, WeaponManager, FlyingSwordServer, and MobAIManager.
+Cultivation & World Services: Initialize CultivationManager, SectManager, GatheringManager, BlacksmithManager, AlchemyManager, TeaHouseManager, ArenaManager, and EnvironmentTimeManager.
+Client Initialization Sequence (ClientMain.client.luau)
+ReplicatedFirst Screen: LoadingScreen.client.luau displays loading bar while critical assets, UI fonts, and animations preload via ContentProvider:PreloadAsync.
+Core System Services: ModalWindowManager and InputController initialize and lock input routing.
+Audio & VFX Engines: MusicController and CombatVFXController initialize.
+HUD & ScreenGuis: HUDController scans StarterGui.MasterHUDGui, establishes value observers, and binds the bottom-left 340px column stack.
+Interactive Controllers: Domain controllers (CultivationController, InventoryController, CharacterStatsController, etc.) connect to their respective remotes and Studio UI components.

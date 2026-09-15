@@ -1,213 +1,387 @@
----
-
-### 9. `docs/COMBAT_SPEC.md`
-
-```markdown
-# ASCEND-V1 — PURE SWORD CULTIVATOR COMBAT SPECIFICATION
+# ASCEND — Authoritative Combat Specification
 
 > **Technical Specification Document**  
-> **Master Entry Point:** https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md  
-> **Scope:** Server-Authoritative Sword Engine, Universal Skillset, Hitboxes, & Magma Cleaves.
+> **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
+> **Source of Truth:** Live Luau Codebase (`src/`)  
+> **Active Phase:** Phase 8.5 — Combat Engine Standardization & Defensive VFX Integration
 
 ---
 
-### 1.3 Dynamic Weapon-Attuned Skill Palettes
-Skills (`Q` sawblades, `F` 100-slash sphere, `Shift` dash afterimages, and `F` Shunpo ghosts) dynamically query `character:GetAttribute("EquippedWeapon")` via `ItemConfig.GetWeaponPalette`:
-- **Tier 1 (`MortalIronJian`):** Cold Silver-White (`#DCE1EB`)
-- **Tier 2 (`AzureCloudDiscipleJian`):** Celestial Sky Cyan (`#38BDF8`)
-- **Tier 3 (`FlowingQiSpiritSword`):** Electric Ocean Sapphire (`#0EA5E9`)
-- **Tier 4 (`VerdantJadeFlyingSword`):** Imperial Emerald Jade (`#34D399`)
-- **Tier 5 (`VioletSoulSovereignJian`):** Royal Amethyst Violet (`#C084FC`)
-- **Tier 6 (`VoidStarCleaverDao`):** Cosmic Void Purple (`#A855F7`)
-- **Tier 7 (`AzurePatriarchHeritageJian`):** Luminescent Divine Cyan (`#22D3EE`)
-- **Tier 8 (`RadiantImmortalSovereignJian`):** Blinding Solar Dao Gold (`#FACC15`)
+## 1. Combat Engine Overview
 
-## 4. Mob Combat & Flocking AI Mechanics
+ASCEND features a high-fidelity, server-authoritative martial sword combat system built exclusively on the Roblox R6 avatar standard. The combat philosophy emphasizes rapid reaction times, fluid chaining, directional precision, and dynamic visual feedback.
 
-### 4.1 Shared R6 Sword Combat System
-All mobs and bosses share the player's 1-handed sword combat engine:
-- **Movement Locomotion:** Mobs play the martial walk animation during Patrol (`WalkSpeed * 0.65`) and sprint with the player run animation during Chase (`WalkSpeed * 1.15`).
-- **5-Step Combo String:** Mobs cycle through the full 5-step M1 broadsword combo sequence (`M1_1` through `M1_5`), resetting if more than $2.2\text{s}$ elapses between strikes.
-- **Combat Resolution:** Attacks route through `HitboxManager.ApplyCombatResolution`. Player blocking (`T`) reduces damage by $80\%$, perfect parries deflect strikes with golden sparks and negate damage, and landed hits deal physical knockback, trigger camera shudder ($0.85$), and spawn slash hitmarks.
-
-### 4.2 Smart Teammate Flocking & Boids Separation
-- **Surround Slots:** When multiple mobs chase the same target, each mob calculates an angular flank slot (`flankAngle = (idx / total) * 2π`) fanning out at a $3.5\text{--}6.0\text{ stud}$ radius.
-- **Boids Repulsion:** Mobs within $5.5\text{ studs}$ of teammates apply an inverse-distance lateral repulsion force, preventing stacking and colliding.
-
-## 1. Universal 1-Pack Skillset (Low-Friction, High-Impact)
-
-All Flying Swords use the same universal 6-slot input layout with high-impact visual feedback:
-
-<!-- INSERT UNDER SECTION: ## 1. Universal 1-Pack Skillset -->
-
-### Updated Flying Sword Active Skills (Phase 8.5 Revision)
-
-| Input | Skill Name | Qi Cost (% Max Qi) | Cooldown | Base Damage | Reach / Speed | Visual & Audio Identity |
-| :---: | :--- | :---: | :---: | :---: | :---: | :--- |
-| **`M1`** | Broadsword Combo | **0%** | 0.38s–0.65s | 15/15/20/25/45 | 8–11 studs | 5-hit R6 broadsword chain. WalkSpeed = 8. Generates +25% Intent per hit. |
-| **`Q`** | **Sword Tempest** | **15%** | 3.5s | 25 (Melee) + 54 (3x Waves) | 36 studs @ 70 studs/s | Dual hitbox: point-blank melee cleave (0–7 studs) + 3 traveling purple sawblades. Release SFX: `109735549169421`, Hit SFX: `135448977656112`. Auto-resumes sprint. |
-| **`E`** | Piercing Void Thrust | **12%** | 5.0s | 80 | 25 studs @ 120 studs/s | High-speed penetrating sword beam. Knocks targets back 40 studs. |
-| **F** | **100-Slash Flash Domain** | **20%** | 5.5s | 100 (5 ticks x 20) | 28–32 studs @ 145 studs/s | Instant 1-click trigger. Lifts cultivator +2.2 studs into Freefall with AlignOrientation (10M torque); plays rapid 0.12s airborne windup pose; executes 145 studs/s flash-step forward phasing through enemies; at midpoint, triggers mid-air slash and detonates 36-stud 100-slash sphere (weapon-attuned colors). Slope-normal ground snap (Normal.Y > 0.65) upon recovery. Auto-resumes sprint. |
-| **`T`** | Block & Perfect Parry | **0%** | 0.5s | 0 | Frontal 180° | Hold to block (80% mitigation). Tap within 0.22s for Perfect Parry (100% negation, 0.5s stun on attacker, +5% Qi). |
-| **`Shift`**| Windstep Dash | **0%** | 3.0s | 0 | 20 studs @ 150 studs/s | 2-stage flash-step burst with +1.2 stud elevation lift and Celestial Cyan afterimages. |
-
-
-## 3. Dynamic Skill Qi Costs & Damage Power Scaling
-
-### A. Dynamic Skill Qi Consumption (% of CultivatedQi)
-Skills no longer consume static flat Qi amounts. Skill Qi consumption scales dynamically as a percentage of the player's current `CultivatedQi`:
-
-| Input | Skill Name | Qi Consumption (% of CultivatedQi) | Cooldown | Base Damage |
-|---|---|---|---|---|
-| **LMB** | Telekinetic Slash Combo | **0%** | 0.6s | 15 / 15 / 20 / 35 |
-| **Shift** | Windstep Dash | **3%** | 2.0s | 0 (Velocity Impulse 75) |
-| **F** | Magma Cleave | **8%** | 1.5s | 35 |
-| **E** | Homing Thrust | **12%** | 5.0s | 30 |
-| **Q** | Volcanic Tempest | **15%** | 3.0s | 45 |
-| **R** | Celestial Sunfall | **30%** | 8.0s | 80 |
-
-### B. Dynamic Realm Power Multipliers
-Skill damage scales dynamically with the cultivator's Realm and Order (`CultivationConfig.GetPowerMultiplier(Realm, Order)`):
-$$\text{Final Damage} = \text{Skill Base Damage} \times \text{Cultivator Power Multiplier}$$
-
-* **Power Multiplier Scale:**
-  * Qi Condensation Order 1 = $1.0\times$
-  * Golden Core Order 1 = $75.0\times$
-  * Golden Core Order 9 = $165.0\times$
-  * Immortal Ascension Order 9 = $100,000.0\times$
-* **TTK & One-Shot Mechanics:**
-  * Equal-tier fights (Golden Core vs Golden Core) maintain standard skill-based TTK (~35% HP per Ultimate).
-  * High-realm vs Low-realm fights (Golden Core vs Qi Condensation) result in **instant one-shots** due to power multiplier scaling ($165.0\times$ vs $1.0\times$).
-
-### C. In-Combat Qi Recovery Rates
-* **Standing / Fighting (Passive):** Restores `CurrentQi` up to `CultivatedQi` in **60 seconds** ($1.66\%$ per second).
-* **Active Meditation ([G] Key):** Restores `CurrentQi` up to `CultivatedQi` in **10 seconds** ($10.0\%$ per second).
-* **Qi Lock During Meditation:** Pressing **[G]** blocks all combat attacks (`LMB`, `F`, `Q`, `E`, `R`, `Shift`) on both client and server.
-
-### Flying Sword Skill Set & Cooldown Timings (Added 2026-08-20)
-
-- **M1 — Celestial Sword Slash:** 4-hit combo chain ($0.4\text{s}, 0.4\text{s}, 0.5\text{s}, 1.0\text{s}$ cooldowns).
-- **Q — Sword Tempest:** 360° blade vortex ($3.0\text{s}$ cooldown).
-- **E — Telekinesis Thrust:** Piercing long-range sword beam ($5.0\text{s}$ cooldown).
-- **F — Heavy Slam:** Heavenly blade poise-break slam ($1.5\text{s}$ cooldown).
-- **Shift / Q — Flash Step:** Evasive dash with I-frames ($2.0\text{s}$ cooldown).
-
-### Combat Movement, Combo String & Qi Dash Specifications
-
-#### 1. 5-Hit Heavy Broadsword Combo (`MouseButton1`)
-* **Timing & Pacing:**
-  * Attack 1: `rbxassetid://129254042886405` (`0.44s`, `0.85x speed`)
-  * Attack 2: `rbxassetid://78342794513338` (`0.40s`, `0.85x speed`)
-  * Attack 3: `rbxassetid://133701354257850` (`0.44s`, `0.85x speed`)
-  * Attack 4: `rbxassetid://140582503077234` (`0.46s`, `0.80x speed`)
-  * Attack 5: `rbxassetid://111677132360566` (`0.54s`, `0.75x speed` Heavy Finisher)
-* **Combat Footwork Commitment:** During any M1 swing, `WalkSpeed` is dampened to `8` studs/sec to ground the martial attack and ensure clean hitbox registration in PvP.
-* **Anti-Spam Duration Lockout:** Swings cannot be interrupted mid-arc by spam-clicking. Pausing for `> 1.3s` resets the combo back to Attack 1.
-* **Audio & Trail Sync:** Authentic slash sound `rbxassetid://79218449800283` and tier-colored trail ribbons activate strictly during slash execution.
-
-#### 2. Repeatable 2-Stage Qi Dash (`LeftShift`)
-* **Sequence:** Dash 1 (`rbxassetid://118004062849712`) ──> Dash 2 (`rbxassetid://87494050060721`).
-* **Cooldown:** 3.0s.
-* **Burst Velocity:** 88 studs/sec for 0.20s (~18 studs distance) with smooth 0.08s deceleration decay.
-* **Lockout:** Complete input/attack lockout during the 0.20s dash window.
-* **Sprint Continuity:** Automatically resumes full sprinting if `W` is held when dash completes.
-
-#### 3. Arena vs Open-World Speed Scaling
-* **In Arena (`Character:GetAttribute("InArena") == true`):** Walk: `16` | Sprint: `28` (Deepwoken-style balanced combat).
-* **Outside Arena (Open World):** Walk: `18` | Sprint: `52` (High-speed exploration).
-
-## Additive Combat Update (2026-08-27) — Parrying, Posture & Duel Normalization
-
-### 1. Block & Perfect Parry Deflection Engine (`T` Key)
-* **Standard Guard (Hold `T`):** Blocks incoming attacks within the front $180^\circ$ arc, reducing damage by **$80\%$** and knockback by **$70\%$**. Drains Posture based on attack weight ($15\text{ pts}$ for M1 1–4, $40\text{ pts}$ for Finisher, $50\text{ pts}$ for Skills).
-* **Perfect Parry (Tap `T` within $0.22\text{s}$):** **$100\%$ Damage Negation**, breaks attacker's posture with a **$0.5\text{s}$ stun**, restores **$+5\%$ Dantian Qi**, triggers golden deflection sparks, and plays metal clash audio (`rbxassetid://9114223175`). Costs $0$ Posture.
-
-### 2. Posture & Guard-Break Mechanics
-* **Max Posture Pool:** $100\text{ Points}$.
-* **Posture Recovery:** Recovers at $25\text{ pts/s}$ after $1.5\text{s}$ of releasing block.
-* **Guard-Break Penalty:** Hitting $0\text{ Posture}$ inflicts a **$1.2\text{s}$ vulnerability stun** ($+25\%$ bonus damage taken) and shield-shatter visual feedback.
-
-### 3. Anti-Stunlock Hyperarmor Buffer
-* **$0.6\text{s}$ CC-Immunity Window:** Players receive $0.6\text{s}$ of hard hyperarmor immediately upon recovering from any stun (Parry Stun, Guard-Break, or Wall-Splat), preventing infinite stunlock chains.
-
-### 4. Arena Stat Normalization & Clashes
-* **1,000 HP Fair Duels:** Inside the Sector 3 Arena (`InArena == true`), all cultivators receive flat $1{,}000\text{ HP}$ and normalized damage curves for $100\%$ skill parity.
-* **Simultaneous Sword Clashes:** Attacks landing within $\pm 0.08\text{s}$ trigger a Sword Clash ($0\text{ damage}$, spark blast, mutual pushback).
+### Core Architectural Pillars
+- **Single-Weapon Paradigm (ADR-038):** All martial combat is executed through **Flying Swords**. All 8 weapon tiers share standardized R6 animations while dynamically attuning visual effects, trails, slash arcs, and damage numbers via `ItemConfig.GetWeaponPalette(weaponId)`.
+- **Authoritative Hit Validation:** Hitboxes are cast and validated strictly on the server (`HitboxManager.luau`) using spatial box/sphere overlap queries (`WorldRoot:GetPartBoundsInBox`). Latency compensation verifies attacker position against network ping buffers.
+- **Unified Defense Matrix:** Seamless transitions between free movement, sprinting, high-velocity flash-stepping, directional guarding, and frame-perfect parrying.
+- **Sword Intent Gauge:** A four-tiered kinetic momentum system that rewards continuous offensive pressure with an empowered, armor-cleaving critical strike at 100% gauge.
 
 ---
 
-### 3. `docs/COMBAT_SPEC.md`
+## 2. Complete Keybind & Input Architecture
 
-```markdown
-# ASCEND — Pure Sword Cultivator Combat Specification
+Governed by `InputController.luau`, `WeaponManager.luau`, and `FlyingSwordServer.luau`:
 
-> Server-Authoritative Combat, Looping Sword Intent, Parrying & Combo Mechanics
-
----
-
-## 1. Looping Sword Intent Combat Engine
-
-The Sword Intent engine provides a continuous reward loop for sustained melee aggression:
-
-$$\mathbf{IntentGain = +25\% \text{ per landed M1 hit}} \quad \longrightarrow \quad \mathbf{100\% \text{ Intent} = 1.75\times \text{ Empowered Strike}}$$
-
-1. **Accumulation:** Each confirmed M1 hit that damages a target adds $+25\%$ Intent ($4$ hits to reach $100\%$).
-2. **Empowered Strike:** Upon reaching $100\%$ Intent, the bar turns gold (`SWORD INTENT 100%`). The next M1 strike consumes the entire gauge to deal **$1.75\times$ base damage**, triggering golden critical slash VFX, camera impact shake, and floating text (`SWORD INTENT UNLEASHED (1.75X)`).
-3. **Loop Reset:** The gauge resets to $0\%$ immediately after the empowered strike connects, starting the loop over.
-4. **Combat Inactivity Decay:** If no hits connect for $>2.5$ seconds, Intent continuously decays at **$8.0\%/\text{s}$** down to $0\%$.
-
----
-
-## 2. 5-Hit M1 Broadsword Combo Chain (`MouseButton1`)
-
-| Step | Animation Asset ID | Duration | Speed | Base Damage | Posture Damage |
-| :---: | :--- | :---: | :---: | :---: | :---: |
-| **Hit 1** | `rbxassetid://129254042886405` | 0.44s | 0.85x | 18 | 12 |
-| **Hit 2** | `rbxassetid://78342794513338` | 0.40s | 0.85x | 19 | 14 |
-| **Hit 3** | `rbxassetid://133701354257850` | 0.44s | 0.85x | 21 | 16 |
-| **Hit 4** | `rbxassetid://140582503077234` | 0.46s | 0.80x | 23 | 18 |
-| **Hit 5** | `rbxassetid://111677132360566` | 0.54s | 0.75x | 28 (Finisher) | 28 |
-
-* **Combat Footwork Commitment:** Movement speed dampens to `WalkSpeed = 8` during M1 swings to ensure clean hitbox registration in PvP.
-* **Combo Timeout:** Pausing for $>1.3\text{s}$ between swings resets the combo chain back to Hit 1.
+| Input Key | Combat Action | Mechanical Execution | Resource Cost | Cooldown |
+| :---: | :--- | :--- | :---: | :---: |
+| **`M1`** | **5-Hit Broadsword Combo** | Sequential light/heavy sword chain. Dampens speed to `WalkSpeed = 8`. | None | $0.20\text{s} - 0.35\text{s}$ |
+| **`Left Control`** | **Sprint Toggle** | Toggles Walk $\leftrightarrow$ Sprint with dynamic FOV ($70^\circ \rightarrow 76^\circ$). | None | None |
+| **`Left Shift`** | **Qi Flash-Step Dash** | 150 studs/s directional burst over 0.16s with +1.2 stud elevation lift. | 3% Qi | $3.0\text{s}$ |
+| **`T` (Hold)** | **Guard (Block)** | Frontal 180° arc reducing damage by 80% and knockback by 70%. | Posture | None |
+| **`T` (Tap $<0.22\text{s}$)** | **Perfect Parry** | 100% damage negation, 0.5s attacker stagger, +5% Qi restoration. | None | None |
+| **`C`** | **Qi Meditation** | Seated cultivation. Restores 10.0% Qi/sec. Locks all combat inputs. | None | None |
+| **`R`** | **Draw / Sheathe Weapon** | Toggles weapon weld between Hand Grip and Back Sheath Mount. | None | $0.5\text{s}$ |
+| **`V`** | **Sword Flight Mode** | Mounts flying sword for 3D aerial navigation (75 studs/s). | None | None |
+| **`B`** | **Realm Breakthrough** | Attempts cultivation breakthrough when Cultivated Qi is 100%. | All Qi | Variable |
+| **`Q`** | **Skill: Sword Tempest** | 360° melee cleave + 3 traveling sawblade projectiles. | 15% Qi | $3.5\text{s}$ |
+| **`E`** | **Skill: Piercing Void Thrust** | High-velocity penetrating sword thrust beam (80 base dmg). | 12% Qi | $5.0\text{s}$ |
+| **`F`** | **Ultimate: 100-Slash Domain** | Forward flash + mid-air slash + 36-stud 100-slash sphere detonation. | 20% Qi | $5.5\text{s}$ |
 
 ---
 
-## 3. Defense, Parrying & Posture System
+## 3. Basic Attack Combo (5-Hit Chain)
 
-* **Standard Guard (Hold `T`):** Blocks incoming attacks within the front $180^\circ$ arc, reducing damage by **$70\%$**. Drains posture based on attack weight ($12 \rightarrow 28\text{ pts}$).
-* **Perfect Parry (Tap `T` within $0.22\text{s}$):** **$100\%$ Damage Negation**, breaks attacker's posture with a **$0.5\text{s}$ stagger**, restores $+10\text{ Posture}$, triggers parry spark VFX, and plays clash audio (`rbxassetid://9114223175`). Costs $0$ Posture.
-* **Guard-Break Penalty:** Reaching $0\text{ Posture}$ inflicts a **$2.0\text{s}$ vulnerability stun** ($+25\%$ bonus damage taken) with shield-shatter audio.
-* **Anti-Stunlock Buffer:** Players receive **$0.6\text{s}$ of hard hyperarmor (`CCImmune`)** upon recovering from any stun.
+Configured in `FlyingSwordConfig.luau`, the M1 chain progresses through 5 sequential sword swings. Pausing longer than **1.3 seconds** between hits resets the sequence to Hit 1.
 
-## Section 10: Traversal Mechanics & Flying Sword Flight Mode (Phase 8.4)
+```text
+[Hit 1] ──(0.26s)──> [Hit 2] ──(0.26s)──> [Hit 3] ──(0.29s)──> [Hit 4] ──(0.31s)──> [Hit 5] (Finisher)
+  18 Dmg               19 Dmg               21 Dmg               23 Dmg               28 Dmg + Knockback
+Frame Data & Hitbox Dimensions
+Combo Step	Base Dmg	Posture Dmg	Windup	Active Window	Recovery	Total Time	Hitbox Size (
+W
+×
+H
+×
+D
+W×H×D
+)	Offset (
+X
+,
+Y
+,
+Z
+X,Y,Z
+)	Knockback Vector
+Hit 1	18	12	0.08s	0.14s	0.18s	0.40s	
+6.5
+×
+6.0
+×
+7.5
+ studs
+6.5×6.0×7.5 studs
+(
+0
+,
+0
+,
+−
+3.8
+)
+(0,0,−3.8)
+None
+Hit 2	19	14	0.08s	0.14s	0.18s	0.40s	
+6.5
+×
+6.0
+×
+7.5
+ studs
+6.5×6.0×7.5 studs
+(
+0
+,
+0
+,
+−
+3.8
+)
+(0,0,−3.8)
+None
+Hit 3	21	16	0.09s	0.15s	0.20s	0.44s	
+7.0
+×
+6.0
+×
+8.0
+ studs
+7.0×6.0×8.0 studs
+(
+0
+,
+0
+,
+−
+4.0
+)
+(0,0,−4.0)
+None
+Hit 4	23	18	0.09s	0.15s	0.22s	0.46s	
+7.0
+×
+6.0
+×
+8.0
+ studs
+7.0×6.0×8.0 studs
+(
+0
+,
+0
+,
+−
+4.0
+)
+(0,0,−4.0)
+None
+Hit 5	28	25	0.12s	0.18s	0.35s	0.65s	
+8.0
+×
+6.5
+×
+9.0
+ studs
+8.0×6.5×9.0 studs
+(
+0
+,
+0
+,
+−
+4.5
+)
+(0,0,−4.5)
+(
+0
+,
+12
+,
+−
+28
+)
+(0,12,−28)
+Movement & Mechanics During Swings
+Speed Dampening: The player's Humanoid.WalkSpeed is clamped to 8 studs/s during the windup and active window of every swing to prevent glide-attacking. Normal speed restores upon entering the recovery phase.
+Combo Memory Window: If the player attacks again during the recovery window, the next swing is buffered and fires immediately upon recovery completion.
+4. Sword Intent Momentum System
+The Sword Intent system measures offensive martial rhythm.
+code
+Text
+[0% Intent] ──(+25% per M1 Hit)──> [100% FULL INTENT]
+                                            │
+                             Next landed strike consumes bar:
+                             - 1.75× Damage Multiplier
+                             - Golden Critical Floating Damage Text
+                             - Hitstop: 0.08s (Target) / 0.04s (Self)
+                             - Screen Shake: 0.45 intensity
+Generation: Every landed M1 strike generates +25% Sword Intent (4 landed strikes achieve maximum 100% Intent). Whiffed attacks do not generate intent.
+Empowered Strike: Upon reaching 100% Intent, the next landed attack (M1 or Skill) consumes the entire gauge, amplifying final damage by 
+1.75
+×
+1.75×
+.
+Decay: If no attacks land for 6.0 seconds, the Sword Intent gauge decays linearly at 
+20
+%
+/
+sec
+20%/sec
+.
+5. Defensive Mechanics: Guard, Posture, and Parry
+The defensive system uses a dedicated Posture Bar (Base: 100 Posture points, regens at 
+15
+ pts/sec
+15 pts/sec
+ after 2.0s of non-guarding).
+1. Guarding (Holding T)
+Damage Mitigation: Incoming damage through the 180° frontal arc is reduced by 80% (the player takes only 20% chip damage).
+Knockback Mitigation: Knockback velocity is reduced by 70%.
+Posture Depletion: Blocking an attack drains Posture points equal to the incoming attack's PostureDamage.
+Visuals: Attaches the defensive ActiveShield VFX to the character model and spawns muted silver impact sparks (BlockSparks).
+2. Perfect Parry (Tapping T within 0.22s)
+Execution: Pressing T opens a strict 0.22-second parry window. If hit within this window:
+Damage Negation: 100% damage negated (0 damage taken).
+Attacker Stagger: The attacking player or mob is stunned for 0.50 seconds, interrupting their combo chain.
+Qi Surge: Restores +5% Maximum Qi to the defender.
+Visuals & Audio: Plays PARRY_CLASH_SOUND_ID (rbxassetid://5649495764), triggers gold particle clash (ParryClash), and applies hitstop (
+0.08
+s
+0.08s
+).
+3. Guard Break (Posture Depletion)
+When Posture reaches 0 while holding block, the guard is broken.
+Penalty: The player is locked into a 1.80-second stagger (GuardBroken state), completely disabling movement, attacks, and defense.
+Critical Vulnerability: All attacks received during guard break bypass damage mitigation and deal full unmitigated damage.
+Visuals: Triggers ShieldBreakEffects at the character's root and renders crimson "GUARD BROKEN!" floating combat text.
+6. Martial Skills Architecture
+All skills are balanced for both Open World (PvE / Cultivation scaling) and Arena (PvP / Normalized competitive scaling).
+Skill Q — Sword Tempest (Purple Sawblade Cleave)
+Concept: Close-quarters area sweep that erupts into three traveling slicing discs.
+Resource & Cooldown: 15% Max Qi | 3.5s Cooldown.
+Hitbox 1 (Point-Blank Sweep): 360° sphere around caster, 
+12
+×
+6
+×
+12
+ studs
+12×6×12 studs
+. Deals 25 base damage (18 posture damage).
+Hitbox 2 (Traveling Blades): 3 forward sawblades traveling 65 studs/s over 30 studs. Deals 18 damage per blade (up to 54 additional damage).
+Knockback: 
+(
+0
+,
+8
+,
+−
+18
+)
+(0,8,−18)
+.
+Skill E — Piercing Void Thrust
+Concept: High-velocity linear sword thrust beam that pierces through enemy formations.
+Resource & Cooldown: 12% Max Qi | 5.0s Cooldown.
+Hitbox: Elongated forward box, 
+8
+×
+8
+×
+25
+ studs
+8×8×25 studs
+ centered at 
+(
+0
+,
+0
+,
+−
+12.5
+)
+(0,0,−12.5)
+ relative to aim direction.
+Damage: 80 base damage (220 Arena damage), 50 posture damage.
+Knockback: Strong directional displacement: 
+(
+0
+,
+10
+,
+−
+40
+)
+(0,10,−40)
+.
+Projectile Velocity: 120 studs/s beam cast with weapon-attuned color palette trails.
+Skill F — 100-Slash Flash Domain (Ultimate)
+Concept: Single-click execution ultimate. The cultivator lifts into the air, flashes forward through targets, and detonates a 36-stud sphere of 100 mid-air sword slashes.
+Resource & Cooldown: 20% Max Qi | 5.5s Cooldown.
+Phase 1 (The Flash): Caster elevates +2.2 studs into Freefall, disables character collision, and dashes forward at 145 studs/s over 0.22s.
+Phase 2 (The Domain Detonation): Spawns a 
+36
+×
+36
+×
+36
+ stud
+36×36×36 stud
+ spherical domain at the flash terminus.
+Damage: 5 rapid hit intervals × 20 base damage = 100 total base damage (350 Arena damage), 15 posture damage per interval.
+Camera & Hitstop: Heavy screen shake (0.65 intensity), 0.06s hitstop per tick, and radial chromatic aberration.
+7. Traversal & Mobility Systems
+1. Qi Flash-Step Dash (Left Shift)
+Mechanics: Directional impulse of 150 studs/s lasting 0.16 seconds (~20 studs of ground coverage).
+Anti-Trip Technology: Elevates the character +1.2 studs vertically, briefly forces Enum.HumanoidStateType.Freefall, and attaches an upright AlignOrientation constraint to prevent ragdoll tripping on uneven terrain.
+Resource & Cooldown: 3% Max Qi | 3.0s Cooldown.
+State Preservation: If W, A, S, or D are held at the end of the dash, the character immediately returns to Sprinting without stutter.
+2. Flying Sword Flight Mount (V)
+Mounting: Toggles a flying sword under the player's feet, switching to 3D aerial navigation mode.
+Flight Speed: 75 studs/s in the camera look vector.
+Altitude Stabilizer: Automatic downward raycasting maintains a minimum 6.5 stud ground cushion.
+Obstacle Buffer: Forward raycasting applies reverse impulse if the player approaches terrain or obstacles closer than 8.5 studs.
+Controls: Spacebar to ascend, C or Left Control to descend, direction keys to steer.
+8. Damage & Scaling Mathematical Formulas
+Final damage dealt in open-world combat is calculated server-side in FlyingSwordServer.luau:
+Raw Damage
+=
+(
+Skill Base Damage
++
+Weapon Base Damage
+)
+×
+Cultivation Power Multiplier
+Raw Damage=(Skill Base Damage+Weapon Base Damage)×Cultivation Power Multiplier
+Where:
+Skill Base Damage
+Skill Base Damage
+ comes from FlyingSwordConfig.Skills[skillKey].Damage (or Combo step damage).
+Weapon Base Damage
+Weapon Base Damage
+ comes from ItemConfig.Items[weaponId].Damage (
+15
+→
+1
+,
+000
+15→1,000
+).
+Cultivation Power Multiplier
+Cultivation Power Multiplier
+ is retrieved from CultivationConfig.GetPowerMultiplier(player):
+Multiplier
+=
+HealthMultiplier
+Realm
+×
+[
+1
++
+(
+Order
+−
+1
+)
+×
+0.15
+]
+Multiplier=HealthMultiplier 
+Realm
+​
+ ×[1+(Order−1)×0.15]
+Mitigation Modifiers Applied at Target
+code
+Text
+If Target Parried:
+    Final Damage = 0
 
-### 10.1 Flying Sword Flight Mode (御剑飞行)
-* **Hotkey:** **`V`** (Desktop) / **`V_SKILL`** (Mobile Touch Cluster).
-* **Mounting Physics:**
-  * Connects `character["Left Leg"].LeftFootAttachment` to `FlyingSword.Mesh1.0.FeetAttachment` via `RigidConstraint` and `AnimationConstraint`.
-  * Elevates character $+3.5\text{ studs}$ off the ground on mount.
-  * Hides equipped combat weapon (`EquippedSword.Transparency = 1`).
-* **Steering & Anti-Tumble Lock:**
-  * Disables `Humanoid.AutoRotate = false` during flight.
-  * Binds high-torque `AlignOrientation` (`MaxTorque = 10,000,000`, `Responsiveness = 35`) with `FLIGHT_YAW_OFFSET = 90`, locking sword and character strictly facing the horizontal camera direction.
-* **Aerodynamic Cushions:**
-  * **Ground Clearance Cushion:** Raycast maintains a minimum altitude of $6.5\text{ studs}$ above terrain, repelling the sword so it never drags or clips.
-  * **Proximity Obstacle Cushion:** Forward raycast ($8.5\text{ stud}$ buffer) eliminates inward velocity against walls and cliffs, enabling smooth surface sliding.
-* **Vertical Movement:**
-  * `Spacebar`: Ascend ($+42\text{ studs/s}$).
-  * `LeftControl` / `C`: Descend ($-42\text{ studs/s}$).
-  * Idle: Slow natural downward glide at $-2.5\text{ studs/s}$ until caught by ground cushion.
-* **Velocity:** **$75\text{ studs/s}$**.
-* **Dismounting:** Pressing `V` destroys the flight mount, forces `Freefall` state (immediately playing the falling animation), restores normal gravity, and unhides the combat weapon in hand.
+Else If Target Guarding (Frontal 180°):
+    Final Damage = Raw Damage × 0.20
+    Posture Damage Applied = Skill.PostureDamage
 
-### 10.2 High-Impact Locomotion & Qi Dash
-* **Movement Speeds:**
-  * Open World: Walk $18\text{ studs/s}$ / Sprint **$44\text{ studs/s}$**.
-  * Sparring Arena: Walk $16\text{ studs/s}$ / Sprint **$34\text{ studs/s}$**.
-  * Sprinting features harmonic step-synced head-bobbing and dynamic FOV expansion ($70^\circ \rightarrow 76^\circ$).
-* **Lightning Flash-Step Dash (`LeftShift`):**
-  * Instant explosive velocity: **$150\text{ studs/s}$** burst over $0.16\text{s}$ ($\approx 20\text{ studs}$ distance).
-  * **Anti-Trip Protection:** Lifts character $+1.2\text{ studs}$ off the ground, applies temporary `Freefall` state, and locks upright orientation with an `AlignOrientation` (`MaxTorque = 10,000,000`), completely preventing tripping or flipping when dashing during a sprint.
-  * Camera juice: Instant FOV punch ($70^\circ \rightarrow 79^\circ \rightarrow 70^\circ$) + micro-trauma directional shake.
-  * Visuals: Spawns two fading Celestial Cyan Neon ghost afterimages (`#38BDF8`).
+Else:
+    If Attacker Intent == 100%:
+        Final Damage = Raw Damage × 1.75
+    Else:
+        Final Damage = Raw Damage
+9. Network Remote Architecture (RemoteEvents.luau)
+Combat communication is routed through central RemoteEvents:
+Remote Name	Direction	Payload Structure	Trigger Scenario
+CombatActionRemote	Client 
+→
+→
+ Server	{ Action = "Attack" | "Skill" | "BlockStart" | "BlockEnd" | "Dash" | "DrawToggle", SkillKey = string, AimCFrame = CFrame, TargetPosition = Vector3 }	Fired when local player inputs an action.
+CombatActionRemote	Server 
+→
+→
+ Client	(attackerPlayer, actionType, payloadTable)	Replicated to nearby clients to render animations, sounds, and particle trails.
+CombatVFXRemote	Server 
+→
+→
+ Client	{ EffectType = "DamageNumber" | "ParryClash" | "BlockSparks" | "HitVFX", Position = Vector3, Damage = number, IsCrit = boolean, WasBlocked = boolean, WasGuardBroken = boolean }	Fired to render combat VFX and floating text.
+SwordFlightRemote	Client 
+↔
+↔
+ Server	{ Action = "Mount" | "Dismount" | "UpdateFlightState", Velocity = Vector3 }	Synchronizes sword mounting and aerial velocity.

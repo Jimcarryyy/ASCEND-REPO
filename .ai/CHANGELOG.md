@@ -534,3 +534,30 @@ This document records historical feature additions, engine enhancements, balance
   - Removed `PointLight` glow beneath Q sawblade waves in `CombatVFXController.luau`.
 - **Vitals HUD Artifacts:**
   - Deleted obsolete white `LeadingCap` artifact from `HPBarFrame.BarFill`.
+
+  ## [Phase 8.5] — Master Documentation & Architectural Ground-Truth Calibration
+
+### 🧹 Purged Technical Drift & Reconciled Specs
+- **Purged Stacked Historical Drafts:** Completely rewrote and unified `docs/COMBAT_SPEC.md`, `docs/PROGRESSION_SPEC.md`, `docs/ARCHITECTURE_SPEC.md`, `docs/UI_UX_SPEC.md`, and `docs/GAME_DESIGN.md` into clean, single-version authoritative specifications.
+- **Master Technical Index Updated (`docs/README.md`):** Updated the foundational index to reflect `ASCEND_PlayerData_V3`, Phase 8.5 active status, the 8-tier Flying Sword arsenal, and the 10-realm matrix.
+- **Canonical Keybind Map Codified:** Settle all keybinding conflicts across all documentation:
+  - `M1` = 5-Hit Broadsword Combo (with +25% Sword Intent per hit)
+  - `Left Control` = Sprint Toggle
+  - `Left Shift` = Qi Flash-Step Dash (150 studs/s burst, +1.2 stud lift)
+  - `T` = Guard (Hold) / Perfect Parry (Tap $<0.22\text{s}$)
+  - `C` = Qi Meditation (10.0%/s Qi recovery)
+  - `R` = Draw / Sheathe Weapon (Hand grip vs Back mount)
+  - `V` = Flying Sword Flight Mode (75 studs/s aerial navigation)
+  - `B` = Realm Breakthrough (Tribulation trial at 100% Qi)
+  - `Q` = Skill: Sword Tempest (Melee cleave + 3 sawblades)
+  - `E` = Skill: Piercing Void Thrust (High-velocity beam)
+  - `F` = Ultimate: 100-Slash Flash Domain (Single-click domain)
+  - `P` = Character Stats Sheet
+  - `Tab` = Notice Board / Daily Duties
+- **Cultivation Math Reconciled:** Verified progression formulas against `CultivationConfig.luau`. Codified the exact Order 9 power multiplier calculation ($220,000\times$ at Immortal Ascension Order 9) and Tribulation strike counts.
+- **UI & Architectural Standards Formally Documented:**
+  - Codified ADR-041 (Studio-Authoritative UI in `StarterGui`).
+  - Codified ADR-042 (Bangers with black stroke for titles/billboards; Fundamento for body text).
+  - Codified ADR-043 (`ModalWindowManager.luau` mutual exclusion).
+  - Codified ADR-044 (3-Tier Jade Pure Sect stepped mountain layout).
+- **Subsystem & Task Tracking Synchronized:** Fully refreshed `.ai/CURRENT_TASK.md`, `.ai/NEXT_STEPS.md`, and `.ai/PROJECT_STATUS.md` with 100% codebase-verified facts and zero inflated completion claims.
