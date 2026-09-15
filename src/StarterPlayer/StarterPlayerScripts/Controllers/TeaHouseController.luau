@@ -3,18 +3,34 @@
     TeaHouseController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/TeaHouseController.luau
     Client UI controller for StarterGui.TeaHouseGui.
+    - 🚀 Wired to ModalWindowManager (Auto-closes when opening other menus)
+    - Proximity prompt trigger on Sect_NPC_XiaoLing
+    - Dynamic recipe selection and brewing
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local SoundService = game:GetService("SoundService")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local localPlayer = Players.LocalPlayer
-local playerGui = localPlayer:WaitForChild("PlayerGui")
+local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
 local TeaHouseController = {}
 local teaRemote: RemoteEvent
+local modalManager: any = nil
+
+local function GetModalManager(): any
+	if not modalManager then
+		local controllers = localPlayer:WaitForChild("PlayerScripts"):WaitForChild("Controllers")
+		local mod = controllers:FindFirstChild("ModalWindowManager")
+		if mod and mod:IsA("ModuleScript") then
+			modalManager = require(mod)
+		end
+	end
+	return modalManager
+end
 
 local gui: ScreenGui
 local backdrop: Frame
@@ -22,6 +38,7 @@ local window: Frame
 local closeBtn: TextButton
 local brewBtn: TextButton
 local selectedIndex = 1
+local isOpen = false
 
 local TEA_PREVIEWS = {
 	[1] = { Title = "JADE DEW SPIRIT TEA", Duration = "BUFF DURATION: 10 MINUTES", Cost = 100, B1 = "• Instant Qi Replenishment: +250 Spirit Qi", B2 = "• Meditation Cultivation Speed: +10% Boost", B3 = "• Qi Condensation Rate: +2.0x in Sakura Zone", Lore = "Brewed from fresh morning dew harvested atop high mountain pines. Cleanses meridians." },
@@ -29,8 +46,38 @@ local TEA_PREVIEWS = {
 	[3] = { Title = "DRAGON WELL SWORD TEA", Duration = "BUFF DURATION: 15 MINUTES", Cost = 250, B1 = "• Sword Intent Accumulation: +15% Faster Rate", B2 = "• Critical Strike Damage Multiplier: +10%", B3 = "• Flying Sword Flight Speed: +15 Studs/Sec", Lore = "Infused with sharp sword intent. Sharpens the disciple's focus during lethal sword duels." },
 }
 
+function TeaHouseController.Open()
+	if isOpen then return end
+	isOpen = true
+
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.RequestOpen("TeaHouse")
+	end
+
+	if backdrop then backdrop.Visible = true end
+end
+
+function TeaHouseController.Close()
+	isOpen = false
+
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.NotifyClosed("TeaHouse")
+	end
+
+	if backdrop then backdrop.Visible = false end
+end
+
 function TeaHouseController.Init()
 	teaRemote = RemoteEvents.GetRemote("TeaHouseAction")
+
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.Register("TeaHouse", function()
+			TeaHouseController.Close()
+		end)
+	end
 
 	gui = playerGui:WaitForChild("TeaHouseGui") :: ScreenGui
 	backdrop = gui:WaitForChild("ModalBackdrop") :: Frame
@@ -65,7 +112,6 @@ function TeaHouseController.Init()
 		brewBtn.Text = string.format("BREW & DRINK TEA (%d SPIRIT STONES)", data.Cost)
 	end
 
-	-- Hook Left Panel Selection Cards
 	for i = 1, 3 do
 		local card = leftPanel:FindFirstChild("TeaCard_" .. i)
 		if card and card:IsA("TextButton") then
@@ -76,7 +122,7 @@ function TeaHouseController.Init()
 	end
 
 	closeBtn.Activated:Connect(function()
-		backdrop.Visible = false
+		TeaHouseController.Close()
 	end)
 
 	brewBtn.Activated:Connect(function()
@@ -87,7 +133,7 @@ function TeaHouseController.Init()
 		if who ~= localPlayer then return end
 		local act = prompt.ActionText:lower()
 		if act == "order spirit tea" or (prompt.Parent and prompt.Parent.Name == "Sect_NPC_XiaoLing") then
-			backdrop.Visible = true
+			TeaHouseController.Open()
 			SelectTea(1)
 			teaRemote:FireServer({ Action = "RequestSync" })
 		end
@@ -96,14 +142,14 @@ function TeaHouseController.Init()
 	teaRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" then return end
 		if payload.Action == "OpenTeaHouse" then
-			backdrop.Visible = true
+			TeaHouseController.Open()
 			SelectTea(1)
 		elseif payload.Action == "Result" then
 			print("[Tea House]:", payload.Message)
 		end
 	end)
 
-	print("[ASCEND] TeaHouseController Initialized.")
+	print("[ASCEND] TeaHouseController Initialized (Modal Exclusion Active).")
 end
 
 return TeaHouseController

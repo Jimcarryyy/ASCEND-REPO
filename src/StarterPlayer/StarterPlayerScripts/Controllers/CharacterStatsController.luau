@@ -3,10 +3,10 @@
     CharacterStatsController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CharacterStatsController.luau
     Authoritative client controller for StarterGui.CharacterStatsGui:
-    - 100% Dynamic data-binding to pre-built StarterGuide-style template (ADR-041).
-    - 4-Tab navigation (Dao Realm, Combat Stats, Spirit Weapon, 3D Avatar Manifest).
-    - Live 3D turntable ViewportFrame of character & equipped weapon.
-    - Universal Panel Click Audio (rbxassetid://138567614125924) on 'P' toggle.
+    - 🚀 Wired to ModalWindowManager (Auto-closes when opening other menus)
+    - 4-Tab navigation (Dao Realm, Combat Stats, Spirit Weapon, 3D Avatar Manifest)
+    - Live 3D turntable ViewportFrame of character & equipped weapon
+    - Universal Panel Click Audio on 'P' toggle
 ]]
 
 local Players = game:GetService("Players")
@@ -23,6 +23,18 @@ local CharacterStatsController = {}
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
+local modalManager: any = nil
+
+local function GetModalManager(): any
+	if not modalManager then
+		local controllers = player:WaitForChild("PlayerScripts"):WaitForChild("Controllers")
+		local mod = controllers:FindFirstChild("ModalWindowManager")
+		if mod and mod:IsA("ModuleScript") then
+			modalManager = require(mod)
+		end
+	end
+	return modalManager
+end
 
 local PANEL_CLICK_SOUND_ID = "rbxassetid://138567614125924"
 
@@ -36,7 +48,6 @@ local function PlayPanelClickSFX()
 	game:GetService("Debris"):AddItem(sound, 1.2)
 end
 
--- UI References
 local gui: ScreenGui?
 local backdrop: Frame?
 local window: Frame?
@@ -44,26 +55,21 @@ local closeBtn: TextButton?
 local tabBar: Frame?
 local confirmBtn: TextButton?
 
--- Tab Buttons
 local tabs: { TextButton } = {}
 local panels: { Frame } = {}
 local activeTabIdx = 1
 
--- Panel 1 Elements (Dao Realm)
 local p1Header: TextLabel?
 local p1DescLabels: { [string]: TextLabel } = {}
 local qiTitle: TextLabel?
 local qiFill: Frame?
 
--- Panel 2 Elements (Combat Stats)
 local p2Header: TextLabel?
 local p2DescLabels: { [string]: TextLabel } = {}
 
--- Panel 3 Elements (Spirit Weapon & Forge)
 local p3Header: TextLabel?
 local p3DescLabels: { [string]: TextLabel } = {}
 
--- Panel 4 Elements (3D Avatar)
 local p4Header: TextLabel?
 local viewportFrame: ViewportFrame?
 local vpCamera: Camera?
@@ -192,7 +198,6 @@ local function EnsureUI(): boolean
 
 	if closeBtn then
 		closeBtn.Activated:Connect(function()
-			PlayPanelClickSFX()
 			CharacterStatsController.Close()
 		end)
 	end
@@ -207,7 +212,6 @@ local function EnsureUI(): boolean
 				local maxY = minY + window.AbsoluteSize.Y
 
 				if mousePos.X < minX or mousePos.X > maxX or mousePos.Y < minY or mousePos.Y > maxY then
-					PlayPanelClickSFX()
 					CharacterStatsController.Close()
 				end
 			end
@@ -248,7 +252,6 @@ end
 
 function CharacterStatsController.Setup3DViewport()
 	if not viewportFrame then return end
-
 	CharacterStatsController.Teardown3DViewport()
 
 	local char = player.Character
@@ -308,7 +311,6 @@ end
 
 function CharacterStatsController.Refresh()
 	if not EnsureUI() then return end
-
 	local char = player.Character
 	if not char then return end
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -410,6 +412,13 @@ end
 
 function CharacterStatsController.Open()
 	if not EnsureUI() then return end
+
+	-- 🚀 Request mutual exclusion open
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.RequestOpen("CharacterStats")
+	end
+
 	PlayPanelClickSFX()
 	if gui then gui.Enabled = true end
 	if backdrop then backdrop.Visible = true end
@@ -421,6 +430,12 @@ end
 function CharacterStatsController.Close()
 	if not EnsureUI() then return end
 	PlayPanelClickSFX()
+
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.NotifyClosed("CharacterStats")
+	end
+
 	if gui then gui.Enabled = false end
 	if backdrop then backdrop.Visible = false end
 
@@ -441,10 +456,15 @@ function CharacterStatsController.Init()
 	if gui then gui.Enabled = false end
 	if backdrop then backdrop.Visible = false end
 
-	-- "P" Key Toggle Listener with Universal Sound
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.Register("CharacterStats", function()
+			CharacterStatsController.Close()
+		end)
+	end
+
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if UserInputService:GetFocusedTextBox() ~= nil then return end
-
 		if input.KeyCode == Enum.KeyCode.P then
 			CharacterStatsController.Toggle()
 		end
@@ -465,7 +485,7 @@ function CharacterStatsController.Init()
 		end)
 	end)
 
-	print("[ASCEND] CharacterStatsController Initialized (Dynamic Data Binding & SFX Active on 'P').")
+	print("[ASCEND] CharacterStatsController Initialized (Modal Exclusion & SFX Active on 'P').")
 end
 
 return CharacterStatsController

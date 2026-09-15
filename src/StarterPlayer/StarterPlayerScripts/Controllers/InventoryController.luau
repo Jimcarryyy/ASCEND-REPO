@@ -3,12 +3,13 @@
     InventoryController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
     Directly bound to StarterGui.SpiritPouchInventoryGui:
+    - 🚀 Wired to ModalWindowManager (Auto-closes when opening other menus)
     - Dedicated 'Tab' and 'I' Keybinds (CoreGui PlayerList suppressed)
-    - Dual-device adaptive grid: 6 slots/row on PC ({0, 100}, {0, 100}), 4 slots/row on Phone ({0, 56}, {0, 56})
+    - Max 5 slots per row with balanced margins (Zero awkward gaps)
+    - Vibrant rarity-matched slot background gradients (Emerald, Azure, Amethyst, Gold, Crimson)
+    - Instant scroll snap to top on tab/category/search switches
     - 2D High-Resolution Weapon Showcase for all 8 Sword Tiers (Replaces 3D ViewportFrames)
-    - Full Support for Divine and Immortal tier rarities
-    - Key Normalization Fix: Guarantees saved DataStore items display immediately on login
-    - Universal Panel Click Audio (rbxassetid://138567614125924)
+    - Universal Pop-Up Animation (Spring Scale 0.75 -> 1.0, Backdrop Fade & Universal SFX)
 ]]
 
 local Players = game:GetService("Players")
@@ -17,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
@@ -34,8 +36,19 @@ local itemsFolder = ReplicatedStorage:FindFirstChild("Items") or ReplicatedStora
 
 local inventoryActionRemote: RemoteEvent
 local updateInventoryRemote: RemoteEvent
+local modalManager: any = nil
 
--- Universal Panel Click Audio
+local function GetModalManager(): any
+	if not modalManager then
+		local controllers = player:WaitForChild("PlayerScripts"):WaitForChild("Controllers")
+		local mod = controllers:FindFirstChild("ModalWindowManager")
+		if mod and mod:IsA("ModuleScript") then
+			modalManager = require(mod)
+		end
+	end
+	return modalManager
+end
+
 local PANEL_CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
 
 local function PlayPanelClickSFX()
@@ -48,10 +61,10 @@ local function PlayPanelClickSFX()
 	game:GetService("Debris"):AddItem(sound, 1.2)
 end
 
--- UI Element References
 local screenGui: ScreenGui
 local overlayBackdrop: Frame
 local mainFrame: GuiObject
+local mainScale: UIScale?
 local headerFrame: Frame
 local closeButton: GuiButton
 local tabContainer: GuiObject
@@ -78,7 +91,6 @@ local useTextLabel: TextLabel?
 local dropImageButton: GuiButton
 local dropTextLabel: TextLabel?
 
--- State Cache
 local inventoryCache: { [number]: { ItemId: string, Count: number, Quality: string? } } = {}
 local activeSlotClones: { GuiObject } = {}
 local selectedSlotIndex: number? = nil
@@ -99,33 +111,29 @@ local CATEGORY_MAP: { [string]: { string } } = {
 	["GEAR"]        = { "Weapon", "FlyingSword", "Sword", "Equipment", "Artifact", "Armor", "Crest" },
 }
 
--- Rarity Palette
-type RarityColorToken = { Color: Color3, TextColor: Color3 }
-
-local RARITY_COLORS: { [string]: RarityColorToken } = {
-	["Mortal"]    = { Color = Color3.fromHex("#64748B"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Common"]    = { Color = Color3.fromHex("#64748B"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Spiritual"] = { Color = Color3.fromHex("#10B981"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Uncommon"]  = { Color = Color3.fromHex("#10B981"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Earth"]     = { Color = Color3.fromHex("#3B82F6"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Rare"]      = { Color = Color3.fromHex("#3B82F6"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Heaven"]    = { Color = Color3.fromHex("#A855F7"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Epic"]      = { Color = Color3.fromHex("#A855F7"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Legendary"] = { Color = Color3.fromHex("#F59E0B"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Mythic"]    = { Color = Color3.fromHex("#E11D48"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Divine"]    = { Color = Color3.fromHex("#06B6D4"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Immortal"]  = { Color = Color3.fromHex("#FBBF24"), TextColor = Color3.fromHex("#1E232A") },
-	["Sovereign"] = { Color = Color3.fromHex("#22D3EE"), TextColor = Color3.fromHex("#FFFFFF") },
-	["Celestial"] = { Color = Color3.fromHex("#F8FAFC"), TextColor = Color3.fromHex("#1E232A") },
+type RarityColorToken = { 
+	Color: Color3, 
+	TextColor: Color3,
+	SlotGradient: { { t: number, c: Color3 } }
 }
 
-local DEFAULT_RARITY_TOKEN: RarityColorToken = {
-	Color = Color3.fromHex("#64748B"),
-	TextColor = Color3.fromHex("#FFFFFF"),
+local RARITY_TOKENS: { [string]: RarityColorToken } = {
+	["Mortal"]    = { Color = Color3.fromHex("#64748B"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(30, 38, 50) }, { t = 0.5, c = Color3.fromRGB(55, 68, 85) }, { t = 1, c = Color3.fromRGB(20, 26, 36) } } },
+	["Common"]    = { Color = Color3.fromHex("#64748B"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(30, 38, 50) }, { t = 0.5, c = Color3.fromRGB(55, 68, 85) }, { t = 1, c = Color3.fromRGB(20, 26, 36) } } },
+	["Spiritual"] = { Color = Color3.fromHex("#10B981"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(12, 75, 48) }, { t = 0.5, c = Color3.fromRGB(18, 155, 98) }, { t = 1, c = Color3.fromRGB(8, 50, 32) } } },
+	["Uncommon"]  = { Color = Color3.fromHex("#10B981"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(12, 75, 48) }, { t = 0.5, c = Color3.fromRGB(18, 155, 98) }, { t = 1, c = Color3.fromRGB(8, 50, 32) } } },
+	["Earth"]     = { Color = Color3.fromHex("#3B82F6"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(12, 60, 115) }, { t = 0.5, c = Color3.fromRGB(25, 130, 220) }, { t = 1, c = Color3.fromRGB(8, 40, 80) } } },
+	["Rare"]      = { Color = Color3.fromHex("#3B82F6"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(12, 60, 115) }, { t = 0.5, c = Color3.fromRGB(25, 130, 220) }, { t = 1, c = Color3.fromRGB(8, 40, 80) } } },
+	["Heaven"]    = { Color = Color3.fromHex("#A855F7"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(65, 20, 105) }, { t = 0.5, c = Color3.fromRGB(140, 52, 220) }, { t = 1, c = Color3.fromRGB(42, 12, 72) } } },
+	["Epic"]      = { Color = Color3.fromHex("#A855F7"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(65, 20, 105) }, { t = 0.5, c = Color3.fromRGB(140, 52, 220) }, { t = 1, c = Color3.fromRGB(42, 12, 72) } } },
+	["Legendary"] = { Color = Color3.fromHex("#F59E0B"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(135, 75, 8) }, { t = 0.5, c = Color3.fromRGB(240, 155, 22) }, { t = 1, c = Color3.fromRGB(90, 48, 5) } } },
+	["Mythic"]    = { Color = Color3.fromHex("#E11D48"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(115, 14, 32) }, { t = 0.5, c = Color3.fromRGB(220, 40, 72) }, { t = 1, c = Color3.fromRGB(75, 8, 20) } } },
+	["Divine"]    = { Color = Color3.fromHex("#06B6D4"), TextColor = Color3.fromHex("#FFFFFF"), SlotGradient = { { t = 0, c = Color3.fromRGB(8, 90, 115) }, { t = 0.5, c = Color3.fromRGB(34, 205, 235) }, { t = 1, c = Color3.fromRGB(5, 60, 80) } } },
+	["Immortal"]  = { Color = Color3.fromHex("#FBBF24"), TextColor = Color3.fromHex("#1E232A"), SlotGradient = { { t = 0, c = Color3.fromRGB(150, 105, 10) }, { t = 0.5, c = Color3.fromRGB(250, 210, 50) }, { t = 1, c = Color3.fromRGB(100, 70, 5) } } },
 }
 
 local function GetRarityToken(rarityName: string): RarityColorToken
-	return RARITY_COLORS[rarityName] or DEFAULT_RARITY_TOKEN
+	return RARITY_TOKENS[rarityName] or RARITY_TOKENS.Common
 end
 
 local function IsPositionInsideGui(guiObject: GuiObject, x: number, y: number): boolean
@@ -146,61 +154,41 @@ end
 
 local function Find3DItemModel(itemId: string): Instance?
 	local cleanTarget = itemId:gsub("%s+", ""):lower()
-
-	if not herbsFolder then
-		herbsFolder = ReplicatedStorage:FindFirstChild("Herbs") :: Folder?
-	end
+	if not herbsFolder then herbsFolder = ReplicatedStorage:FindFirstChild("Herbs") :: Folder? end
 	if herbsFolder then
 		for _, child in ipairs(herbsFolder:GetChildren()) do
-			local cleanChild = child.Name:gsub("%s+", ""):lower()
-			if cleanChild == cleanTarget or cleanChild == cleanTarget:gsub("_%d+yr", "") then
-				return child
-			end
+			if child.Name:gsub("%s+", ""):lower() == cleanTarget then return child end
 		end
 	end
-
-	if not itemsFolder then
-		itemsFolder = ReplicatedStorage:FindFirstChild("Items") or ReplicatedStorage:FindFirstChild("Models") :: Folder?
-	end
+	if not itemsFolder then itemsFolder = ReplicatedStorage:FindFirstChild("Items") or ReplicatedStorage:FindFirstChild("Models") :: Folder? end
 	if itemsFolder then
 		for _, child in ipairs(itemsFolder:GetChildren()) do
-			if child.Name:gsub("%s+", ""):lower() == cleanTarget then
-				return child
-			end
+			if child.Name:gsub("%s+", ""):lower() == cleanTarget then return child end
 		end
 	end
-
 	return nil
 end
 
 local function Setup3DViewport(viewport: ViewportFrame, itemModel: Instance, spin: boolean): (() -> ())?
 	viewport:ClearAllChildren()
-
 	local clone = itemModel:Clone()
 	if clone:IsA("BasePart") then
 		clone.CFrame = CFrame.new(0, 0, 0)
 		clone.Anchored = true
 	elseif clone:IsA("Model") then
 		local primary = clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart")
-		if primary then
-			clone:PivotTo(CFrame.new(0, 0, 0))
-		end
+		if primary then clone:PivotTo(CFrame.new(0, 0, 0)) end
 	end
 	clone.Parent = viewport
 
 	for _, child in ipairs(clone:GetDescendants()) do
-		if child:IsA("Script") or child:IsA("LocalScript") then
-			child:Destroy()
-		end
+		if child:IsA("Script") or child:IsA("LocalScript") then child:Destroy() end
 	end
 
 	local camera = Instance.new("Camera")
 	camera.FieldOfView = 30
-
 	local size = if clone:IsA("BasePart") then clone.Size else (clone:IsA("Model") and clone:GetExtentsSize() or Vector3.new(1, 4, 1))
-	local maxDim = math.max(size.X, size.Y, size.Z)
-	local dist = math.max(2.4, maxDim * 1.05)
-
+	local dist = math.max(2.4, math.max(size.X, size.Y, size.Z) * 1.05)
 	camera.CFrame = CFrame.lookAt(Vector3.new(0, 0, dist), Vector3.new(0, 0, 0))
 	viewport.CurrentCamera = camera
 	camera.Parent = viewport
@@ -219,31 +207,27 @@ local function Setup3DViewport(viewport: ViewportFrame, itemModel: Instance, spi
 			end
 			angle = (angle + 35 * dt) % 360
 			local rotCFrame = CFrame.Angles(0, math.rad(angle), math.rad(25))
-			if clone:IsA("BasePart") then
-				clone.CFrame = rotCFrame
-			elseif clone:IsA("Model") then
-				clone:PivotTo(rotCFrame)
-			end
+			if clone:IsA("BasePart") then clone.CFrame = rotCFrame
+			elseif clone:IsA("Model") then clone:PivotTo(rotCFrame) end
 		end)
-		return function()
-			if conn then conn:Disconnect() end
-		end
-	else
-		local staticCFrame = CFrame.Angles(0, math.rad(135), math.rad(35))
-		if clone:IsA("BasePart") then
-			clone.CFrame = staticCFrame
-		elseif clone:IsA("Model") then
-			clone:PivotTo(staticCFrame)
-		end
-		return nil
+		return function() if conn then conn:Disconnect() end end
 	end
+	return nil
 end
 
 function InventoryController.Init()
 	inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
 	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
 
-	-- 🚀 Disable default CoreGui PlayerList so Tab is exclusively claimed by the Spirit Pouch
+	-- Register with Modal Window Manager
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.Register("Inventory", function()
+			InventoryController.Close()
+		end)
+	end
+
+	-- Suppress CoreGui PlayerList
 	task.spawn(function()
 		for attempt = 1, 6 do
 			local success = pcall(function()
@@ -255,27 +239,31 @@ function InventoryController.Init()
 	end)
 
 	screenGui = playerGui:WaitForChild("SpiritPouchInventoryGui", 10) :: ScreenGui
-	if not screenGui then
-		warn("[InventoryController] SpiritPouchInventoryGui not found in PlayerGui!")
-		return
-	end
+	if not screenGui then return end
 
-	screenGui.DisplayOrder = 10
+	local tempHandler = screenGui:FindFirstChild("SpiritPouchPreviewHandler")
+	if tempHandler then tempHandler:Destroy() end
+
+	screenGui.DisplayOrder = 20
 	screenGui.Enabled = false
 
 	overlayBackdrop = screenGui:WaitForChild("OverlayBackdrop", 5) :: Frame
-	mainFrame = screenGui:WaitForChild("MainFrame", 5) :: GuiObject
+	mainFrame = (overlayBackdrop:WaitForChild("MainFrame", 5) or screenGui:WaitForChild("MainFrame", 5)) :: GuiObject
 	mainFrame.Active = true
 
-	-- 1. Header Frame
-	headerFrame = mainFrame:WaitForChild("HeaderFrame", 5) :: Frame
-	closeButton = (headerFrame:FindFirstChild("CloseButton") or headerFrame:FindFirstChild("TextButton") or headerFrame:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
+	mainScale = mainFrame:FindFirstChildOfClass("UIScale")
+	if not mainScale then
+		mainScale = Instance.new("UIScale")
+		mainScale.Scale = 1.0
+		mainScale.Parent = mainFrame
+	end
 
-	-- 2. TabContainer & TabFrame
+	headerFrame = mainFrame:WaitForChild("HeaderFrame", 5) :: Frame
+	closeButton = (headerFrame:FindFirstChild("CloseButton") or headerFrame:FindFirstChild("CloseImageButton") or headerFrame:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
+
 	tabContainer = mainFrame:WaitForChild("TabContainer", 5) :: GuiObject
 	tabFrame = (tabContainer:FindFirstChild("TabFrame") or tabContainer) :: Frame
 
-	-- 3. GridSection & TopBar
 	gridSection = mainFrame:WaitForChild("GridSection", 5) :: GuiObject
 	gridSection.Active = true
 
@@ -310,7 +298,6 @@ function InventoryController.Init()
 	slotTemplate.Visible = false
 	foundTemplate.Visible = false
 
-	-- 4. InspectionSection
 	inspectionSection = mainFrame:WaitForChild("InspectionSection", 5) :: GuiObject
 	inspectionSection.Active = true
 	itemNameLabel = inspectionSection:WaitForChild("ItemNameLabel", 5) :: TextLabel
@@ -345,10 +332,8 @@ function InventoryController.Init()
 	dropImageButton = (actionContainer:FindFirstChild("DropImageButton") or actionContainer:FindFirstChild("DropButton") or actionContainer:FindFirstChildWhichIsA("GuiButton")) :: GuiButton
 	dropTextLabel = dropImageButton:FindFirstChild("DropTextLabel") or dropImageButton:FindFirstChildOfClass("TextLabel")
 
-	-- 5. Bind Button Events with Panel Click SFX
 	if closeButton then
 		closeButton.MouseButton1Click:Connect(function()
-			PlayPanelClickSFX()
 			InventoryController.Close()
 		end)
 	end
@@ -358,7 +343,6 @@ function InventoryController.Init()
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				local clickPos = input.Position
 				if not IsPositionInsideGui(mainFrame, clickPos.X, clickPos.Y) then
-					PlayPanelClickSFX()
 					InventoryController.Close()
 				end
 			end
@@ -373,6 +357,9 @@ function InventoryController.Init()
 			child.MouseButton1Click:Connect(function()
 				PlayPanelClickSFX()
 				currentCategory = cleanKey
+				if itemGridScroll then
+					itemGridScroll.CanvasPosition = Vector2.zero
+				end
 				InventoryController.RenderGrid()
 			end)
 		end
@@ -381,6 +368,9 @@ function InventoryController.Init()
 	if searchBox then
 		searchBox:GetPropertyChangedSignal("Text"):Connect(function()
 			searchQuery = searchBox.Text:lower()
+			if itemGridScroll then
+				itemGridScroll.CanvasPosition = Vector2.zero
+			end
 			InventoryController.RenderGrid()
 		end)
 	end
@@ -397,6 +387,9 @@ function InventoryController.Init()
 			else
 				currentSortMode = "Rarity"
 				InventoryController.SetSortButtonText("Sort by Rarity")
+			end
+			if itemGridScroll then
+				itemGridScroll.CanvasPosition = Vector2.zero
 			end
 			InventoryController.RenderGrid()
 		end)
@@ -418,7 +411,6 @@ function InventoryController.Init()
 		end)
 	end
 
-	-- Key Normalization
 	updateInventoryRemote.OnClientEvent:Connect(function(newInventory: any)
 		inventoryCache = {}
 		if newInventory and type(newInventory) == "table" then
@@ -437,53 +429,46 @@ function InventoryController.Init()
 		inventoryActionRemote:FireServer({ Action = "RequestSync" })
 	end)
 
-	-- 🚀 Bypasses default Roblox PlayerList/Camera consumption while respecting active text boxes
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 		if UserInputService:GetFocusedTextBox() ~= nil then return end
 
 		if input.KeyCode == Enum.KeyCode.Tab or input.KeyCode == Enum.KeyCode.I then
-			PlayPanelClickSFX()
 			InventoryController.Toggle()
 		end
 	end)
 
-	print("[ASCEND] InventoryController Initialized ('Tab' and 'I' Keybinds Active).")
+	print("[ASCEND] InventoryController Initialized (Modal Exclusion & Max 5 Slots/Row Active).")
 end
 
--- =============================================================================
--- RESPONSIVE GRID ADAPTATION
--- =============================================================================
-local GRID_MAX_COLUMNS = 6
-local GRID_MIN_COLUMNS = 4
-local GRID_MAX_CELL_SIZE = 100
-local GRID_MIN_CELL_SIZE = 64
-local GRID_CELL_PADDING = 5
+local GRID_MAX_COLUMNS = 5
+local GRID_MIN_COLUMNS = 3
+local GRID_CELL_PADDING = 6
 
 function InventoryController.UpdateGridCellSize()
 	if not gridLayout or not itemGridScroll then return end
 
-	local containerWidth = itemGridScroll.AbsoluteSize.X
+	local scrollBarWidth = if itemGridScroll.ScrollBarThickness > 0 then itemGridScroll.ScrollBarThickness else 6
+	local containerWidth = itemGridScroll.AbsoluteSize.X - scrollBarWidth - 14
+
 	if containerWidth <= 0 then
 		task.defer(InventoryController.UpdateGridCellSize)
 		return
 	end
 
-	local chosenColumns = GRID_MIN_COLUMNS
-	local chosenCellSize = GRID_MIN_CELL_SIZE
-
-	for columns = GRID_MAX_COLUMNS, GRID_MIN_COLUMNS, -1 do
-		local totalPadding = GRID_CELL_PADDING * (columns - 1)
-		local cellSize = (containerWidth - totalPadding) / columns
-		if cellSize >= GRID_MIN_CELL_SIZE then
-			chosenColumns = columns
-			chosenCellSize = math.min(cellSize, GRID_MAX_CELL_SIZE)
-			break
-		end
+	local columns = GRID_MAX_COLUMNS
+	if containerWidth < 360 then
+		columns = GRID_MIN_COLUMNS
+	elseif containerWidth < 450 then
+		columns = 4
 	end
 
-	gridLayout.FillDirectionMaxCells = chosenColumns
+	local totalPadding = (columns - 1) * GRID_CELL_PADDING
+	local exactCellSize = math.floor((containerWidth - totalPadding) / columns)
+
+	gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	gridLayout.FillDirectionMaxCells = columns
 	gridLayout.CellPadding = UDim2.new(0, GRID_CELL_PADDING, 0, GRID_CELL_PADDING)
-	gridLayout.CellSize = UDim2.new(0, chosenCellSize, 0, chosenCellSize)
+	gridLayout.CellSize = UDim2.new(0, exactCellSize, 0, exactCellSize)
 end
 
 function InventoryController.SetSortButtonText(text: string)
@@ -503,11 +488,38 @@ function InventoryController.Toggle()
 end
 
 function InventoryController.Open()
+	if isOpen then return end
 	isOpen = true
+
+	-- 🚀 Request mutual exclusion open
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.RequestOpen("Inventory")
+	end
+
 	PlayPanelClickSFX()
+
 	screenGui.Enabled = true
 	mainFrame.Visible = true
-	if overlayBackdrop then overlayBackdrop.Visible = true end
+
+	if overlayBackdrop then
+		overlayBackdrop.BackgroundTransparency = 1
+		overlayBackdrop.Visible = true
+		TweenService:Create(overlayBackdrop, TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			BackgroundTransparency = 0.45
+		}):Play()
+	end
+
+	if mainScale then
+		mainScale.Scale = 0.75
+		TweenService:Create(mainScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Scale = 1.0
+		}):Play()
+	end
+
+	if itemGridScroll then
+		itemGridScroll.CanvasPosition = Vector2.zero
+	end
 
 	InventoryController.UpdateGridCellSize()
 	inventoryActionRemote:FireServer({ Action = "RequestSync" })
@@ -518,19 +530,43 @@ function InventoryController.Close()
 	if not isOpen then return end
 	isOpen = false
 	PlayPanelClickSFX()
-	screenGui.Enabled = false
-	mainFrame.Visible = false
-	if overlayBackdrop then overlayBackdrop.Visible = false end
+
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.NotifyClosed("Inventory")
+	end
 
 	if activeInspectionSpinCleanup then
 		activeInspectionSpinCleanup()
 		activeInspectionSpinCleanup = nil
 	end
+
+	if mainScale and overlayBackdrop then
+		local scaleTween = TweenService:Create(mainScale, TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+			Scale = 0.75
+		})
+		local fadeTween = TweenService:Create(overlayBackdrop, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			BackgroundTransparency = 1
+		})
+
+		scaleTween:Play()
+		fadeTween:Play()
+
+		scaleTween.Completed:Connect(function()
+			if not isOpen then
+				screenGui.Enabled = false
+				mainFrame.Visible = false
+				overlayBackdrop.Visible = false
+				mainScale.Scale = 1.0
+			end
+		end)
+	else
+		screenGui.Enabled = false
+		mainFrame.Visible = false
+		if overlayBackdrop then overlayBackdrop.Visible = false end
+	end
 end
 
--- =============================================================================
--- POPULATE GRID WITH 2D WEAPON ASSETS
--- =============================================================================
 function InventoryController.RenderGrid()
 	for _, clone in ipairs(activeSlotClones) do
 		clone:Destroy()
@@ -565,14 +601,14 @@ function InventoryController.RenderGrid()
 	end
 
 	local RARITY_RANKS = {
-		["Mortal"]    = 1, ["Common"]    = 1,
-		["Spiritual"] = 2, ["Uncommon"]  = 2,
-		["Earth"]     = 3, ["Rare"]      = 3,
-		["Heaven"]    = 4, ["Epic"]      = 4,
+		["Mortal"] = 1, ["Common"] = 1,
+		["Spiritual"] = 2, ["Uncommon"] = 2,
+		["Earth"] = 3, ["Rare"] = 3,
+		["Heaven"] = 4, ["Epic"] = 4,
 		["Legendary"] = 5,
-		["Mythic"]    = 6,
-		["Divine"]    = 7,
-		["Immortal"]  = 8,
+		["Mythic"] = 6,
+		["Divine"] = 7,
+		["Immortal"] = 8,
 		["Sovereign"] = 9,
 		["Celestial"] = 10,
 	}
@@ -601,14 +637,26 @@ function InventoryController.RenderGrid()
 		local rarityName = entry.ItemDef.Rarity or "Common"
 		local token = GetRarityToken(rarityName)
 
-		-- Header Ribbon
-		local headerRibbon = slotObj:FindFirstChild("HeaderRibbon") :: ImageLabel?
+		local slotGrad = slotObj:FindFirstChildOfClass("UIGradient")
+		if not slotGrad then
+			slotGrad = Instance.new("UIGradient")
+			slotGrad.Rotation = 90
+			slotGrad.Parent = slotObj
+		end
+
+		local keypoints = {}
+		for _, s in ipairs(token.SlotGradient) do
+			table.insert(keypoints, ColorSequenceKeypoint.new(s.t, s.c))
+		end
+		slotGrad.Color = ColorSequence.new(keypoints)
+
+		local headerRibbon = slotObj:FindFirstChild("HeaderRibbon") :: Frame?
 		local rarityLabel: TextLabel? = nil
 		if headerRibbon then
 			headerRibbon.Size = UDim2.new(1, 0, 0.22, 0)
 			headerRibbon.Position = UDim2.new(0, 0, 0, 0)
 			headerRibbon.AnchorPoint = Vector2.new(0, 0)
-			headerRibbon.ImageColor3 = token.Color
+			headerRibbon.BackgroundColor3 = token.Color
 			rarityLabel = (headerRibbon:FindFirstChild("TextLabel") or headerRibbon:FindFirstChildWhichIsA("TextLabel")) :: TextLabel?
 		else
 			rarityLabel = (slotObj:FindFirstChild("RarityBadge") or slotObj:FindFirstChild("TextLabel")) :: TextLabel?
@@ -623,14 +671,12 @@ function InventoryController.RenderGrid()
 			rarityLabel.Visible = true
 		end
 
-		-- Selected Glow
-		local GLOW_OVERSCAN = 0.08
-		local selectedGlow = slotObj:FindFirstChild("SelectedGlow") :: ImageLabel?
+		local selectedGlow = slotObj:FindFirstChild("SelectedGlow") :: Frame?
 		if selectedGlow then
-			selectedGlow.Size = UDim2.new(1 + GLOW_OVERSCAN, 0, 1 + GLOW_OVERSCAN, 0)
+			selectedGlow.Size = UDim2.new(1, 4, 1, 4)
 			selectedGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
 			selectedGlow.AnchorPoint = Vector2.new(0.5, 0.5)
-			selectedGlow.ZIndex = 5
+			selectedGlow.ZIndex = 8
 			selectedGlow.Visible = (selectedSlotIndex == entry.SlotIndex)
 		end
 
@@ -638,12 +684,9 @@ function InventoryController.RenderGrid()
 			(slotObj :: GuiObject).ClipsDescendants = false
 		end
 
-		-- 2D High-Res Icon Display
 		local itemIcon = slotObj:FindFirstChild("ItemIcon") :: ImageLabel?
 		local slotViewport = slotObj:FindFirstChild("Slot3DViewport") :: ViewportFrame?
-		if slotViewport then
-			slotViewport.Visible = false
-		end
+		if slotViewport then slotViewport.Visible = false end
 
 		local isWeapon = (entry.ItemDef.Type == "Weapon" or entry.ItemDef.Type == "FlyingSword" or entry.ItemDef.Type == "Sword")
 		local iconAsset = GetItemIconAsset(entry.ItemId)
@@ -667,7 +710,7 @@ function InventoryController.RenderGrid()
 					slotViewport.AnchorPoint = Vector2.new(0.5, 0.5)
 					slotViewport.BackgroundTransparency = 1
 					slotViewport.BorderSizePixel = 0
-					slotViewport.ZIndex = 3
+					slotViewport.ZIndex = 6
 					slotViewport.Parent = slotObj
 				end
 				slotViewport.Visible = true
@@ -686,7 +729,6 @@ function InventoryController.RenderGrid()
 			end
 		end
 
-		-- Quantity Label
 		local quantityLabel = slotObj:FindFirstChild("QuantityLabel") :: TextLabel?
 		if quantityLabel then
 			quantityLabel.Text = if entry.Count > 1 then "x" .. tostring(entry.Count) else ""
@@ -723,9 +765,6 @@ function InventoryController.RenderGrid()
 	end
 end
 
--- =============================================================================
--- UPDATE INSPECTION CARD
--- =============================================================================
 function InventoryController.UpdateInspection(itemDef: any, count: number, quality: string?)
 	if not itemDef then
 		InventoryController.ClearInspection()

@@ -143,3 +143,26 @@ All 12 2D icons are uploaded to Roblox Studio and registered in `UIAssets.luau` 
 * **Mythic:** `#E11D48` (Text: `#FFFFFF`)
 * **Sovereign:** `#22D3EE` (Text: `#FFFFFF`)
 * **Celestial:** `#F8FAFC` (Text: `#1E232A` Charcoal Contrast)
+
+### Navigation Tray 2D Icons (`BottomNavTray`)
+| Button Name | Display Text | Asset ID | Gradient Accent |
+| :--- | :--- | :--- | :--- |
+| **`ArenaImageButton`** | Arena | `rbxassetid://79201400124034` | Vibrant Crimson Scarlet |
+| **`BagImageButton`** | Pouch | `rbxassetid://99239234410542` | Royal Mystic Violet |
+| **`GuideImageButton`** | Guide | `rbxassetid://101606808762057` | Luminous Emerald Jade |
+| **`SectImageButton`** | Mission | `rbxassetid://106213136826861` | Radiant Sun Gold / Amber |
+
+### Currency Badges Icons (`TopRightCurrencyFrame`)
+| Currency | Display Name | Asset ID | Notes |
+| :--- | :--- | :--- | :--- |
+| **Spirit Stones** | Spirit Stone Crystal | `rbxassetid://139743745524676` | Saturated Blue Gem |
+| **Contribution Points** | Sect Merit Medallion | `rbxassetid://129257153774545` | Golden Sect Crest |
+
+### R6 1-Handed Sword Cultivator Templates (`ReplicatedStorage.MobModels`)
+| Mob Model | Role | Scale | Key Visuals |
+| :--- | :--- | :---: | :--- |
+| **`RogueDisciple`** | Common Swarm | `1.0x` | Ash-grey robes, white blindfold, mortal iron sword. |
+| **`BloodShadowAssassin`** | Agility Flanker | `0.92x` | Stealth black robes, straw hat, glowing red eyes. |
+| **`CorruptedIronGuard`** | Heavy Brute | `1.35x` | Charcoal skin, iron demon mask, dual red horns. |
+| **`FallenInnerProdigy`** | Field Mini-Boss | `1.20x` | Midnight-blue robes, flowing white hair, cyan eyes. |
+| **`Boss_FallenSwordGenius`**| World Boss (Mo Chen) | `1.28x` | Ink-and-blood robes, single cursed horn, sword intent aura. |

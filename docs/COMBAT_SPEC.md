@@ -11,6 +11,29 @@
 
 ---
 
+### 1.3 Dynamic Weapon-Attuned Skill Palettes
+Skills (`Q` sawblades, `F` 100-slash sphere, `Shift` dash afterimages, and `F` Shunpo ghosts) dynamically query `character:GetAttribute("EquippedWeapon")` via `ItemConfig.GetWeaponPalette`:
+- **Tier 1 (`MortalIronJian`):** Cold Silver-White (`#DCE1EB`)
+- **Tier 2 (`AzureCloudDiscipleJian`):** Celestial Sky Cyan (`#38BDF8`)
+- **Tier 3 (`FlowingQiSpiritSword`):** Electric Ocean Sapphire (`#0EA5E9`)
+- **Tier 4 (`VerdantJadeFlyingSword`):** Imperial Emerald Jade (`#34D399`)
+- **Tier 5 (`VioletSoulSovereignJian`):** Royal Amethyst Violet (`#C084FC`)
+- **Tier 6 (`VoidStarCleaverDao`):** Cosmic Void Purple (`#A855F7`)
+- **Tier 7 (`AzurePatriarchHeritageJian`):** Luminescent Divine Cyan (`#22D3EE`)
+- **Tier 8 (`RadiantImmortalSovereignJian`):** Blinding Solar Dao Gold (`#FACC15`)
+
+## 4. Mob Combat & Flocking AI Mechanics
+
+### 4.1 Shared R6 Sword Combat System
+All mobs and bosses share the player's 1-handed sword combat engine:
+- **Movement Locomotion:** Mobs play the martial walk animation during Patrol (`WalkSpeed * 0.65`) and sprint with the player run animation during Chase (`WalkSpeed * 1.15`).
+- **5-Step Combo String:** Mobs cycle through the full 5-step M1 broadsword combo sequence (`M1_1` through `M1_5`), resetting if more than $2.2\text{s}$ elapses between strikes.
+- **Combat Resolution:** Attacks route through `HitboxManager.ApplyCombatResolution`. Player blocking (`T`) reduces damage by $80\%$, perfect parries deflect strikes with golden sparks and negate damage, and landed hits deal physical knockback, trigger camera shudder ($0.85$), and spawn slash hitmarks.
+
+### 4.2 Smart Teammate Flocking & Boids Separation
+- **Surround Slots:** When multiple mobs chase the same target, each mob calculates an angular flank slot (`flankAngle = (idx / total) * 2π`) fanning out at a $3.5\text{--}6.0\text{ stud}$ radius.
+- **Boids Repulsion:** Mobs within $5.5\text{ studs}$ of teammates apply an inverse-distance lateral repulsion force, preventing stacking and colliding.
+
 ## 1. Universal 1-Pack Skillset (Low-Friction, High-Impact)
 
 All Flying Swords use the same universal 6-slot input layout with high-impact visual feedback:
@@ -24,7 +47,7 @@ All Flying Swords use the same universal 6-slot input layout with high-impact vi
 | **`M1`** | Broadsword Combo | **0%** | 0.38s–0.65s | 15/15/20/25/45 | 8–11 studs | 5-hit R6 broadsword chain. WalkSpeed = 8. Generates +25% Intent per hit. |
 | **`Q`** | **Sword Tempest** | **15%** | 3.5s | 25 (Melee) + 54 (3x Waves) | 36 studs @ 70 studs/s | Dual hitbox: point-blank melee cleave (0–7 studs) + 3 traveling purple sawblades. Release SFX: `109735549169421`, Hit SFX: `135448977656112`. Auto-resumes sprint. |
 | **`E`** | Piercing Void Thrust | **12%** | 5.0s | 80 | 25 studs @ 120 studs/s | High-speed penetrating sword beam. Knocks targets back 40 studs. |
-| **`F`** | **100-Slash Flash Domain** | **20%** | 5.5s | 100 (5 ticks x 20) | 28 studs @ 150 studs/s | Hold F to charge stance (`84905841522350`, locked pose); release to flash-step through enemies (stops at trees/terrain). At 14-stud midpoint, triggers 0.05s micro-hitstop, mid-air slash (`111677132360566`), and 36-stud purple 100-slash sphere (`UltimateSkill`). Audio: `18781431019`. Anti-trip locked. Auto-resumes sprint. |
+| **F** | **100-Slash Flash Domain** | **20%** | 5.5s | 100 (5 ticks x 20) | 28–32 studs @ 145 studs/s | Instant 1-click trigger. Lifts cultivator +2.2 studs into Freefall with AlignOrientation (10M torque); plays rapid 0.12s airborne windup pose; executes 145 studs/s flash-step forward phasing through enemies; at midpoint, triggers mid-air slash and detonates 36-stud 100-slash sphere (weapon-attuned colors). Slope-normal ground snap (Normal.Y > 0.65) upon recovery. Auto-resumes sprint. |
 | **`T`** | Block & Perfect Parry | **0%** | 0.5s | 0 | Frontal 180° | Hold to block (80% mitigation). Tap within 0.22s for Perfect Parry (100% negation, 0.5s stun on attacker, +5% Qi). |
 | **`Shift`**| Windstep Dash | **0%** | 3.0s | 0 | 20 studs @ 150 studs/s | 2-stage flash-step burst with +1.2 stud elevation lift and Celestial Cyan afterimages. |
 

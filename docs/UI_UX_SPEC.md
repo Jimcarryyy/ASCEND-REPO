@@ -61,6 +61,22 @@ To eliminate overlapping modals and render priority conflicts, every ScreenGui i
 
 ---
 
+## 2. Master Xianxia UI Color Specification
+
+### 2.1 Core Palette Tokens
+- **Main Window Canvas (`GuideWindow`, `MainFrame`, `ForgeWindow`):** Vertical 90° gradient (`#141F36` $\rightarrow$ `#1E2D4A` $\rightarrow$ `#0B111E`).
+- **Sub-Panels / Cards (`ContentPanel`, `FirstFrame`, `SecondFrame`):** 45° diagonal gradient (`#121B2D` $\rightarrow$ `#18243C` $\rightarrow$ `#0E1524`).
+- **Solar Dao Gold (Prestige, Titles, Main Actions):** `#FFFBEB` $\rightarrow$ `#FDE047` $\rightarrow$ `#EAB308`.
+- **Celestial Spirit Cyan (Interactive, Badges, Subtitles):** `#22D3EE` $\rightarrow$ `#0EA5E9` $\rightarrow$ `#0369A1`.
+- **Cinnabar Crimson (Danger, Close [X], Combat Alerts):** `#FB7185` $\rightarrow$ `#E11D48` $\rightarrow$ `#9F1239`.
+- **Metallic Titanium Slate (Inactive States, Neutral Badges):** `#94A3B8` $\rightarrow$ `#475569` $\rightarrow$ `#1E293B`.
+- **Borders:** Razor-thin solid black `UIStroke` (`1.0px` to `1.2px`) with `ApplyStrokeMode = Border`.
+- **Zero `UICorner`:** Sharp, non-rounded rectangular geometry across all windows, tabs, and tags.
+
+### 2.2 Typography Rules
+- **Headers, Titles, Badges, Values:** `Enum.Font.Bangers` with black `UIStroke` (`1.4px` to `1.8px`).
+- **Body Text, Lore, Descriptions:** `Enum.Font.Fondamento` in pure white (`#FFFFFF`) or soft ivory (`#F8FAFC`).
+
 ## 3. Master Desktop HUD Layout (`StarterGui.MasterHUDGui`)
 
 ```text
@@ -137,28 +153,20 @@ Sect Duties & Arena: Details daily duties, CP ranks, and the 1v1 Sparring Arena 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ [TOP-LEFT]                          [TOP-CENTER]               [TOP-RIGHT]  │
-│ TopLeftDutyTracker (Y = +56px)    ToastContainer            TopRightCurrency│
-│ \"Herbal Foraging Duty  0/5\"     \"Discovered 100-Yr Ginseng\"  SPIRIT STONES  │
-│ \"Alchemy Refine        0/1\"                                  48,285       │
-│ \"Sparring Discipline   0/3\"                               SECT CONTRIBUTION│
-│                                                               1,910 CP      │
-│ ZoneFrame                                                                   │
-│ \"Qi Condensation - 2.0x SPEED\"                                             │
+│ TopLeftDutyTracker                ToastContainer               BottomNavTray│
+│ "Herbal Foraging Duty 0/5"        "Discovered 100-Yr Ginseng"   [ Arena ]   │
+│ "Alchemy Refine       0/1"                                      [ Pouch ]   │
+│ "Sparring Discipline  0/3"                                      [ Guide ]   │
+│ ZoneFrame                                                       [ Mission ] │
+│ "Qi Condensation - 2.0x SPEED"                                              │
 │                                                                             │
-│                                                                             │
-│                                                                             │
-│                                     [BOTTOM-CENTER]                         │
-│                           VitalsContainer                                   │
-│                           HP  [████████████████████████] 637.9K / 637.9K    │
-│                           QI  [████████████████████████] 479.1K / 479.1K    │
-│                           INT [████████████████████████] SWORD INTENT 100%  │
-│                                                                             │
-│                           BottomCenterFrame.HotbarContainer (10 Slots)      │
-│                           ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐          │
-│                           │ B │ C │ E │ F │ M1│ Q │ R │SHF│ T │ V │          │
-│                           └───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘          │
-│                           BottomNavTray                                     │
-│                           [Arena]   [Bag]   [Guide]   [Meditate]   [Sect]   │
+│ [BOTTOM-LEFT]                       [BOTTOM-CENTER]                         │
+│ TopRightCurrencyFrame (340px)       BottomCenterFrame.HotbarContainer       │
+│ [ 💎 48.6K ]  [ 🛡️ 3,880 CP ]       ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐│
+│ VitalsContainer (340px)             │ B │ C │ E │ F │ M1│ Q │ R │SHF│ T │ V ││
+│ HP              2.02M / 2.02M       └───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘│
+│ QI              2.17M / 2.17M                                               │
+│ INT                    15/100                                               │
 └─────────────────────────────────────────────────────────────────────────────┘
 Complete 12-Modal Registry in StarterGui (DisplayOrder = 50, 
 Y
@@ -217,3 +225,18 @@ All modal confirmation and action buttons must feature high-contrast pure white 
 * **Celestial Azure Actions (Sharpening / Stipends / Guide Enter):** `#0096BE` fill, `#00DCFF` ($2.0\text{px}$) outline, `#FFFFFF` Bangers text with $1.5\text{px}$ black stroke.
 * **Forged Amber Actions (Refinement / Promotions):** `#B45309` fill, `#FDE047` ($2.0\text{px}$) outline, `#FFFFFF` Bangers text with $1.5\text{px}$ black stroke.
 * **Radiant Jade Actions (Tea Brewing / Quest Claims):** `#10B981` fill, `#34D399` ($2.0\text{px}$) outline, `#FFFFFF` Bangers text with $1.5\text{px}$ black stroke.
+
+## 5. Specialized HUD Elements
+
+### 5.1 Overhead UI Standard (`OverheadUIController.luau`)
+- **Player Only:** Attaches strictly to player characters; ignored by mobs and training dummies.
+- **No Overhead Health Bar:** Health bar removed (tracked in Bottom-Left Vitals HUD).
+- **Two-Line Identity:**
+  - Line 1: Realm Name & Order (e.g. `SPIRIT SEVERING - ORDER 2`) in `Bangers` with Solar Gold gradient. Deduplicates order tags.
+  - Line 2: Sect Rank (e.g. `INNER DISCIPLE`) in `Bangers` with Luminous Silver-Cyan gradient.
+
+### 5.2 World Gathering HUD (`GatheringHUD`)
+- **Compact Dimensions:** Sized to `210 × 40` centered in lower screen.
+- **Clean Display:** Displays `"HARVESTING..."` without node name concatenation.
+- **Gradients:** Amber-Gold container background, Sunfire progress fill, and black outer borders.
+- **ProximityPrompt:** Resolves both BasePart and Model nodes; bounces into view on approach and suppresses instantly on interaction.

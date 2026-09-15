@@ -2,7 +2,9 @@
 --[[
     BlacksmithController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/BlacksmithController.luau
-    Client UI controller for StarterGui.BlacksmithGui.
+    Client UI controller for StarterGui.BlacksmithGui:
+    - 🚀 Wired to ModalWindowManager (Auto-closes when opening other menus)
+    - Proximity prompt trigger on Sect_NPC_MadameTie & Anvil
 ]]
 
 local Players = game:GetService("Players")
@@ -11,10 +13,22 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local localPlayer = Players.LocalPlayer
-local playerGui = localPlayer:WaitForChild("PlayerGui")
+local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
 local BlacksmithController = {}
 local blacksmithRemote: RemoteEvent
+local modalManager: any = nil
+
+local function GetModalManager(): any
+	if not modalManager then
+		local controllers = localPlayer:WaitForChild("PlayerScripts"):WaitForChild("Controllers")
+		local mod = controllers:FindFirstChild("ModalWindowManager")
+		if mod and mod:IsA("ModuleScript") then
+			modalManager = require(mod)
+		end
+	end
+	return modalManager
+end
 
 local gui: ScreenGui?
 local backdrop: Frame?
@@ -30,6 +44,7 @@ local statPreviewLabel: TextLabel?
 local rankBadge: TextLabel?
 
 local isInitialized = false
+local isOpen = false
 
 local function EnsureUI(): boolean
 	if isInitialized and gui and backdrop then return true end
@@ -63,8 +78,7 @@ local function EnsureUI(): boolean
 
 	if closeBtn then
 		closeBtn.Activated:Connect(function()
-			if gui then gui.Enabled = false end
-			if backdrop then backdrop.Visible = false end
+			BlacksmithController.Close()
 		end)
 	end
 
@@ -76,12 +90,38 @@ local function EnsureUI(): boolean
 
 	if sharpenBtn then
 		sharpenBtn.Activated:Connect(function()
-			blacksmithRemote:FireServer({ Action = "SharpenBlade" })
+			blacksmithRemote:FireServer({ Action = "SharpenBlade" } department)
 		end)
 	end
 
 	isInitialized = true
 	return true
+end
+
+function BlacksmithController.Open()
+	if not EnsureUI() then return end
+	isOpen = true
+
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.RequestOpen("Blacksmith")
+	end
+
+	if gui then gui.Enabled = true end
+	if backdrop then backdrop.Visible = true end
+	blacksmithRemote:FireServer({ Action = "RequestSync" })
+end
+
+function BlacksmithController.Close()
+	isOpen = false
+
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.NotifyClosed("Blacksmith")
+	end
+
+	if gui then gui.Enabled = false end
+	if backdrop then backdrop.Visible = false end
 end
 
 function BlacksmithController.Init()
@@ -90,27 +130,27 @@ function BlacksmithController.Init()
 	if gui then gui.Enabled = false end
 	if backdrop then backdrop.Visible = false end
 
-	-- Universal Prompt Trigger Listener
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.Register("Blacksmith", function()
+			BlacksmithController.Close()
+		end)
+	end
+
 	ProximityPromptService.PromptTriggered:Connect(function(prompt, who)
 		if who ~= localPlayer then return end
 		local act = prompt.ActionText:lower()
 		if act == "refine & sharpen weapons" or prompt.ObjectText == "Master Blacksmith Anvil" or (prompt.Parent and (prompt.Parent.Name == "Sect_NPC_MadameTie" or prompt.Parent.Name == "Anvil_Body")) then
-			if EnsureUI() and backdrop and gui then
-				gui.Enabled = true
-				backdrop.Visible = true
-				blacksmithRemote:FireServer({ Action = "RequestSync" })
-			end
+			BlacksmithController.Open()
 		end
 	end)
 
-	-- Server Events Listener
 	blacksmithRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" then return end
 		if not EnsureUI() then return end
 
 		if payload.Action == "OpenForge" or payload.Action == "SyncData" then
-			if gui then gui.Enabled = true end
-			if backdrop then backdrop.Visible = true end
+			BlacksmithController.Open()
 			local stones = payload.SpiritStones or 0
 			local refine = payload.RefinementLevel or 3
 			local nextCost = 150 + (refine * 75)
@@ -124,7 +164,7 @@ function BlacksmithController.Init()
 		end
 	end)
 
-	print("[ASCEND] BlacksmithController Initialized.")
+	print("[ASCEND] BlacksmithController Initialized (Modal Exclusion Active).")
 end
 
 return BlacksmithController

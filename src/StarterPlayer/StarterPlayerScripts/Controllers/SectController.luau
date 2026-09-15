@@ -3,9 +3,9 @@
     SectController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SectController.luau
     Client UI controller for the Sect Elder Pavilion:
+    - 🚀 Wired to ModalWindowManager (Auto-closes when opening other menus)
     - 'M' Keybind shortcut to toggle Sect Duties & Stipend from anywhere
     - Instant ProximityPrompt trigger for Deacon Zhao & Notice Board
-    - Robust hierarchy finding for MainFrame inside OverlayBackdrop
     - Full sync for Disciple profile, Daily Stipends, Promotions, and 3-Tier Duties
 ]]
 
@@ -27,8 +27,19 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 
 local sectRemote: RemoteEvent
+local modalManager: any = nil
 
--- Audio
+local function GetModalManager(): any
+	if not modalManager then
+		local controllers = player:WaitForChild("PlayerScripts"):WaitForChild("Controllers")
+		local mod = controllers:FindFirstChild("ModalWindowManager")
+		if mod and mod:IsA("ModuleScript") then
+			modalManager = require(mod)
+		end
+	end
+	return modalManager
+end
+
 local CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
 
 local function PlayPanelClickSFX()
@@ -41,14 +52,12 @@ local function PlayPanelClickSFX()
 	game:GetService("Debris"):AddItem(sound, 1.2)
 end
 
--- UI References
 local screenGui: ScreenGui?
 local overlayBackdrop: Frame?
 local mainFrame: Frame?
 local headerFrame: Frame?
 local closeButton: GuiButton?
 
--- Left Column References (FirstFrame)
 local firstFrame: Frame?
 local discipleUserName: TextLabel?
 local discipleRankName: TextLabel?
@@ -61,7 +70,6 @@ local stipendButtonText: TextLabel?
 local promotionButton: GuiButton?
 local promotionButtonText: TextLabel?
 
--- Right Column References (SecondFrame - 3 Quest Cards)
 local secondFrame: Frame?
 type QuestCardUI = {
 	Container: Frame,
@@ -78,7 +86,6 @@ type QuestCardUI = {
 
 local questCards: { QuestCardUI } = {}
 
--- State Cache
 local currentRankId: string = "OuterDisciple"
 local currentContribution: number = 0
 local currentStones: number = 0
@@ -247,16 +254,21 @@ function SectController.Init()
 	EnsureUI()
 	sectRemote = RemoteEvents.GetRemote("SectAction")
 
-	-- 1. 'M' Keybind Listener
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.Register("SectPavilion", function()
+			SectController.Close()
+		end)
+	end
+
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-		if gameProcessed then return end
+		if UserInputService:GetFocusedTextBox() ~= nil then return end
 		if input.KeyCode == Enum.KeyCode.M then
 			PlayPanelClickSFX()
 			SectController.Toggle()
 		end
 	end)
 
-	-- 2. ProximityPrompt Listener
 	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, triggeringPlayer: Player)
 		if triggeringPlayer == player then
 			local action = prompt.ActionText:lower()
@@ -268,7 +280,6 @@ function SectController.Init()
 		end
 	end)
 
-	-- 3. Server Event Listener
 	sectRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" or not payload.Action then return end
 
@@ -301,12 +312,18 @@ function SectController.Init()
 		sectRemote:FireServer({ Action = "RequestSectData" })
 	end)
 
-	print("[ASCEND] SectController Initialized ('M' Keybind Active).")
+	print("[ASCEND] SectController Initialized (Modal Exclusion & 'M' Keybind Active).")
 end
 
 function SectController.Open()
 	if not EnsureUI() then return end
 	if not screenGui or not mainFrame then return end
+
+	-- 🚀 Request mutual exclusion open
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.RequestOpen("SectPavilion")
+	end
 
 	isOpen = true
 	screenGui.Enabled = true
@@ -319,6 +336,12 @@ end
 
 function SectController.Close()
 	isOpen = false
+
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.NotifyClosed("SectPavilion")
+	end
+
 	if screenGui then screenGui.Enabled = false end
 	if mainFrame then mainFrame.Visible = false end
 	if overlayBackdrop then overlayBackdrop.Visible = false end

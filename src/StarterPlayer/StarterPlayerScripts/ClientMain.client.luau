@@ -11,6 +11,7 @@ local player = Players.LocalPlayer
 local controllersFolder = player:WaitForChild("PlayerScripts"):WaitForChild("Controllers") :: Folder
 
 local CONTROLLER_NAMES = {
+	"ModalWindowManager", -- 🚀 Must initialize early for window registration
 	"AnimationController",
 	"InputController",
 	"CombatVFXController",
@@ -30,9 +31,9 @@ local CONTROLLER_NAMES = {
 	"BlacksmithController",
 	"TeaHouseController",
 	"StarterGuideController",
-	"SparringGuidanceController",
 	"CharacterStatsController",
-	"MusicController", -- 🚀 New Dynamic Proximity Combat BGM Controller
+	"MusicController",
+	"WeaponCodexController",
 }
 
 local function InitializeClient()
@@ -53,7 +54,7 @@ local function InitializeClient()
 		end
 	end
 
-	print("[ASCEND] All Client Controllers Initialized Concurrently (Including Dynamic Combat Music).")
+	print("[ASCEND] All Client Controllers Initialized Concurrently (Single-Window System Active).")
 end
 
 InitializeClient()

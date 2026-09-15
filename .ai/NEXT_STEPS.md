@@ -10,26 +10,30 @@ This document outlines planned upcoming engineering and design milestones for AS
 ## Phase 8.5 Roadmap: Combat Skills & Combat Feel Hardening
 
 ### 1. Immediate Priority (Active Milestone)
-- **Patch `HitboxManager.luau` Line 228:**
-  - Audit `HitboxManager.ApplyCombatResolution` to handle `hit.Character` targets that are Mobs/NPCs (where `Players:GetPlayerFromCharacter(hit.Character)` is `nil`), preventing server crashes during combat.
-- **VFX Skill Pipeline Integration:**
-  - Integrate the remaining assets in `ReplicatedStorage.VFX` into live gameplay:
-    - `ActiveShield` $\rightarrow$ Wire to `T` Block (Hold) in `CombatVFXController.luau`.
-    - `ShieldBreakEffects` $\rightarrow$ Trigger when Posture hits 0 on players and mobs.
-    - `SwordIntentAnim` $\rightarrow$ Wire to 100% Sword Intent Empowered M1 Strike.
-    - `FireSlashSkill` $\rightarrow$ Map to elemental blade variant or skill slot.
-- **Keybind Conflict Resolution:**
-  - Resolve `R` keybind conflict: Currently bound to `Draw/Sheath` on HUD while documented as `Celestial Sunfall` ultimate in `COMBAT_SPEC.md`.
+- **Skill `E` Overhaul (Piercing Void Thrust):**
+  - Standardize projectile speed and hitbox casting across `FlyingSwordServer.luau` and `CombatVFXController.luau`.
+  - Integrate dynamic weapon-attuned color palette (`ItemConfig.GetWeaponPalette`) so the projectile beam matches the equipped blade.
+  - Tune knockback and range to establish a distinct long-range piercing zoning tool.
+- **Defensive VFX Pipeline Integration (`ReplicatedStorage.VFX`):**
+  - `ActiveShield` $\rightarrow$ Bind to `T` Guard hold in `CombatVFXController.luau`.
+  - `ShieldBreakEffects` $\rightarrow$ Trigger on player and mob guard breaks when Posture reaches 0.
+  - `SwordIntentAnim` $\rightarrow$ Trigger on 100% Sword Intent Empowered M1 strike.
+  - `FireSlashSkill` $\rightarrow$ Map to elemental blade variant or skill slot.
+- **World Boss HUD Integration (`BossHealthHUD`):**
+  - Wire `StarterGui.BossHealthHUD` to track `Boss_FallenSwordGenius` whenever a player enters combat with him.
+  - Style `BossHealthHUD` to match the Master Xianxia UI Color Specification (sharp rectangular frame, Bangers font, vibrant crimson/gold gradient).
 
-### 2. High Priority (Mob Encounters & Combat Balance)
-- **Zone 1 Mob Spawner Distribution:**
-  - Place `Spawner_RogueDisciples` pads in designated wilderness camps outside the Sect walls.
-  - Add mob definitions and spawn anchors for `DemonWolf` and `IronhideBoar` using `MobConfig.luau`.
-- **Combat Audio Balance Pass:**
-  - Balance volume curves for `SWORD_RELEASE_SFX` (`109735549169421`), `HIT_IMPACT_SOUND_ID` (`135448977656112`), and `ULTIMATE_SFX_ID` (`18781431019`).
+### 2. High Priority (World Spawners & Combat Balance)
+- **Wilderness Mob Spawner Placement:**
+  - Drag and arrange the 5 newly configured spawner anchors (`Spawner_RogueDisciples`, `Spawner_BloodShadowAssassin`, `Spawner_CorruptedIronGuard`, `Spawner_FallenInnerProdigy`, `Spawner_BossFallenSwordGenius`) across their designated zones in Studio.
+  - Add world spawn anchors for `DemonWolf` and `IronhideBoar` in Zone 1 forests.
+- **Combat Audio & Volume Balance Pass:**
+  - Balance volume curves across `SWORD_RELEASE_SFX` (`109735549169421`), `HIT_IMPACT_SOUND_ID` (`135448977656112`), and `ULTIMATE_SFX_ID` (`18781431019`).
+- **Keybind Conflict Resolution:**
+  - Resolve `R` keybind: Confirm whether `R` remains Draw/Sheath while `F` is the primary Ultimate, or remap Draw/Sheath to free `R` for `Celestial Sunfall`.
 
 ### 3. Medium Priority (World Dressing & Monetization)
-- **Zone 1 Foliage & Dressing Finalization:**
+- **Zone 1 Foliage & Tree Collision Audit:**
   - Scatter pine and stylized trees across remaining empty terrain zones using the calibrated non-colliding canopy rules.
   - Ensure all 16 `Functional_Stations` have clean collision bounds and verified ProximityPrompts.
 - **Creator Dashboard Monetization Audit:**
@@ -39,6 +43,7 @@ This document outlines planned upcoming engineering and design milestones for AS
 
 ## Open Items From This Session
 
-- [ ] **`HitboxManager:228` Server Nil Error:** Investigate line 228 of `src/ServerScriptService/Server/Combat/HitboxManager.luau`. Currently wrapped via `pcall` in `FlyingSwordServer.luau`, but needs clean NPC target handling in the manager itself.
-- [ ] **R Keybind Resolution:** Decide whether to move Draw/Sheath to another hotkey (e.g. `Z` or double-tap) so `R` can be freed for an Ultimate skill, or keep `R` as Draw/Sheath and use `F` as the primary Ultimate slot.
-- [ ] **`ReplicatedStorage.VFX` Organization:** Move `UltimateSkill`, `ActiveShield`, `ShieldBreakEffects`, `SwordIntentAnim`, and `FireSlashSkill` into a standardized subfolder in `ReplicatedStorage.VFX` to ensure consistent client preloading.
+- [ ] **`E` Skill Projectile Pipeline:** Verify if `E` skill should spawn a physical traveling projectile model or use a compensated raycast beam with particle trails.
+- [ ] **Boss Health Bar Binding:** Wire `StarterGui.BossHealthHUD` to activate when within 65 studs of `Boss_FallenSwordGenius` or when taking damage from him.
+- [ ] **R Keybind Canonicalization:** Formally update `COMBAT_SPEC.md` to reflect `R` as Draw/Sheath or reassign Draw/Sheath to allow `R` to function as an additional active skill.
+- [ ] **Remaining Facility GUI Conversions:** Apply the Master Xianxia Color System to the remaining facility modals in `StarterGui` (`AlchemyGui`, `TeaHouseGui`, `SparringGuidanceGui`, `SpiritPouchInventoryGui`).

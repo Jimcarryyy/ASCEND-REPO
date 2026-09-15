@@ -2,9 +2,10 @@
 --[[
     StarterGuideController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/StarterGuideController.luau
-    Client UI controller for StarterGui.StarterGuideGui.
+    Client UI controller for StarterGui.StarterGuideGui:
+    - 🚀 Wired to ModalWindowManager (Auto-closes when opening other menus)
     - Bound to 'G' keybind and Sect_NPC_ElderQing ProximityPrompt
-    - Section 1 updated with complete authoritative keybind directory
+    - Section 1 directory with complete authoritative keybinds
 ]]
 
 local Players = game:GetService("Players")
@@ -25,6 +26,18 @@ local confirmBtn: TextButton?
 local tabHeader: TextLabel?
 local contentPanel: Frame?
 local tabBar: Frame?
+local modalManager: any = nil
+
+local function GetModalManager(): any
+	if not modalManager then
+		local controllers = localPlayer:WaitForChild("PlayerScripts"):WaitForChild("Controllers")
+		local mod = controllers:FindFirstChild("ModalWindowManager")
+		if mod and mod:IsA("ModuleScript") then
+			modalManager = require(mod)
+		end
+	end
+	return modalManager
+end
 
 local isInitialized = false
 local isOpen = false
@@ -49,7 +62,7 @@ local TAB_DATA = {
 			{ key = "[C / B / V]", desc = "Dao Arts: Qi Meditation, Realm Breakthrough, Mount Flying Sword" },
 			{ key = "[Tab / I - Pouch]", desc = "Open Spirit Pouch inventory to inspect Dan pills, herbs, and equipment" },
 			{ key = "[G - Guide / M - Sect]", desc = "Toggle this Martial Guide manual (G) and Sect Pavilion duties (M)" },
-			{ key = "[P - Stats / R - Sheathe]", desc = "Open Authoritative Dao Stats (P) and Draw / Sheathe equipped sword (R)" },
+			{ key = "[P - Stats / U - Codex]", desc = "Open Authoritative Dao Stats (P) and Weapon Awakening Codex (U)" },
 		}
 	},
 	[2] = {
@@ -170,12 +183,25 @@ end
 
 function StarterGuideController.Open()
 	if not EnsureUI() then return end
+
+	-- 🚀 Request mutual exclusion open
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.RequestOpen("StarterGuide")
+	end
+
 	isOpen = true
 	if backdrop then backdrop.Visible = true end
 end
 
 function StarterGuideController.Close()
 	isOpen = false
+
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.NotifyClosed("StarterGuide")
+	end
+
 	if backdrop then backdrop.Visible = false end
 end
 
@@ -191,16 +217,21 @@ function StarterGuideController.Init()
 	EnsureUI()
 	StarterGuideController.Close()
 
-	-- 1. 'G' Keybind Listener
+	local mgr = GetModalManager()
+	if mgr then
+		mgr.Register("StarterGuide", function()
+			StarterGuideController.Close()
+		end)
+	end
+
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-		if gameProcessed then return end
+		if UserInputService:GetFocusedTextBox() ~= nil then return end
 		if input.KeyCode == Enum.KeyCode.G then
 			PlayClickSound()
 			StarterGuideController.Toggle()
 		end
 	end)
 
-	-- 2. NPC ProximityPrompt Listener
 	ProximityPromptService.PromptTriggered:Connect(function(prompt, who)
 		if who ~= localPlayer then return end
 		local act = prompt.ActionText:lower()
@@ -210,7 +241,7 @@ function StarterGuideController.Init()
 		end
 	end)
 
-	print("[ASCEND] StarterGuideController Initialized ('G' Keybind Active).")
+	print("[ASCEND] StarterGuideController Initialized (Modal Exclusion & 'G' Keybind Active).")
 end
 
 return StarterGuideController

@@ -470,3 +470,95 @@ This document records structural architectural decisions, design paradigms, secu
   3. When charging skills mid-sprint, horizontal velocity is arrested immediately (`Vector3.new(0, Y, 0)`), preventing forward momentum from tripping the character.
   4. Implemented automatic sprint state memory: pre-skill sprint state is recorded and automatically restored upon recovery without requiring player key re-presses.
 * **Rationale:** Eliminates unintended ragdolls and stumbling on stepped terrain and during fast combat locomotion.
+
+### ADR-057 — Client-Authoritative Combat Movement with Server Hitbox Validation
+* **Date:** September 2026
+* **Status:** Accepted & Implemented
+* **Context:** Running high-speed physics movers (`LinearVelocity`) on the server for client-owned character assemblies caused violent rubber-banding and physics desync during the `F` Ultimate.
+* **Decision:**
+  1. Standardized all character locomotion skills (`Shift` Dash and `F` Ultimate) to client-authoritative execution matching the proven `AnimationController.PerformDash` pattern.
+  2. The client applies `LinearVelocity` with `AlignOrientation` (`MaxTorque = 10,000,000`), $+2.2\text{ studs}$ elevation lift, and temporary `Freefall` state.
+  3. The server retains 100% authority over hitboxes, damage, posture drain, Qi consumption, and cooldown gates.
+  4. Server-side `LinearVelocity` and forced `CFrame` ground snapping on player characters are permanently prohibited.
+* **Consequences:** Completely eliminated rubber-banding, snapping backwards, and sideways tripping during combat mobility skills.
+
+### ADR-058 — Instant-Trigger Ultimate Skill Pipeline
+* **Date:** September 2026
+* **Status:** Accepted & Implemented
+* **Context:** Hold-to-charge mechanics on `F` introduced input-release race conditions, server recovery lockout drops, and movement lockouts when releasing early.
+* **Decision:**
+  1. Converted `F` Ultimate to an instant single-click activation (`TriggerUltimateF`).
+  2. Retained the charge stance animation as a rapid $0.12\text{s}$ airborne windup that smoothly chains into the flash-step forward dash.
+  3. Purged `StartChargeF` remote listeners and hold-detection loops.
+* **Consequences:** Delivers snappy, responsive ultimate skill execution with zero input-delay dropped packets.
+
+### ADR-059 — Dynamic Weapon-Attuned Combat VFX Architecture
+* **Date:** September 2026
+* **Status:** Accepted & Implemented
+* **Context:** Hardcoded purple particle colors on `Q` and `F` clashed with the 8 distinct elemental sword tiers.
+* **Decision:**
+  1. Implemented `WeaponVFXPalette` in `ItemConfig.luau` and `ItemConfig.GetWeaponPalette(weaponId)` defining primary colors, secondary tones, glow colors, and multi-stop particle gradients across all 8 sword tiers.
+  2. Replicated `character:SetAttribute("EquippedWeapon", weaponId)` in `WeaponManager.luau`.
+  3. Client controllers dynamically query this attribute, automatically attuning `Q` sawblade waves, `F` 100-slash spheres, dash afterimage trails, and Shunpo ghosts to the equipped blade.
+  4. Removed point light sources beneath skill projectiles to maintain clean, high-performance particle aesthetics.
+* **Consequences:** Greatly elevates visual weapon prestige and player progression feedback.
+
+### ADR-060 — Unified Bottom-Left HUD Column Standard
+* **Date:** September 2026
+* **Status:** Accepted & Implemented
+* **Context:** Vitals bars on `BottomCenterFrame` clashed with hotbars, currency in the top-right crowded mobile topbars, and nav buttons under the hotbar were difficult to click.
+* **Decision:**
+  1. Consolidated vitals, currencies, and navigation into a unified $340\text{px}$ column anchored at the bottom-left corner of the screen:
+     - **Top ($Y = -206$):** 2×2 Navigation Tray (`BottomNavTray`: Arena, Pouch, Guide, Mission).
+     - **Middle ($Y = -164$):** 2-badge side-by-side Currency Bar (`TopRightCurrencyFrame`: Spirit Stones & CP).
+     - **Bottom ($Y = -32$):** 3 equal-length $340\text{px} \times 14\text{px}$ bars (`VitalsContainer`: HP, QI, INT).
+  2. Permanently prohibited `UICorner` across this cluster for a sharp, sleek ARPG aesthetic.
+  3. Separated text indicators above each bar: Left title (`HP`, `QI`, `INT`) and Right dynamic real numbers (`2.02M / 2.02M`) in `Bangers` font with black outlines.
+* **Consequences:** Created an ergonomic, modern ARPG HUD layout with high contrast and zero central screen clutter.
+
+### ADR-061 — Master Xianxia UI Color & Gradient Specification
+* **Date:** September 2026
+* **Status:** Accepted & Implemented
+* **Context:** Modal windows using dark bamboo image frames (`115367926298823`) distorted across screen sizes and lacked modern color contrast.
+* **Decision:**
+  1. Replaced 9-slice image frames with standard `Frame`s styled under the Master Xianxia UI Color System:
+     - **Main Frame Base:** Celestial Midnight Navy vertical gradient (`#141F36` $\rightarrow$ `#1E2D4A` $\rightarrow$ `#0B111E`).
+     - **Sub-Panels / Cards:** Twilight Slate 45° diagonal gradient (`#121B2D` $\rightarrow$ `#18243C` $\rightarrow$ `#0E1524`).
+     - **Prestige / Titles:** Solar Dao Gold vertical gradient (`#FFFBEB` $\rightarrow$ `#FDE047` $\rightarrow$ `#EAB308`).
+     - **Interactive / Badges:** Celestial Spirit Cyan vertical gradient (`#22D3EE` $\rightarrow$ `#0EA5E9` $\rightarrow$ `#0369A1`).
+     - **Danger / Close:** Cinnabar Crimson vertical gradient (`#FB7185` $\rightarrow$ `#E11D48` $\rightarrow$ `#9F1239`).
+     - **Outlines:** Razor-thin solid black `UIStroke` (`1.0px` to `1.2px`).
+  2. Isolated button text into inner `TextLabel`s (`TextColor3 = 255, 255, 255` with black stroke) so button `UIGradient`s do not bleed into the text.
+* **Consequences:** Unified the visual identity of all game menus with crisp, scalable, high-contrast presentation.
+
+### ADR-062 — R6 Humanoid Mob & Boss Standardization (1-Handed Sword Doctrine)
+* **Date:** September 2026
+* **Status:** Accepted & Implemented
+* **Context:** Solo-developer budget and time constraints make custom 3D beast rigging and procedural animation math a high-risk trap.
+* **Decision:**
+  1. Standardized 100% of zone mobs, elites, and world bosses to the **Roblox R6 Humanoid rig** wielding **1-handed swords**.
+  2. All mobs share the player's martial walk, sprint run, and 5-hit M1 broadsword combo animations from `AnimationConfig.luau`.
+  3. Visual diversity is achieved strictly through scale (`0.92x` to `1.45x`), color palettes, clothing, accessories, and sword auras.
+  4. Physical integrity rule: All cosmetic accessories must have `CanCollide = false`, `CanTouch = false`, `CanQuery = false`, and `Massless = true`. Both legs and torso must have `CanCollide = true` to preserve ground traction.
+  5. Retired `Boss_ElderYan`; established **`Boss_FallenSwordGenius` ("Fallen Sword Genius - Mo Chen")** as the Zone 1 World Boss.
+* **Consequences:** Guaranteed 100% animation compatibility, zero ground-jamming bugs, and rapid enemy authoring velocity.
+
+### ADR-063 — Smart Teammate Flocking & Boids Spatial Separation AI
+* **Date:** September 2026
+* **Status:** Accepted & Implemented
+* **Context:** Multiple mobs chasing a player moved in a straight line toward the exact same coordinate, colliding, stacking inside each other, and moving unnaturally.
+* **Decision:**
+  1. Implemented angular surround slots: When $N$ mobs target a player, each mob calculates an equidistant angular flank position around the player at a $3.5\text{--}6.0\text{ stud}$ radius.
+  2. Implemented Boids lateral repulsion: Mobs within $5.5\text{ studs}$ of teammates apply an inverse-distance repulsion vector pushing them into open space.
+* **Consequences:** Mobs fan out and encircle players naturally like a disciplined martial arts squad.
+
+### ADR-064 — Persistent HUD Lifecycle & Zero-Delay Health Revival Architecture
+* **Date:** September 2026
+* **Status:** Accepted & Implemented
+* **Context:** Default `ResetOnSpawn = true` destroyed the HUD on death, leaving client controllers pointing to dead instances and causing health bars to freeze at `100/100` or `0 HP`. Event listeners on `LocalPlayer` created zombie closures that overwrote live health with dead character stats.
+* **Decision:**
+  1. Set `MasterHUDGui.ResetOnSpawn = false` across client and Studio.
+  2. Implemented a strict `characterConnections` garbage collector in `SkillBarController.luau` that disconnects all previous listeners immediately upon respawn.
+  3. `checkVitals()` always resolves `LocalPlayer.Character.Humanoid.Health` directly rather than closing over dead variables.
+  4. `CultivationManager.luau` removed the `task.wait(0.2)` delay on `CharacterAdded`: Synchronously sets `MaxHealth` and `Health` to full realm values and replenishes Qi to 100% on the exact frame of spawn.
+* **Consequences:** Guaranteed full health and Qi restoration across unlimited deaths with zero GUI freezing.

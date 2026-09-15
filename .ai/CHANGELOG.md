@@ -461,3 +461,76 @@ This document records historical feature additions, engine enhancements, balance
 - **Gathering Crashes:** Fixed `GatheringController.luau` line 6 client crash by removing invalid server `State.InventoryManager` require and resolved `RemoteEvents` infinite yield. Fixed `GatheringManager.luau` nil index crash using schema-safe `GetNodeConfig` resolver.
 - **Tree Collision & Axis Alignment:** Cleaned foliage collision across tree models (`CanCollide = false`, trunks = `Hull`). Fixed Blender FBX Z-up orientation matrix bug that previously knocked trees 90° flat on their sides.
 - **Foliage Wind Shaking:** Renamed internal meshes of gathering herbs from `"Grass"` to `"HerbMesh"` to bypass unwanted `WindEnvironmentController.luau` gust shaking.
+
+## [Phase 8.5 — Combat Engine Hardening, Mob AI Overhaul & Master HUD Rebuild] — September 2026
+
+### Added
+- **Dynamic Weapon-Attuned Visual Palette System:**
+  - Integrated `WeaponVFXPalette` in `ItemConfig.luau` and `ItemConfig.GetWeaponPalette(weaponId)` mapping all 8 sword tiers to unique primary colors, secondary tones, glow colors, and multi-stop particle gradients (Mortal Steel, Azure Cloud, Flowing Sapphire, Verdant Jade, Violet Soul, Void Star, Divine Cyan, Radiant Gold).
+  - Replicated `character:SetAttribute("EquippedWeapon", weaponId)` in `WeaponManager.luau`.
+  - Dynamically attuned `Q` sawblade waves, `F` 100-slash sphere, Dash afterimage trail, and `F` Shunpo ghost silhouettes to the equipped sword's palette.
+- **R6 1-Handed Sword Cultivator Roster (`MobConfig.luau` & `MobAIManager.luau`):**
+  - **`RogueDisciple` (1.0x):** Common swarm cultivator with mortal iron sword.
+  - **`BloodShadowAssassin` (0.92x):** High-speed flanker (`WalkSpeed = 22`), straw hat, glowing red eyes.
+  - **`CorruptedIronGuard` (1.35x):** Heavy brute tank (`1250 HP`, `WalkSpeed = 12`), iron armor, demon horns.
+  - **`FallenInnerProdigy` (1.20x):** Field mini-boss Senior Brother Bai (`3500 HP`, `WalkSpeed = 18`).
+  - **`Boss_FallenSwordGenius` (1.28x):** World Boss Mo Chen (`28000 HP`, `WalkSpeed = 20`), Ink-and-Blood robes, single cursed horn, demonic sword intent aura.
+  - Generated dedicated color-coded spawner anchors in `Workspace.MobSpawns` with high-contrast `Fondamento` developer billboards.
+- **Smart Teammate Flocking & Boids Separation AI:**
+  - Mobs targeting the same player calculate angular surround slots around the player instead of running in a single file line.
+  - Implemented Boids lateral repulsion force pushing mobs apart if within 5.5 studs of each other, fanning out into open space naturally.
+- **Master Xianxia UI Color Specification:**
+  - Established canonical design system: Celestial Midnight Navy (`#141F36` / `#1E2D4A` / `#0B111E`), Solar Dao Gold (`#FFFBEB` / `#FDE047` / `#EAB308`), Celestial Spirit Cyan (`#22D3EE` / `#0EA5E9` / `#0369A1`), Twilight Card Slate (`#121B2D` / `#18243C` / `#0E1524`), Cinnabar Crimson (`#FB7185` / `#E11D48` / `#9F1239`).
+  - Applied across `MasterHUDGui`, `SectPavilionGui`, `StarterGuideGui`, and `BlacksmithGui`.
+- **Universal Selection-Based GUI Inspector:**
+  - Created Studio Command Bar inspection tool using `Selection:Get()` to dump hierarchy trees, positions, sizes, fonts, and properties of any selected GUI to the Output window.
+
+### Changed
+- **F Ultimate Skill Overhaul (`InputController.luau` & `FlyingSwordServer.luau`):**
+  - Purged hold-to-charge mechanic; converted to responsive instant 1-click activation (`TriggerUltimateF`).
+  - Implemented client-authoritative dash physics: +2.2 studs elevation lift into `Freefall`, `AlignOrientation` (10M torque), 145 studs/s burst over 0.22s, and smooth decay.
+  - Added downward raycast slope-normal validation (`groundHit.Normal.Y > 0.65`) before ground snapping (`groundHit.Position.Y + 3.0`), preventing collision glitches against cliffs and steep rocks.
+  - Completely zeroed residual horizontal `AssemblyLinearVelocity` at end of burst.
+  - Eliminated server-side `LinearVelocity` and CFrame snaps in `FlyingSwordServer.luau`, permanently resolving rubber-banding.
+- **Master HUD Layout Rebuild (`MasterHUDGui`):**
+  - **`VitalsContainer`:** Relocated to Bottom-Left (`UDim2.new(0, 32, 1, -32)`). Standardized all 3 bars (HP, QI, INT) to equal 340px width and 14px height. Removed all `UICorner` instances. Split top text into Left title (`HP`, `QI`, `INT`) and Right real values (`2.02M / 2.02M`) in `Bangers` font with black outlines.
+  - **`TopRightCurrencyFrame`:** Relocated to Bottom-Left directly above `VitalsContainer` (`UDim2.new(0, 32, 1, -164)`). Formatted as two 165px side-by-side rectangular badges (340px total width). Corrected icon mapping (Blue Gem = Spirit Stones, Gold Crest = CP).
+  - **`BottomNavTray`:** Relocated to Top-Right corner (`UDim2.new(1, -28, 0, 28)`). Vertical 4-button stack (`Arena`, `Pouch`, `Guide`, `Mission`) with custom left-aligned icons and vibrant gradients.
+- **Overhead UI Overhaul (`OverheadUIController.luau`):**
+  - Removed overhead HP bar entirely (HP is tracked on the Bottom-Left HUD).
+  - Retained only Cultivation Realm & Order + Sect Rank in `Bangers` font with vertical gradients.
+  - Deduplicated order text formatting (`SPIRIT SEVERING - ORDER 2 - ORDER 2` $\rightarrow$ `SPIRIT SEVERING - ORDER 2`).
+- **Gathering HUD & ProximityPrompt Overhaul (`GatheringController.luau` & `GatheringManager.luau`):**
+  - Resized `HarvestProgressContainer` to compact 210x40 size; displays clean `"HARVESTING..."` label.
+  - Applied vibrant Amber-Gold gradient and normal black borders.
+  - Added elastic spring pop-in / fade-out animations.
+  - Implemented prompt suppression: prompt hides immediately upon pressing E and remains hidden while harvesting or depleted (`Depleted = true` attribute sync).
+- **Modal Window Modernization:**
+  - Converted `SectPavilionGui.MainFrame`, `StarterGuideGui.GuideWindow`, and `BlacksmithGui.ForgeWindow` from ornate bamboo `ImageLabel`s to clean, sharp rectangular `Frame`s with Celestial Midnight Navy gradients and thin black borders.
+  - Isolated button text into inner `TextLabel`s (`TextColor3 = 255, 255, 255` with black `UIStroke`) so button `UIGradient`s do not corrupt text legibility.
+
+### Fixed
+- **Mob Death Crash (`MobAIManager.luau:184 & 195`):**
+  - Wrapped `SectManager.AddQuestProgress` in safe `pcall`.
+  - Eliminated legacy call to non-existent `PlayerDataManager.GetProfile(killer)`. Sourced rewards directly from `PlayerDataManager.AddSpiritStones` and `CultivationManager.AddInternalQi`.
+  - Added compatibility alias `MobAIManager.RegisterDamage` matching `HitboxManager.luau:233`.
+- **Mob Hit Resolution Crash (`HitboxManager.luau:96`):**
+  - Fixed `attempt to index nil with 'Character'` by safely supporting `attackerPlayer: Player?` (nil for mob attackers).
+- **Mob Sliding Feet Bug (`MobAIManager.luau`):**
+  - Replaced `Humanoid.MoveDirection` check (which is always 0 on server NPCs) with `AssemblyLinearVelocity` horizontal speed detection. Mobs now play martial walk during Patrol and sprint run during Chase.
+- **Missing Mob Hit Feedback:**
+  - Routed mob attacks through `HitboxManager.ApplyCombatResolution`, enabling player block mitigation (80%), perfect parries, posture breaks, and physical knockback.
+  - Added procedural fallback in `CombatVFXController.SpawnSlashHitVFX` so slashmarks always render. Added camera shake (`0.85`), FOV kick, blade impact audio, and screen hit-flash.
+- **Infinite 0 HP Respawn Bug (`SkillBarController.luau` & `CultivationManager.luau`):**
+  - Fixed zombie closure leak in `SkillBarController.luau`: Implemented `characterConnections` garbage collector to disconnect all previous listeners on death.
+  - Enforced `MasterHUDGui.ResetOnSpawn = false` to prevent GUI destruction on respawn.
+  - Removed `task.wait(0.2)` delay on `CharacterAdded` in `CultivationManager.luau`: Synchronously applies full realm MaxHealth and replenishes Qi to 100% on spawn.
+- **Arena Reset Bug (`ArenaManager.luau:220`):**
+  - Replaced hardcoded `hum.MaxHealth = 100` with `CultivationManager.ApplyRealmStats(p)`.
+- **Arena Modal Client Crash (`ArenaController.luau:136`):**
+  - Added nil guard to `arenaGui.Enabled = true`. Emits guidance toast and teleports to lobby if GUI is absent.
+- **Q Skill Rogue Velocity & PointLight:**
+  - Removed unvalidated client-side `AssemblyLinearVelocity` injection from `InputController.TriggerSkill("Q")`.
+  - Removed `PointLight` glow beneath Q sawblade waves in `CombatVFXController.luau`.
+- **Vitals HUD Artifacts:**
+  - Deleted obsolete white `LeadingCap` artifact from `HPBarFrame.BarFill`.
