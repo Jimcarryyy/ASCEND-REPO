@@ -3,6 +3,8 @@
     CultivationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CultivationController.luau
     Directly bound to MasterHUDGui.ZoneFrame and CultivationFeedbackGui.
+    Manages client cultivation feedback, ascension modals, and the
+    Inner Demon Tribulation screen-vignette / camera-shake / focus pulse QTE engine.
 ]]
 
 local Players = game:GetService("Players")
@@ -11,6 +13,7 @@ local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
@@ -54,6 +57,16 @@ local rejectScale: UIScale?
 local rejectDesc: TextLabel?
 local rejectToastThread: thread? = nil
 
+-- Inner Demon Tribulation UI References
+local innerDemonGui: ScreenGui?
+local vignetteFrame: ImageLabel?
+local qteContainer: Frame?
+local pulseRing: Frame?
+local qtePromptText: TextLabel?
+local cameraShakeConnection: RBXScriptConnection?
+local currentQteWave: number? = nil
+local isQteActive = false
+
 local function FormatNumber(num: number): string
 	local formatted = tostring(math.floor(math.abs(num)))
 	local k
@@ -65,6 +78,7 @@ local function FormatNumber(num: number): string
 end
 
 local function PlayUISound(soundId: string, volume: number?)
+	if soundId == "" then return end
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
 	sound.Volume = volume or 1.0
@@ -73,6 +87,80 @@ local function PlayUISound(soundId: string, volume: number?)
 	sound.Ended:Connect(function()
 		sound:Destroy()
 	end)
+end
+
+local function SetupInnerDemonUI()
+	if innerDemonGui then return end
+
+	innerDemonGui = Instance.new("ScreenGui")
+	innerDemonGui.Name = "InnerDemonTribulationGui"
+	innerDemonGui.ResetOnSpawn = false
+	innerDemonGui.DisplayOrder = 100
+	innerDemonGui.Parent = playerGui
+
+	vignetteFrame = Instance.new("ImageLabel")
+	vignetteFrame.Name = "TribulationVignette"
+	vignetteFrame.Size = UDim2.new(1, 0, 1, 0)
+	vignetteFrame.BackgroundTransparency = 1
+	vignetteFrame.Image = "rbxassetid://6015897843"
+	vignetteFrame.ImageColor3 = Color3.fromRGB(90, 0, 40)
+	vignetteFrame.ImageTransparency = 1
+	vignetteFrame.Parent = innerDemonGui
+
+	qteContainer = Instance.new("Frame")
+	qteContainer.Name = "QTEContainer"
+	qteContainer.Size = UDim2.new(0, 160, 0, 160)
+	qteContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+	qteContainer.Position = UDim2.new(0.5, 0, 0.5, 0)
+	qteContainer.BackgroundTransparency = 1
+	qteContainer.Visible = false
+	qteContainer.Parent = innerDemonGui
+
+	local targetRing = Instance.new("UIStroke")
+	targetRing.Color = Color3.fromRGB(255, 215, 0)
+	targetRing.Thickness = 3
+	targetRing.Parent = qteContainer
+
+	pulseRing = Instance.new("Frame")
+	pulseRing.Name = "PulseRing"
+	pulseRing.AnchorPoint = Vector2.new(0.5, 0.5)
+	pulseRing.Position = UDim2.new(0.5, 0, 0.5, 0)
+	pulseRing.Size = UDim2.new(1.8, 0, 1.8, 0)
+	pulseRing.BackgroundTransparency = 1
+	pulseRing.Parent = qteContainer
+
+	local pulseStroke = Instance.new("UIStroke")
+	pulseStroke.Color = Color3.fromRGB(255, 100, 100)
+	pulseStroke.Thickness = 4
+	pulseStroke.Parent = pulseRing
+
+	qtePromptText = Instance.new("TextLabel")
+	qtePromptText.Size = UDim2.new(1, 0, 0, 30)
+	qtePromptText.Position = UDim2.new(0, 0, 1, 15)
+	qtePromptText.BackgroundTransparency = 1
+	qtePromptText.Font = Enum.Font.GothamBold
+	qtePromptText.TextSize = 16
+	qtePromptText.TextColor3 = Color3.fromRGB(255, 255, 255)
+	qtePromptText.Text = "FOCUS MIND [SPACE / TAP]"
+	qtePromptText.Parent = qteContainer
+end
+
+local function StartCameraShake()
+	if cameraShakeConnection then return end
+	cameraShakeConnection = RunService.RenderStepped:Connect(function()
+		local dx = (math.random() - 0.5) * 0.12
+		local dy = (math.random() - 0.5) * 0.12
+		if camera then
+			camera.CFrame = camera.CFrame * CFrame.Angles(math.rad(dx), math.rad(dy), 0)
+		end
+	end)
+end
+
+local function StopCameraShake()
+	if cameraShakeConnection then
+		cameraShakeConnection:Disconnect()
+		cameraShakeConnection = nil
+	end
 end
 
 local function HookStudioUI()
@@ -148,7 +236,7 @@ local function HookStudioUI()
 	end
 end
 
-function CultivationController.ShowRejectionToast(currentQi: number, targetQi: number, pct: number)
+function CultivationController.ShowRejectionToast(currentQi: number, targetQi: number, pct: number, customMessage: string?)
 	if not rejectToast or not rejectDesc then return end
 
 	if rejectToastThread then
@@ -156,7 +244,11 @@ function CultivationController.ShowRejectionToast(currentQi: number, targetQi: n
 		rejectToastThread = nil
 	end
 
-	rejectDesc.Text = string.format("Current Qi: %s / %s (%d%%) • Meditate to absorb more Qi!", FormatNumber(currentQi), FormatNumber(targetQi), pct)
+	if customMessage then
+		rejectDesc.Text = customMessage
+	else
+		rejectDesc.Text = string.format("Current Qi: %s / %s (%d%%) • Meditate to absorb more Qi!", FormatNumber(currentQi), FormatNumber(targetQi), pct)
+	end
 	rejectToast.Position = UDim2.new(0.5, 0, -0.12, 0)
 	rejectToast.Visible = true
 
@@ -294,8 +386,11 @@ end
 
 function CultivationController.Init()
 	HookStudioUI()
+	SetupInnerDemonUI()
 
 	local cultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
+	local cultivationActionRemote = RemoteEvents.GetRemote("CultivationAction")
+
 	cultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		if type(data) ~= "table" then return end
 		local character = player.Character
@@ -334,13 +429,79 @@ function CultivationController.Init()
 			local cur = tonumber(data.CurrentQi) or 0
 			local tgt = tonumber(data.TargetQi) or 1
 			local pct = tonumber(data.Percentage) or math.floor((cur / math.max(1, tgt)) * 100)
-			CultivationController.ShowRejectionToast(cur, tgt, pct)
+			CultivationController.ShowRejectionToast(cur, tgt, pct, data.Message)
 		end
 
 		-- 4. Breakthrough Success / Ascension Event Handler
 		if data.Action == "BreakthroughSuccess" then
 			CultivationController.ShowAscensionModal(data)
 		end
+	end)
+
+	cultivationActionRemote.OnClientEvent:Connect(function(payload: any)
+		if type(payload) ~= "table" then return end
+
+		if payload.Action == "InnerDemonStart" then
+			StartCameraShake()
+			if vignetteFrame then
+				TweenService:Create(vignetteFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					ImageTransparency = 0.35,
+					ImageColor3 = payload.AuraColor or Color3.fromRGB(90, 0, 40),
+				}):Play()
+			end
+
+		elseif payload.Action == "FocusPulsePrompt" then
+			currentQteWave = payload.Wave
+			isQteActive = true
+			if qteContainer and pulseRing then
+				qteContainer.Visible = true
+				pulseRing.Size = UDim2.new(2.0, 0, 2.0, 0)
+				local win = payload.Window or 1.2
+				local tween = TweenService:Create(pulseRing, TweenInfo.new(win, Enum.EasingStyle.Linear), {
+					Size = UDim2.new(1.0, 0, 1.0, 0),
+				})
+				tween:Play()
+			end
+
+		elseif payload.Action == "InnerDemonBacklash" then
+			isQteActive = false
+			StopCameraShake()
+			if qteContainer then qteContainer.Visible = false end
+			if vignetteFrame then
+				vignetteFrame.ImageColor3 = Color3.fromRGB(255, 0, 0)
+				vignetteFrame.ImageTransparency = 0.1
+				TweenService:Create(vignetteFrame, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					ImageTransparency = 1.0,
+				}):Play()
+			end
+			CultivationController.ShowRejectionToast(0, 0, 0, payload.Message or "TRIBULATION BACKLASH: Qi Deviation!")
+
+		elseif payload.Action == "InnerDemonSuccess" then
+			isQteActive = false
+			StopCameraShake()
+			if qteContainer then qteContainer.Visible = false end
+			if vignetteFrame then
+				TweenService:Create(vignetteFrame, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					ImageTransparency = 1.0,
+				}):Play()
+			end
+		end
+	end)
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if isQteActive and currentQteWave then
+			if input.KeyCode == Enum.KeyCode.Space or input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				isQteActive = false
+				if qteContainer then qteContainer.Visible = false end
+				cultivationActionRemote:FireServer({
+					Action = "FocusPulse",
+					Wave = currentQteWave,
+				})
+				return
+			end
+		end
+
+		if processed then return end
 	end)
 
 	RunService.Heartbeat:Connect(function()
@@ -350,7 +511,7 @@ function CultivationController.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationController Initialized (Breakthrough & Rejection Feedback Active).")
+	print("[ASCEND] CultivationController Initialized (Inner Demon QTE & Rejection Feedback Active).")
 end
 
 return CultivationController

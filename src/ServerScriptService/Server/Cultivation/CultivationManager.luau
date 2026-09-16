@@ -2,19 +2,24 @@
 --[[
     CultivationManager.luau
     Location: src/ServerScriptService/Server/Cultivation/CultivationManager.luau
-    Server-authoritative cultivation state engine for ASCEND.
-    - Synchronous zero-delay CharacterAdded stat binding (Eliminates the 100 HP respawn bug)
-    - Full body aura lifecycle during Meditation & Tribulation breakthroughs
-    - Authoritative Qi loop, Heavenly Tribulation & Server-wide Ascension Announcements
+    Server-authoritative cultivation state engine for ASCEND:
+    - Synchronous zero-delay CharacterAdded stat binding
+    - Full body aura lifecycle during Meditation
+    - Sect-buff scaled passive Qi loop and meditation recovery rate
+    - Clamped 20% starting Qi per order (eliminating 69% loophole and free Order-2 advances)
+    - Breakthrough Dan consumption requirement
+    - Inner Demon Tribulation QTE Engine with non-lethal Qi Deviation Backlash
+    - Safe lazy remote resolution (immune to initialization sequence order)
+    - Remote-routed Heavenly Ascension Announcements (Client-safe TextChatService)
 ]]
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local TextChatService = game:GetService("TextChatService")
 
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
+local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 export type PlayerCultivationData = {
@@ -29,17 +34,62 @@ export type PlayerCultivationData = {
 	TotalWaves: number,
 }
 
+local REALM_BREAKTHROUGH_DAN: { [CultivationConfig.RealmTier]: { ItemId: string, DisplayName: string } } = {
+	FoundationEstablishment = { ItemId = "FoundationGatheringDan", DisplayName = "Foundation Gathering Dan" },
+	GoldenCore = { ItemId = "GoldenCoreDan", DisplayName = "Golden Core Dan" },
+	NascentSoul = { ItemId = "NascentSoulDan", DisplayName = "Nascent Soul Dan" },
+	SpiritSevering = { ItemId = "SpiritSeveringDan", DisplayName = "Spirit Severing Dan" },
+	VoidRefining = { ItemId = "VoidRefiningDan", DisplayName = "Void Refining Dan" },
+	BodyIntegration = { ItemId = "BodyIntegrationDan", DisplayName = "Body Integration Dan" },
+	Mahayana = { ItemId = "MahayanaDan", DisplayName = "Mahayana Dan" },
+	TribulationTranscending = { ItemId = "TribulationTranscendingDan", DisplayName = "Tribulation Transcending Dan" },
+	ImmortalAscension = { ItemId = "ImmortalAscensionDan", DisplayName = "Immortal Ascension Dan" },
+}
+
 local CultivationManager = {}
 local playerData: { [Player]: PlayerCultivationData } = {}
+local activeTribulationSessions: { [Player]: { CurrentWave: number, PulseReceived: boolean, PulseDeadline: number } } = {}
 local passiveQiLoopThread: thread? = nil
 local tribulationThreads: { [Player]: thread } = {}
 local lastToggleTimestamp: { [Player]: number } = {}
 
-local updateCultivationRemote: RemoteEvent
-local combatActionRemote: RemoteEvent
+local updateCultivationRemote: RemoteEvent? = nil
+local combatActionRemote: RemoteEvent? = nil
+local cultivationActionRemote: RemoteEvent? = nil
+local heavenlyAnnouncementRemote: RemoteEvent? = nil
 local weaponManagerRef: any = nil
+local playerDataManagerRef: any = nil
+local inventoryManagerRef: any = nil
 
 local vfxFolder = ReplicatedStorage:WaitForChild("VFX", 5) :: Folder?
+
+local function getUpdateCultivationRemote(): RemoteEvent?
+	if not updateCultivationRemote then
+		updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
+	end
+	return updateCultivationRemote
+end
+
+local function getCombatActionRemote(): RemoteEvent?
+	if not combatActionRemote then
+		combatActionRemote = RemoteEvents.GetRemote("CombatAction")
+	end
+	return combatActionRemote
+end
+
+local function getCultivationActionRemote(): RemoteEvent?
+	if not cultivationActionRemote then
+		cultivationActionRemote = RemoteEvents.GetRemote("CultivationAction")
+	end
+	return cultivationActionRemote
+end
+
+local function getHeavenlyAnnouncementRemote(): RemoteEvent?
+	if not heavenlyAnnouncementRemote then
+		heavenlyAnnouncementRemote = RemoteEvents.GetRemote("HeavenlyAnnouncement")
+	end
+	return heavenlyAnnouncementRemote
+end
 
 local function getWeaponManager(): any
 	if not weaponManagerRef then
@@ -48,17 +98,41 @@ local function getWeaponManager(): any
 	return weaponManagerRef
 end
 
+local function getPlayerDataManager(): any
+	if not playerDataManagerRef then
+		playerDataManagerRef = require(ServerScriptService.Server.State.PlayerDataManager)
+	end
+	return playerDataManagerRef
+end
+
+local function getInventoryManager(): any
+	if not inventoryManagerRef then
+		inventoryManagerRef = require(ServerScriptService.Server.State.InventoryManager)
+	end
+	return inventoryManagerRef
+end
+
+local function GetSectQiBuffMultiplier(player: Player): number
+	local pdm = getPlayerDataManager()
+	if not pdm or not pdm.GetSectRank then return 1.0 end
+	local rank = pdm.GetSectRank(player) or "OuterDisciple"
+	local rankDef = SectConfig.GetRank(rank)
+	return if rankDef and rankDef.QiBuffMultiplier then rankDef.QiBuffMultiplier else 1.0
+end
+
 local function BroadcastHeavenlyAnnouncement(message: string)
-	local textChannels = TextChatService:FindFirstChild("TextChannels")
-	local generalChannel = textChannels and textChannels:FindFirstChild("RBXGeneral") :: TextChannel?
-	if generalChannel then
-		generalChannel:DisplaySystemMessage(string.format("<font color='#FFD700'><b>%s</b></font>", message))
+	local announcementRemote = getHeavenlyAnnouncementRemote()
+	if announcementRemote then
+		announcementRemote:FireAllClients(message)
 	end
 
-	combatActionRemote:FireAllClients(nil, "ServerAnnouncement", {
-		Message = message,
-		Color = Color3.fromRGB(255, 215, 0),
-	})
+	local combatRemote = getCombatActionRemote()
+	if combatRemote then
+		combatRemote:FireAllClients(nil, "ServerAnnouncement", {
+			Message = message,
+			Color = Color3.fromRGB(255, 215, 0),
+		})
+	end
 end
 
 local function GetQiNodeMultiplier(character: Model): number
@@ -86,8 +160,10 @@ local function GetQiNodeMultiplier(character: Model): number
 end
 
 function CultivationManager.Init()
-	updateCultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
-	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
+	local updateRemote = getUpdateCultivationRemote()
+	local combatRemote = getCombatActionRemote()
+	local actionRemote = getCultivationActionRemote()
+	local announcementRemote = getHeavenlyAnnouncementRemote()
 
 	Players.PlayerAdded:Connect(CultivationManager.OnPlayerAdded)
 	Players.PlayerRemoving:Connect(CultivationManager.OnPlayerRemoving)
@@ -96,15 +172,29 @@ function CultivationManager.Init()
 		CultivationManager.OnPlayerAdded(player)
 	end
 
-	combatActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
-		if type(payload) == "table" then
-			if payload.ToggleMeditation then
-				CultivationManager.ToggleMeditation(player)
-			elseif payload.RequestBreakthrough then
-				CultivationManager.AttemptBreakthrough(player)
+	if combatRemote then
+		combatRemote.OnServerEvent:Connect(function(player: Player, payload: any)
+			if type(payload) == "table" then
+				if payload.ToggleMeditation then
+					CultivationManager.ToggleMeditation(player)
+				elseif payload.RequestBreakthrough then
+					CultivationManager.AttemptBreakthrough(player)
+				end
 			end
-		end
-	end)
+		end)
+	end
+
+	if actionRemote then
+		actionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
+			if type(payload) ~= "table" then return end
+			if payload.Action == "FocusPulse" and type(payload.Wave) == "number" then
+				local session = activeTribulationSessions[player]
+				if session and session.CurrentWave == payload.Wave and os.clock() <= session.PulseDeadline then
+					session.PulseReceived = true
+				end
+			end
+		end)
+	end
 
 	passiveQiLoopThread = task.spawn(function()
 		while true do
@@ -114,7 +204,8 @@ function CultivationManager.Init()
 					local character = player.Character
 					if character and character.Parent then
 						local isMeditating = pData.IsMeditating
-						local recoveryRate = if isMeditating then (pData.CultivatedQi / 10.0) else (pData.CultivatedQi / 60.0)
+						local sectMult = GetSectQiBuffMultiplier(player)
+						local recoveryRate = if isMeditating then ((pData.CultivatedQi / 10.0) * sectMult) else (pData.CultivatedQi / 60.0)
 						
 						if pData.CurrentQi < pData.CultivatedQi then
 							local qiGained = recoveryRate * 0.5
@@ -123,7 +214,7 @@ function CultivationManager.Init()
 
 						if isMeditating and pData.CultivatedQi < pData.MaxQiGoal then
 							local qiNodeMult = GetQiNodeMultiplier(character)
-							local expansionRate = (pData.MaxQiGoal * 0.001) * qiNodeMult
+							local expansionRate = (pData.MaxQiGoal * 0.001) * qiNodeMult * sectMult
 							pData.CultivatedQi = math.min(pData.MaxQiGoal, pData.CultivatedQi + (expansionRate * 0.5))
 						end
 
@@ -137,7 +228,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Engine Initialized (Heavenly Announcements & Attribute Sync Active).")
+	print("[ASCEND] CultivationManager Engine Initialized (Inner Demon & Sect Buff Multipliers Active).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -179,6 +270,7 @@ function CultivationManager.OnPlayerRemoving(player: Player)
 		task.cancel(tribulationThreads[player])
 		tribulationThreads[player] = nil
 	end
+	activeTribulationSessions[player] = nil
 	lastToggleTimestamp[player] = nil
 	playerData[player] = nil
 end
@@ -205,8 +297,9 @@ end
 function CultivationManager.SetPlayerData(player: Player, realm: CultivationConfig.RealmTier, currentQi: number, order: number?, cultivatedQi: number?)
 	local orderNum = math.clamp(order or 1, 1, 9)
 	local targetGoal = CultivationConfig.GetOrderTargetQi(realm, orderNum)
-	local savedCultivated = cultivatedQi or CultivationConfig.GetOrderStartingMaxQi(realm, orderNum)
-	local cultivatedCap = math.clamp(savedCultivated, 100, targetGoal)
+	local startingQi = CultivationConfig.GetOrderStartingMaxQi(realm, orderNum)
+	local savedCultivated = cultivatedQi or startingQi
+	local cultivatedCap = math.clamp(savedCultivated, startingQi, targetGoal)
 	local activeEnergy = math.clamp(currentQi or cultivatedCap, 0, cultivatedCap)
 
 	playerData[player] = {
@@ -234,23 +327,24 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	if not character then return end
 
 	local maxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
+	local startingQi = CultivationConfig.GetOrderStartingMaxQi(pData.Realm, pData.Order)
 	pData.MaxQiGoal = maxQiGoal
 
-	pData.CultivatedQi = math.clamp(pData.CultivatedQi or (maxQiGoal * 0.20), 1, maxQiGoal)
+	pData.CultivatedQi = math.clamp(pData.CultivatedQi or startingQi, startingQi, maxQiGoal)
 	pData.CurrentQi = math.clamp(pData.CurrentQi or pData.CultivatedQi, 0, pData.CultivatedQi)
 
 	local maxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.MaxHealth = maxHp
-		humanoid.Health = maxHp
+		humanoid.Health = math.clamp(humanoid.Health, 1, maxHp)
 	end
 
 	local realmInfo = CultivationConfig[pData.Realm]
 	local realmText = if realmInfo then string.format("%s - Order %d", realmInfo.Name, pData.Order) else "Qi Condensation - Order 1"
 	
 	character:SetAttribute("MaxHealth", maxHp)
-	character:SetAttribute("Health", maxHp)
+	character:SetAttribute("Health", if humanoid then humanoid.Health else maxHp)
 	character:SetAttribute("Realm", realmText)
 	character:SetAttribute("IsMeditating", pData.IsMeditating)
 	player:SetAttribute("Realm", realmText)
@@ -426,14 +520,18 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	local pData = playerData[player]
 	if not pData or pData.IsTribulationActive then return false end
 
+	local updateRemote = getUpdateCultivationRemote()
+
 	if pData.CultivatedQi < pData.MaxQiGoal then
-		updateCultivationRemote:FireClient(player, {
-			Action = "BreakthroughRejected",
-			Message = "Keep cultivating! Your Qi isn't ready for breakthrough yet.",
-			CurrentQi = pData.CultivatedQi,
-			TargetQi = pData.MaxQiGoal,
-			Percentage = math.floor((pData.CultivatedQi / math.max(1, pData.MaxQiGoal)) * 100),
-		})
+		if updateRemote then
+			updateRemote:FireClient(player, {
+				Action = "BreakthroughRejected",
+				Message = "Keep cultivating! Your Qi isn't ready for breakthrough yet.",
+				CurrentQi = pData.CultivatedQi,
+				TargetQi = pData.MaxQiGoal,
+				Percentage = math.floor((pData.CultivatedQi / math.max(1, pData.MaxQiGoal)) * 100),
+			})
+		end
 		return false
 	end
 
@@ -443,6 +541,10 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		local oldMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
 
 		pData.Order += 1
+		local startingQi = CultivationConfig.GetOrderStartingMaxQi(pData.Realm, pData.Order)
+		pData.CultivatedQi = startingQi
+		pData.CurrentQi = startingQi
+
 		CultivationManager.ApplyRealmStats(player)
 		CultivationManager.SyncClient(player)
 
@@ -450,16 +552,18 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		local newMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
 		local powerMult = CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order)
 
-		updateCultivationRemote:FireClient(player, {
-			Action = "BreakthroughSuccess",
-			IsMajor = false,
-			Realm = pData.Realm,
-			RealmName = CultivationConfig[pData.Realm].Name,
-			Order = pData.Order,
-			HpGain = math.max(0, newMaxHp - oldMaxHp),
-			QiGain = math.max(0, newMaxQi - oldMaxQi),
-			PowerMultiplier = powerMult,
-		})
+		if updateRemote then
+			updateRemote:FireClient(player, {
+				Action = "BreakthroughSuccess",
+				IsMajor = false,
+				Realm = pData.Realm,
+				RealmName = CultivationConfig[pData.Realm].Name,
+				Order = pData.Order,
+				HpGain = math.max(0, newMaxHp - oldMaxHp),
+				QiGain = math.max(0, newMaxQi - oldMaxQi),
+				PowerMultiplier = powerMult,
+			})
+		end
 		return true
 	end
 
@@ -479,15 +583,36 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	local nextRealm = nextRealmMap[pData.Realm]
 	if not nextRealm then return false end
 
+	-- 1. Dan Consumption Gate
+	local requiredDan = REALM_BREAKTHROUGH_DAN[nextRealm]
+	local invMgr = getInventoryManager()
+	if requiredDan and invMgr then
+		if not invMgr.HasItem(player, requiredDan.ItemId, 1) then
+			if updateRemote then
+				updateRemote:FireClient(player, {
+					Action = "BreakthroughRejected",
+					Message = string.format("Breakthrough Blocked: Consuming a %s is required to stabilize your meridians!", requiredDan.DisplayName),
+					CurrentQi = pData.CultivatedQi,
+					TargetQi = pData.MaxQiGoal,
+					Percentage = 100,
+				})
+			end
+			return false
+		end
+		invMgr.RemoveItem(player, requiredDan.ItemId, 1)
+	end
+
 	local oldMaxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
 	local oldMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
 	local tribulationSpec = CultivationConfig[pData.Realm].Tribulation
 
+	-- Instant Breakthrough for realms without tribulation strikes
 	if tribulationSpec.StrikeCount <= 0 then
 		pData.Realm = nextRealm
 		pData.Order = 1
-		pData.CultivatedQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
-		pData.CurrentQi = pData.CultivatedQi
+		local startingQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
+		pData.CultivatedQi = startingQi
+		pData.CurrentQi = startingQi
 
 		CultivationManager.ApplyRealmStats(player)
 		CultivationManager.SyncClient(player)
@@ -497,21 +622,24 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		local powerMult = CultivationConfig.GetPowerMultiplier(nextRealm, 1)
 		local realmName = CultivationConfig[nextRealm].Name
 
-		updateCultivationRemote:FireClient(player, {
-			Action = "BreakthroughSuccess",
-			IsMajor = true,
-			Realm = nextRealm,
-			RealmName = realmName,
-			Order = 1,
-			HpGain = math.max(0, newMaxHp - oldMaxHp),
-			QiGain = math.max(0, newMaxQi - oldMaxQi),
-			PowerMultiplier = powerMult,
-		})
+		if updateRemote then
+			updateRemote:FireClient(player, {
+				Action = "BreakthroughSuccess",
+				IsMajor = true,
+				Realm = nextRealm,
+				RealmName = realmName,
+				Order = 1,
+				HpGain = math.max(0, newMaxHp - oldMaxHp),
+				QiGain = math.max(0, newMaxQi - oldMaxQi),
+				PowerMultiplier = powerMult,
+			})
+		end
 
 		BroadcastHeavenlyAnnouncement(string.format("[HEAVENLY DAO] Cultivator %s (@%s) has ascended to %s!", player.DisplayName, player.Name, realmName))
 		return true
 	end
 
+	-- 2. Inner Demon Tribulation Engine
 	pData.IsTribulationActive = true
 	pData.TotalWaves = tribulationSpec.StrikeCount
 	pData.TribulationWave = 0
@@ -525,73 +653,122 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	CultivationManager.StartGroundedMeditation(player, character, pData.Realm, true)
 	CultivationManager.SyncClient(player)
 
-	tribulationThreads[player] = task.spawn(function()
-		local stormCloud = CultivationManager.SpawnStormCloud(character, tribulationSpec.AuraColor)
+	local actionRemote = getCultivationActionRemote()
+	if actionRemote then
+		actionRemote:FireClient(player, {
+			Action = "InnerDemonStart",
+			AuraColor = tribulationSpec.AuraColor,
+			TotalWaves = tribulationSpec.StrikeCount,
+		})
+	end
 
+	tribulationThreads[player] = task.spawn(function()
 		for wave = 1, tribulationSpec.StrikeCount do
 			if not player.Parent or not character.Parent then break end
-
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
-			local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if not humanoid or humanoid.Health <= 0 or not hrp then break end
+			if not humanoid or humanoid.Health <= 0 then break end
 
 			pData.TribulationWave = wave
 			CultivationManager.SyncClient(player)
 
-			local targetPos = hrp.Position + Vector3.new(math.random(-2, 2), 0, math.random(-2, 2))
+			local focusWindow = math.clamp(tribulationSpec.TelegraphTime or 1.2, 0.9, 1.6)
+			local deadline = os.clock() + focusWindow
+			activeTribulationSessions[player] = {
+				CurrentWave = wave,
+				PulseReceived = false,
+				PulseDeadline = deadline,
+			}
 
-			combatActionRemote:FireAllClients(player, "TribulationTelegraph", {
-				TargetPosition = targetPos,
-				TelegraphTime = tribulationSpec.TelegraphTime,
-				AuraColor = tribulationSpec.AuraColor,
-			})
+			if actionRemote then
+				actionRemote:FireClient(player, {
+					Action = "FocusPulsePrompt",
+					Wave = wave,
+					TotalWaves = tribulationSpec.StrikeCount,
+					Window = focusWindow,
+					AuraColor = tribulationSpec.AuraColor,
+				})
+			end
 
-			task.wait(tribulationSpec.TelegraphTime)
-			if not humanoid or humanoid.Health <= 0 then break end
+			local startTime = os.clock()
+			while (os.clock() - startTime) < focusWindow do
+				if activeTribulationSessions[player] and activeTribulationSessions[player].PulseReceived then
+					break
+				end
+				task.wait(0.05)
+			end
 
-			combatActionRemote:FireAllClients(player, "TribulationStrike", {
-				TargetPosition = targetPos,
-				Damage = tribulationSpec.DamagePerStrike,
-				AuraColor = tribulationSpec.AuraColor,
-			})
+			local session = activeTribulationSessions[player]
+			local pulseSucceeded = session and session.PulseReceived == true
 
-			humanoid:TakeDamage(tribulationSpec.DamagePerStrike)
-			if humanoid.Health <= 0 then
+			if not pulseSucceeded then
+				-- TRIBULATION BACKLASH (No Permadeath)
+				activeTribulationSessions[player] = nil
 				pData.IsTribulationActive = false
 				pData.TribulationWave = 0
-				if stormCloud then stormCloud:Destroy() end
 				CultivationManager.StopGroundedMeditation(player, character)
+
+				humanoid.Health = 1
+				character:SetAttribute("Health", 1)
+				character:SetAttribute("QiDeviation", true)
+				humanoid.PlatformStand = true
+
+				task.delay(3.0, function()
+					if character and character.Parent then
+						character:SetAttribute("QiDeviation", false)
+						local h = character:FindFirstChildOfClass("Humanoid")
+						if h then h.PlatformStand = false end
+					end
+				end)
+
+				local baseQi = CultivationConfig.GetOrderStartingMaxQi(pData.Realm, 9)
+				pData.CultivatedQi = baseQi
+				pData.CurrentQi = baseQi
 				CultivationManager.SyncClient(player)
+
+				if actionRemote then
+					actionRemote:FireClient(player, {
+						Action = "InnerDemonBacklash",
+						Message = "Your mind wavered! Inner Demon Backlash struck — meridians collapsed to 20% Qi.",
+					})
+				end
 				return
 			end
 
-			task.wait(tribulationSpec.StrikeInterval)
+			task.wait(tribulationSpec.StrikeInterval or 1.0)
 		end
 
-		if stormCloud then stormCloud:Destroy() end
+		-- SUCCESSFUL ASCENSION
+		activeTribulationSessions[player] = nil
+		pData.Realm = nextRealm
+		pData.Order = 1
+		pData.IsTribulationActive = false
+		pData.TribulationWave = 0
+		local startingQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
+		pData.CultivatedQi = startingQi
+		pData.CurrentQi = startingQi
 
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.Health > 0 then
-			pData.Realm = nextRealm
-			pData.Order = 1
-			pData.IsTribulationActive = false
-			pData.TribulationWave = 0
-			pData.CultivatedQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
-			pData.CurrentQi = pData.CultivatedQi
+		CultivationManager.StopGroundedMeditation(player, character)
+		CultivationManager.ApplyRealmStats(player)
 
-			CultivationManager.StopGroundedMeditation(player, character)
-			CultivationManager.ApplyRealmStats(player)
+		local newMaxHp = CultivationConfig.GetOrderMaxHealth(nextRealm, 1)
+		local newMaxQi = CultivationConfig.GetOrderTargetQi(nextRealm, 1)
+		local powerMult = CultivationConfig.GetPowerMultiplier(nextRealm, 1)
+		local realmName = CultivationConfig[nextRealm].Name
 
-			local newMaxHp = CultivationConfig.GetOrderMaxHealth(nextRealm, 1)
-			local newMaxQi = CultivationConfig.GetOrderTargetQi(nextRealm, 1)
-			local powerMult = CultivationConfig.GetPowerMultiplier(nextRealm, 1)
-			local realmName = CultivationConfig[nextRealm].Name
+		if actionRemote then
+			actionRemote:FireClient(player, { Action = "InnerDemonSuccess" })
+		end
 
-			combatActionRemote:FireAllClients(player, "AscensionBurst", {
+		local combatRemote = getCombatActionRemote()
+		if combatRemote then
+			combatRemote:FireAllClients(player, "AscensionBurst", {
 				AuraColor = CultivationConfig[nextRealm].AuraColor,
 			})
+		end
 
-			updateCultivationRemote:FireClient(player, {
+		local upRemote = getUpdateCultivationRemote()
+		if upRemote then
+			upRemote:FireClient(player, {
 				Action = "BreakthroughSuccess",
 				IsMajor = true,
 				Realm = nextRealm,
@@ -601,39 +778,12 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 				QiGain = math.max(0, newMaxQi - oldMaxQi),
 				PowerMultiplier = powerMult,
 			})
-
-			BroadcastHeavenlyAnnouncement(string.format("[HEAVENLY DAO] Cultivator %s (@%s) has transcended Heavenly Tribulation and ascended to %s!", player.DisplayName, player.Name, realmName))
-		else
-			pData.IsTribulationActive = false
-			pData.TribulationWave = 0
-			CultivationManager.StopGroundedMeditation(player, character)
-			CultivationManager.SyncClient(player)
 		end
+
+		BroadcastHeavenlyAnnouncement(string.format("[HEAVENLY DAO] Cultivator %s conquered their Inner Demon Tribulation and ascended to %s!", player.DisplayName, realmName))
 	end)
 
 	return true
-end
-
-function CultivationManager.SpawnStormCloud(character: Model, auraColor: Color3): Part
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local cloud = Instance.new("Part")
-	cloud.Name = "TribulationStormCloud"
-	cloud.Size = Vector3.new(28, 2.5, 28)
-	if hrp then cloud.Position = hrp.Position + Vector3.new(0, 22, 0) end
-	cloud.Color = Color3.fromRGB(15, 15, 22)
-	cloud.Material = Enum.Material.SmoothPlastic
-	cloud.Transparency = 0.25
-	cloud.Anchored = true
-	cloud.CanCollide = false
-	cloud.Parent = character
-
-	local light = Instance.new("PointLight")
-	light.Range = 36
-	light.Brightness = 8
-	light.Color = auraColor
-	light.Parent = cloud
-
-	return cloud
 end
 
 function CultivationManager.SyncClient(player: Player)
@@ -663,19 +813,22 @@ function CultivationManager.SyncClient(player: Player)
 	player:SetAttribute("CultivatedQi", pData.CultivatedQi)
 	player:SetAttribute("MaxQi", pData.CultivatedQi)
 
-	updateCultivationRemote:FireClient(player, {
-		RealmName = realmInfo.Name,
-		Tier = realmInfo.Tier,
-		Order = pData.Order,
-		CurrentQi = pData.CurrentQi,
-		MaxQi = pData.CultivatedQi,
-		TargetQi = maxQiGoal,
-		IsMeditating = pData.IsMeditating,
-		IsTribulationActive = pData.IsTribulationActive,
-		TribulationWave = pData.TribulationWave,
-		TotalWaves = pData.TotalWaves,
-		HealthMultiplier = realmInfo.HealthMultiplier,
-	})
+	local remote = getUpdateCultivationRemote()
+	if remote then
+		remote:FireClient(player, {
+			RealmName = realmInfo.Name,
+			Tier = realmInfo.Tier,
+			Order = pData.Order,
+			CurrentQi = pData.CurrentQi,
+			MaxQi = pData.CultivatedQi,
+			TargetQi = maxQiGoal,
+			IsMeditating = pData.IsMeditating,
+			IsTribulationActive = pData.IsTribulationActive,
+			TribulationWave = pData.TribulationWave,
+			TotalWaves = pData.TotalWaves,
+			HealthMultiplier = realmInfo.HealthMultiplier,
+		})
+	end
 end
 
 return CultivationManager

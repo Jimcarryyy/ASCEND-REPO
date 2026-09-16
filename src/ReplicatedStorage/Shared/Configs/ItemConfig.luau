@@ -6,6 +6,7 @@
     - 8 Sword Tiers (Mortal, Azure Cloud, Flowing Qi, Verdant Jade, Violet Soul, Void Star, Azure Patriarch, Radiant Immortal)
     - Dynamic Weapon VFX Color Palettes (Primary, Secondary, Glow, and Particle Gradient)
     - Full Alchemy Pills, Herbs & Monster Materials
+    - 9 Major Realm Breakthrough Dans
 ]]
 
 local UIAssets = require(script.Parent.UIAssets)
@@ -179,6 +180,88 @@ local ITEMS: { [string]: ItemDefinition } = {
 		MaxStack = 20,
 		Stats = { HealAmount = 250 },
 		Icon = UIAssets.Icons.SpiritHealingDan,
+	},
+
+	-- BREAKTHROUGH DANS FOR MAJOR REALM ASCENSIONS
+	["GoldenCoreDan"] = {
+		Id = "GoldenCoreDan",
+		Name = "Golden Core Dan",
+		Description = "A radiant solar elixir required to condense the liquid Dantian into an indestructible Golden Core.",
+		Rarity = "Epic",
+		Type = "Consumable",
+		MaxStack = 5,
+		Stats = { HealAmount = 1000, QiGrant = 1500 },
+		Icon = UIAssets.Icons.FoundationGatheringDan,
+	},
+	["NascentSoulDan"] = {
+		Id = "NascentSoulDan",
+		Name = "Nascent Soul Dan",
+		Description = "Elixir of spiritual birth. Nourishes the primordial infant soul within the Dantian.",
+		Rarity = "Legendary",
+		Type = "Consumable",
+		MaxStack = 5,
+		Stats = { HealAmount = 2500, QiGrant = 4000 },
+		Icon = UIAssets.Icons.FoundationGatheringDan,
+	},
+	["SpiritSeveringDan"] = {
+		Id = "SpiritSeveringDan",
+		Name = "Spirit Severing Dan",
+		Description = "Elixir forged with divine intent to sever mortal attachments and shatter inner demons.",
+		Rarity = "Legendary",
+		Type = "Consumable",
+		MaxStack = 5,
+		Stats = { HealAmount = 5000, QiGrant = 10000 },
+		Icon = UIAssets.Icons.FoundationGatheringDan,
+	},
+	["VoidRefiningDan"] = {
+		Id = "VoidRefiningDan",
+		Name = "Void Refining Dan",
+		Description = "Distilled from spatial void essence. Calms meridian chaos when merging with the cosmos.",
+		Rarity = "Mythic",
+		Type = "Consumable",
+		MaxStack = 5,
+		Stats = { HealAmount = 12000, QiGrant = 25000 },
+		Icon = UIAssets.Icons.FoundationGatheringDan,
+	},
+	["BodyIntegrationDan"] = {
+		Id = "BodyIntegrationDan",
+		Name = "Body Integration Dan",
+		Description = "Elixir that fuses the immortal spirit and the physical flesh into an unyielding celestial vessel.",
+		Rarity = "Mythic",
+		Type = "Consumable",
+		MaxStack = 5,
+		Stats = { HealAmount = 30000, QiGrant = 60000 },
+		Icon = UIAssets.Icons.FoundationGatheringDan,
+	},
+	["MahayanaDan"] = {
+		Id = "MahayanaDan",
+		Name = "Mahayana Dan",
+		Description = "The supreme elixir of Great Ascension Dao. Harmonizes the inner sea of Qi with heavenly laws.",
+		Rarity = "Divine",
+		Type = "Consumable",
+		MaxStack = 5,
+		Stats = { HealAmount = 75000, QiGrant = 150000 },
+		Icon = UIAssets.Icons.FoundationGatheringDan,
+	},
+	["TribulationTranscendingDan"] = {
+		Id = "TribulationTranscendingDan",
+		Name = "Tribulation Transcending Dan",
+		Description = "Immortal elixir that anchors the soul against the wrath of the 9-Wave Heavenly Tribulation.",
+		Rarity = "Immortal",
+		Type = "Consumable",
+		MaxStack = 5,
+		Stats = { HealAmount = 200000, QiGrant = 500000 },
+		Icon = UIAssets.Icons.FoundationGatheringDan,
+	},
+	["ImmortalAscensionDan"] = {
+		Id = "ImmortalAscensionDan",
+		Name = "Immortal Ascension Dan",
+		Description = "The legendary pinnacle elixir of the mortal realms. Stabilizes the immortal Dao body for true godhood.",
+		Rarity = "Celestial",
+		Type = "Consumable",
+		MaxStack = 1,
+		Stats = { HealAmount = 1000000, QiGrant = 2000000 },
+		Icon = UIAssets.Icons.FoundationGatheringDan,
 	},
 
 	-- HERBS & MATERIALS
