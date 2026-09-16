@@ -2,99 +2,128 @@
 --[[
     GatheringConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/GatheringConfig.luau
-    Central configuration for all world gathering resource nodes in ASCEND.
-    Rolls randomized herb ages (1-Yr, 10-Yr, 100-Yr, 1000-Yr) upon harvest.
+    Authoritative gathering resource nodes, interaction ranges, respawn timers,
+    and 4-tier herb drop matrices (1-Yr, 10-Yr, 100-Yr, 1000-Yr).
 ]]
 
-export type YearDropChance = {
+export type ResourceNodeDrop = {
 	ItemId: string,
-	Chance: number, -- Cumulative or weighted chance
+	Chance: number,
 }
 
-export type NodeConfig = {
-	NodeName: string,
-	HarvestDuration: number,
-	RespawnTime: number,
-	MaxDistance: number,
-	AgeDrops: { YearDropChance },
+export type ResourceNodeDefinition = {
+	NodeId: string,
+	DisplayName: string,
 	PromptText: string,
-	ActionText: string,
-	KeepModelVisible: boolean?, -- If true, node mesh will not fade/disappear during cooldown
+	HoldDuration: number,
+	MaxDistance: number,
+	RespawnTime: number,
+	AuraColor: Color3,
+	AgeDrops: { ResourceNodeDrop },
 }
 
 local GatheringConfig = {}
 
-local NODES: { [string]: NodeConfig } = {
+local NODE_DEFINITIONS: { [string]: ResourceNodeDefinition } = {
 	["SpiritGrass"] = {
-		NodeName = "Spirit Grass",
-		HarvestDuration = 1.8,
-		RespawnTime = 12.0,
-		MaxDistance = 10,
-		AgeDrops = {
-			{ ItemId = "SpiritGrass_1Yr", Chance = 0.60 },    -- 60% chance 1-Year
-			{ ItemId = "SpiritGrass_10Yr", Chance = 0.25 },   -- 25% chance 10-Year
-			{ ItemId = "SpiritGrass_100Yr", Chance = 0.12 },  -- 12% chance 100-Year
-			{ ItemId = "SpiritGrass_1000Yr", Chance = 0.03 }, -- 3% chance 1,000-Year
-		},
+		NodeId = "SpiritGrass",
+		DisplayName = "Spirit Grass Cluster",
 		PromptText = "Harvest Spirit Grass",
-		ActionText = "Gathering Herbs...",
+		HoldDuration = 1.2,
+		MaxDistance = 8.0,
+		RespawnTime = 12.0,
+		AuraColor = Color3.fromRGB(120, 255, 140),
+		AgeDrops = {
+			{ ItemId = "SpiritGrass_1Yr",    Chance = 0.50 },
+			{ ItemId = "SpiritGrass_10Yr",   Chance = 0.30 },
+			{ ItemId = "SpiritGrass_100Yr",  Chance = 0.15 },
+			{ ItemId = "SpiritGrass_1000Yr", Chance = 0.05 },
+		},
 	},
+
 	["DragonBloodVine"] = {
-		NodeName = "Dragon Blood Vine",
-		HarvestDuration = 2.2,
-		RespawnTime = 15.0,
-		MaxDistance = 10,
+		NodeId = "DragonBloodVine",
+		DisplayName = "Dragon Blood Vine",
+		PromptText = "Sever Dragon Blood Vine",
+		HoldDuration = 1.6,
+		MaxDistance = 8.0,
+		RespawnTime = 18.0,
+		AuraColor = Color3.fromRGB(255, 60, 60),
 		AgeDrops = {
-			{ ItemId = "DragonBloodVine_1Yr", Chance = 0.70 },   -- 70% chance 1-Year
-			{ ItemId = "DragonBloodVine_100Yr", Chance = 0.30 }, -- 30% chance 100-Year
+			{ ItemId = "DragonBloodVine_1Yr",    Chance = 0.55 },
+			{ ItemId = "DragonBloodVine_10Yr",   Chance = 0.25 },
+			{ ItemId = "DragonBloodVine_100Yr",  Chance = 0.15 },
+			{ ItemId = "DragonBloodVine_1000Yr", Chance = 0.05 },
 		},
-		PromptText = "Harvest Dragon Vine",
-		ActionText = "Gathering Crimson Vine...",
 	},
+
 	["GaleWindLotus"] = {
-		NodeName = "Gale Wind Lotus",
-		HarvestDuration = 2.0,
+		NodeId = "GaleWindLotus",
+		DisplayName = "Gale Wind Lotus",
+		PromptText = "Pluck Gale Wind Lotus",
+		HoldDuration = 1.4,
+		MaxDistance = 8.0,
 		RespawnTime = 15.0,
-		MaxDistance = 10,
+		AuraColor = Color3.fromRGB(100, 220, 255),
 		AgeDrops = {
-			{ ItemId = "GaleWindLotus_1Yr", Chance = 0.70 },   -- 70% chance 1-Year
-			{ ItemId = "GaleWindLotus_100Yr", Chance = 0.30 }, -- 30% chance 100-Year
+			{ ItemId = "GaleWindLotus_1Yr",    Chance = 0.55 },
+			{ ItemId = "GaleWindLotus_10Yr",   Chance = 0.25 },
+			{ ItemId = "GaleWindLotus_100Yr",  Chance = 0.15 },
+			{ ItemId = "GaleWindLotus_1000Yr", Chance = 0.05 },
 		},
-		PromptText = "Gather Wind Lotus",
-		ActionText = "Gathering Lotus...",
 	},
+
 	["CelestialSpring"] = {
-		NodeName = "Celestial Dew Spring",
-		HarvestDuration = 2.2,
-		RespawnTime = 15.0,
-		MaxDistance = 12,
+		NodeId = "CelestialSpring",
+		DisplayName = "Celestial Spirit Spring",
+		PromptText = "Bottle Celestial Dew",
+		HoldDuration = 2.0,
+		MaxDistance = 9.0,
+		RespawnTime = 25.0,
+		AuraColor = Color3.fromRGB(200, 240, 255),
 		AgeDrops = {
 			{ ItemId = "CelestialDew", Chance = 1.0 },
 		},
-		PromptText = "Collect Dew Water",
-		ActionText = "Gathering Pure Water...",
-		KeepModelVisible = true, -- Natural water spring stays visible during cooldown
 	},
+
 	["JadeOre"] = {
-		NodeName = "Spirit Jade Ore",
-		HarvestDuration = 2.5,
-		RespawnTime = 20.0,
-		MaxDistance = 10,
+		NodeId = "JadeOre",
+		DisplayName = "Spirit Jade Deposit",
+		PromptText = "Extract Spirit Ore",
+		HoldDuration = 2.2,
+		MaxDistance = 8.0,
+		RespawnTime = 30.0,
+		AuraColor = Color3.fromRGB(150, 255, 200),
 		AgeDrops = {
-			{ ItemId = "SpiritGrass_10Yr", Chance = 0.70 },
-			{ ItemId = "DemonBeastCore", Chance = 0.30 },
+			{ ItemId = "SpiritGrass_10Yr",    Chance = 0.60 },
+			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.40 },
 		},
-		PromptText = "Mine Jade Ore",
-		ActionText = "Mining Ore...",
 	},
 }
 
-function GatheringConfig.GetNodeConfig(nodeType: string): NodeConfig?
-	return NODES[nodeType]
+function GatheringConfig.GetNode(nodeId: string): ResourceNodeDefinition?
+	return NODE_DEFINITIONS[nodeId]
 end
 
-function GatheringConfig.GetAllNodes(): { [string]: NodeConfig }
-	return NODES
+function GatheringConfig.GetAllNodes(): { [string]: ResourceNodeDefinition }
+	return NODE_DEFINITIONS
+end
+
+function GatheringConfig.RollHarvestResult(nodeId: string): string?
+	local def = NODE_DEFINITIONS[nodeId]
+	if not def or #def.AgeDrops == 0 then return nil end
+
+	local roll = math.random()
+	local cumulative = 0.0
+
+	for _, drop in ipairs(def.AgeDrops) do
+		cumulative += drop.Chance
+		if roll <= cumulative then
+			return drop.ItemId
+		end
+	end
+
+	return def.AgeDrops[1].ItemId
 end
 
 return GatheringConfig

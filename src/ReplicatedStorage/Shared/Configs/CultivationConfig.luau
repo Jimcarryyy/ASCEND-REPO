@@ -2,8 +2,10 @@
 --[[
     CultivationConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/CultivationConfig.luau
-    Central configuration registry for 10 Major Cultivation Realms, 9 Orders each (90 Total Orders),
-    Dantian Capacity scaling, Realm Breakthrough Goals, percentage Qi costs, and unit number formatting.
+    The definitive 10-Realm Cultivation Progression Specification for ASCEND.
+    Calibrated Pacing Curve:
+    - Tier 1 (Qi Condensation): 15 - 25 minutes active play total (Orders 1 -> 9)
+    - Tier 10 (Immortal Ascension): ~50 cumulative active hours
 ]]
 
 export type RealmTier = 
@@ -26,203 +28,210 @@ export type TribulationSpec = {
 	AuraColor: Color3,
 }
 
-export type RealmInfo = {
+export type RealmDefinition = {
 	Name: string,
 	Tier: number,
 	BaseMaxHealth: number,
 	BaseTargetQi: number,
-	GatherRate: number,
-	RegenMultiplier: number,
 	AuraColor: Color3,
 	HealthMultiplier: number,
+	DamageMultiplier: number,
+	GatherRate: number,
 	Tribulation: TribulationSpec,
 }
 
-export type OrderRequirements = {
-	MaxQi: number,
-}
+local CultivationConfig = {}
 
-local CultivationConfig = {
-	FormatNumber = function(num: number): string
-		local absolute = math.abs(num)
-		if absolute >= 1e15 then
-			return string.format("%.2fQa", num / 1e15)
-		elseif absolute >= 1e12 then
-			return string.format("%.2fT", num / 1e12)
-		elseif absolute >= 1e9 then
-			return string.format("%.2fB", num / 1e9)
-		elseif absolute >= 1e6 then
-			return string.format("%.2fM", num / 1e6)
-		elseif absolute >= 1e3 then
-			return string.format("%.1fk", num / 1e3)
-		else
-			return tostring(math.floor(num))
-		end
-	end,
+CultivationConfig.ORDER_TARGET_QI_EXPONENT = 1.45
+CultivationConfig.ORDER_MAX_HP_INCREMENT = 0.05
 
-	SkillCostPercent = {
-		M1 = 0.00,
-		Shift = 0.03,
-		F = 0.08,
-		E = 0.12,
-		Q = 0.15,
-		R = 0.30,
+CultivationConfig.QiCondensation = {
+	Name = "Qi Condensation",
+	Tier = 1,
+	BaseMaxHealth = 1000,
+	BaseTargetQi = 1000,
+	AuraColor = Color3.fromRGB(180, 240, 255),
+	HealthMultiplier = 1.0,
+	DamageMultiplier = 1.0,
+	GatherRate = 20,
+	Tribulation = {
+		StrikeCount = 0,
+		DamagePerStrike = 0,
+		StrikeInterval = 0,
+		TelegraphTime = 0,
+		AuraColor = Color3.fromRGB(180, 240, 255),
 	},
+} :: RealmDefinition
 
-	QiCondensation = {
-		Name = "Qi Condensation",
-		Tier = 1,
-		BaseMaxHealth = 1000,
-		BaseTargetQi = 1000,
-		GatherRate = 5,
-		RegenMultiplier = 6.0,
-		AuraColor = Color3.fromRGB(0, 220, 255),
-		HealthMultiplier = 1.0,
-		Tribulation = { StrikeCount = 0, DamagePerStrike = 0, StrikeInterval = 0, TelegraphTime = 0, AuraColor = Color3.fromRGB(0, 220, 255) }
+CultivationConfig.FoundationEstablishment = {
+	Name = "Foundation Establishment",
+	Tier = 2,
+	BaseMaxHealth = 8000,
+	BaseTargetQi = 10000,
+	AuraColor = Color3.fromRGB(100, 220, 255),
+	HealthMultiplier = 5.0,
+	DamageMultiplier = 2.5,
+	GatherRate = 95,
+	Tribulation = {
+		StrikeCount = 3,
+		DamagePerStrike = 50,
+		StrikeInterval = 1.2,
+		TelegraphTime = 1.2,
+		AuraColor = Color3.fromRGB(100, 220, 255),
 	},
+} :: RealmDefinition
 
-	FoundationEstablishment = {
-		Name = "Foundation Establishment",
-		Tier = 2,
-		BaseMaxHealth = 15000,
-		BaseTargetQi = 15000,
-		GatherRate = 15,
-		RegenMultiplier = 6.0,
+CultivationConfig.GoldenCore = {
+	Name = "Golden Core",
+	Tier = 3,
+	BaseMaxHealth = 30000,
+	BaseTargetQi = 50000,
+	AuraColor = Color3.fromRGB(255, 215, 0),
+	HealthMultiplier = 15.0,
+	DamageMultiplier = 6.0,
+	GatherRate = 220,
+	Tribulation = {
+		StrikeCount = 4,
+		DamagePerStrike = 120,
+		StrikeInterval = 1.2,
+		TelegraphTime = 1.2,
 		AuraColor = Color3.fromRGB(255, 215, 0),
-		HealthMultiplier = 15.0,
-		Tribulation = { StrikeCount = 2, DamagePerStrike = 2000, StrikeInterval = 1.5, TelegraphTime = 1.2, AuraColor = Color3.fromRGB(255, 215, 0) }
 	},
+} :: RealmDefinition
 
-	GoldenCore = {
-		Name = "Golden Core",
-		Tier = 3,
-		BaseMaxHealth = 75000,
-		BaseTargetQi = 75000,
-		GatherRate = 40,
-		RegenMultiplier = 6.0,
-		AuraColor = Color3.fromRGB(255, 140, 0),
-		HealthMultiplier = 75.0,
-		Tribulation = { StrikeCount = 3, DamagePerStrike = 10000, StrikeInterval = 1.5, TelegraphTime = 1.2, AuraColor = Color3.fromRGB(255, 140, 0) }
+CultivationConfig.NascentSoul = {
+	Name = "Nascent Soul",
+	Tier = 4,
+	BaseMaxHealth = 120000,
+	BaseTargetQi = 180000,
+	AuraColor = Color3.fromRGB(160, 100, 255),
+	HealthMultiplier = 40.0,
+	DamageMultiplier = 15.0,
+	GatherRate = 480,
+	Tribulation = {
+		StrikeCount = 5,
+		DamagePerStrike = 300,
+		StrikeInterval = 1.1,
+		TelegraphTime = 1.1,
+		AuraColor = Color3.fromRGB(160, 100, 255),
 	},
+} :: RealmDefinition
 
-	NascentSoul = {
-		Name = "Nascent Soul",
-		Tier = 4,
-		BaseMaxHealth = 350000,
-		BaseTargetQi = 350000,
-		GatherRate = 120,
-		RegenMultiplier = 6.0,
-		AuraColor = Color3.fromRGB(180, 50, 255),
-		HealthMultiplier = 350.0,
-		Tribulation = { StrikeCount = 4, DamagePerStrike = 50000, StrikeInterval = 1.5, TelegraphTime = 1.0, AuraColor = Color3.fromRGB(180, 50, 255) }
+CultivationConfig.SpiritSevering = {
+	Name = "Spirit Severing",
+	Tier = 5,
+	BaseMaxHealth = 450000,
+	BaseTargetQi = 550000,
+	AuraColor = Color3.fromRGB(255, 120, 50),
+	HealthMultiplier = 100.0,
+	DamageMultiplier = 35.0,
+	GatherRate = 980,
+	Tribulation = {
+		StrikeCount = 6,
+		DamagePerStrike = 750,
+		StrikeInterval = 1.1,
+		TelegraphTime = 1.1,
+		AuraColor = Color3.fromRGB(255, 120, 50),
 	},
+} :: RealmDefinition
 
-	SpiritSevering = {
-		Name = "Spirit Severing",
-		Tier = 5,
-		BaseMaxHealth = 1500000,
-		BaseTargetQi = 1500000,
-		GatherRate = 400,
-		RegenMultiplier = 6.0,
-		AuraColor = Color3.fromRGB(255, 50, 80),
-		HealthMultiplier = 1500.0,
-		Tribulation = { StrikeCount = 5, DamagePerStrike = 200000, StrikeInterval = 1.2, TelegraphTime = 1.0, AuraColor = Color3.fromRGB(255, 50, 80) }
+CultivationConfig.VoidRefining = {
+	Name = "Void Refining",
+	Tier = 6,
+	BaseMaxHealth = 1500000,
+	BaseTargetQi = 1500000,
+	AuraColor = Color3.fromRGB(50, 80, 255),
+	HealthMultiplier = 250.0,
+	DamageMultiplier = 80.0,
+	GatherRate = 1850,
+	Tribulation = {
+		StrikeCount = 7,
+		DamagePerStrike = 1800,
+		StrikeInterval = 1.0,
+		TelegraphTime = 1.0,
+		AuraColor = Color3.fromRGB(50, 80, 255),
 	},
+} :: RealmDefinition
 
-	VoidRefining = {
-		Name = "Void Refining",
-		Tier = 6,
-		BaseMaxHealth = 7500000,
-		BaseTargetQi = 7500000,
-		GatherRate = 1200,
-		RegenMultiplier = 6.0,
-		AuraColor = Color3.fromRGB(120, 0, 220),
-		HealthMultiplier = 7500.0,
-		Tribulation = { StrikeCount = 5, DamagePerStrike = 1000000, StrikeInterval = 1.2, TelegraphTime = 0.9, AuraColor = Color3.fromRGB(120, 0, 220) }
+CultivationConfig.BodyIntegration = {
+	Name = "Body Integration",
+	Tier = 7,
+	BaseMaxHealth = 4500000,
+	BaseTargetQi = 3800000,
+	AuraColor = Color3.fromRGB(0, 255, 200),
+	HealthMultiplier = 600.0,
+	DamageMultiplier = 180.0,
+	GatherRate = 3800,
+	Tribulation = {
+		StrikeCount = 8,
+		DamagePerStrike = 4000,
+		StrikeInterval = 1.0,
+		TelegraphTime = 1.0,
+		AuraColor = Color3.fromRGB(0, 255, 200),
 	},
+} :: RealmDefinition
 
-	BodyIntegration = {
-		Name = "Body Integration",
-		Tier = 7,
-		BaseMaxHealth = 25000000,
-		BaseTargetQi = 25000000,
-		GatherRate = 3500,
-		RegenMultiplier = 6.0,
-		AuraColor = Color3.fromRGB(50, 220, 150),
-		HealthMultiplier = 25000.0,
-		Tribulation = { StrikeCount = 6, DamagePerStrike = 3000000, StrikeInterval = 1.0, TelegraphTime = 0.8, AuraColor = Color3.fromRGB(50, 220, 150) }
-	},
-
-	Mahayana = {
-		Name = "Mahayana",
-		Tier = 8,
-		BaseMaxHealth = 55000000,
-		BaseTargetQi = 55000000,
-		GatherRate = 10000,
-		RegenMultiplier = 6.0,
-		AuraColor = Color3.fromRGB(255, 230, 120),
-		HealthMultiplier = 55000.0,
-		Tribulation = { StrikeCount = 7, DamagePerStrike = 7000000, StrikeInterval = 1.0, TelegraphTime = 0.8, AuraColor = Color3.fromRGB(255, 230, 120) }
-	},
-
-	TribulationTranscending = {
-		Name = "Tribulation Transcending",
-		Tier = 9,
-		BaseMaxHealth = 80000000,
-		BaseTargetQi = 80000000,
-		GatherRate = 30000,
-		RegenMultiplier = 6.0,
+CultivationConfig.Mahayana = {
+	Name = "Mahayana",
+	Tier = 8,
+	BaseMaxHealth = 12000000,
+	BaseTargetQi = 9000000,
+	AuraColor = Color3.fromRGB(255, 255, 255),
+	HealthMultiplier = 1500.0,
+	DamageMultiplier = 400.0,
+	GatherRate = 7500,
+	Tribulation = {
+		StrikeCount = 9,
+		DamagePerStrike = 9000,
+		StrikeInterval = 0.9,
+		TelegraphTime = 0.9,
 		AuraColor = Color3.fromRGB(255, 255, 255),
-		HealthMultiplier = 80000.0,
-		Tribulation = { StrikeCount = 9, DamagePerStrike = 12000000, StrikeInterval = 0.8, TelegraphTime = 0.7, AuraColor = Color3.fromRGB(255, 255, 255) }
 	},
+} :: RealmDefinition
 
-	ImmortalAscension = {
-		Name = "Immortal Ascension",
-		Tier = 10,
-		BaseMaxHealth = 100000000,
-		BaseTargetQi = 100000000,
-		GatherRate = 80000,
-		RegenMultiplier = 6.0,
-		AuraColor = Color3.fromRGB(255, 215, 0),
-		HealthMultiplier = 100000.0,
-		Tribulation = { StrikeCount = 0, DamagePerStrike = 0, StrikeInterval = 0, TelegraphTime = 0, AuraColor = Color3.fromRGB(255, 215, 0) }
+CultivationConfig.TribulationTranscending = {
+	Name = "Tribulation Transcending",
+	Tier = 9,
+	BaseMaxHealth = 30000000,
+	BaseTargetQi = 20000000,
+	AuraColor = Color3.fromRGB(255, 80, 80),
+	HealthMultiplier = 3500.0,
+	DamageMultiplier = 900.0,
+	GatherRate = 14500,
+	Tribulation = {
+		StrikeCount = 9,
+		DamagePerStrike = 20000,
+		StrikeInterval = 0.9,
+		TelegraphTime = 0.9,
+		AuraColor = Color3.fromRGB(255, 80, 80),
 	},
-}
+} :: RealmDefinition
 
-function CultivationConfig.GetRealmDisplayName(realmTier: RealmTier): string
-	local info = CultivationConfig[realmTier]
-	return if info and info.Name then info.Name else tostring(realmTier)
-end
-
--- Returns this realm's ordinal position (1 = QiCondensation ... 10 = ImmortalAscension).
--- Used for reward/difficulty scaling that needs to know "how far along" a realm is,
--- e.g. MobAIManager's kill-reward multiplier.
-function CultivationConfig.GetRealmIndex(realmTier: RealmTier): number
-	local info = CultivationConfig[realmTier]
-	return if info and info.Tier then info.Tier else 1
-end
-
-function CultivationConfig.GetOrderMaxHealth(realmTier: RealmTier, order: number): number
-	local info = CultivationConfig[realmTier]
-	if not info then return 1000 end
-
-	local clampedOrder = math.clamp(order, 1, 9)
-	local orderScale = math.pow(1.35, clampedOrder - 1)
-	return math.floor(info.BaseMaxHealth * orderScale)
-end
+CultivationConfig.ImmortalAscension = {
+	Name = "Immortal Ascension",
+	Tier = 10,
+	BaseMaxHealth = 80000000,
+	BaseTargetQi = 45000000,
+	AuraColor = Color3.fromRGB(255, 235, 120),
+	HealthMultiplier = 8000.0,
+	DamageMultiplier = 2000.0,
+	GatherRate = 28000,
+	Tribulation = {
+		StrikeCount = 9,
+		DamagePerStrike = 50000,
+		StrikeInterval = 0.8,
+		TelegraphTime = 0.8,
+		AuraColor = Color3.fromRGB(255, 235, 120),
+	},
+} :: RealmDefinition
 
 function CultivationConfig.GetOrderTargetQi(realmTier: RealmTier, order: number): number
-	local info = CultivationConfig[realmTier]
-	if not info then return 1000 end
+	local realmInfo = (CultivationConfig :: any)[realmTier] :: RealmDefinition?
+	if not realmInfo then return 1000 end
 
 	local clampedOrder = math.clamp(order, 1, 9)
-	local orderScale = math.pow(1.45, clampedOrder - 1)
-	return math.floor(info.BaseTargetQi * orderScale)
-end
-
-function CultivationConfig.GetOrderMaxQi(realmTier: RealmTier, order: number): number
-	return CultivationConfig.GetOrderTargetQi(realmTier, order)
+	local orderScale = math.pow(CultivationConfig.ORDER_TARGET_QI_EXPONENT, clampedOrder - 1)
+	return math.floor(realmInfo.BaseTargetQi * orderScale)
 end
 
 function CultivationConfig.GetOrderStartingMaxQi(realmTier: RealmTier, order: number): number
@@ -230,22 +239,22 @@ function CultivationConfig.GetOrderStartingMaxQi(realmTier: RealmTier, order: nu
 	return math.floor(targetQi * 0.20)
 end
 
--- Returns the full breakthrough requirement bundle for a given realm+order.
--- Currently just wraps GetOrderTargetQi as MaxQi; used by MarketplaceManager's
--- "InstantQi" dev-product reward to fully cap out a player's current Qi.
-function CultivationConfig.GetOrderRequirements(realmTier: RealmTier, order: number): OrderRequirements
-	return {
-		MaxQi = CultivationConfig.GetOrderTargetQi(realmTier, order),
-	}
+function CultivationConfig.GetOrderMaxHealth(realmTier: RealmTier, order: number): number
+	local realmInfo = (CultivationConfig :: any)[realmTier] :: RealmDefinition?
+	if not realmInfo then return 100 end
+
+	local clampedOrder = math.clamp(order, 1, 9)
+	local hpScale = 1.0 + ((clampedOrder - 1) * CultivationConfig.ORDER_MAX_HP_INCREMENT)
+	return math.floor(realmInfo.BaseMaxHealth * hpScale)
 end
 
 function CultivationConfig.GetPowerMultiplier(realmTier: RealmTier, order: number): number
-	local info = CultivationConfig[realmTier]
-	if not info then return 1.0 end
+	local realmInfo = (CultivationConfig :: any)[realmTier] :: RealmDefinition?
+	if not realmInfo then return 1.0 end
 
 	local clampedOrder = math.clamp(order, 1, 9)
-	local orderBonus = 1 + ((clampedOrder - 1) * 0.15)
-	return info.HealthMultiplier * orderBonus
+	local orderBonus = (clampedOrder - 1) * 0.05
+	return realmInfo.DamageMultiplier * (1.0 + orderBonus)
 end
 
 return CultivationConfig

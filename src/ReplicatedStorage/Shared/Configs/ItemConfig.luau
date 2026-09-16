@@ -3,10 +3,10 @@
     ItemConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/ItemConfig.luau
     Central configuration repository for all items in ASCEND:
-    - 8 Sword Tiers (Mortal, Azure Cloud, Flowing Qi, Verdant Jade, Violet Soul, Void Star, Azure Patriarch, Radiant Immortal)
-    - Dynamic Weapon VFX Color Palettes (Primary, Secondary, Glow, and Particle Gradient)
-    - Full Alchemy Pills, Herbs & Monster Materials
+    - 8 Sword Tiers with Dynamic Weapon VFX Color Palettes
     - 9 Major Realm Breakthrough Dans
+    - 4-Tier Herb Ladder (1-Yr, 10-Yr, 100-Yr, 1000-Yr)
+    - 4-Tier Graded Beast Cores (Base, 10-Yr, 100-Yr, 1000-Yr)
 ]]
 
 local UIAssets = require(script.Parent.UIAssets)
@@ -36,9 +36,6 @@ export type ItemDefinition = {
 
 local ItemConfig = {}
 
--- =============================================================================
--- WEAPON ELEMENTAL VFX COLOR PALETTES
--- =============================================================================
 local WEAPON_PALETTES: { [string]: WeaponVFXPalette } = {
 	["MortalIronJian"] = {
 		PrimaryColor = Color3.fromRGB(220, 225, 235),
@@ -264,7 +261,7 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Icon = UIAssets.Icons.FoundationGatheringDan,
 	},
 
-	-- HERBS & MATERIALS
+	-- 4-TIER HERBS & MATERIALS
 	["SpiritGrass_1Yr"] = {
 		Id = "SpiritGrass_1Yr",
 		Name = "1-Yr Spirit Grass",
@@ -305,6 +302,7 @@ local ITEMS: { [string]: ItemDefinition } = {
 		AgeYears = 1000,
 		Icon = UIAssets.Icons.SpiritGrass,
 	},
+
 	["DragonBloodVine_1Yr"] = {
 		Id = "DragonBloodVine_1Yr",
 		Name = "1-Yr Dragon Blood Vine",
@@ -313,6 +311,16 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Type = "Material",
 		MaxStack = 99,
 		AgeYears = 1,
+		Icon = UIAssets.Icons.DragonBloodVine,
+	},
+	["DragonBloodVine_10Yr"] = {
+		Id = "DragonBloodVine_10Yr",
+		Name = "10-Yr Dragon Blood Vine",
+		Description = "Thick decade dragon vine coursing with warm draconic blood qi.",
+		Rarity = "Uncommon",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 10,
 		Icon = UIAssets.Icons.DragonBloodVine,
 	},
 	["DragonBloodVine_100Yr"] = {
@@ -325,6 +333,17 @@ local ITEMS: { [string]: ItemDefinition } = {
 		AgeYears = 100,
 		Icon = UIAssets.Icons.DragonBloodVine,
 	},
+	["DragonBloodVine_1000Yr"] = {
+		Id = "DragonBloodVine_1000Yr",
+		Name = "1,000-Yr Sovereign Dragon Blood Vine",
+		Description = "Ancient dragon vein that soaked in true ancient dragon blood for a millennium.",
+		Rarity = "Mythic",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 1000,
+		Icon = UIAssets.Icons.DragonBloodVine,
+	},
+
 	["GaleWindLotus_1Yr"] = {
 		Id = "GaleWindLotus_1Yr",
 		Name = "1-Yr Gale Wind Lotus",
@@ -333,6 +352,16 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Type = "Material",
 		MaxStack = 99,
 		AgeYears = 1,
+		Icon = UIAssets.Icons.GaleWindLotus,
+	},
+	["GaleWindLotus_10Yr"] = {
+		Id = "GaleWindLotus_10Yr",
+		Name = "10-Yr Gale Wind Lotus",
+		Description = "Decade wind lotus swirling with concentrated tempest qi.",
+		Rarity = "Uncommon",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 10,
 		Icon = UIAssets.Icons.GaleWindLotus,
 	},
 	["GaleWindLotus_100Yr"] = {
@@ -345,6 +374,17 @@ local ITEMS: { [string]: ItemDefinition } = {
 		AgeYears = 100,
 		Icon = UIAssets.Icons.GaleWindLotus,
 	},
+	["GaleWindLotus_1000Yr"] = {
+		Id = "GaleWindLotus_1000Yr",
+		Name = "1,000-Yr Sovereign Gale Wind Lotus",
+		Description = "Millennium tempest flower that only blooms upon sky mountain peaks.",
+		Rarity = "Mythic",
+		Type = "Material",
+		MaxStack = 99,
+		AgeYears = 1000,
+		Icon = UIAssets.Icons.GaleWindLotus,
+	},
+
 	["CelestialDew"] = {
 		Id = "CelestialDew",
 		Name = "Celestial Dew Water",
@@ -355,16 +395,49 @@ local ITEMS: { [string]: ItemDefinition } = {
 		AgeYears = 1,
 		Icon = UIAssets.Icons.CelestialDew,
 	},
+
+	-- 4-TIER GRADED DEMON BEAST CORES
 	["DemonBeastCore"] = {
 		Id = "DemonBeastCore",
-		Name = "Demon Beast Core",
+		Name = "Demon Beast Core (Mortal Grade)",
 		Description = "A crystallized amber core containing distilled monster energy.",
-		Rarity = "Rare",
+		Rarity = "Common",
+		Type = "Material",
+		MaxStack = 50,
+		AgeYears = 1,
+		Icon = UIAssets.Icons.DemonBeastCore,
+	},
+	["DemonBeastCore_10Yr"] = {
+		Id = "DemonBeastCore_10Yr",
+		Name = "Decade Demon Beast Core (Earth Grade)",
+		Description = "A pulsating jade beast core harvested from decade-tier wilderness monsters.",
+		Rarity = "Uncommon",
 		Type = "Material",
 		MaxStack = 50,
 		AgeYears = 10,
 		Icon = UIAssets.Icons.DemonBeastCore,
 	},
+	["DemonBeastCore_100Yr"] = {
+		Id = "DemonBeastCore_100Yr",
+		Name = "Century Demon Beast Core (Supreme Grade)",
+		Description = "A radiant amethyst monster core radiating violent century monster essence.",
+		Rarity = "Rare",
+		Type = "Material",
+		MaxStack = 50,
+		AgeYears = 100,
+		Icon = UIAssets.Icons.DemonBeastCore,
+	},
+	["DemonBeastCore_1000Yr"] = {
+		Id = "DemonBeastCore_1000Yr",
+		Name = "Millennium Sovereign Core (Transcendent Grade)",
+		Description = "An immortal demonic heart crystal forged through a thousand years of slaughter.",
+		Rarity = "Legendary",
+		Type = "Material",
+		MaxStack = 50,
+		AgeYears = 1000,
+		Icon = UIAssets.Icons.DemonBeastCore,
+	},
+
 	["SpiritAsh"] = {
 		Id = "SpiritAsh",
 		Name = "Furnace Ash",
@@ -375,9 +448,7 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Icon = UIAssets.Icons.SpiritAsh,
 	},
 
-	-- =========================================================================
 	-- WEAPONS & FLYING SWORDS (TIERS 1 - 8)
-	-- =========================================================================
 	["MortalIronJian"] = {
 		Id = "MortalIronJian",
 		Name = "Mortal Iron Jian",

@@ -5,7 +5,7 @@
     Server-authoritative cultivation state engine for ASCEND:
     - Synchronous zero-delay CharacterAdded stat binding
     - Full body aura lifecycle during Meditation
-    - Sect-buff scaled passive Qi loop and meditation recovery rate
+    - Calibrated 10-Realm passive Qi loop: expansionRate = realmInfo.GatherRate * qiNodeMult * sectMult
     - Clamped 20% starting Qi per order (eliminating 69% loophole and free Order-2 advances)
     - Breakthrough Dan consumption requirement
     - Inner Demon Tribulation QTE Engine with non-lethal Qi Deviation Backlash
@@ -213,8 +213,10 @@ function CultivationManager.Init()
 						end
 
 						if isMeditating and pData.CultivatedQi < pData.MaxQiGoal then
+							local realmInfo = CultivationConfig[pData.Realm]
+							local baseGather = if realmInfo and realmInfo.GatherRate then realmInfo.GatherRate else 20
 							local qiNodeMult = GetQiNodeMultiplier(character)
-							local expansionRate = (pData.MaxQiGoal * 0.001) * qiNodeMult * sectMult
+							local expansionRate = baseGather * qiNodeMult * sectMult
 							pData.CultivatedQi = math.min(pData.MaxQiGoal, pData.CultivatedQi + (expansionRate * 0.5))
 						end
 
@@ -228,7 +230,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Engine Initialized (Inner Demon & Sect Buff Multipliers Active).")
+	print("[ASCEND] CultivationManager Engine Initialized (Pacing Calibrated to 50h Curve).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
