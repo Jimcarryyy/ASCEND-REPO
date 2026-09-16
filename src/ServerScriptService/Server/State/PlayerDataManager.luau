@@ -8,10 +8,12 @@
     - Normal Player Grind Isolation (Regular players / alts only have MortalIronJian and must buy/earn swords one-by-one)
     - Sword Bloodline Lineages, Spin Economy & 3D Visual Artifacts (Phase 4)
     - Ultimate Pinnacle Samsara Rebirth Persistence & Celestial Footstep Trail / Aura Welder (Phase 5)
+    - Authoritative Spawn Dais Router (Permanently bypasses Roblox C++ spawn race condition to guarantee Dais placement)
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
@@ -156,6 +158,45 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	SamsaraCycle = 0,
 }
 
+-- =============================================================================
+-- AUTHORITATIVE SPAWN DAIS ROUTER
+-- Guarantees the player lands squarely on Murim_SpawnDais on join and respawn
+-- =============================================================================
+local function RouteToSpawnDais(character: Model)
+	task.delay(0.08, function()
+		if not character or not character.Parent then return end
+		local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not hrp then return end
+
+		-- 1. Try structured hierarchy path
+		local daisSpawn: SpawnLocation? = nil
+		local funcStations = Workspace:FindFirstChild("Functional_Stations")
+		if funcStations then
+			local dais = funcStations:FindFirstChild("Murim_SpawnDais", true)
+			if dais then
+				daisSpawn = dais:FindFirstChildWhichIsA("SpawnLocation")
+			end
+		end
+
+		-- 2. Fallback search if moved or renamed
+		if not daisSpawn then
+			for _, desc in ipairs(Workspace:GetDescendants()) do
+				if desc:IsA("SpawnLocation") and string.find(desc:GetFullName(), "Murim_SpawnDais") then
+					daisSpawn = desc
+					break
+				end
+			end
+		end
+
+		if daisSpawn then
+			hrp.AssemblyLinearVelocity = Vector3.zero
+			hrp.AssemblyAngularVelocity = Vector3.zero
+			local targetCF = daisSpawn.CFrame * CFrame.new(0, (daisSpawn.Size.Y / 2) + 3.5, 0)
+			hrp.CFrame = targetCF
+		end
+	end)
+end
+
 -- 3D Visual Artifact Welder for Bloodlines
 local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	local def = BloodlineConfig.GetBloodline(bloodlineId)
@@ -177,7 +218,7 @@ local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	if preMadeModel then
 		artifactModel = preMadeModel:Clone()
 	else
-		-- Procedural 3D Visual Artifact (clean, non-colliding placeholder)
+		-- Procedural 3D Visual Artifact
 		artifactModel = Instance.new("Model")
 		local core = Instance.new("Part")
 		core.Name = "ArtifactCore"
@@ -347,7 +388,7 @@ function PlayerDataManager.Init()
 		end
 	end)
 
-	print("[PlayerDataManager] Engine Initialized with Strict Weapon Isolation, Bloodlines & Samsara Rebirth.")
+	print("[PlayerDataManager] Engine Initialized with Authoritative Dais Spawn, Bloodlines & Samsara Rebirth.")
 end
 
 function PlayerDataManager.OnPlayerAdded(player: Player)
@@ -567,6 +608,9 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			AttachSamsaraCelestialAura(character, cycle)
 		end
 
+		-- Authoritative Spawn Dais Repositioning
+		RouteToSpawnDais(character)
+
 		task.defer(function()
 			local targetWeapon = loadedData.EquippedWeapon or defaultEquipped
 			if targetWeapon == "FlyingSword" or string.find(tostring(targetWeapon):lower(), "flyingsword") then
@@ -705,7 +749,7 @@ function PlayerDataManager.GetAlchemyData(player: Player): (number, number)
 end
 
 -- =============================================================================
--- PHASE 4: BLOODLINE ACCESSORS & GACHA ROLLER (With Lazy Fallback Init)
+-- PHASE 4: BLOODLINE ACCESSORS & GACHA ROLLER
 -- =============================================================================
 function PlayerDataManager.GetBloodline(player: Player): string
 	local data = playerBloodlines[player]
