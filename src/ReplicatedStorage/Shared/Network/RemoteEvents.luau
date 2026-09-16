@@ -3,71 +3,48 @@
     RemoteEvents.luau
     Location: src/ReplicatedStorage/Shared/Network/RemoteEvents.luau
     Centralized network remote management for ASCEND.
-    Instantiates all official game remotes under ReplicatedStorage.Remotes.
+    Instantiates the 16 active game remotes under ReplicatedStorage.Remotes.
+    Pruned: 16 legacy unused prototype remotes purged.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 export type RemoteName = 
-	"CombatAction" 
-	| "UpdateSkillState" 
-	| "SyncCooldown" 
-	| "InventoryAction" 
-	| "UpdateInventory"
-	| "BossStateUpdate"
+	"CombatAction"
+	| "CombatVFX"
+	| "SyncCooldown"
+	| "UpdateSkillState"
 	| "UpdateCultivation"
 	| "CultivationAction"
-	| "BreakthroughResult"
-	| "AlchemyAction"
-	| "CombatVFX"
-	| "FocusTarget"
-	| "SkillCast"
-	| "WeaponState"
-	| "GatheringAction"
-	| "SectAction"
+	| "HeavenlyAnnouncement"
+	| "InventoryAction"
+	| "UpdateInventory"
 	| "MarketAction"
-	| "MonetizationAction"
-	| "ArenaAction"
-	| "ArenaRegister"
-	| "ArenaMatchUpdate"
-	| "DialogueEvent"
-	| "UpdateQuestTracker"
-	| "QuestAction"
-	| "UpdateSect"
-	| "BlacksmithAction"
-	| "TeaHouseAction"
+	| "AlchemyAction"
+	| "GatheringAction"
 	| "AltarAction"
+	| "SectAction"
+	| "ArenaAction"
+	| "BloodlineAction"
 
 local ALL_REMOTES: { RemoteName } = {
 	"CombatAction",
-	"UpdateSkillState",
+	"CombatVFX",
 	"SyncCooldown",
-	"InventoryAction",
-	"UpdateInventory",
-	"BossStateUpdate",
+	"UpdateSkillState",
 	"UpdateCultivation",
 	"CultivationAction",
-	"BreakthroughResult",
-	"AlchemyAction",
-	"CombatVFX",
-	"FocusTarget",
-	"SkillCast",
-	"WeaponState",
-	"GatheringAction",
-	"SectAction",
+	"HeavenlyAnnouncement",
+	"InventoryAction",
+	"UpdateInventory",
 	"MarketAction",
-	"MonetizationAction",
-	"ArenaAction",
-	"ArenaRegister",
-	"ArenaMatchUpdate",
-	"DialogueEvent",
-	"UpdateQuestTracker",
-	"QuestAction",
-	"UpdateSect",
-	"BlacksmithAction",
-	"TeaHouseAction",
+	"AlchemyAction",
+	"GatheringAction",
 	"AltarAction",
+	"SectAction",
+	"ArenaAction",
+	"BloodlineAction",
 }
 
 local RemoteEvents = {}
@@ -98,7 +75,7 @@ function RemoteEvents.Init(): Folder
 			end
 		end
 
-		print(string.format("[RemoteEvents] Initialized %d Server RemoteEvents under ReplicatedStorage.Remotes.", #ALL_REMOTES))
+		print(string.format("[RemoteEvents] Initialized %d Active Server RemoteEvents under ReplicatedStorage.Remotes.", #ALL_REMOTES))
 		return newFolder
 	else
 		local waitedFolder = ReplicatedStorage:WaitForChild("Remotes", 15) :: Folder?

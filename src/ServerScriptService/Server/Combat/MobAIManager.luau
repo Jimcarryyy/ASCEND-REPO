@@ -9,6 +9,7 @@
       - Fluid 5-Step M1 Attack Combo Chain
       - Full Combat Resolution: Physical knockback, parrying, blocking & posture damage
       - Fondamento Font & Vibrant Red UIGradient Overhead Mob HUDs
+      - Phase 1: Injected SPAWNER_ALIAS_MAP, DisplayName nil-protection, and unanchoring loop
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -30,6 +31,12 @@ local HitboxManager = require(ServerScriptService.Server.Combat.HitboxManager)
 
 local MobAIManager = {}
 local combatActionRemote: RemoteEvent
+
+-- Top-level Spawner Alias Normalizer (Fixes line 752 crash)
+local SPAWNER_ALIAS_MAP: { [string]: string } = {
+	["RogueDisciples"] = "RogueDisciple",
+	["BossFallenSwordGenius"] = "Boss_FallenSwordGenius",
+}
 
 type MobState = "Patrol" | "Chase" | "Attack" | "Leash"
 
@@ -64,7 +71,8 @@ type ActiveMob = {
 local activeMobs: { ActiveMob } = {}
 
 local function GetMobConfig(mobId: string): any
-	local cleanId = string.match(tostring(mobId), "^%s*(.-)%s*$") or tostring(mobId)
+	local rawId = string.match(tostring(mobId), "^%s*(.-)%s*$") or tostring(mobId)
+	local cleanId = SPAWNER_ALIAS_MAP[rawId] or rawId
 
 	if type(MobConfig.GetMobConfig) == "function" then
 		local res = MobConfig.GetMobConfig(cleanId)
@@ -148,7 +156,7 @@ end
 --------------------------------------------------------------------------------
 -- VIBRANT RED FONDAMENTO MOB OVERHEAD BUILDER
 --------------------------------------------------------------------------------
-local function CreateHealthUI(model: Model, displayName: string): (BillboardGui?, Frame?)
+local function CreateHealthUI(model: Model, displayName: string?): (BillboardGui?, Frame?)
 	local head = model:FindFirstChild("Head") or model.PrimaryPart
 	if not head then return nil, nil end
 
@@ -165,7 +173,7 @@ local function CreateHealthUI(model: Model, displayName: string): (BillboardGui?
 	nameLabel.Size = UDim2.new(1, 0, 0, 16)
 	nameLabel.Position = UDim2.new(0, 0, 0, 0)
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.Text = displayName
+	nameLabel.Text = displayName or model.Name
 	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	nameLabel.Font = Enum.Font.Fondamento
 	nameLabel.TextSize = 16
@@ -256,7 +264,6 @@ local function OnMobDied(mob: ActiveMob)
 			CultivationManager.AddInternalQi(killer, qiReward)
 		end
 
-		-- Track awarded drops for client notification
 		local awardedDrops: { { Name: string, Count: number } } = {}
 		local drops = config.DropTable or config.Drops
 		if drops then
@@ -275,10 +282,9 @@ local function OnMobDied(mob: ActiveMob)
 			end
 		end
 
-		-- 🚀 Fire kill notification to the killer
-		local combatActionRemote = RemoteEvents.GetRemote("CombatAction")
-		if combatActionRemote then
-			combatActionRemote:FireClient(killer, nil, "MobDefeated", {
+		local combatRemote = RemoteEvents.GetRemote("CombatAction")
+		if combatRemote then
+			combatRemote:FireClient(killer, nil, "MobDefeated", {
 				MobName = config.DisplayName or mob.Id,
 				IsBoss = config.IsBoss == true,
 				Stones = ssReward,
@@ -287,7 +293,6 @@ local function OnMobDied(mob: ActiveMob)
 			})
 		end
 
-		-- If World Boss, broadcast to entire server
 		if config.IsBoss then
 			local TextChatService = game:GetService("TextChatService")
 			local textChannels = TextChatService:FindFirstChild("TextChannels")
@@ -330,11 +335,12 @@ local function OnMobDied(mob: ActiveMob)
 	end)
 end
 
-function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius: number, respawnTime: number)
-	local config = GetMobConfig(mobId)
+function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius: number, respawnTime: number): Model?
+	local resolvedMobId = SPAWNER_ALIAS_MAP[mobId] or mobId
+	local config = GetMobConfig(resolvedMobId)
 	if not config then
-		warn(string.format("[MobAIManager] ERROR: '%s' not found in MobConfig. Check spelling in MobConfig.luau!", tostring(mobId)))
-		return
+		warn(string.format("[MobAIManager] ERROR: '%s' not found in MobConfig. Check spelling in MobConfig.luau!", tostring(resolvedMobId)))
+		return nil
 	end
 
 	local angle = math.random() * math.pi * 2
@@ -353,13 +359,13 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 
 	local model: Model? = nil
 	local mobFolder = ReplicatedStorage:FindFirstChild("MobModels")
-	local template = mobFolder and mobFolder:FindFirstChild(mobId)
+	local template = mobFolder and (mobFolder:FindFirstChild(resolvedMobId) or mobFolder:FindFirstChild(mobId))
 
 	if template and template:IsA("Model") then
 		model = template:Clone()
 	else
-		warn(string.format("[MobAIManager] Template '%s' missing in ReplicatedStorage.MobModels!", mobId))
-		return
+		warn(string.format("[MobAIManager] Template '%s' missing in ReplicatedStorage.MobModels!", resolvedMobId))
+		return nil
 	end
 
 	model:PivotTo(CFrame.new(finalSpawnPos))
@@ -383,7 +389,7 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	if not humanoid or not rootPart then
 		model:Destroy()
 		warn("[MobAIManager] Spawned mob is missing Humanoid or HumanoidRootPart!")
-		return
+		return nil
 	end
 
 	humanoid.MaxHealth = config.MaxHealth
@@ -393,17 +399,13 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	local oldHealthGui = model:FindFirstChild("MobHealthUI", true)
 	if oldHealthGui then oldHealthGui:Destroy() end
 
-	local healthGui, healthBar = CreateHealthUI(model, config.DisplayName)
+	local healthGui, healthBar = CreateHealthUI(model, config.DisplayName or config.Name or resolvedMobId)
 
-	-- =========================================================================
-	-- ANIMATIONS: WALK, RUN & 5-STEP M1 ATTACK COMBO
-	-- =========================================================================
 	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
 	local walkTrack: AnimationTrack? = nil
 	local runTrack: AnimationTrack? = nil
 	local attackTracks: { AnimationTrack } = {}
 
-	-- 1. Martial Walk Animation (Patrol)
 	local walkAnimId = AnimationConfig.Movement and (AnimationConfig.Movement :: any).Walk
 	if walkAnimId and walkAnimId ~= "" then
 		pcall(function()
@@ -415,7 +417,6 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		end)
 	end
 
-	-- 2. Martial Run Animation (Sprint Chase when player detected)
 	local runAnimId = AnimationConfig.Movement and (AnimationConfig.Movement :: any).Run
 	if runAnimId and runAnimId ~= "" then
 		pcall(function()
@@ -427,7 +428,6 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		end)
 	end
 
-	-- 3. 5-Hit Attack Combo Sequence (M1_1 through M1_5)
 	local swordCfg = AnimationConfig.FlyingSword :: any
 	if swordCfg then
 		for step = 1, 5 do
@@ -446,7 +446,7 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	end
 
 	local mob: ActiveMob = {
-		Id = mobId,
+		Id = resolvedMobId,
 		Model = model,
 		Humanoid = humanoid,
 		RootPart = rootPart,
@@ -486,7 +486,8 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		OnMobDied(mob)
 	end)
 
-	print(string.format("[MobAIManager] Spawned '%s' with Walk, Run & Attack Combos!", config.DisplayName))
+	print(string.format("[MobAIManager] Spawned '%s' with Walk, Run & Attack Combos!", config.DisplayName or resolvedMobId))
+	return model
 end
 
 function MobAIManager.RecordDamage(mobModel: Model, attacker: Player)
@@ -507,9 +508,6 @@ function MobAIManager.RegisterDamage(mobModel: Model, attacker: Player, _damage:
 	MobAIManager.RecordDamage(mobModel, attacker)
 end
 
--- =============================================================================
--- SMART FLOCKING & BOIDS SEPARATION
--- =============================================================================
 local function GetFlockSeparationVector(currentMob: ActiveMob): Vector3
 	local repulsion = Vector3.zero
 	local currentPos = currentMob.RootPart.Position
@@ -520,7 +518,6 @@ local function GetFlockSeparationVector(currentMob: ActiveMob): Vector3
 			local delta = currentPos - other.RootPart.Position
 			local dist = delta.Magnitude
 			if dist > 0.001 and dist < SEPARATION_RADIUS then
-				-- Stronger push the closer they get
 				local pushStrength = (SEPARATION_RADIUS - dist) / SEPARATION_RADIUS
 				repulsion += Vector3.new(delta.X, 0, delta.Z).Unit * (pushStrength * 4.5)
 			end
@@ -534,7 +531,6 @@ local function StepAI()
 	RebuildPlayerGrid()
 	local now = os.clock()
 
-	-- Track how many mobs are targeting each player to assign surrounding flank slots
 	local targetCounts: { [Player]: number } = {}
 	for _, mob in ipairs(activeMobs) do
 		if mob.TargetPlayer and mob.State == "Chase" then
@@ -564,16 +560,11 @@ local function StepAI()
 
 		local state = mob.State
 
-		-- Horizontal Velocity detection (Guaranteed accurate on server-owned NPCs)
 		local horizVelocity = Vector3.new(rootPart.AssemblyLinearVelocity.X, 0, rootPart.AssemblyLinearVelocity.Z)
 		local horizSpeed = horizVelocity.Magnitude
 		local isPhysicallyMoving = (horizSpeed > 0.4) and (state ~= "Attack")
 
-		-- =====================================================================
-		-- CONTEXTUAL LOCOMOTION ANIMATION MACHINE
-		-- =====================================================================
 		if state == "Chase" then
-			-- RUNNING SPRINT: When chasing players
 			if mob.WalkTrack and mob.WalkTrack.IsPlaying then mob.WalkTrack:Stop(0.12) end
 			if mob.RunTrack then
 				if isPhysicallyMoving and not mob.RunTrack.IsPlaying then
@@ -584,7 +575,6 @@ local function StepAI()
 				end
 			end
 		elseif state == "Patrol" or state == "Leash" then
-			-- MARTIAL WALK: When calmly patrolling or returning
 			if mob.RunTrack and mob.RunTrack.IsPlaying then mob.RunTrack:Stop(0.12) end
 			if mob.WalkTrack then
 				if isPhysicallyMoving and not mob.WalkTrack.IsPlaying then
@@ -595,14 +585,13 @@ local function StepAI()
 				end
 			end
 		else
-			-- ATTACK / IDLE: Silence both
 			if mob.WalkTrack and mob.WalkTrack.IsPlaying then mob.WalkTrack:Stop(0.1) end
 			if mob.RunTrack and mob.RunTrack.IsPlaying then mob.RunTrack:Stop(0.1) end
 		end
 
 		if state == "Patrol" then
-			humanoid.WalkSpeed = config.WalkSpeed * 0.65 -- Calm walk speed
-			local candidates = GetNearbyPlayers(rootPos, config.AggroRadius)
+			humanoid.WalkSpeed = config.WalkSpeed * 0.65
+			local candidates = GetNearbyPlayers(rootPos, config.AggroRadius or 24)
 			if #candidates > 0 then
 				mob.TargetPlayer = candidates[1]
 				mob.State = "Chase"
@@ -617,7 +606,6 @@ local function StepAI()
 			end
 
 		elseif state == "Chase" then
-			-- RUN SPEED: Accelerate to full sprint upon player detection
 			humanoid.WalkSpeed = config.WalkSpeed * 1.15
 
 			local target = mob.TargetPlayer
@@ -630,7 +618,6 @@ local function StepAI()
 				if dist <= (config.AttackRange + 1.5) then
 					mob.State = "Attack"
 				else
-					-- SMART FLOCKING: Calculate surrounding flank slot
 					local totalAtTarget = math.max(1, targetCounts[target] or 1)
 					local idx = (mobIndexPerTarget[target] or 0) + 1
 					mobIndexPerTarget[target] = idx
@@ -638,7 +625,6 @@ local function StepAI()
 					local flankAngle = ((idx - 1) / totalAtTarget) * (math.pi * 2)
 					local surroundRadius = math.clamp(config.AttackRange * 0.85, 3.5, 6.0)
 
-					-- Position around player + Boids push away from colliding teammates
 					local surroundOffset = Vector3.new(math.cos(flankAngle) * surroundRadius, 0, math.sin(flankAngle) * surroundRadius)
 					local separation = GetFlockSeparationVector(mob)
 					local destination = targetHrp.Position + surroundOffset + separation
@@ -677,7 +663,6 @@ local function StepAI()
 						end
 						mob.ComboStep = if currentStep >= #mob.AttackTracks then 1 else currentStep + 1
 
-						-- Apex Strike Delay (0.12s into slash)
 						task.delay(0.12, function()
 							if not rootPart.Parent or not targetHum or targetHum.Health <= 0 then return end
 							local strikeDist = (targetHrp.Position - rootPart.Position).Magnitude
@@ -685,7 +670,6 @@ local function StepAI()
 
 							local flatForward = Vector3.new(targetHrp.Position.X - rootPos.X, 0, targetHrp.Position.Z - rootPos.Z).Unit
 
-							-- 1. Route through HitboxManager with valid HitResult structure
 							local fakeHit: HitboxManager.HitResult = {
 								Character = targetChar,
 								Humanoid = targetHum,
@@ -696,7 +680,6 @@ local function StepAI()
 							local knockbackVector = Vector3.new(0, 4, 14)
 							local res = HitboxManager.ApplyCombatResolution(nil, fakeHit, config.BaseDamage, 20, knockbackVector)
 
-							-- 2. Broadcast Hit to Target Player for Camera Shake, Slashmarks, Sound & Numbers
 							if combatActionRemote and targetPlayer then
 								combatActionRemote:FireClient(targetPlayer, nil :: any, "M1", {
 									HasHit = true,
@@ -752,7 +735,10 @@ function MobAIManager.Init()
 	local function InitSpawner(anchor: Instance)
 		if not anchor:IsA("BasePart") then return end
 
-		local mobId = anchor:GetAttribute("MobId") :: string? or anchor:GetAttribute("BeastId") :: string? or "RogueDisciple"
+		local rawMobId = anchor:GetAttribute("MobId") :: string?
+			or anchor:GetAttribute("BeastId") :: string?
+			or anchor.Name:gsub("^Spawner_", "")
+		local mobId = SPAWNER_ALIAS_MAP[rawMobId] or rawMobId
 		local spawnRadius = anchor:GetAttribute("SpawnRadius") :: number? or 30
 		local maxCount = anchor:GetAttribute("MaxCount") :: number? or 3
 		local respawnTime = anchor:GetAttribute("RespawnTime") :: number? or 20

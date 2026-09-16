@@ -10,8 +10,7 @@
     - Breakthrough Dan consumption requirement
     - Inner Demon Tribulation QTE Engine with non-lethal Qi Deviation Backlash
     - Ultimate Pinnacle Samsara Rebirth Gate & Loop (Immortal Ascension Order 9 -> Qi Condensation Order 1)
-    - Safe lazy remote resolution (immune to initialization sequence order)
-    - Remote-routed Heavenly Ascension & Samsara Announcements
+    - Phase 1: Synchronous lazy session cache fallback inside GetPlayerData to eliminate race condition
 ]]
 
 local Players = game:GetService("Players")
@@ -256,7 +255,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Engine Initialized (Pacing Calibrated + Samsara Qi Loop Active).")
+	print("[ASCEND] CultivationManager Initialized (Synchronous Cache & Samsara Qi Loop).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -279,7 +278,7 @@ function CultivationManager.OnPlayerAdded(player: Player)
 	player.CharacterAdded:Connect(function(character)
 		local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
 		if humanoid then
-			local pData = playerData[player]
+			local pData = CultivationManager.GetPlayerData(player)
 			if pData then
 				local maxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
 				humanoid.MaxHealth = maxHp
@@ -304,11 +303,23 @@ function CultivationManager.OnPlayerRemoving(player: Player)
 end
 
 function CultivationManager.GetPlayerData(player: Player): PlayerCultivationData?
-	return playerData[player]
+	local data = playerData[player]
+	if not data and player.Parent then
+		-- Synchronous lazy fallback: reconstruct session cache from attributes if available
+		local rawRealm = player:GetAttribute("Realm")
+		local cleanRealm = if type(rawRealm) == "string" then rawRealm:gsub("%s*[-–].*", ""):gsub("%s+", "") else "QiCondensation"
+		local realmKey: any = if CultivationConfig[cleanRealm] then cleanRealm else "QiCondensation"
+		local order = (player:GetAttribute("Order") :: number?) or 1
+		local curQi = (player:GetAttribute("Qi") :: number?) or 200
+		local cultQi = (player:GetAttribute("CultivatedQi") :: number?) or (player:GetAttribute("MaxQi") :: number?) or curQi
+		CultivationManager.SetPlayerData(player, realmKey, curQi, order, cultQi)
+		data = playerData[player]
+	end
+	return data
 end
 
 function CultivationManager.AddInternalQi(player: Player, amount: number)
-	local pData = playerData[player]
+	local pData = CultivationManager.GetPlayerData(player)
 	if not pData then return end
 
 	local maxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
@@ -348,7 +359,7 @@ function CultivationManager.SetPlayerData(player: Player, realm: CultivationConf
 end
 
 function CultivationManager.ApplyRealmStats(player: Player)
-	local pData = playerData[player]
+	local pData = CultivationManager.GetPlayerData(player)
 	if not pData then return end
 
 	local character = player.Character
@@ -383,7 +394,7 @@ function CultivationManager.ApplyRealmStats(player: Player)
 end
 
 function CultivationManager.ConsumeQi(player: Player, amount: number): boolean
-	local pData = playerData[player]
+	local pData = CultivationManager.GetPlayerData(player)
 	if not pData then return false end
 
 	if pData.CurrentQi < amount then
@@ -396,7 +407,7 @@ function CultivationManager.ConsumeQi(player: Player, amount: number): boolean
 end
 
 function CultivationManager.ToggleMeditation(player: Player)
-	local pData = playerData[player]
+	local pData = CultivationManager.GetPlayerData(player)
 	if not pData or pData.IsTribulationActive then return end
 
 	local character = player.Character
@@ -544,16 +555,12 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 	end
 end
 
--- =============================================================================
--- PHASE 5: SAMSARA REBIRTH TRIGGER & RESOLUTION ENGINE
--- =============================================================================
 function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
-	local pData = playerData[player]
+	local pData = CultivationManager.GetPlayerData(player)
 	if not pData then return false end
 
 	local updateRemote = getUpdateCultivationRemote()
 
-	-- Requirement Gate Validation
 	if pData.Realm ~= "ImmortalAscension" or pData.Order < 9 then
 		if updateRemote then
 			updateRemote:FireClient(player, {
@@ -585,16 +592,13 @@ function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
 		CultivationManager.StopGroundedMeditation(player, character)
 	end
 
-	-- Advance Samsara Cycle & Persistent Buffs
 	local pdm = getPlayerDataManager()
 	local newCycle = if pdm and pdm.IncrementSamsara then pdm.IncrementSamsara(player) else 1
 	local roman = ToRoman(newCycle)
 	local fullTitle = string.format("[Samsara %s]", roman)
 
-	-- Reset Cultivation Loop to Qi Condensation Order 1 (200 / 1000 Qi)
 	CultivationManager.SetPlayerData(player, "QiCondensation", 200, 1, 200)
 
-	-- Visual Light Pillar on Rebirth
 	if character then
 		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
@@ -622,7 +626,6 @@ function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
 		end
 	end
 
-	-- Notify Client & Whole Server
 	if updateRemote then
 		updateRemote:FireClient(player, {
 			Action = "BreakthroughSuccess",
@@ -653,7 +656,7 @@ function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
 end
 
 function CultivationManager.AttemptBreakthrough(player: Player): boolean
-	local pData = playerData[player]
+	local pData = CultivationManager.GetPlayerData(player)
 	if not pData or pData.IsTribulationActive then return false end
 
 	local updateRemote = getUpdateCultivationRemote()
@@ -671,7 +674,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		return false
 	end
 
-	-- Minor Order Breakthrough (Orders 1 through 8)
 	if pData.Order < 9 then
 		local oldMaxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
 		local oldMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
@@ -703,12 +705,10 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		return true
 	end
 
-	-- Ultimate Pinnacle Check (Immortal Ascension Order 9 -> Samsara Rebirth)
 	if pData.Realm == "ImmortalAscension" and pData.Order == 9 then
 		return CultivationManager.TriggerSamsaraRebirth(player)
 	end
 
-	-- Major Realm Breakthrough (Order 9 -> Next Realm Order 1)
 	local nextRealmMap: { [CultivationConfig.RealmTier]: CultivationConfig.RealmTier } = {
 		QiCondensation = "FoundationEstablishment",
 		FoundationEstablishment = "GoldenCore",
@@ -724,7 +724,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	local nextRealm = nextRealmMap[pData.Realm]
 	if not nextRealm then return false end
 
-	-- 1. Dan Consumption Gate
 	local requiredDan = REALM_BREAKTHROUGH_DAN[nextRealm]
 	local invMgr = getInventoryManager()
 	if requiredDan and invMgr then
@@ -747,7 +746,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	local oldMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
 	local tribulationSpec = CultivationConfig[pData.Realm].Tribulation
 
-	-- Instant Breakthrough for realms without tribulation strikes
 	if tribulationSpec.StrikeCount <= 0 then
 		pData.Realm = nextRealm
 		pData.Order = 1
@@ -780,7 +778,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		return true
 	end
 
-	-- 2. Inner Demon Tribulation Engine
 	pData.IsTribulationActive = true
 	pData.TotalWaves = tribulationSpec.StrikeCount
 	pData.TribulationWave = 0
@@ -842,7 +839,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			local pulseSucceeded = session and session.PulseReceived == true
 
 			if not pulseSucceeded then
-				-- TRIBULATION BACKLASH (No Permadeath)
 				activeTribulationSessions[player] = nil
 				pData.IsTribulationActive = false
 				pData.TribulationWave = 0
@@ -878,7 +874,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			task.wait(tribulationSpec.StrikeInterval or 1.0)
 		end
 
-		-- SUCCESSFUL ASCENSION
 		activeTribulationSessions[player] = nil
 		pData.Realm = nextRealm
 		pData.Order = 1
@@ -928,7 +923,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 end
 
 function CultivationManager.SyncClient(player: Player)
-	local pData = playerData[player]
+	local pData = CultivationManager.GetPlayerData(player)
 	if not pData then return end
 
 	local realmInfo = CultivationConfig[pData.Realm]

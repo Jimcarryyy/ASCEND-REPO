@@ -4,6 +4,7 @@
     Location: src/ReplicatedStorage/Shared/Configs/MobConfig.luau
     Authoritative enemy templates, zone distribution, combat stats,
     and 4-tier wilderness drops (including graded beast cores for Alchemy).
+    100% Pure Humanoid Cultivator roster (Beasts purged).
 ]]
 
 export type MobDropItem = {
@@ -15,6 +16,7 @@ export type MobDropItem = {
 
 export type MobDefinition = {
 	Id: string,
+	Name: string?,
 	DisplayName: string,
 	MaxHealth: number,
 	BaseDamage: number,
@@ -37,6 +39,7 @@ local MOBS: { [string]: MobDefinition } = {
 	-- =========================================================================
 	["RogueDisciple"] = {
 		Id = "RogueDisciple",
+		Name = "Rogue Initiate",
 		DisplayName = "Rogue Initiate",
 		MaxHealth = 350,
 		BaseDamage = 25,
@@ -53,65 +56,31 @@ local MOBS: { [string]: MobDefinition } = {
 		},
 	},
 
-	["DemonWolf"] = {
-		Id = "DemonWolf",
-		DisplayName = "Wilderness Demon Wolf",
+	["BanditCultivator"] = {
+		Id = "BanditCultivator",
+		Name = "Bandit Cultivator",
+		DisplayName = "Bandit Cultivator",
 		MaxHealth = 550,
 		BaseDamage = 40,
-		WalkSpeed = 18,
+		WalkSpeed = 16,
 		AttackRange = 5.5,
-		AttackCooldown = 1.3,
-		AggroRadius = 30,
+		AttackCooldown = 1.4,
+		AggroRadius = 28,
 		RespawnTime = 15,
 		BaseSpiritStones = 25,
 		BaseQiReward = 65,
 		DropTable = {
+			{ ItemId = "SpiritGrass_1Yr", Chance = 0.70, MinCount = 1, MaxCount = 2 },
 			{ ItemId = "DemonBeastCore", Chance = 0.50, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "SpiritGrass_1Yr", Chance = 0.40, MinCount = 1, MaxCount = 2 },
-		},
-	},
-
-	["IronhideBoar"] = {
-		Id = "IronhideBoar",
-		DisplayName = "Ironhide Boar",
-		MaxHealth = 800,
-		BaseDamage = 55,
-		WalkSpeed = 12,
-		AttackRange = 5.0,
-		AttackCooldown = 2.0,
-		AggroRadius = 20,
-		RespawnTime = 18,
-		BaseSpiritStones = 40,
-		BaseQiReward = 90,
-		DropTable = {
-			{ ItemId = "DemonBeastCore", Chance = 0.70, MinCount = 1, MaxCount = 3 },
-			{ ItemId = "DragonBloodVine_1Yr", Chance = 0.35, MinCount = 1, MaxCount = 1 },
 		},
 	},
 
 	-- =========================================================================
-	-- TIER 2: MISTY BAMBOO WILDERNESS (Foundation Establishment & Golden Core)
+	-- TIER 2: MISTY BAMBOO WILDERNESS (Foundation Establishment)
 	-- =========================================================================
-	["BloodShadowAssassin"] = {
-		Id = "BloodShadowAssassin",
-		DisplayName = "Blood Shadow Assassin",
-		MaxHealth = 2500,
-		BaseDamage = 120,
-		WalkSpeed = 19,
-		AttackRange = 5.0,
-		AttackCooldown = 1.2,
-		AggroRadius = 32,
-		RespawnTime = 20,
-		BaseSpiritStones = 120,
-		BaseQiReward = 280,
-		DropTable = {
-			{ ItemId = "DragonBloodVine_10Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.45, MinCount = 1, MaxCount = 1 },
-		},
-	},
-
 	["CorruptedIronGuard"] = {
 		Id = "CorruptedIronGuard",
+		Name = "Corrupted Iron Guard",
 		DisplayName = "Corrupted Iron Guard",
 		MaxHealth = 8000,
 		BaseDamage = 280,
@@ -128,70 +97,50 @@ local MOBS: { [string]: MobDefinition } = {
 		},
 	},
 
-	["SilverbackFrostApe"] = {
-		Id = "SilverbackFrostApe",
-		DisplayName = "Silverback Frost Ape (Decade Beast)",
-		MaxHealth = 14000,
-		BaseDamage = 450,
-		WalkSpeed = 16,
-		AttackRange = 6.5,
-		AttackCooldown = 1.4,
-		AggroRadius = 35,
-		RespawnTime = 30,
-		BaseSpiritStones = 250,
-		BaseQiReward = 600,
-		DropTable = {
-			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.85, MinCount = 2, MaxCount = 4 },
-			{ ItemId = "GaleWindLotus_10Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
-		},
-	},
-
-	-- =========================================================================
-	-- TIER 3: DEMON BURIAL VALLEY (Nascent Soul to Void Refining)
-	-- =========================================================================
-	["FallenInnerProdigy"] = {
-		Id = "FallenInnerProdigy",
-		DisplayName = "Fallen Inner Prodigy",
-		MaxHealth = 65000,
-		BaseDamage = 1200,
+	["GhostBladeMarauder"] = {
+		Id = "GhostBladeMarauder",
+		Name = "Ghost Blade Marauder",
+		DisplayName = "Ghost Blade Marauder",
+		MaxHealth = 12000,
+		BaseDamage = 380,
 		WalkSpeed = 17,
 		AttackRange = 6.0,
-		AttackCooldown = 1.3,
-		AggroRadius = 40,
-		RespawnTime = 45,
-		BaseSpiritStones = 800,
-		BaseQiReward = 2200,
+		AttackCooldown = 1.4,
+		AggroRadius = 32,
+		RespawnTime = 25,
+		BaseSpiritStones = 220,
+		BaseQiReward = 550,
 		DropTable = {
-			{ ItemId = "SpiritGrass_100Yr", Chance = 0.55, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "DemonBeastCore_100Yr", Chance = 0.75, MinCount = 2, MaxCount = 4 },
-		},
-	},
-
-	["VoidChasmChimera"] = {
-		Id = "VoidChasmChimera",
-		DisplayName = "Void Chasm Chimera (Century Beast)",
-		MaxHealth = 450000,
-		BaseDamage = 6500,
-		WalkSpeed = 20,
-		AttackRange = 7.5,
-		AttackCooldown = 1.1,
-		AggroRadius = 50,
-		RespawnTime = 60,
-		BaseSpiritStones = 2000,
-		BaseQiReward = 5000,
-		IsBoss = true,
-		DropTable = {
-			{ ItemId = "DemonBeastCore_100Yr", Chance = 1.0, MinCount = 5, MaxCount = 10 },
-			{ ItemId = "DragonBloodVine_100Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "GaleWindLotus_100Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DragonBloodVine_10Yr", Chance = 0.60, MinCount = 1, MaxCount = 3 },
+			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.60, MinCount = 1, MaxCount = 2 },
 		},
 	},
 
 	-- =========================================================================
-	-- TIER 4: CELESTIAL ABYSS (Body Integration to Immortal Ascension)
+	-- TIER 3: GOLDEN CORE
 	-- =========================================================================
+	["BloodShadowAssassin"] = {
+		Id = "BloodShadowAssassin",
+		Name = "Blood Shadow Assassin",
+		DisplayName = "Blood Shadow Assassin",
+		MaxHealth = 2500,
+		BaseDamage = 120,
+		WalkSpeed = 19,
+		AttackRange = 5.0,
+		AttackCooldown = 1.2,
+		AggroRadius = 32,
+		RespawnTime = 20,
+		BaseSpiritStones = 120,
+		BaseQiReward = 280,
+		DropTable = {
+			{ ItemId = "DragonBloodVine_10Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.45, MinCount = 1, MaxCount = 1 },
+		},
+	},
+
 	["Boss_FallenSwordGenius"] = {
 		Id = "Boss_FallenSwordGenius",
+		Name = "Sword Fiend Patriarch",
 		DisplayName = "Sword Fiend Patriarch",
 		MaxHealth = 2500000,
 		BaseDamage = 25000,
@@ -209,9 +158,79 @@ local MOBS: { [string]: MobDefinition } = {
 		},
 	},
 
-	["AbyssalDemonSovereign"] = {
-		Id = "AbyssalDemonSovereign",
-		DisplayName = "Abyssal Demon Sovereign (Millennium World Boss)",
+	-- =========================================================================
+	-- TIER 4: NASCENT SOUL
+	-- =========================================================================
+	["FallenInnerProdigy"] = {
+		Id = "FallenInnerProdigy",
+		Name = "Fallen Inner Prodigy",
+		DisplayName = "Fallen Inner Prodigy",
+		MaxHealth = 65000,
+		BaseDamage = 1200,
+		WalkSpeed = 17,
+		AttackRange = 6.0,
+		AttackCooldown = 1.3,
+		AggroRadius = 40,
+		RespawnTime = 45,
+		BaseSpiritStones = 800,
+		BaseQiReward = 2200,
+		DropTable = {
+			{ ItemId = "SpiritGrass_100Yr", Chance = 0.55, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DemonBeastCore_100Yr", Chance = 0.75, MinCount = 2, MaxCount = 4 },
+		},
+	},
+
+	-- =========================================================================
+	-- TIER 5: SPIRIT SEVERING
+	-- =========================================================================
+	["FrostPeakApostle"] = {
+		Id = "FrostPeakApostle",
+		Name = "Frost Peak Apostle",
+		DisplayName = "Frost Peak Apostle",
+		MaxHealth = 180000,
+		BaseDamage = 3200,
+		WalkSpeed = 18,
+		AttackRange = 6.5,
+		AttackCooldown = 1.2,
+		AggroRadius = 42,
+		RespawnTime = 50,
+		BaseSpiritStones = 1400,
+		BaseQiReward = 3800,
+		DropTable = {
+			{ ItemId = "GaleWindLotus_100Yr", Chance = 0.65, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DemonBeastCore_100Yr", Chance = 0.80, MinCount = 2, MaxCount = 4 },
+		},
+	},
+
+	-- =========================================================================
+	-- TIER 6: VOID REFINING
+	-- =========================================================================
+	["VoidPhantomSwordmaster"] = {
+		Id = "VoidPhantomSwordmaster",
+		Name = "Void Phantom Swordmaster",
+		DisplayName = "Void Phantom Swordmaster",
+		MaxHealth = 450000,
+		BaseDamage = 6500,
+		WalkSpeed = 20,
+		AttackRange = 7.5,
+		AttackCooldown = 1.1,
+		AggroRadius = 50,
+		RespawnTime = 60,
+		BaseSpiritStones = 2000,
+		BaseQiReward = 5000,
+		DropTable = {
+			{ ItemId = "DemonBeastCore_100Yr", Chance = 1.0, MinCount = 5, MaxCount = 10 },
+			{ ItemId = "DragonBloodVine_100Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
+		},
+	},
+
+	-- =========================================================================
+	-- TIER 8-10: MAHAYANA / TRANSGENDENT WORLD BOSS
+	-- =========================================================================
+	["AsuraSwordSovereign"] = {
+		Id = "AsuraSwordSovereign",
+		Name = "Asura Sword Sovereign",
+		DisplayName = "Asura Sword Sovereign",
 		MaxHealth = 25000000,
 		BaseDamage = 200000,
 		WalkSpeed = 22,
