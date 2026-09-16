@@ -2,148 +2,139 @@
 --[[
     MonetizationConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/MonetizationConfig.luau
-    Central configuration for Gamepasses, Developer Products, and Robux monetization.
+    Authoritative monetization registry for Gamepasses and Developer Products,
+    including Bloodline Spin reroll packages.
 ]]
 
-export type GamepassType = 
-    "DoubleQiSpeed" 
-    | "AutoMeditation" 
-    | "TribulationShield" 
-    | "InventoryExpansion" 
-    | "VIPElder"
-
 export type GamepassDefinition = {
-    Id: string,
-    RobloxAssetId: number, -- Place real Gamepass ID from Creator Dashboard here
-    DisplayName: string,
-    Description: string,
-    PriceRobux: number,
-    Icon: string?,
+	Id: string,
+	RobloxPassId: number,
+	DisplayName: string,
+	Description: string,
+	PriceRobux: number,
+	Icon: string?,
 }
 
 export type DevProductDefinition = {
-    Id: string,
-    RobloxProductId: number, -- Place real Product ID from Creator Dashboard here
-    DisplayName: string,
-    Description: string,
-    PriceRobux: number,
-    RewardType: "SpiritStones" | "InstantQi" | "ToxicityCleanse",
-    RewardAmount: number,
+	Id: string,
+	RobloxProductId: number,
+	DisplayName: string,
+	Description: string,
+	PriceRobux: number,
+	RewardType: "SpiritStones" | "QiPill" | "WeaponSkin" | "BloodlineSpins",
+	RewardAmount: number,
+	Icon: string?,
 }
 
 local MonetizationConfig = {}
 
--- 1. GAMEPASSES (One-time Robux unlocks)
-local GAMEPASSES: { [GamepassType]: GamepassDefinition } = {
-    ["DoubleQiSpeed"] = {
-        Id = "DoubleQiSpeed",
-        RobloxAssetId = 0, -- Set your Gamepass ID in Creator Dashboard
-        DisplayName = "2x Cultivation Speed",
-        Description = "Permanently doubles Qi gained from meditation, Qi nodes, and combat essence.",
-        PriceRobux = 299,
-    },
-    ["AutoMeditation"] = {
-        Id = "AutoMeditation",
-        RobloxAssetId = 0,
-        DisplayName = "Auto-Meditation (AFK Farm)",
-        Description = "Automatically gathers internal Qi even when standing still or exploring.",
-        PriceRobux = 199,
-    },
-    ["TribulationShield"] = {
-        Id = "TribulationShield",
-        RobloxAssetId = 0,
-        DisplayName = "Heavenly Tribulation Shield",
-        Description = "Guarantees 100% breakthrough success across all 10 Realms with zero Qi backlash.",
-        PriceRobux = 399,
-    },
-    ["InventoryExpansion"] = {
-        Id = "InventoryExpansion",
-        RobloxAssetId = 0,
-        DisplayName = "+30 Spirit Pouch Slots",
-        Description = "Expands your bag capacity to store more rare herbs, dans, and swords.",
-        PriceRobux = 149,
-    },
-    ["VIPElder"] = {
-        Id = "VIPElder",
-        RobloxAssetId = 0,
-        DisplayName = "Honorary Sect Elder VIP",
-        Description = "Golden overhead crown badge, exclusive elder robe aura, and 1.5x Spirit Stones drop rate.",
-        PriceRobux = 499,
-    },
+local GAMEPASSES: { [string]: GamepassDefinition } = {
+	["AutoMeditate"] = {
+		Id = "AutoMeditate",
+		RobloxPassId = 0,
+		DisplayName = "Infinite Dao Meditation",
+		Description = "Automatically gathers and refines Spirit Qi even while running or roaming the world.",
+		PriceRobux = 299,
+	},
+	["FastFlight"] = {
+		Id = "FastFlight",
+		RobloxPassId = 0,
+		DisplayName = "Void Rift Flight Engine",
+		Description = "Doubles the flight movement speed across all flying sword tiers.",
+		PriceRobux = 499,
+	},
+	["VipElder"] = {
+		Id = "VipElder",
+		RobloxPassId = 0,
+		DisplayName = "Honorary Sect Elder VIP",
+		Description = "Grants +50% daily sect stipend, exclusive golden elder nameplate, and elder pavilion access.",
+		PriceRobux = 799,
+	},
 }
 
--- 2. DEVELOPER PRODUCTS (Repeatable Robux purchases)
 local DEV_PRODUCTS: { [string]: DevProductDefinition } = {
-    ["Stones_500"] = {
-        Id = "Stones_500",
-        RobloxProductId = 0,
-        DisplayName = "Pouch of 500 Spirit Stones",
-        Description = "Basic sack of shining spirit currency.",
-        PriceRobux = 49,
-        RewardType = "SpiritStones",
-        RewardAmount = 500,
-    },
-    ["Stones_2500"] = {
-        Id = "Stones_2500",
-        RobloxProductId = 0,
-        DisplayName = "Chest of 2,500 Spirit Stones",
-        Description = "Large chest of spirit currency for buying high-tier pills.",
-        PriceRobux = 199,
-        RewardType = "SpiritStones",
-        RewardAmount = 2500,
-    },
-    ["Stones_10000"] = {
-        Id = "Stones_10000",
-        RobloxProductId = 0,
-        DisplayName = "Mountain of 10,000 Spirit Stones",
-        Description = "Immense spirit stone fortune.",
-        PriceRobux = 599,
-        RewardType = "SpiritStones",
-        RewardAmount = 10000,
-    },
-    ["InstantBreakthroughDan"] = {
-        Id = "InstantBreakthroughDan",
-        RobloxProductId = 0,
-        DisplayName = "Supreme Heavenly Qi Pill",
-        Description = "Instantly fills your Dantian CultivatedQi to 100% for the current order.",
-        PriceRobux = 99,
-        RewardType = "InstantQi",
-        RewardAmount = 1,
-    },
-    ["ToxicityPurifier"] = {
-        Id = "ToxicityPurifier",
-        RobloxProductId = 0,
-        DisplayName = "Celestial Cleansing Spring",
-        Description = "Instantly purges all Dan toxicity, allowing immediate pill consumption.",
-        PriceRobux = 49,
-        RewardType = "ToxicityCleanse",
-        RewardAmount = 1,
-    },
+	-- Spirit Stone Currency Top-ups
+	["SpiritStones_Small"] = {
+		Id = "SpiritStones_Small",
+		RobloxProductId = 0,
+		DisplayName = "Pouch of Spirit Stones",
+		Description = "Contains 500 pure immortal spirit stones.",
+		PriceRobux = 49,
+		RewardType = "SpiritStones",
+		RewardAmount = 500,
+	},
+	["SpiritStones_Medium"] = {
+		Id = "SpiritStones_Medium",
+		RobloxProductId = 0,
+		DisplayName = "Chest of Spirit Stones",
+		Description = "Contains 2,500 pure immortal spirit stones.",
+		PriceRobux = 199,
+		RewardType = "SpiritStones",
+		RewardAmount = 2500,
+	},
+	["SpiritStones_Large"] = {
+		Id = "SpiritStones_Large",
+		RobloxProductId = 0,
+		DisplayName = "Treasury of Spirit Stones",
+		Description = "Contains 10,000 pure immortal spirit stones.",
+		PriceRobux = 699,
+		RewardType = "SpiritStones",
+		RewardAmount = 10000,
+	},
+
+	-- Bloodline Spin Packages
+	["BloodlineSpin_1"] = {
+		Id = "BloodlineSpin_1",
+		RobloxProductId = 0,
+		DisplayName = "1x Bloodline Reroll",
+		Description = "Reroll your sword cultivator lineage once.",
+		PriceRobux = 25,
+		RewardType = "BloodlineSpins",
+		RewardAmount = 1,
+	},
+	["BloodlineSpin_5"] = {
+		Id = "BloodlineSpin_5",
+		RobloxProductId = 0,
+		DisplayName = "5x Bloodline Rerolls",
+		Description = "Batch of 5 bloodline rerolls.",
+		PriceRobux = 99,
+		RewardType = "BloodlineSpins",
+		RewardAmount = 5,
+	},
+	["BloodlineSpin_25"] = {
+		Id = "BloodlineSpin_25",
+		RobloxProductId = 0,
+		DisplayName = "25x Bloodline Rerolls (Popular)",
+		Description = "High chance of unlocking Legendary or Mythic lineages.",
+		PriceRobux = 399,
+		RewardType = "BloodlineSpins",
+		RewardAmount = 25,
+	},
+	["BloodlineSpin_75"] = {
+		Id = "BloodlineSpin_75",
+		RobloxProductId = 0,
+		DisplayName = "75x Bloodline Rerolls (Ultimate)",
+		Description = "Massive lineage bundle for unlocking Mythic Chaos Dao Bodies.",
+		PriceRobux = 999,
+		RewardType = "BloodlineSpins",
+		RewardAmount = 75,
+	},
 }
 
-function MonetizationConfig.GetGamepass(id: GamepassType): GamepassDefinition?
-    return GAMEPASSES[id]
+function MonetizationConfig.GetGamepass(passId: string): GamepassDefinition?
+	return GAMEPASSES[passId]
 end
 
-function MonetizationConfig.GetAllGamepasses(): { [GamepassType]: GamepassDefinition }
-    return GAMEPASSES
+function MonetizationConfig.GetAllGamepasses(): { [string]: GamepassDefinition }
+	return GAMEPASSES
 end
 
-function MonetizationConfig.GetDevProduct(id: string): DevProductDefinition?
-    return DEV_PRODUCTS[id]
-end
-
-function MonetizationConfig.GetDevProductByRobloxId(productId: number): DevProductDefinition?
-    for _, prod in pairs(DEV_PRODUCTS) do
-        if prod.RobloxProductId == productId then
-            return prod
-        end
-    end
-    return nil
+function MonetizationConfig.GetDevProduct(productId: string): DevProductDefinition?
+	return DEV_PRODUCTS[productId]
 end
 
 function MonetizationConfig.GetAllDevProducts(): { [string]: DevProductDefinition }
-    return DEV_PRODUCTS
+	return DEV_PRODUCTS
 end
 
 return MonetizationConfig

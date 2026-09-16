@@ -2,8 +2,8 @@
 --[[
     SectConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/SectConfig.luau
-    Defines Azure Cloud Sect Disciple hierarchy, contribution thresholds,
-    3-Tiered Daily Quests (Easy -> Medium -> Hard), and market prices.
+    Authoritative Azure Cloud Sect Disciple hierarchy, 3-Tiered Daily Quests
+    (with Tier 3 Bloodline Fate Spin Tokens), and market prices.
 ]]
 
 export type DiscipleRank = 
@@ -35,6 +35,7 @@ export type SectQuestDefinition = {
 	RewardContribution: number,
 	RewardSpiritStones: number,
 	RewardQi: number,
+	RewardBloodlineSpins: number?,
 }
 
 export type VendorItemDefinition = {
@@ -104,7 +105,6 @@ local RANKS: { [DiscipleRank]: RankDefinition } = {
 	},
 }
 
--- Rank ordering used for market/purchase gating (Outer -> Grand Elder).
 local RANK_ORDER: { [DiscipleRank]: number } = {
 	OuterDisciple = 1,
 	InnerDisciple = 2,
@@ -114,7 +114,7 @@ local RANK_ORDER: { [DiscipleRank]: number } = {
 	GrandElder = 6,
 }
 
--- 2. 3-TIERED DAILY SECT QUESTS (Easy -> Medium -> Hard)
+-- 2. 3-TIERED DAILY SECT QUESTS (Tier 3 awards Bloodline Spins!)
 local TIERED_QUESTS: { [string]: { [number]: SectQuestDefinition } } = {
 	["Quest_GatherSpiritGrass"] = {
 		[1] = {
@@ -152,6 +152,7 @@ local TIERED_QUESTS: { [string]: { [number]: SectQuestDefinition } } = {
 			RewardContribution = 200,
 			RewardSpiritStones = 400,
 			RewardQi = 600,
+			RewardBloodlineSpins = 1,
 		},
 	},
 
@@ -191,6 +192,7 @@ local TIERED_QUESTS: { [string]: { [number]: SectQuestDefinition } } = {
 			RewardContribution = 250,
 			RewardSpiritStones = 500,
 			RewardQi = 750,
+			RewardBloodlineSpins = 1,
 		},
 	},
 
@@ -230,6 +232,7 @@ local TIERED_QUESTS: { [string]: { [number]: SectQuestDefinition } } = {
 			RewardContribution = 300,
 			RewardSpiritStones = 600,
 			RewardQi = 800,
+			RewardBloodlineSpins = 1,
 		},
 	},
 }
@@ -251,7 +254,6 @@ local MARKET_ITEMS: { [string]: VendorItemDefinition } = {
 	["DemonBeastCore"]         = { ItemId = "DemonBeastCore", BuyPrice = 400, SellPrice = 180, RequiredRank = "InnerDisciple" },
 	["SpiritAsh"]              = { ItemId = "SpiritAsh", BuyPrice = nil, SellPrice = 2, RequiredRank = "OuterDisciple" },
 
-	-- WEAPONS (MortalIronJian intentionally excluded -- free starter only, not sold)
 	["AzureCloudDiscipleJian"] = { ItemId = "AzureCloudDiscipleJian", BuyPrice = 800, SellPrice = 300, RequiredRank = "InnerDisciple" },
 	["FlowingQiSpiritSword"]   = { ItemId = "FlowingQiSpiritSword", BuyPrice = 2500, SellPrice = 1000, RequiredRank = "CoreDisciple" },
 	["VerdantJadeFlyingSword"] = { ItemId = "VerdantJadeFlyingSword", BuyPrice = 6000, SellPrice = 2500, RequiredRank = "DirectDisciple" },

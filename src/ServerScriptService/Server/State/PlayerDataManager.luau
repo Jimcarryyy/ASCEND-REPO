@@ -6,6 +6,7 @@
     - DataVersion 3 Persistence Pipeline with Legacy Test Sword Sanitizer
     - Developer Exclusive Arsenal Engine (Auto-grants all present & future swords to Han_jueee only)
     - Normal Player Grind Isolation (Regular players / alts only have MortalIronJian and must buy/earn swords one-by-one)
+    - Sword Bloodline Lineages, Spin Economy & 3D Visual Artifacts (Phase 4)
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -16,9 +17,11 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
+local BloodlineConfig = require(ReplicatedStorage.Shared.Configs.BloodlineConfig)
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
+local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 export type SavedInventorySlot = {
 	ItemId: string,
@@ -54,6 +57,8 @@ export type SavedPlayerData = {
 	EquippedSkin: string?,
 	QuestProgress: { [string]: SavedQuestState }?,
 	LastStipendClaim: number?,
+	Bloodline: string?,
+	BloodlineSpins: number?,
 }
 
 local PlayerDataManager = {}
@@ -94,6 +99,7 @@ local playerAlchemyData: { [Player]: { Exp: number, Level: number } } = {}
 local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfig.DiscipleRank, ContributionPoints: number } } = {}
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
+local playerBloodlines: { [Player]: { Current: string, Spins: number } } = {}
 
 local sectManagerRef: any = nil
 local function getSectManager(): any
@@ -125,7 +131,74 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	OwnedGamepasses = {},
 	UnlockedSkins = { ["DefaultBronze"] = true },
 	EquippedSkin = "DefaultBronze",
+	Bloodline = "MortalSwordBone",
+	BloodlineSpins = 5,
 }
+
+-- 3D Visual Artifact Welder for Bloodlines
+local function AttachBloodlineVisual(char: Model, bloodlineId: string)
+	local def = BloodlineConfig.GetBloodline(bloodlineId)
+	if not def or not def.VisualArtifact then return end
+
+	local old = char:FindFirstChild("BloodlineArtifact")
+	if old then old:Destroy() end
+
+	local vSpec = def.VisualArtifact
+	local parentPart = char:FindFirstChild(vSpec.AttachmentPoint) :: BasePart?
+		or char:FindFirstChild("UpperTorso") :: BasePart?
+		or char:FindFirstChild("Torso") :: BasePart?
+	if not parentPart then return end
+
+	local modelsFolder = ReplicatedStorage:FindFirstChild("BloodlineModels")
+	local preMadeModel = modelsFolder and modelsFolder:FindFirstChild(vSpec.ArtifactName) :: Model?
+
+	local artifactModel: Model
+	if preMadeModel then
+		artifactModel = preMadeModel:Clone()
+	else
+		-- Procedural 3D Visual Artifact (clean, non-colliding placeholder)
+		artifactModel = Instance.new("Model")
+		local core = Instance.new("Part")
+		core.Name = "ArtifactCore"
+		core.Shape = if vSpec.AttachmentPoint == "Head" then Enum.PartType.Ball else Enum.PartType.Cylinder
+		core.Size = if vSpec.AttachmentPoint == "Head" then Vector3.new(1.2, 1.2, 1.2) else Vector3.new(0.3, 3.5, 3.5)
+		core.Material = Enum.Material.Neon
+		core.Color = vSpec.AuraColor
+		core.Transparency = 0.4
+		core.CanCollide = false
+		core.Massless = true
+		core.Anchored = false
+		core.Parent = artifactModel
+		artifactModel.PrimaryPart = core
+
+		local sel = Instance.new("SelectionBox")
+		sel.Color3 = vSpec.AuraColor
+		sel.LineThickness = 0.05
+		sel.Adornee = core
+		sel.Parent = core
+	end
+
+	artifactModel.Name = "BloodlineArtifact"
+	for _, p in ipairs(artifactModel:GetDescendants()) do
+		if p:IsA("BasePart") then
+			p.Anchored = false
+			p.CanCollide = false
+			p.Massless = true
+		end
+	end
+
+	local prim = artifactModel.PrimaryPart or artifactModel:FindFirstChildWhichIsA("BasePart", true)
+	if prim then
+		artifactModel.Parent = char
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = parentPart
+		weld.Part1 = prim
+		weld.Parent = prim
+
+		local offset = if vSpec.AttachmentPoint == "Head" then Vector3.new(0, 1.4, 0) else Vector3.new(0, 0.4, -0.9)
+		prim.CFrame = parentPart.CFrame * CFrame.new(offset)
+	end
+end
 
 function PlayerDataManager.Init()
 	local success, result = pcall(function()
@@ -239,6 +312,8 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			OwnedGamepasses = {},
 			UnlockedSkins = { ["DefaultBronze"] = true },
 			EquippedSkin = "DefaultBronze",
+			Bloodline = "MortalSwordBone",
+			BloodlineSpins = 5,
 		}
 	else
 		if not loadedData.Version or loadedData.Version < CURRENT_VERSION then
@@ -272,6 +347,11 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	playerSkinData[player] = {
 		EquippedSkin = loadedData.EquippedSkin or "DefaultBronze",
 		UnlockedSkins = loadedData.UnlockedSkins or { ["DefaultBronze"] = true },
+	}
+
+	playerBloodlines[player] = {
+		Current = loadedData.Bloodline or "MortalSwordBone",
+		Spins = loadedData.BloodlineSpins or 5,
 	}
 
 	CultivationManager.SetPlayerData(
@@ -365,12 +445,15 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	player:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
 	player:SetAttribute("ContributionPoints", playerEconomyData[player].ContributionPoints)
 	player:SetAttribute("EquippedHUDSkin", loadedData.EquippedSkin or "DefaultBronze")
+	player:SetAttribute("Bloodline", playerBloodlines[player].Current)
+	player:SetAttribute("BloodlineSpins", playerBloodlines[player].Spins)
 
 	local function bindChar(character: Model)
 		character:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
 		character:SetAttribute("SectRank", playerEconomyData[player].SectRank)
 		character:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
 		character:SetAttribute("ContributionPoints", playerEconomyData[player].ContributionPoints)
+		character:SetAttribute("Bloodline", player:GetAttribute("Bloodline"))
 
 		task.defer(function()
 			local targetWeapon = loadedData.EquippedWeapon or defaultEquipped
@@ -378,6 +461,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 				targetWeapon = defaultEquipped
 			end
 			WeaponManager.EquipWeapon(player, targetWeapon, "Hand")
+			AttachBloodlineVisual(character, (player:GetAttribute("Bloodline") :: string?) or "MortalSwordBone")
 		end)
 	end
 
@@ -386,13 +470,14 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 	player.CharacterAdded:Connect(bindChar)
 
-	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Weapon: %s).",
+	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Weapon: %s, Bloodline: %s).",
 		player.Name,
 		loadedData.Cultivation.Realm,
 		loadedData.Cultivation.Order or 1,
 		loadedData.SpiritStones or 250,
 		loadedData.SectRank or "OuterDisciple",
-		tostring(loadedData.EquippedWeapon)
+		tostring(loadedData.EquippedWeapon),
+		playerBloodlines[player].Current
 	))
 end
 
@@ -404,6 +489,7 @@ function PlayerDataManager.OnPlayerRemoving(player: Player)
 		playerEconomyData[player] = nil
 		playerGamepasses[player] = nil
 		playerSkinData[player] = nil
+		playerBloodlines[player] = nil
 	end)
 end
 
@@ -505,6 +591,74 @@ function PlayerDataManager.GetAlchemyData(player: Player): (number, number)
 	return data.Exp, data.Level
 end
 
+-- =============================================================================
+-- PHASE 4: BLOODLINE ACCESSORS & GACHA ROLLER (With Lazy Fallback Init)
+-- =============================================================================
+function PlayerDataManager.GetBloodline(player: Player): string
+	local data = playerBloodlines[player]
+	if not data then
+		local attr = player:GetAttribute("Bloodline")
+		return if type(attr) == "string" then attr else "MortalSwordBone"
+	end
+	return data.Current
+end
+
+function PlayerDataManager.SetBloodline(player: Player, bloodlineId: string)
+	local data = playerBloodlines[player]
+	if not data then
+		data = { Current = bloodlineId, Spins = PlayerDataManager.GetBloodlineSpins(player) }
+		playerBloodlines[player] = data
+	else
+		data.Current = bloodlineId
+	end
+	player:SetAttribute("Bloodline", bloodlineId)
+	if player.Character then
+		player.Character:SetAttribute("Bloodline", bloodlineId)
+		AttachBloodlineVisual(player.Character, bloodlineId)
+	end
+end
+
+function PlayerDataManager.GetBloodlineSpins(player: Player): number
+	local data = playerBloodlines[player]
+	if not data then
+		local attr = player:GetAttribute("BloodlineSpins")
+		return if type(attr) == "number" then attr else 5
+	end
+	return data.Spins
+end
+
+function PlayerDataManager.AddBloodlineSpins(player: Player, amount: number): number
+	local data = playerBloodlines[player]
+	if not data then
+		local current = PlayerDataManager.GetBloodlineSpins(player)
+		local currentBloodline = PlayerDataManager.GetBloodline(player)
+		data = { Current = currentBloodline, Spins = current }
+		playerBloodlines[player] = data
+	end
+	data.Spins = math.max(0, data.Spins + amount)
+	player:SetAttribute("BloodlineSpins", data.Spins)
+	return data.Spins
+end
+
+function PlayerDataManager.RollBloodline(player: Player): (string?, boolean)
+	local currentSpins = PlayerDataManager.GetBloodlineSpins(player)
+	if currentSpins <= 0 then return nil, false end
+
+	PlayerDataManager.AddBloodlineSpins(player, -1)
+	local rolledId = BloodlineConfig.RollBloodline()
+	PlayerDataManager.SetBloodline(player, rolledId)
+
+	local def = BloodlineConfig.GetBloodline(rolledId)
+	if def and (def.Tier == "Legendary" or def.Tier == "Mythic") then
+		local remote = RemoteEvents.GetRemote("HeavenlyAnnouncement")
+		if remote then
+			remote:FireAllClients(string.format("[HEAVENLY FATE] Cultivator %s awakened the [%s] (%s Lineage)!", player.DisplayName, def.Name, def.Tier))
+		end
+	end
+
+	return rolledId, true
+end
+
 function PlayerDataManager.SaveData(player: Player): boolean
 	if not isLoadedMap[player] or not playerDataStore or isSavingMap[player] then
 		return false
@@ -518,6 +672,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 	local economy = playerEconomyData[player] or { SpiritStones = 250, SectRank = "OuterDisciple", ContributionPoints = 0 }
 	local gamepasses = playerGamepasses[player] or {}
 	local skinData = playerSkinData[player] or { EquippedSkin = "DefaultBronze", UnlockedSkins = { ["DefaultBronze"] = true } }
+	local bData = playerBloodlines[player] or { Current = "MortalSwordBone", Spins = 5 }
 
 	local SectManager = getSectManager()
 	local questProgress = SectManager.GetQuestState and SectManager.GetQuestState(player) or nil
@@ -566,6 +721,8 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		EquippedSkin = skinData.EquippedSkin,
 		QuestProgress = questProgress,
 		LastStipendClaim = lastStipendClaim,
+		Bloodline = bData.Current,
+		BloodlineSpins = bData.Spins,
 	}
 
 	local dataKey = "Player_" .. player.UserId
