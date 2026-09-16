@@ -2,8 +2,8 @@
 --[[
     HitboxManager.luau
     Location: src/ServerScriptService/Server/Combat/HitboxManager.luau
-    Authoritative hit detection, server validation, safe zone peace protection,
-    and wilderness Karmic Retribution griefing reflections.
+    Authoritative hit detection, lag-compensated box casting, native posture / parry state,
+    Sect safe zone peace protection, and wilderness Karmic Retribution griefing reflections.
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -11,14 +11,15 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
-local CombatStateManager = require(ServerScriptService.Server.State.CombatStateManager)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
+local CombatStateManager = require(ServerScriptService.Server.State.CombatStateManager)
 
 export type HitResult = {
-	HitPart: BasePart,
 	Character: Model,
 	Humanoid: Humanoid,
+	HitPart: BasePart,
 	TargetPlayer: Player?,
 }
 
@@ -32,8 +33,14 @@ export type HitResolution = {
 }
 
 local HitboxManager = {}
-local combatActionRemote: RemoteEvent
+local combatVFXRemote: RemoteEvent? = nil
 local arenaManagerRef: any = nil
+
+local function GetRemotes()
+	if not combatVFXRemote then
+		combatVFXRemote = RemoteEvents.GetRemote("CombatVFX")
+	end
+end
 
 local function getArenaManager(): any
 	if not arenaManagerRef then
@@ -43,57 +50,56 @@ local function getArenaManager(): any
 end
 
 function HitboxManager.Init()
-	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
+	GetRemotes()
 end
 
-function HitboxManager.PerformHitboxCheck(
-	attacker: Player,
-	boxSize: Vector3,
-	offset: CFrame,
+-- =============================================================================
+-- 1. LAG-COMPENSATED HITBOX CHECK (Required by FlyingSwordServer lines 230, 298, 323, 417)
+-- =============================================================================
+function HitboxManager.CastCompensatedBox(
+	attacker: Model,
+	cframe: CFrame,
+	size: Vector3,
 	ignoreList: { Instance }?
 ): { HitResult }
-	local character = attacker.Character
-	if not character then return {} end
-
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not hrp then return {} end
-
-	local hitboxCFrame = hrp.CFrame * offset
-
 	local overlapParams = OverlapParams.new()
 	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
-	local excludes = { character }
+
+	local filterInstances: { Instance } = { attacker }
 	if ignoreList then
 		for _, inst in ipairs(ignoreList) do
-			table.insert(excludes, inst)
+			table.insert(filterInstances, inst)
 		end
 	end
-	overlapParams.FilterDescendantsInstances = excludes
+	overlapParams.FilterDescendantsInstances = filterInstances
 
-	local parts = Workspace:GetPartBoundsInBox(hitboxCFrame, boxSize, overlapParams)
-	local hitResults: { HitResult } = {}
+	local partsInBox = Workspace:GetPartBoundsInBox(cframe, size, overlapParams)
 	local hitCharacters: { [Model]: boolean } = {}
+	local results: { HitResult } = {}
 
-	for _, part in ipairs(parts) do
+	for _, part in ipairs(partsInBox) do
 		local model = part:FindFirstAncestorOfClass("Model")
-		if model and not hitCharacters[model] then
+		if model and not hitCharacters[model] and model ~= attacker then
 			local humanoid = model:FindFirstChildOfClass("Humanoid")
 			if humanoid and humanoid.Health > 0 then
 				hitCharacters[model] = true
 				local targetPlayer = Players:GetPlayerFromCharacter(model)
-				table.insert(hitResults, {
-					HitPart = part,
+				table.insert(results, {
 					Character = model,
 					Humanoid = humanoid,
+					HitPart = part,
 					TargetPlayer = targetPlayer,
 				})
 			end
 		end
 	end
 
-	return hitResults
+	return results
 end
 
+-- =============================================================================
+-- 2. COMBAT RESOLUTION & POSTURE ENGINE (With Phase 3 PvP Rules)
+-- =============================================================================
 function HitboxManager.ApplyCombatResolution(
 	attackerPlayer: Player?,
 	targetResult: HitResult,
@@ -101,22 +107,28 @@ function HitboxManager.ApplyCombatResolution(
 	postureDamage: number,
 	knockbackVector: Vector3?
 ): HitResolution
+	GetRemotes()
+
 	local targetChar = targetResult.Character
 	local humanoid = targetResult.Humanoid
-	local targetPlayer = targetResult.TargetPlayer
-	local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local targetHrp = targetChar:FindFirstChild("HumanoidRootPart") :: BasePart?
 
 	local attackerChar = if attackerPlayer then attackerPlayer.Character else nil
 	local attackerHrp = if attackerChar then attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 
+	local targetPlayer = targetResult.TargetPlayer
+	local targetState = if targetPlayer then CombatStateManager.GetState(targetPlayer) else nil
+	local attackerState = if attackerPlayer then CombatStateManager.GetState(attackerPlayer) else nil
+
+	local now = os.clock()
 	local arenaMgr = getArenaManager()
 
-	-- PVP & SAFE ZONE RESOLUTION
+	-- A. PVP, SPARRING & SAFE ZONE RESOLUTION
 	if targetChar and targetHrp then
 		local areDueling = (attackerPlayer and targetPlayer) and arenaMgr and arenaMgr.AreDueling(attackerPlayer, targetPlayer)
 
 		if areDueling then
-			-- 1. SPARRING DUEL DAMAGE (Non-Lethal Clamp at 1 HP)
+			-- Non-Lethal Sparring Clamp at 1 HP
 			local currentHp = humanoid.Health
 			local prospectiveHp = currentHp - rawDamage
 
@@ -136,7 +148,7 @@ function HitboxManager.ApplyCombatResolution(
 				}
 			end
 		elseif arenaMgr then
-			-- 2. SECT SAFE ZONE PEACE CHECK (Zero damage on Sect grounds)
+			-- Safe Zone Peace Check (Sect Courtyard / Disciple Grounds)
 			local inSafeZone = arenaMgr.IsInSafeZone(targetHrp.Position) or (attackerHrp and arenaMgr.IsInSafeZone(attackerHrp.Position))
 			if inSafeZone then
 				return {
@@ -149,7 +161,7 @@ function HitboxManager.ApplyCombatResolution(
 				}
 			end
 
-			-- 3. WILDERNESS KARMIC RETRIBUTION CHECK (Griefing Penalty)
+			-- Wilderness Karmic Retribution Check (Griefing Penalty)
 			local aRealm = (attackerChar and attackerChar:GetAttribute("CultivationRealm"))
 				or (attackerPlayer and attackerPlayer:GetAttribute("CultivationRealm"))
 				or "QiCondensation"
@@ -186,9 +198,8 @@ function HitboxManager.ApplyCombatResolution(
 		end
 	end
 
-	-- Check target Invulnerability / I-Frames
-	local isIframe = targetChar:GetAttribute("IsInvulnerable") == true
-	if isIframe then
+	-- B. I-Frame Dodge Check
+	if targetState and now < targetState.IFrameEndTime then
 		return {
 			WasParried = false,
 			WasBlocked = false,
@@ -199,76 +210,145 @@ function HitboxManager.ApplyCombatResolution(
 		}
 	end
 
-	-- Evaluate Active Guard / Parry Window
-	local isGuarding = targetChar:GetAttribute("IsGuarding") == true
-	local parryWindowActive = targetChar:GetAttribute("ParryWindow") == true
-
-	if isGuarding then
-		if parryWindowActive then
-			if attackerPlayer then
-				CombatStateManager.ApplyPostureDamage(attackerPlayer, 25)
-				CombatStateManager.SetStunned(attackerPlayer, 0.8)
+	-- C. Sword Clash Check
+	if targetState and targetState.ActiveStrike and (now - targetState.ActiveStrike.StartTime) <= FlyingSwordConfig.CC.ClashWindow then
+		if targetHrp and attackerHrp then
+			local dot = targetHrp.CFrame.LookVector:Dot(attackerHrp.CFrame.LookVector)
+			if dot < -0.3 then
+				if combatVFXRemote then
+					combatVFXRemote:FireAllClients({
+						EffectType = "ParryClash",
+						Position = (attackerHrp.Position + targetHrp.Position) / 2 + Vector3.new(0, 1, 0),
+					})
+				end
+				return {
+					WasParried = false,
+					WasBlocked = false,
+					WasGuardBroken = false,
+					WasIframeDodged = false,
+					WasClashed = true,
+					DamageApplied = 0,
+				}
 			end
-			if targetPlayer then
-				CombatStateManager.RestorePostureOnParry(targetPlayer)
-			end
-
-			combatActionRemote:FireAllClients(nil, "PerfectParryVFX", {
-				Position = targetResult.HitPart.Position,
-			})
-
-			return {
-				WasParried = true,
-				WasBlocked = false,
-				WasGuardBroken = false,
-				WasIframeDodged = false,
-				WasClashed = false,
-				DamageApplied = 0,
-			}
-		else
-			-- Standard Block
-			local guardBroken = false
-			if targetPlayer then
-				guardBroken = CombatStateManager.ApplyPostureDamage(targetPlayer, postureDamage)
-			end
-
-			local chipDamage = rawDamage * 0.15
-			humanoid:TakeDamage(chipDamage)
-
-			combatActionRemote:FireAllClients(nil, "BlockVFX", {
-				Position = targetResult.HitPart.Position,
-			})
-
-			return {
-				WasParried = false,
-				WasBlocked = true,
-				WasGuardBroken = guardBroken,
-				WasIframeDodged = false,
-				WasClashed = false,
-				DamageApplied = chipDamage,
-			}
 		end
 	end
 
-	-- Full Hit Landed
-	humanoid:TakeDamage(rawDamage)
+	local wasParried = false
+	local wasBlocked = false
+	local wasGuardBroken = false
+	local finalDamage = rawDamage
+	local finalKnockback = knockbackVector
 
-	if targetPlayer then
-		CombatStateManager.ApplyPostureDamage(targetPlayer, postureDamage)
-		CombatStateManager.SetStunned(targetPlayer, 0.35)
+	-- D. Guard & Perfect Parry Resolution (Native Posture)
+	if targetState and targetState.IsBlocking and targetHrp then
+		local toAttacker = if attackerHrp then (attackerHrp.Position - targetHrp.Position).Unit else targetHrp.CFrame.LookVector
+		local dot = targetHrp.CFrame.LookVector:Dot(toAttacker)
+
+		if dot >= -0.2 then
+			local parryWindow = FlyingSwordConfig.Posture.ParryWindow
+			local blockElapsed = now - targetState.BlockStartTime
+
+			if blockElapsed <= parryWindow then
+				wasParried = true
+				finalDamage = 0
+				finalKnockback = nil
+
+				if attackerPlayer then
+					CombatStateManager.ApplyCC(attackerPlayer, "Stunned", FlyingSwordConfig.Posture.ParryStunDuration)
+				end
+
+				if targetPlayer then
+					local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
+					local pData = CultivationManager.GetPlayerData(targetPlayer)
+					if pData then
+						local qiGain = math.floor(pData.CultivatedQi * FlyingSwordConfig.Posture.ParryQiRestorePercent)
+						CultivationManager.AddInternalQi(targetPlayer, qiGain)
+					end
+				end
+
+				if combatVFXRemote then
+					combatVFXRemote:FireAllClients({
+						EffectType = "ParryClash",
+						Position = targetHrp.Position + (targetHrp.CFrame.LookVector * 2) + Vector3.new(0, 1, 0),
+					})
+				end
+			else
+				targetState.Posture = targetState.Posture - postureDamage
+				targetChar:SetAttribute("Posture", math.max(0, math.floor(targetState.Posture)))
+
+				if targetState.Posture <= 0 then
+					wasGuardBroken = true
+					targetState.Posture = 30
+					if targetPlayer then
+						CombatStateManager.ApplyCC(targetPlayer, "GuardBroken", FlyingSwordConfig.Posture.GuardBreakStunDuration)
+					end
+					finalDamage = math.floor(rawDamage * (1 + FlyingSwordConfig.Posture.GuardBreakBonusDamagePercent))
+
+					if combatVFXRemote then
+						combatVFXRemote:FireAllClients({
+							EffectType = "ParryClash",
+							Position = targetHrp.Position + Vector3.new(0, 1.5, 0),
+						})
+					end
+				else
+					wasBlocked = true
+					finalDamage = math.floor(rawDamage * (1 - FlyingSwordConfig.Posture.BlockDamageReduction))
+					if finalKnockback then finalKnockback = finalKnockback * 0.3 end
+
+					if combatVFXRemote then
+						combatVFXRemote:FireAllClients({
+							EffectType = "BlockSparks",
+							Position = targetHrp.Position + (targetHrp.CFrame.LookVector * 2) + Vector3.new(0, 1, 0),
+						})
+					end
+				end
+			end
+		end
 	end
 
-	if knockbackVector and targetResult.Character.PrimaryPart then
-		targetResult.Character.PrimaryPart.AssemblyLinearVelocity = knockbackVector
+	-- E. Apply Damage (Tag both in combat & Register Mob Damage)
+	if finalDamage > 0 then
+		humanoid:TakeDamage(finalDamage)
+		if attackerPlayer then
+			CombatStateManager.TagInCombat(attackerPlayer)
+		end
+		if targetPlayer then
+			CombatStateManager.TagInCombat(targetPlayer)
+		else
+			local MobAIManager = require(ServerScriptService.Server.Combat.MobAIManager)
+			MobAIManager.RegisterDamage(targetChar, attackerPlayer, finalDamage)
+		end
+	end
+
+	-- F. Apply Physical Knockback
+	if finalKnockback and targetHrp and finalKnockback.Magnitude > 0 then
+		local orientation = if attackerHrp then attackerHrp.CFrame else CFrame.lookAt(targetHrp.Position, targetHrp.Position - finalKnockback)
+		local worldKnockback = orientation:VectorToWorldSpace(finalKnockback)
+
+		local attachment = Instance.new("Attachment")
+		attachment.Parent = targetHrp
+
+		local linearVel = Instance.new("LinearVelocity")
+		linearVel.Name = "KnockbackVel"
+		linearVel.Attachment0 = attachment
+		linearVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+		linearVel.MaxAxesForce = Vector3.new(250000, 100000, 250000)
+		linearVel.VectorVelocity = worldKnockback
+		linearVel.Parent = targetHrp
+
+		task.delay(0.15, function()
+			linearVel:Destroy()
+			attachment:Destroy()
+		end)
 	end
 
 	return {
-		WasParried = false,
-		WasBlocked = false,
-		WasGuardBroken = false,
+		WasParried = wasParried,
+		WasBlocked = wasBlocked,
+		WasGuardBroken = wasGuardBroken,
 		WasIframeDodged = false,
 		WasClashed = false,
-		DamageApplied = rawDamage,
+		DamageApplied = finalDamage,
 	}
 end
 
