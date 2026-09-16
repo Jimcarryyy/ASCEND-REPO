@@ -7,6 +7,7 @@
     - Anti-Trip Ground Physics & Attribute Gating (IsChargingF, IsBlinking)
     - Dual Hitbox Q Skill (Point-Blank Melee + 3x Traveling Waves)
     - 100-Slash Spherical Domain F Skill Damage Resolution
+    - Phase 5 Samsara Prestige Base Sword Damage Multiplier (+5% per cycle, soft-capped at +20%, math.round scaled)
 ]]
 
 local Players = game:GetService("Players")
@@ -28,13 +29,14 @@ local FlyingSwordServer = {}
 local playerCombos: { [Player]: { Step: number, LastTime: number } } = {}
 local activeBlinkTweens: { [Player]: Tween } = {}
 
+-- Evaluates equipped sword damage + applies Samsara Cycle scaling (+5% per cycle, soft-capped at +20%)
 local function GetEquippedWeaponBaseDamage(player: Player): number
 	local weaponId = WeaponManager.GetEquippedWeapon(player)
 	local itemDef = ItemConfig.GetItem(weaponId)
-	if itemDef and itemDef.Stats and itemDef.Stats.Damage then
-		return itemDef.Stats.Damage
-	end
-	return 15
+	local baseDamage = if itemDef and itemDef.Stats and itemDef.Stats.Damage then itemDef.Stats.Damage else 15
+	local samsaraCycle = player:GetAttribute("SamsaraCycle") or 0
+	local samsaraBonus = math.min(0.20, samsaraCycle * 0.05)
+	return math.round(baseDamage * (1.0 + samsaraBonus))
 end
 
 local function ResolveAimDirection(payload: any?, fallback: Vector3): Vector3
@@ -169,6 +171,7 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 
 	payload = payload or {}
 	payload.WeaponType = "FlyingSword"
+	payload.CalculatedDamage = damage
 
 	if hits and #hits > 0 then
 		payload.HasHit = true
@@ -367,8 +370,8 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 
 		-- 2. Multi-Tick Damage Sphere at the 14-stud midpoint
 		local sphereCenter = hrp.Position + flatAimDir * (travelDist * 0.5) + Vector3.new(0, -0.40, 0)
-		local shredRadius = 18.0 -- 36-stud diameter
-		local tickDmg = math.floor(finalDamage * 0.20) -- 5 ticks x 20% = 100% damage
+		local shredRadius = 18.0
+		local tickDmg = math.floor(finalDamage * 0.20)
 
 		local hitCooldowns: { [Model]: number } = {}
 		local shredDuration = 0.70

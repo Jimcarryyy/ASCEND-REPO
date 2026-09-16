@@ -5,12 +5,13 @@
     Server-authoritative cultivation state engine for ASCEND:
     - Synchronous zero-delay CharacterAdded stat binding
     - Full body aura lifecycle during Meditation
-    - Calibrated 10-Realm passive Qi loop: expansionRate = realmInfo.GatherRate * qiNodeMult * sectMult
-    - Clamped 20% starting Qi per order (eliminating 69% loophole and free Order-2 advances)
+    - Calibrated 10-Realm passive Qi loop: expansionRate = realmInfo.GatherRate * qiNodeMult * sectMult * samsaraRefineMult
+    - +30% Qi refining/meditation speed boost per Samsara cycle (Phase 5)
     - Breakthrough Dan consumption requirement
     - Inner Demon Tribulation QTE Engine with non-lethal Qi Deviation Backlash
+    - Ultimate Pinnacle Samsara Rebirth Gate & Loop (Immortal Ascension Order 9 -> Qi Condensation Order 1)
     - Safe lazy remote resolution (immune to initialization sequence order)
-    - Remote-routed Heavenly Ascension Announcements (Client-safe TextChatService)
+    - Remote-routed Heavenly Ascension & Samsara Announcements
 ]]
 
 local Players = game:GetService("Players")
@@ -112,12 +113,34 @@ local function getInventoryManager(): any
 	return inventoryManagerRef
 end
 
+local function ToRoman(num: number): string
+	local romanNumerals = {
+		{ 10, "X" }, { 9, "IX" }, { 5, "V" }, { 4, "IV" }, { 1, "I" }
+	}
+	local result = ""
+	local remaining = num
+	for _, pair in ipairs(romanNumerals) do
+		local val, sym = pair[1], pair[2]
+		while remaining >= val do
+			result ..= sym
+			remaining -= val
+		end
+	end
+	return if result ~= "" then result else "I"
+end
+
 local function GetSectQiBuffMultiplier(player: Player): number
 	local pdm = getPlayerDataManager()
 	if not pdm or not pdm.GetSectRank then return 1.0 end
 	local rank = pdm.GetSectRank(player) or "OuterDisciple"
 	local rankDef = SectConfig.GetRank(rank)
 	return if rankDef and rankDef.QiBuffMultiplier then rankDef.QiBuffMultiplier else 1.0
+end
+
+local function GetSamsaraRefineMultiplier(player: Player): number
+	local pdm = getPlayerDataManager()
+	local cycle = if pdm and pdm.GetSamsaraCycle then pdm.GetSamsaraCycle(player) else (player:GetAttribute("SamsaraCycle") or 0)
+	return 1.0 + (cycle * 0.30)
 end
 
 local function BroadcastHeavenlyAnnouncement(message: string)
@@ -177,7 +200,7 @@ function CultivationManager.Init()
 			if type(payload) == "table" then
 				if payload.ToggleMeditation then
 					CultivationManager.ToggleMeditation(player)
-				elseif payload.RequestBreakthrough then
+				elseif payload.RequestBreakthrough or payload.RequestSamsara then
 					CultivationManager.AttemptBreakthrough(player)
 				end
 			end
@@ -192,6 +215,8 @@ function CultivationManager.Init()
 				if session and session.CurrentWave == payload.Wave and os.clock() <= session.PulseDeadline then
 					session.PulseReceived = true
 				end
+			elseif payload.Action == "RequestSamsara" then
+				CultivationManager.AttemptBreakthrough(player)
 			end
 		end)
 	end
@@ -205,7 +230,8 @@ function CultivationManager.Init()
 					if character and character.Parent then
 						local isMeditating = pData.IsMeditating
 						local sectMult = GetSectQiBuffMultiplier(player)
-						local recoveryRate = if isMeditating then ((pData.CultivatedQi / 10.0) * sectMult) else (pData.CultivatedQi / 60.0)
+						local samsaraRefineMult = GetSamsaraRefineMultiplier(player)
+						local recoveryRate = if isMeditating then ((pData.CultivatedQi / 10.0) * sectMult * samsaraRefineMult) else (pData.CultivatedQi / 60.0)
 						
 						if pData.CurrentQi < pData.CultivatedQi then
 							local qiGained = recoveryRate * 0.5
@@ -216,7 +242,7 @@ function CultivationManager.Init()
 							local realmInfo = CultivationConfig[pData.Realm]
 							local baseGather = if realmInfo and realmInfo.GatherRate then realmInfo.GatherRate else 20
 							local qiNodeMult = GetQiNodeMultiplier(character)
-							local expansionRate = baseGather * qiNodeMult * sectMult
+							local expansionRate = baseGather * qiNodeMult * sectMult * samsaraRefineMult
 							pData.CultivatedQi = math.min(pData.MaxQiGoal, pData.CultivatedQi + (expansionRate * 0.5))
 						end
 
@@ -230,7 +256,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Engine Initialized (Pacing Calibrated to 50h Curve).")
+	print("[ASCEND] CultivationManager Engine Initialized (Pacing Calibrated + Samsara Qi Loop Active).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -518,6 +544,114 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 	end
 end
 
+-- =============================================================================
+-- PHASE 5: SAMSARA REBIRTH TRIGGER & RESOLUTION ENGINE
+-- =============================================================================
+function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
+	local pData = playerData[player]
+	if not pData then return false end
+
+	local updateRemote = getUpdateCultivationRemote()
+
+	-- Requirement Gate Validation
+	if pData.Realm ~= "ImmortalAscension" or pData.Order < 9 then
+		if updateRemote then
+			updateRemote:FireClient(player, {
+				Action = "BreakthroughRejected",
+				Message = "Samsara Rebirth requires reaching the ultimate pinnacle: Immortal Ascension (Order 9)!",
+				CurrentQi = pData.CultivatedQi,
+				TargetQi = pData.MaxQiGoal,
+				Percentage = math.floor((pData.CultivatedQi / math.max(1, pData.MaxQiGoal)) * 100),
+			})
+		end
+		return false
+	end
+
+	if pData.CultivatedQi < pData.MaxQiGoal then
+		if updateRemote then
+			updateRemote:FireClient(player, {
+				Action = "BreakthroughRejected",
+				Message = "Your Dantian must be 100% saturated with Immortal Qi to initiate Samsara Rebirth!",
+				CurrentQi = pData.CultivatedQi,
+				TargetQi = pData.MaxQiGoal,
+				Percentage = math.floor((pData.CultivatedQi / math.max(1, pData.MaxQiGoal)) * 100),
+			})
+		end
+		return false
+	end
+
+	local character = player.Character
+	if character then
+		CultivationManager.StopGroundedMeditation(player, character)
+	end
+
+	-- Advance Samsara Cycle & Persistent Buffs
+	local pdm = getPlayerDataManager()
+	local newCycle = if pdm and pdm.IncrementSamsara then pdm.IncrementSamsara(player) else 1
+	local roman = ToRoman(newCycle)
+	local fullTitle = string.format("[Samsara %s]", roman)
+
+	-- Reset Cultivation Loop to Qi Condensation Order 1 (200 / 1000 Qi)
+	CultivationManager.SetPlayerData(player, "QiCondensation", 200, 1, 200)
+
+	-- Visual Light Pillar on Rebirth
+	if character then
+		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if root then
+			local pillar = Instance.new("Part")
+			pillar.Name = "CelestialLightPillar"
+			pillar.Anchored = true
+			pillar.CanCollide = false
+			pillar.CanTouch = false
+			pillar.CanQuery = false
+			pillar.Material = Enum.Material.Neon
+			pillar.Color = Color3.fromRGB(255, 230, 140)
+			pillar.Transparency = 0.25
+			pillar.Size = Vector3.new(8, 350, 8)
+			pillar.CFrame = root.CFrame * CFrame.new(0, 175, 0)
+			pillar.Parent = Workspace
+
+			task.spawn(function()
+				for _ = 1, 25 do
+					pillar.Transparency += 0.03
+					pillar.Size = pillar.Size + Vector3.new(0.4, 0, 0.4)
+					task.wait(0.04)
+				end
+				pillar:Destroy()
+			end)
+		end
+	end
+
+	-- Notify Client & Whole Server
+	if updateRemote then
+		updateRemote:FireClient(player, {
+			Action = "BreakthroughSuccess",
+			IsMajor = true,
+			Realm = "QiCondensation",
+			RealmName = string.format("SAMSARA REBIRTH %s", roman),
+			Order = 1,
+			HpGain = 0,
+			QiGain = 0,
+			PowerMultiplier = 1.0,
+		})
+	end
+
+	local combatRemote = getCombatActionRemote()
+	if combatRemote then
+		combatRemote:FireAllClients(player, "AscensionBurst", {
+			AuraColor = Color3.fromRGB(255, 220, 120),
+		})
+	end
+
+	BroadcastHeavenlyAnnouncement(string.format(
+		"[HEAVENLY SAMSARA] Cultivator %s reached the Ultimate Pinnacle and underwent Samsara Rebirth %s! Returning from the Immortal Void into the Mortal Realm.",
+		player.DisplayName,
+		fullTitle
+	))
+
+	return true
+end
+
 function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	local pData = playerData[player]
 	if not pData or pData.IsTribulationActive then return false end
@@ -567,6 +701,11 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			})
 		end
 		return true
+	end
+
+	-- Ultimate Pinnacle Check (Immortal Ascension Order 9 -> Samsara Rebirth)
+	if pData.Realm == "ImmortalAscension" and pData.Order == 9 then
+		return CultivationManager.TriggerSamsaraRebirth(player)
 	end
 
 	-- Major Realm Breakthrough (Order 9 -> Next Realm Order 1)

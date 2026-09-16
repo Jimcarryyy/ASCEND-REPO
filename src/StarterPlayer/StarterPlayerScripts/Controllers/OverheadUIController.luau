@@ -6,6 +6,7 @@
       - Clean Xianxia ARPG Overhead Billboard GUIs exclusively for PLAYERS (NPCs/mobs ignored)
       - HP bars completely removed (tracked in Bottom-Left Vitals HUD)
       - Cultivation Realm & Order + Sect Rank display only (deduplicated order suffix)
+      - Phase 5: Dynamic [SAMSARA I], [SAMSARA II] prefix title rendering with Radiant Sun Gold styling
       - Bangers font style with vibrant vertical text gradients and sharp black strokes
 ]]
 
@@ -22,10 +23,26 @@ local OverheadUIController = {}
 -- CONFIGURATION
 --------------------------------------------------------------------------------
 local CFG = {
-	BillboardSize = UDim2.new(0, 220, 0, 36),
+	BillboardSize = UDim2.new(0, 240, 0, 38),
 	StudsOffset = Vector3.new(0, 2.8, 0),
 	MaxDistance = 85,
 }
+
+local function ToRoman(num: number): string
+	local romanNumerals = {
+		{ 10, "X" }, { 9, "IX" }, { 5, "V" }, { 4, "IV" }, { 1, "I" }
+	}
+	local result = ""
+	local remaining = num
+	for _, pair in ipairs(romanNumerals) do
+		local val, sym = pair[1], pair[2]
+		while remaining >= val do
+			result ..= sym
+			remaining -= val
+		end
+	end
+	return if result ~= "" then result else "I"
+end
 
 --------------------------------------------------------------------------------
 -- FORMATTERS
@@ -33,6 +50,7 @@ local CFG = {
 local function GetFormattedRealm(character: Model, player: Player?): string
 	local rawRealm = character:GetAttribute("Realm") or (player and player:GetAttribute("Realm"))
 	local rawOrder = character:GetAttribute("Order") or (player and player:GetAttribute("Order"))
+	local samsaraCycle = character:GetAttribute("SamsaraCycle") or (player and player:GetAttribute("SamsaraCycle")) or 0
 
 	local realmName = "QI CONDENSATION"
 	if rawRealm and type(rawRealm) == "string" then
@@ -47,10 +65,12 @@ local function GetFormattedRealm(character: Model, player: Player?): string
 	-- Deduplication: Strip any existing order tags (e.g. "- ORDER 2" or "ORDER 2") before appending
 	realmName = realmName:gsub("%s*[-–]?%s*ORDER%s*%d+", ""):gsub("%s*[-–]%s*$", "")
 
-	if rawOrder then
-		return string.format("%s - ORDER %s", realmName, tostring(rawOrder))
+	local formatted = if rawOrder then string.format("%s - ORDER %s", realmName, tostring(rawOrder)) else realmName
+	local cycleNum = tonumber(samsaraCycle) or 0
+	if cycleNum > 0 then
+		formatted = string.format("[SAMSARA %s] %s", ToRoman(cycleNum), formatted)
 	end
-	return realmName
+	return formatted
 end
 
 local function GetFormattedSectRank(character: Model, player: Player?): string
@@ -174,10 +194,12 @@ local function AttachOverhead(character: Model, player: Player?)
 	character:GetAttributeChangedSignal("Realm"):Connect(syncTitles)
 	character:GetAttributeChangedSignal("Order"):Connect(syncTitles)
 	character:GetAttributeChangedSignal("SectRank"):Connect(syncTitles)
+	character:GetAttributeChangedSignal("SamsaraCycle"):Connect(syncTitles)
 
 	targetPlayer:GetAttributeChangedSignal("Realm"):Connect(syncTitles)
 	targetPlayer:GetAttributeChangedSignal("Order"):Connect(syncTitles)
 	targetPlayer:GetAttributeChangedSignal("SectRank"):Connect(syncTitles)
+	targetPlayer:GetAttributeChangedSignal("SamsaraCycle"):Connect(syncTitles)
 
 	syncTitles()
 end
@@ -205,7 +227,7 @@ function OverheadUIController.Init()
 		OnPlayerAdded(player)
 	end
 	Players.PlayerAdded:Connect(OnPlayerAdded)
-	print("[ASCEND] OverheadUIController Initialized (Bangers Font, Single-Order Title, Clean No-Bar Aesthetic).")
+	print("[ASCEND] OverheadUIController Initialized (Bangers Font, Samsara Titles & Clean No-Bar Aesthetic).")
 end
 
 return OverheadUIController

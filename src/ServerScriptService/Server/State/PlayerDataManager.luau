@@ -7,6 +7,7 @@
     - Developer Exclusive Arsenal Engine (Auto-grants all present & future swords to Han_jueee only)
     - Normal Player Grind Isolation (Regular players / alts only have MortalIronJian and must buy/earn swords one-by-one)
     - Sword Bloodline Lineages, Spin Economy & 3D Visual Artifacts (Phase 4)
+    - Ultimate Pinnacle Samsara Rebirth Persistence & Celestial Footstep Trail / Aura Welder (Phase 5)
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -59,6 +60,7 @@ export type SavedPlayerData = {
 	LastStipendClaim: number?,
 	Bloodline: string?,
 	BloodlineSpins: number?,
+	SamsaraCycle: number?,
 }
 
 local PlayerDataManager = {}
@@ -81,6 +83,23 @@ local function IsDeveloper(player: Player): boolean
 	return false
 end
 
+-- Roman Numeral Generator for Samsara Prestige Titles
+local function ToRoman(num: number): string
+	local romanNumerals = {
+		{ 10, "X" }, { 9, "IX" }, { 5, "V" }, { 4, "IV" }, { 1, "I" }
+	}
+	local result = ""
+	local remaining = num
+	for _, pair in ipairs(romanNumerals) do
+		local val, sym = pair[1], pair[2]
+		while remaining >= val do
+			result ..= sym
+			remaining -= val
+		end
+	end
+	return if result ~= "" then result else "I"
+end
+
 -- Legacy test swords to purge from regular players migrating from V2
 local LEGACY_TEST_SWORDS: { [string]: boolean } = {
 	["AzureCloudDiscipleJian"] = true,
@@ -100,6 +119,7 @@ local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfi
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
 local playerBloodlines: { [Player]: { Current: string, Spins: number } } = {}
+local playerSamsaraData: { [Player]: number } = {}
 
 local sectManagerRef: any = nil
 local function getSectManager(): any
@@ -133,6 +153,7 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	EquippedSkin = "DefaultBronze",
 	Bloodline = "MortalSwordBone",
 	BloodlineSpins = 5,
+	SamsaraCycle = 0,
 }
 
 -- 3D Visual Artifact Welder for Bloodlines
@@ -200,6 +221,84 @@ local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	end
 end
 
+-- =============================================================================
+-- PHASE 5: CELESTIAL FOOTSTEP TRAIL & SAMSARA REBIRTH AURA WELDER
+-- =============================================================================
+local function AttachSamsaraCelestialAura(character: Model, cycle: number)
+	if cycle <= 0 then return end
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then return end
+
+	local existing = character:FindFirstChild("SamsaraCelestialAura")
+	if existing then existing:Destroy() end
+
+	local auraFolder = Instance.new("Folder")
+	auraFolder.Name = "SamsaraCelestialAura"
+	auraFolder.Parent = character
+
+	-- Torso / Root Subtle Celestial Lotus Ring
+	local attCenter = Instance.new("Attachment")
+	attCenter.Name = "SamsaraCenterAtt"
+	attCenter.Position = Vector3.new(0, -2.5, 0)
+	attCenter.Parent = root
+
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "CelestialLotusParticles"
+	particles.Texture = "rbxassetid://6015897843"
+	particles.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 220, 120)),
+		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(180, 240, 255)),
+	})
+	particles.LightEmission = 0.9
+	particles.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0.0, 0.4),
+		NumberSequenceKeypoint.new(1.0, 1.2),
+	})
+	particles.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0.0, 0.2),
+		NumberSequenceKeypoint.new(0.8, 0.6),
+		NumberSequenceKeypoint.new(1.0, 1.0),
+	})
+	particles.Lifetime = NumberRange.new(1.2, 1.8)
+	particles.Rate = math.min(10 + cycle * 4, 30)
+	particles.Speed = NumberRange.new(0.5, 1.5)
+	particles.SpreadAngle = Vector2.new(180, 20)
+	particles.Parent = attCenter
+
+	-- Footstep Celestial Trails (supports both R15 and R6)
+	for _, footName in ipairs({ "LeftFoot", "RightFoot", "Left Leg", "Right Leg" }) do
+		local footPart = character:FindFirstChild(footName) :: BasePart?
+		if footPart and not footPart:FindFirstChild("SamsaraTrail") then
+			local a0 = Instance.new("Attachment")
+			a0.Name = "TrailAtt0"
+			a0.Position = Vector3.new(0, -0.6, 0)
+			a0.Parent = footPart
+
+			local a1 = Instance.new("Attachment")
+			a1.Name = "TrailAtt1"
+			a1.Position = Vector3.new(0, -0.9, 0)
+			a1.Parent = footPart
+
+			local trail = Instance.new("Trail")
+			trail.Name = "SamsaraTrail"
+			trail.Attachment0 = a0
+			trail.Attachment1 = a1
+			trail.Lifetime = 0.4
+			trail.MinLength = 0.1
+			trail.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 235, 130)),
+				ColorSequenceKeypoint.new(1.0, Color3.fromRGB(140, 210, 255)),
+			})
+			trail.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0.0, 0.15),
+				NumberSequenceKeypoint.new(1.0, 1.0),
+			})
+			trail.Parent = footPart
+		end
+	end
+end
+
 function PlayerDataManager.Init()
 	local success, result = pcall(function()
 		return DataStoreService:GetDataStore(DATA_STORE_NAME)
@@ -248,7 +347,7 @@ function PlayerDataManager.Init()
 		end
 	end)
 
-	print("[PlayerDataManager] Engine Initialized with Strict Weapon Isolation & Version 3 Schema.")
+	print("[PlayerDataManager] Engine Initialized with Strict Weapon Isolation, Bloodlines & Samsara Rebirth.")
 end
 
 function PlayerDataManager.OnPlayerAdded(player: Player)
@@ -314,6 +413,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			EquippedSkin = "DefaultBronze",
 			Bloodline = "MortalSwordBone",
 			BloodlineSpins = 5,
+			SamsaraCycle = 0,
 		}
 	else
 		if not loadedData.Version or loadedData.Version < CURRENT_VERSION then
@@ -353,6 +453,8 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		Current = loadedData.Bloodline or "MortalSwordBone",
 		Spins = loadedData.BloodlineSpins or 5,
 	}
+
+	playerSamsaraData[player] = loadedData.SamsaraCycle or 0
 
 	CultivationManager.SetPlayerData(
 		player,
@@ -447,6 +549,10 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	player:SetAttribute("EquippedHUDSkin", loadedData.EquippedSkin or "DefaultBronze")
 	player:SetAttribute("Bloodline", playerBloodlines[player].Current)
 	player:SetAttribute("BloodlineSpins", playerBloodlines[player].Spins)
+	player:SetAttribute("SamsaraCycle", playerSamsaraData[player])
+	if playerSamsaraData[player] > 0 then
+		player:SetAttribute("SamsaraTitle", string.format("[Samsara %s]", ToRoman(playerSamsaraData[player])))
+	end
 
 	local function bindChar(character: Model)
 		character:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
@@ -454,6 +560,12 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		character:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
 		character:SetAttribute("ContributionPoints", playerEconomyData[player].ContributionPoints)
 		character:SetAttribute("Bloodline", player:GetAttribute("Bloodline"))
+		local cycle = playerSamsaraData[player] or 0
+		character:SetAttribute("SamsaraCycle", cycle)
+		if cycle > 0 then
+			character:SetAttribute("SamsaraTitle", string.format("[Samsara %s]", ToRoman(cycle)))
+			AttachSamsaraCelestialAura(character, cycle)
+		end
 
 		task.defer(function()
 			local targetWeapon = loadedData.EquippedWeapon or defaultEquipped
@@ -470,13 +582,13 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 	player.CharacterAdded:Connect(bindChar)
 
-	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Weapon: %s, Bloodline: %s).",
+	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Samsara: %d, Bloodline: %s).",
 		player.Name,
 		loadedData.Cultivation.Realm,
 		loadedData.Cultivation.Order or 1,
 		loadedData.SpiritStones or 250,
 		loadedData.SectRank or "OuterDisciple",
-		tostring(loadedData.EquippedWeapon),
+		playerSamsaraData[player],
 		playerBloodlines[player].Current
 	))
 end
@@ -490,6 +602,7 @@ function PlayerDataManager.OnPlayerRemoving(player: Player)
 		playerGamepasses[player] = nil
 		playerSkinData[player] = nil
 		playerBloodlines[player] = nil
+		playerSamsaraData[player] = nil
 	end)
 end
 
@@ -659,6 +772,36 @@ function PlayerDataManager.RollBloodline(player: Player): (string?, boolean)
 	return rolledId, true
 end
 
+-- =============================================================================
+-- PHASE 5: SAMSARA REBIRTH PRESTIGE ACCESSORS & ENGINE
+-- =============================================================================
+function PlayerDataManager.GetSamsaraCycle(player: Player): number
+	local cached = playerSamsaraData[player]
+	if cached ~= nil then return cached end
+	local attr = player:GetAttribute("SamsaraCycle")
+	return if type(attr) == "number" then attr else 0
+end
+
+function PlayerDataManager.SetSamsaraCycle(player: Player, cycle: number)
+	playerSamsaraData[player] = cycle
+	player:SetAttribute("SamsaraCycle", cycle)
+	local title = string.format("[Samsara %s]", ToRoman(cycle))
+	player:SetAttribute("SamsaraTitle", title)
+
+	if player.Character then
+		player.Character:SetAttribute("SamsaraCycle", cycle)
+		player.Character:SetAttribute("SamsaraTitle", title)
+		AttachSamsaraCelestialAura(player.Character, cycle)
+	end
+end
+
+function PlayerDataManager.IncrementSamsara(player: Player): number
+	local current = PlayerDataManager.GetSamsaraCycle(player)
+	local newCycle = current + 1
+	PlayerDataManager.SetSamsaraCycle(player, newCycle)
+	return newCycle
+end
+
 function PlayerDataManager.SaveData(player: Player): boolean
 	if not isLoadedMap[player] or not playerDataStore or isSavingMap[player] then
 		return false
@@ -673,6 +816,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 	local gamepasses = playerGamepasses[player] or {}
 	local skinData = playerSkinData[player] or { EquippedSkin = "DefaultBronze", UnlockedSkins = { ["DefaultBronze"] = true } }
 	local bData = playerBloodlines[player] or { Current = "MortalSwordBone", Spins = 5 }
+	local samsaraCycle = playerSamsaraData[player] or 0
 
 	local SectManager = getSectManager()
 	local questProgress = SectManager.GetQuestState and SectManager.GetQuestState(player) or nil
@@ -723,6 +867,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		LastStipendClaim = lastStipendClaim,
 		Bloodline = bData.Current,
 		BloodlineSpins = bData.Spins,
+		SamsaraCycle = samsaraCycle,
 	}
 
 	local dataKey = "Player_" .. player.UserId
@@ -735,7 +880,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 
 		if success then
 			saveSuccess = true
-			print(string.format("[PlayerDataManager] Successfully saved data for %s (Equipped: %s).", player.Name, equippedWeapon))
+			print(string.format("[PlayerDataManager] Successfully saved data for %s (Equipped: %s, Samsara: %d).", player.Name, equippedWeapon, samsaraCycle))
 			break
 		else
 			warn(string.format("[PlayerDataManager] SetAsync attempt %d failed for %s: %s", attempt, player.Name, tostring(err)))
