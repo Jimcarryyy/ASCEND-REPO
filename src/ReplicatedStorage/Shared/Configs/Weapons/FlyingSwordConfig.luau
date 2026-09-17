@@ -3,6 +3,7 @@
     FlyingSwordConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/Weapons/FlyingSwordConfig.luau
     Defines 5-Hit M1 combo, Skills (Q, E, F Ultimate Domain), Block/Parry (T), and Dash.
+    Phase 4: Dynamic Realm-Scaled 3D Flight Physics & Qi Drain Table.
 ]]
 
 export type ComboStep = {
@@ -56,6 +57,16 @@ export type CCConfig = {
 	InCombatDuration: number,
 	MaxPingTolerance: number,
 	ClashWindow: number,
+}
+
+export type FlightRealmTier = {
+	Velocity: number,
+	QiDrainPercent: number,
+	FlatDrain: number,
+}
+
+export type FlightConfig = {
+	Realms: { [string]: FlightRealmTier },
 }
 
 local FlyingSwordConfig = {
@@ -164,6 +175,24 @@ local FlyingSwordConfig = {
 		MaxPingTolerance = 0.18,
 		ClashWindow = 0.08,
 	} :: CCConfig,
+
+	-- =========================================================================
+	-- DYNAMIC REALM-SCALED FLIGHT VELOCITY & QI DRAIN (PHASE 4)
+	-- =========================================================================
+	Flight = {
+		Realms = {
+			QiCondensation = { Velocity = 38.0, QiDrainPercent = 0.0200, FlatDrain = 5 },
+			FoundationEstablishment = { Velocity = 48.0, QiDrainPercent = 0.0100, FlatDrain = 10 },
+			GoldenCore = { Velocity = 58.0, QiDrainPercent = 0.0060, FlatDrain = 15 },
+			NascentSoul = { Velocity = 70.0, QiDrainPercent = 0.0040, FlatDrain = 20 },
+			SpiritSevering = { Velocity = 84.0, QiDrainPercent = 0.0025, FlatDrain = 25 },
+			VoidRefining = { Velocity = 100.0, QiDrainPercent = 0.0018, FlatDrain = 30 },
+			BodyIntegration = { Velocity = 115.0, QiDrainPercent = 0.0012, FlatDrain = 35 },
+			Mahayana = { Velocity = 130.0, QiDrainPercent = 0.0008, FlatDrain = 40 },
+			TribulationTranscending = { Velocity = 145.0, QiDrainPercent = 0.0005, FlatDrain = 45 },
+			ImmortalAscension = { Velocity = 160.0, QiDrainPercent = 0.0003, FlatDrain = 50 },
+		},
+	} :: FlightConfig,
 }
 
 return FlyingSwordConfig

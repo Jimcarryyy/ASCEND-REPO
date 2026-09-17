@@ -246,7 +246,7 @@ function CombatStateManager.UpdateHeartbeat(dt: number)
 end
 
 -- =============================================================================
--- 2. IN-COMBAT TAGGING
+-- 2. IN-COMBAT TAGGING (DISPATCHES INSTANT FLIGHT DISMOUNT)
 -- =============================================================================
 function CombatStateManager.TagInCombat(player: Player)
 	local state = playerStates[player]
@@ -256,6 +256,12 @@ function CombatStateManager.TagInCombat(player: Player)
 	local char = player.Character
 	if char then
 		char:SetAttribute("InCombat", true)
+
+		-- Force dismount immediately if damaged or tagged In Combat while flying
+		if char:GetAttribute("IsFlying") == true then
+			local WeaponManager = getWeaponManager()
+			WeaponManager.ToggleFlight(player)
+		end
 	end
 end
 
@@ -316,7 +322,7 @@ function CombatStateManager.ApplyCC(player: Player, ccType: CCState, duration: n
 				local hum = char:FindFirstChildOfClass("Humanoid")
 				if hum then
 					local inArena = char:GetAttribute("InArena") == true
-					hum.WalkSpeed = inArena and 16 or 18
+					hum.WalkSpeed = inArena and 16.0 or 13.5
 				end
 			end
 		end
@@ -481,7 +487,7 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	local now = os.clock()
 
 	-- Cooldown Gate
-	local cdDuration = if skillKey == "M1" then 0.28 else (FlyingSwordConfig.Skills[skillKey] and FlyingSwordConfig.Skills[skillKey].Cooldown or 1.0)
+	local cdDuration = if skillKey == "M1" then (FlyingSwordConfig.Skills.M1 and FlyingSwordConfig.Skills.M1.Cooldown or 1.10) else (FlyingSwordConfig.Skills[skillKey] and FlyingSwordConfig.Skills[skillKey].Cooldown or 1.0)
 	local lastUsed = state.Cooldowns[skillKey] or 0
 	if (now - lastUsed) < cdDuration then return false end
 

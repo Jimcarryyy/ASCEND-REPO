@@ -12,6 +12,7 @@
     - Ultimate Pinnacle Samsara Rebirth Gate & Loop (Immortal Ascension Order 9 -> Qi Condensation Order 1)
     - Phase 1: Synchronous lazy session cache fallback inside GetPlayerData to eliminate race condition
     - Phase 2: CharacterAdded connection lifecycle tracking and locomotion speed normalization
+    - Phase 4: Dynamic Realm-Scaled Airborne Flight Qi Drain & Zero-Qi Auto-Dismount
 ]]
 
 local Players = game:GetService("Players")
@@ -21,6 +22,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
+local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
 export type PlayerCultivationData = {
@@ -222,6 +224,7 @@ function CultivationManager.Init()
 		end)
 	end
 
+	-- Master Passive Qi Loop (Paused while flying; drains Qi and auto-dismounts on exhaustion)
 	passiveQiLoopThread = task.spawn(function()
 		while true do
 			task.wait(0.5)
@@ -230,27 +233,52 @@ function CultivationManager.Init()
 					local character = player.Character
 					if character and character.Parent then
 						local isMeditating = pData.IsMeditating
-						local sectMult = GetSectQiBuffMultiplier(player)
-						local samsaraRefineMult = GetSamsaraRefineMultiplier(player)
-						local recoveryRate = if isMeditating then ((pData.CultivatedQi / 10.0) * sectMult * samsaraRefineMult) else (pData.CultivatedQi / 60.0)
-						
-						if pData.CurrentQi < pData.CultivatedQi then
-							local qiGained = recoveryRate * 0.5
-							pData.CurrentQi = math.min(pData.CultivatedQi, pData.CurrentQi + qiGained)
+						local isFlying = (character:GetAttribute("IsFlying") == true)
+
+						if isFlying then
+							-- Dynamic Realm-Scaled Airborne Flight Qi Drain
+							local flightCfg = FlyingSwordConfig.Flight
+							local realmFlight = if flightCfg and flightCfg.Realms then flightCfg.Realms[pData.Realm] else nil
+							local drainPercent = if realmFlight then realmFlight.QiDrainPercent else 0.01
+							local flatDrain = if realmFlight then realmFlight.FlatDrain else 10
+							local drainPerSec = (pData.CultivatedQi * drainPercent) + flatDrain
+							local drainThisTick = drainPerSec * 0.5
+
+							pData.CurrentQi = math.max(0, pData.CurrentQi - drainThisTick)
+
+							-- Auto-dismount on Qi exhaustion
+							if pData.CurrentQi <= 0 then
+								local weaponMgr = getWeaponManager()
+								if weaponMgr and weaponMgr.ToggleFlight then
+									weaponMgr.ToggleFlight(player)
+								end
+							end
+
+							CultivationManager.SyncClient(player)
+						else
+							-- Grounded Passive Qi Recovery (Only when not airborne)
+							local sectMult = GetSectQiBuffMultiplier(player)
+							local samsaraRefineMult = GetSamsaraRefineMultiplier(player)
+							local recoveryRate = if isMeditating then ((pData.CultivatedQi / 10.0) * sectMult * samsaraRefineMult) else (pData.CultivatedQi / 60.0)
+							
+							if pData.CurrentQi < pData.CultivatedQi then
+								local qiGained = recoveryRate * 0.5
+								pData.CurrentQi = math.min(pData.CultivatedQi, pData.CurrentQi + qiGained)
+							end
+
+							if isMeditating and pData.CultivatedQi < pData.MaxQiGoal then
+								local realmInfo = CultivationConfig[pData.Realm]
+								local baseGather = if realmInfo and realmInfo.GatherRate then realmInfo.GatherRate else 20
+								local qiNodeMult = GetQiNodeMultiplier(character)
+								local expansionRate = baseGather * qiNodeMult * sectMult * samsaraRefineMult
+								pData.CultivatedQi = math.min(pData.MaxQiGoal, pData.CultivatedQi + (expansionRate * 0.5))
+							end
+
+							pData.CultivatedQi = math.clamp(pData.CultivatedQi, 0, pData.MaxQiGoal)
+							pData.CurrentQi = math.clamp(pData.CurrentQi, 0, pData.CultivatedQi)
+
+							CultivationManager.SyncClient(player)
 						end
-
-						if isMeditating and pData.CultivatedQi < pData.MaxQiGoal then
-							local realmInfo = CultivationConfig[pData.Realm]
-							local baseGather = if realmInfo and realmInfo.GatherRate then realmInfo.GatherRate else 20
-							local qiNodeMult = GetQiNodeMultiplier(character)
-							local expansionRate = baseGather * qiNodeMult * sectMult * samsaraRefineMult
-							pData.CultivatedQi = math.min(pData.MaxQiGoal, pData.CultivatedQi + (expansionRate * 0.5))
-						end
-
-						pData.CultivatedQi = math.clamp(pData.CultivatedQi, 0, pData.MaxQiGoal)
-						pData.CurrentQi = math.clamp(pData.CurrentQi, 0, pData.CultivatedQi)
-
-						CultivationManager.SyncClient(player)
 					end
 				end
 			end
@@ -407,7 +435,7 @@ end
 
 function CultivationManager.ConsumeQi(player: Player, amount: number): boolean
 	local pData = CultivationManager.GetPlayerData(player)
-	if not pData then return false end
+	if not pData then return end
 
 	if pData.CurrentQi < amount then
 		return false

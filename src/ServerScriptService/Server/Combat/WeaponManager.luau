@@ -9,12 +9,15 @@
       - Hides combat sword during flight to eliminate visual clutter.
       - Replicates character:SetAttribute("EquippedWeapon", weaponId) for dynamic VFX color binding.
       - Disables jumping and restores physics on dismount.
+      - Phase 4: Dynamic Realm-Scaled Flight Speed & In-Combat Mount Gate.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Debris = game:GetService("Debris")
+
+local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 
 local WeaponManager = {}
 
@@ -277,11 +280,25 @@ function WeaponManager.ToggleFlight(player: Player)
 	local pData = CultivationManager.GetPlayerData(player)
 	if pData and pData.IsMeditating then return end
 
+	local CombatStateManager = require(ServerScriptService.Server.State.CombatStateManager)
+
+	-- InCombat Mount Gate: Block flight mounting while in combat
+	local isCurrentlyFlying = (character:GetAttribute("IsFlying") == true)
+	if not isCurrentlyFlying then
+		if CombatStateManager.IsInCombat and CombatStateManager.IsInCombat(player) then
+			print(string.format("⚔️ [%s] Cannot mount Flying Sword while In Combat!", player.Name))
+			return
+		end
+
+		if (pData and pData.CurrentQi or 0) <= 10 then
+			print(string.format("⚠️ [%s] Insufficient Qi to mount Flying Sword!", player.Name))
+			return
+		end
+	end
+
 	if character:GetAttribute("CCState") == "Stunned" or character:GetAttribute("CCState") == "GuardBroken" then
 		return
 	end
-
-	local isCurrentlyFlying = (character:GetAttribute("IsFlying") == true)
 
 	if isCurrentlyFlying then
 		------------------------------------------------------------------------
@@ -299,7 +316,7 @@ function WeaponManager.ToggleFlight(player: Player)
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
 		humanoid.JumpPower = 50
 		humanoid.JumpHeight = 7.2
-		humanoid.WalkSpeed = (character:GetAttribute("InArena") == true) and 16 or 18
+		humanoid.WalkSpeed = (character:GetAttribute("InArena") == true) and 16 or 13.5
 
 		print(string.format("🛬 [%s] Dismounted flight mode.", player.Name))
 	else
@@ -381,8 +398,15 @@ function WeaponManager.ToggleFlight(player: Player)
 		humanoid.JumpHeight = 0
 
 		character:SetAttribute("IsFlying", true)
-		humanoid.WalkSpeed = 48
-		print(string.format("🚀 [%s] Mounted FlyingSword at 48 studs/s.", player.Name))
+
+		-- Realm-scaled velocity lookup
+		local flightCfg = FlyingSwordConfig.Flight
+		local realmFlight = if flightCfg and flightCfg.Realms and pData then flightCfg.Realms[pData.Realm] else nil
+		local targetFlightSpeed = if realmFlight then realmFlight.Velocity else 48.0
+
+		humanoid.WalkSpeed = targetFlightSpeed
+		print(string.format("🚀 [%s] Mounted FlyingSword at %.1f studs/s (%s Tier).",
+			player.Name, targetFlightSpeed, pData and pData.Realm or "Mortal"))
 	end
 end
 
