@@ -2,202 +2,160 @@
 --[[
     VendorManager.luau
     Location: src/ServerScriptService/Server/World/VendorManager.luau
-    Server-authoritative Market & Trading Manager for the Jade Pure Sword Sect.
-    Handles: Buying, Selling, Spirit Stone transactions, Rank validation, and ProximityPrompt interactions.
+    Server-authoritative vendor transaction and NPC merchant manager for ASCEND:
+    - Binds ProximityPrompts for NPC merchants across Workspace
+    - Handles MarketAction server events (BuyItem, SellItem, RequestMarketData)
+    - Authoritative Spirit Stone deduction and inventory item addition/removal
+    - Strict Sword Trading Ban (weapons cannot be bought or sold at general merchants)
 ]]
 
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local Workspace = game:GetService("Workspace")
 
-local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
-local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
+local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
+local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
 
 local VendorManager = {}
+local marketActionRemote: RemoteEvent
 
-local marketRemote: RemoteEvent
+local function BindMerchantPrompt(prompt: ProximityPrompt)
+	if prompt:GetAttribute("VendorBound") == true then return end
+	prompt:SetAttribute("VendorBound", true)
 
--- Rank weight map to verify rank requirements
-local RANK_WEIGHTS: { [SectConfig.DiscipleRank]: number } = {
-	["OuterDisciple"] = 1,
-	["InnerDisciple"] = 2,
-	["CoreDisciple"] = 3,
-	["DirectDisciple"] = 4,
-	["SectElder"] = 5,
-	["GrandElder"] = 6,
-}
+	-- Configure prompt for instant, unobstructed interaction
+	prompt.HoldDuration = 0
+	prompt.RequiresLineOfSight = false
+	prompt.MaxActivationDistance = 14
+	prompt.Enabled = true
 
-local function HasRequiredRank(playerRank: SectConfig.DiscipleRank, requiredRank: SectConfig.DiscipleRank): boolean
-	local playerWeight = RANK_WEIGHTS[playerRank] or 1
-	local reqWeight = RANK_WEIGHTS[requiredRank] or 1
-	return playerWeight >= reqWeight
+	prompt.Triggered:Connect(function(player: Player)
+		marketActionRemote:FireClient(player, { Action = "OpenShop" })
+	end)
 end
 
 function VendorManager.Init()
-	marketRemote = RemoteEvents.GetRemote("MarketAction")
+	marketActionRemote = RemoteEvents.GetRemote("MarketAction")
 
-	-- Listen for Client Purchase & Sell Requests
-	marketRemote.OnServerEvent:Connect(function(player: Player, payload: any)
-		if type(payload) ~= "table" or type(payload.Action) ~= "string" then return end
-
+	-- Transaction Gateway
+	marketActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
+		if type(payload) ~= "table" then return end
 		local action = payload.Action
-		if action == "BuyItem" then
-			VendorManager.ProcessBuy(player, payload.ItemId, payload.Amount or 1)
-		elseif action == "SellItem" then
-			VendorManager.ProcessSell(player, payload.ItemId, payload.Amount or 1)
-		elseif action == "RequestMarketData" then
-			VendorManager.SyncMarketData(player)
-		end
-	end)
+		local itemId = payload.ItemId
+		local amount = math.clamp(tonumber(payload.Amount) or 1, 1, 99)
 
-	-- Scan Workspace, NPCs, and Functional_Stations for Vendor Prompts
-	task.spawn(VendorManager.SetupVendorPrompts)
-
-	print("[ASCEND] VendorManager Initialized (Sect Market & Universal ProximityPrompts Active).")
-end
-
-function VendorManager.SetupVendorPrompts()
-	local function BindVendorPrompt(prompt: ProximityPrompt)
-		if prompt.Name == "VendorPrompt" or prompt.ActionText == "Browse General Goods" or prompt.ActionText == "Trade Goods" or prompt.ActionText == "Open Contribution Shop" then
-			prompt.Triggered:Connect(function(player: Player)
-				VendorManager.OpenShopForPlayer(player)
-			end)
-		end
-	end
-
-	-- Scan all prompts across Workspace
-	for _, desc in ipairs(Workspace:GetDescendants()) do
-		if desc:IsA("ProximityPrompt") then
-			BindVendorPrompt(desc)
-		end
-	end
-
-	-- Listen for dynamically added vendor models/prompts
-	Workspace.DescendantAdded:Connect(function(desc)
-		if desc:IsA("ProximityPrompt") then
-			BindVendorPrompt(desc)
-		end
-	end)
-end
-
-function VendorManager.OpenShopForPlayer(player: Player)
-	local stones = PlayerDataManager.GetSpiritStones(player)
-	local rank = PlayerDataManager.GetSectRank(player)
-	local items = SectConfig.GetAllMarketItems()
-
-	marketRemote:FireClient(player, {
-		Action = "OpenShop",
-		SpiritStones = stones,
-		SectRank = rank,
-		Catalog = items,
-	})
-end
-
-function VendorManager.SyncMarketData(player: Player)
-	local stones = PlayerDataManager.GetSpiritStones(player)
-	local rank = PlayerDataManager.GetSectRank(player)
-
-	marketRemote:FireClient(player, {
-		Action = "SyncBalance",
-		SpiritStones = stones,
-		SectRank = rank,
-	})
-end
-
-function VendorManager.ProcessBuy(player: Player, itemId: any, amount: any)
-	if type(itemId) ~= "string" or type(amount) ~= "number" or amount <= 0 then return end
-	amount = math.floor(amount)
-
-	local itemDef = SectConfig.GetMarketItem(itemId)
-	if not itemDef or not itemDef.BuyPrice then
-		marketRemote:FireClient(player, { Action = "TransactionFailed", Message = "Item is not for sale." })
-		return
-	end
-
-	local playerRank = PlayerDataManager.GetSectRank(player)
-	if not HasRequiredRank(playerRank, itemDef.RequiredRank) then
-		local rankDef = SectConfig.GetRank(itemDef.RequiredRank)
-		marketRemote:FireClient(player, { 
-			Action = "TransactionFailed", 
-			Message = string.format("Requires rank: %s", rankDef.DisplayName) 
-		})
-		return
-	end
-
-	local catalogDef = ItemConfig.GetItem(itemId)
-	if catalogDef and catalogDef.Type == "Weapon" then
-		amount = 1
-		if InventoryManager.HasItem(player, itemId, 1) then
-			marketRemote:FireClient(player, { Action = "TransactionFailed", Message = "You already own this sword." })
+		if action == "RequestMarketData" then
+			local sect = player:GetAttribute("Sect") or "Azure Cloud Sect"
+			local rank = player:GetAttribute("SectRank") or "OuterDisciple"
+			marketActionRemote:FireClient(player, {
+				Action = "MarketData",
+				Catalog = SectConfig.GetAllMarketItems(),
+			})
 			return
 		end
+
+		if not itemId or type(itemId) ~= "string" then return end
+		local itemDef = ItemConfig.GetItem(itemId)
+		if not itemDef then return end
+
+		-- SERVER SECURITY POLICY: Weapons cannot be traded at General Merchant
+		if itemDef.Type == "Weapon" then
+			warn(string.format("[SECURITY] %s attempted to trade weapon '%s' at General Merchant! Blocked.", player.Name, itemId))
+			marketActionRemote:FireClient(player, {
+				Action = "TransactionFailed",
+				Message = "Swords are sacred artifacts and cannot be traded here!",
+			})
+			return
+		end
+
+		if action == "BuyItem" then
+			local catalogItem = SectConfig.GetMarketItem(itemId)
+			local unitPrice = (catalogItem and catalogItem.BuyPrice) or itemDef.Price or 50
+			local totalCost = unitPrice * amount
+
+			-- Check rank requirement if specified
+			if catalogItem and catalogItem.RequiredRank then
+				local playerRank = (player:GetAttribute("SectRank") :: any) or "OuterDisciple"
+				if not SectConfig.CanPurchase(playerRank, catalogItem.RequiredRank) then
+					marketActionRemote:FireClient(player, {
+						Action = "TransactionFailed",
+						Message = string.format("Requires %s rank to purchase!", tostring(catalogItem.RequiredRank):gsub("Disciple", "")),
+					})
+					return
+				end
+			end
+
+			if PlayerDataManager.GetSpiritStones(player) >= totalCost then
+				PlayerDataManager.RemoveSpiritStones(player, totalCost)
+				InventoryManager.AddItem(player, itemId, amount)
+				print(string.format("[VENDOR] %s bought %dx %s for %d Stones.", player.Name, amount, itemDef.Name or itemId, totalCost))
+
+				marketActionRemote:FireClient(player, {
+					Action = "TransactionSuccess",
+					Type = "Buy",
+					ItemId = itemId,
+					Amount = amount,
+				})
+			else
+				marketActionRemote:FireClient(player, {
+					Action = "TransactionFailed",
+					Message = "Insufficient Spirit Stones!",
+				})
+			end
+
+		elseif action == "SellItem" then
+			local unitSellPrice = math.max(1, math.floor((itemDef.SellPrice or itemDef.Price or 20) * 0.6))
+			local totalPayout = unitSellPrice * amount
+
+			if InventoryManager.HasItem(player, itemId, amount) then
+				InventoryManager.RemoveItem(player, itemId, amount)
+				PlayerDataManager.AddSpiritStones(player, totalPayout)
+				print(string.format("[VENDOR] %s sold %dx %s for +%d Stones.", player.Name, amount, itemDef.Name or itemId, totalPayout))
+
+				marketActionRemote:FireClient(player, {
+					Action = "TransactionSuccess",
+					Type = "Sell",
+					ItemId = itemId,
+					Amount = amount,
+					TotalPayout = totalPayout,
+				})
+			else
+				marketActionRemote:FireClient(player, {
+					Action = "TransactionFailed",
+					Message = "You do not have enough items to sell!",
+				})
+			end
+		end
+	end)
+
+	-- Search and bind all merchant prompts across Workspace
+	for _, desc in ipairs(Workspace:GetDescendants()) do
+		if desc:IsA("ProximityPrompt") then
+			local parentName = desc.Parent and desc.Parent.Name or ""
+			local ancestorName = desc.Parent and desc.Parent.Parent and desc.Parent.Parent.Name or ""
+			if string.find(parentName:lower(), "merchant") or string.find(ancestorName:lower(), "merchant")
+				or string.find(desc.ActionText:lower(), "goods") or string.find(desc.ObjectText:lower(), "merchant") then
+				BindMerchantPrompt(desc)
+			end
+		end
 	end
 
-	local totalCost = itemDef.BuyPrice * amount
-	local currentStones = PlayerDataManager.GetSpiritStones(player)
+	Workspace.DescendantAdded:Connect(function(desc)
+		if desc:IsA("ProximityPrompt") then
+			local parentName = desc.Parent and desc.Parent.Name or ""
+			local ancestorName = desc.Parent and desc.Parent.Parent and desc.Parent.Parent.Name or ""
+			if string.find(parentName:lower(), "merchant") or string.find(ancestorName:lower(), "merchant")
+				or string.find(desc.ActionText:lower(), "goods") or string.find(desc.ObjectText:lower(), "merchant") then
+				BindMerchantPrompt(desc)
+			end
+		end
+	end)
 
-	if currentStones < totalCost then
-		marketRemote:FireClient(player, { Action = "TransactionFailed", Message = "Insufficient Spirit Stones!" })
-		return
-	end
-
-	local added = InventoryManager.AddItem(player, itemId, amount)
-	if not added then
-		marketRemote:FireClient(player, { Action = "TransactionFailed", Message = "Spirit Pouch is full!" })
-		return
-	end
-
-	PlayerDataManager.RemoveSpiritStones(player, totalCost)
-
-	marketRemote:FireClient(player, {
-		Action = "TransactionSuccess",
-		Type = "Buy",
-		ItemId = itemId,
-		Amount = amount,
-		TotalCost = totalCost,
-		NewBalance = PlayerDataManager.GetSpiritStones(player),
-	})
-
-	print(string.format("[VendorManager] %s purchased %dx %s for %d Spirit Stones.", player.Name, amount, itemId, totalCost))
-end
-
-function VendorManager.ProcessSell(player: Player, itemId: any, amount: any)
-	if type(itemId) ~= "string" or type(amount) ~= "number" or amount <= 0 then return end
-	amount = math.floor(amount)
-
-	local itemDef = SectConfig.GetMarketItem(itemId)
-	if not itemDef or itemDef.SellPrice <= 0 then
-		marketRemote:FireClient(player, { Action = "TransactionFailed", Message = "Item cannot be sold." })
-		return
-	end
-
-	if not InventoryManager.HasItem(player, itemId, amount) then
-		marketRemote:FireClient(player, { Action = "TransactionFailed", Message = "You do not have enough of this item." })
-		return
-	end
-
-	local removed = InventoryManager.RemoveItem(player, itemId, amount)
-	if not removed then
-		marketRemote:FireClient(player, { Action = "TransactionFailed", Message = "Failed to remove items from bag." })
-		return
-	end
-
-	local totalPayout = itemDef.SellPrice * amount
-	PlayerDataManager.AddSpiritStones(player, totalPayout)
-
-	marketRemote:FireClient(player, {
-		Action = "TransactionSuccess",
-		Type = "Sell",
-		ItemId = itemId,
-		Amount = amount,
-		TotalPayout = totalPayout,
-		NewBalance = PlayerDataManager.GetSpiritStones(player),
-	})
-
-	print(string.format("[VendorManager] %s sold %dx %s for %d Spirit Stones.", player.Name, amount, itemId, totalPayout))
+	print("[ASCEND] VendorManager Initialized (Sect Market & Universal ProximityPrompts Active).")
 end
 
 return VendorManager
