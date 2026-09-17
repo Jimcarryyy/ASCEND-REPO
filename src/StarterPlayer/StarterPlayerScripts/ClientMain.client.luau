@@ -28,6 +28,7 @@ local CONTROLLER_NAMES = {
 	"BossHUDController",
 	"DeathReincarnationController",
 	"SwordAltarController",
+	"BloodlineController",
 	"SettingsController", 
 	"SkillBarController",
 	"FocusTargetController",
