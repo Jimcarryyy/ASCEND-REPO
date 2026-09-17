@@ -8,7 +8,9 @@
     - Normal Player Grind Isolation (Regular players / alts only have MortalIronJian and must buy/earn swords one-by-one)
     - Sword Bloodline Lineages, Spin Economy & 3D Visual Artifacts (Phase 4)
     - Ultimate Pinnacle Samsara Rebirth Persistence & Celestial Footstep Trail / Aura Welder (Phase 5)
-    - Authoritative Spawn Dais Router (Permanently bypasses Roblox C++ spawn race condition to guarantee Dais placement)
+    - Authoritative Direct Workspace.SpawnLocation Router
+    - Fixed WeldConstraint CFrame displacement bug in AttachBloodlineVisual
+    - Phase 2: RBXScriptConnection lifecycle cleanup & zero-delay stream-safe dais placement
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -122,6 +124,7 @@ local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
 local playerBloodlines: { [Player]: { Current: string, Spins: number } } = {}
 local playerSamsaraData: { [Player]: number } = {}
+local characterConnections: { [Player]: RBXScriptConnection } = {}
 
 local sectManagerRef: any = nil
 local function getSectManager(): any
@@ -159,51 +162,40 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 }
 
 -- =============================================================================
--- AUTHORITATIVE SPAWN DAIS ROUTER
--- Guarantees the player lands squarely on Murim_SpawnDais on join and respawn
+-- AUTHORITATIVE SPAWN ROUTER
+-- Guarantees the player lands squarely on Workspace.SpawnLocation
 -- =============================================================================
-local function RouteToSpawnDais(character: Model)
-	task.delay(0.08, function()
-		if not character or not character.Parent then return end
-		local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if not hrp then return end
+local function GetPrimarySpawnLocation(): SpawnLocation?
+	local spawnLoc = Workspace:FindFirstChild("SpawnLocation")
+		or Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
 
-		-- 1. Try structured hierarchy path
-		local daisSpawn: SpawnLocation? = nil
-		local funcStations = Workspace:FindFirstChild("Functional_Stations")
-		if funcStations then
-			local dais = funcStations:FindFirstChild("Murim_SpawnDais", true)
-			if dais then
-				daisSpawn = dais:FindFirstChildWhichIsA("SpawnLocation")
-			end
-		end
-
-		-- 2. Fallback search if moved or renamed
-		if not daisSpawn then
-			for _, desc in ipairs(Workspace:GetDescendants()) do
-				if desc:IsA("SpawnLocation") and string.find(desc:GetFullName(), "Murim_SpawnDais") then
-					daisSpawn = desc
-					break
-				end
-			end
-		end
-
-		if daisSpawn then
-			hrp.AssemblyLinearVelocity = Vector3.zero
-			hrp.AssemblyAngularVelocity = Vector3.zero
-			local targetCF = daisSpawn.CFrame * CFrame.new(0, (daisSpawn.Size.Y / 2) + 3.5, 0)
-			hrp.CFrame = targetCF
-		end
-	end)
+	if spawnLoc and spawnLoc:IsA("SpawnLocation") and spawnLoc.Enabled then
+		return spawnLoc
+	end
+	return nil
 end
 
--- 3D Visual Artifact Welder for Bloodlines
-local function AttachBloodlineVisual(char: Model, bloodlineId: string)
-	local def = BloodlineConfig.GetBloodline(bloodlineId)
-	if not def or not def.VisualArtifact then return end
+local function RouteToSpawnDais(character: Model)
+	if not character or not character.Parent then return end
+	local hrp = character:WaitForChild("HumanoidRootPart", 5) :: BasePart?
+	if not hrp or not character.Parent then return end
 
+	local daisSpawn = GetPrimarySpawnLocation()
+	if daisSpawn then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		local targetCF = daisSpawn.CFrame * CFrame.new(0, (daisSpawn.Size.Y / 2) + 3.5, 0)
+		character:PivotTo(targetCF)
+	end
+end
+
+-- 3D Visual Artifact Welder for Bloodlines (Clean: only attaches real models, zero placeholder junk)
+local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	local old = char:FindFirstChild("BloodlineArtifact")
 	if old then old:Destroy() end
+
+	local def = BloodlineConfig.GetBloodline(bloodlineId)
+	if not def or not def.VisualArtifact then return end
 
 	local vSpec = def.VisualArtifact
 	local parentPart = char:FindFirstChild(vSpec.AttachmentPoint) :: BasePart?
@@ -211,35 +203,15 @@ local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 		or char:FindFirstChild("Torso") :: BasePart?
 	if not parentPart then return end
 
+	-- Look for actual 3D model in BloodlineModels or Assets.Bloodlines
 	local modelsFolder = ReplicatedStorage:FindFirstChild("BloodlineModels")
+		or (ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("Bloodlines"))
 	local preMadeModel = modelsFolder and modelsFolder:FindFirstChild(vSpec.ArtifactName) :: Model?
 
-	local artifactModel: Model
-	if preMadeModel then
-		artifactModel = preMadeModel:Clone()
-	else
-		-- Procedural 3D Visual Artifact
-		artifactModel = Instance.new("Model")
-		local core = Instance.new("Part")
-		core.Name = "ArtifactCore"
-		core.Shape = if vSpec.AttachmentPoint == "Head" then Enum.PartType.Ball else Enum.PartType.Cylinder
-		core.Size = if vSpec.AttachmentPoint == "Head" then Vector3.new(1.2, 1.2, 1.2) else Vector3.new(0.3, 3.5, 3.5)
-		core.Material = Enum.Material.Neon
-		core.Color = vSpec.AuraColor
-		core.Transparency = 0.4
-		core.CanCollide = false
-		core.Massless = true
-		core.Anchored = false
-		core.Parent = artifactModel
-		artifactModel.PrimaryPart = core
+	-- If no custom 3D mesh model exists, do NOT spawn ugly neon placeholder shapes
+	if not preMadeModel then return end
 
-		local sel = Instance.new("SelectionBox")
-		sel.Color3 = vSpec.AuraColor
-		sel.LineThickness = 0.05
-		sel.Adornee = core
-		sel.Parent = core
-	end
-
+	local artifactModel = preMadeModel:Clone()
 	artifactModel.Name = "BloodlineArtifact"
 	for _, p in ipairs(artifactModel:GetDescendants()) do
 		if p:IsA("BasePart") then
@@ -252,13 +224,13 @@ local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	local prim = artifactModel.PrimaryPart or artifactModel:FindFirstChildWhichIsA("BasePart", true)
 	if prim then
 		artifactModel.Parent = char
+		local offset = if vSpec.AttachmentPoint == "Head" then Vector3.new(0, 1.4, 0) else Vector3.new(0, 0.4, -0.9)
+		prim.CFrame = parentPart.CFrame * CFrame.new(offset)
+
 		local weld = Instance.new("WeldConstraint")
 		weld.Part0 = parentPart
 		weld.Part1 = prim
 		weld.Parent = prim
-
-		local offset = if vSpec.AttachmentPoint == "Head" then Vector3.new(0, 1.4, 0) else Vector3.new(0, 0.4, -0.9)
-		prim.CFrame = parentPart.CFrame * CFrame.new(offset)
 	end
 end
 
@@ -388,7 +360,7 @@ function PlayerDataManager.Init()
 		end
 	end)
 
-	print("[PlayerDataManager] Engine Initialized with Authoritative Dais Spawn, Bloodlines & Samsara Rebirth.")
+	print("[PlayerDataManager] Engine Initialized with Authoritative SpawnLocation Router, Bloodlines & Samsara Rebirth.")
 end
 
 function PlayerDataManager.OnPlayerAdded(player: Player)
@@ -396,6 +368,12 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	local loadedData: any = nil
 	local isDev = IsDeveloper(player)
 	local defaultEquipped = if isDev then "VoidStarCleaverDao" else STARTER_WEAPON
+
+	-- Set native engine respawn location to direct SpawnLocation
+	local daisSpawn = GetPrimarySpawnLocation()
+	if daisSpawn then
+		player.RespawnLocation = daisSpawn
+	end
 
 	if playerDataStore then
 		for attempt = 1, MAX_RETRIES do
@@ -608,7 +586,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			AttachSamsaraCelestialAura(character, cycle)
 		end
 
-		-- Authoritative Spawn Dais Repositioning
+		-- Authoritative Spawn Location Repositioning
 		RouteToSpawnDais(character)
 
 		task.defer(function()
@@ -621,10 +599,16 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end)
 	end
 
+	-- Clean up prior connection if re-invoked
+	if characterConnections[player] then
+		characterConnections[player]:Disconnect()
+		characterConnections[player] = nil
+	end
+
 	if player.Character then
 		bindChar(player.Character)
 	end
-	player.CharacterAdded:Connect(bindChar)
+	characterConnections[player] = player.CharacterAdded:Connect(bindChar)
 
 	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Samsara: %d, Bloodline: %s).",
 		player.Name,
@@ -638,7 +622,13 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 end
 
 function PlayerDataManager.OnPlayerRemoving(player: Player)
+	if characterConnections[player] then
+		characterConnections[player]:Disconnect()
+		characterConnections[player] = nil
+	end
+
 	PlayerDataManager.SaveData(player)
+
 	task.delay(1.5, function()
 		isLoadedMap[player] = nil
 		playerAlchemyData[player] = nil

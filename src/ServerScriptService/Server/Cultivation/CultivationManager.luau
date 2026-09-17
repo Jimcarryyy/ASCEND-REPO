@@ -11,6 +11,7 @@
     - Inner Demon Tribulation QTE Engine with non-lethal Qi Deviation Backlash
     - Ultimate Pinnacle Samsara Rebirth Gate & Loop (Immortal Ascension Order 9 -> Qi Condensation Order 1)
     - Phase 1: Synchronous lazy session cache fallback inside GetPlayerData to eliminate race condition
+    - Phase 2: CharacterAdded connection lifecycle tracking and locomotion speed normalization
 ]]
 
 local Players = game:GetService("Players")
@@ -48,6 +49,7 @@ local REALM_BREAKTHROUGH_DAN: { [CultivationConfig.RealmTier]: { ItemId: string,
 
 local CultivationManager = {}
 local playerData: { [Player]: PlayerCultivationData } = {}
+local characterConnections: { [Player]: RBXScriptConnection } = {}
 local activeTribulationSessions: { [Player]: { CurrentWave: number, PulseReceived: boolean, PulseDeadline: number } } = {}
 local passiveQiLoopThread: thread? = nil
 local tribulationThreads: { [Player]: thread } = {}
@@ -275,7 +277,13 @@ function CultivationManager.OnPlayerAdded(player: Player)
 		}
 	end
 
-	player.CharacterAdded:Connect(function(character)
+	-- Clean up previous connection if already registered to avoid memory leak
+	if characterConnections[player] then
+		characterConnections[player]:Disconnect()
+		characterConnections[player] = nil
+	end
+
+	characterConnections[player] = player.CharacterAdded:Connect(function(character)
 		local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
 		if humanoid then
 			local pData = CultivationManager.GetPlayerData(player)
@@ -293,6 +301,10 @@ function CultivationManager.OnPlayerAdded(player: Player)
 end
 
 function CultivationManager.OnPlayerRemoving(player: Player)
+	if characterConnections[player] then
+		characterConnections[player]:Disconnect()
+		characterConnections[player] = nil
+	end
 	if tribulationThreads[player] then
 		task.cancel(tribulationThreads[player])
 		tribulationThreads[player] = nil
@@ -549,8 +561,9 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.WalkSpeed = 18
-		humanoid.JumpPower = 65
+		local inArena = character:GetAttribute("InArena") == true
+		humanoid.WalkSpeed = if inArena then 16.0 else 13.5
+		humanoid.JumpPower = 50.0
 		humanoid.AutoRotate = true
 	end
 end

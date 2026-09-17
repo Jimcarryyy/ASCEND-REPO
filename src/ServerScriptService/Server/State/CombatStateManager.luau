@@ -37,6 +37,32 @@ export type PlayerCombatState = {
 
 local CombatStateManager = {}
 local playerStates: { [Player]: PlayerCombatState } = {}
+local characterConnections: { [Player]: RBXScriptConnection } = {}
+
+-- Cached module getters (eliminates cyclical require locks & high-frequency runtime require overhead)
+local weaponManagerRef: any = nil
+local function getWeaponManager(): any
+	if not weaponManagerRef then
+		weaponManagerRef = require(ServerScriptService.Server.Combat.WeaponManager)
+	end
+	return weaponManagerRef
+end
+
+local cultivationManagerRef: any = nil
+local function getCultivationManager(): any
+	if not cultivationManagerRef then
+		cultivationManagerRef = require(ServerScriptService.Server.Cultivation.CultivationManager)
+	end
+	return cultivationManagerRef
+end
+
+local flyingSwordServerRef: any = nil
+local function getFlyingSwordServer(): any
+	if not flyingSwordServerRef then
+		flyingSwordServerRef = require(ServerScriptService.Server.Combat.Weapons.FlyingSwordServer)
+	end
+	return flyingSwordServerRef
+end
 
 local combatActionRemote: RemoteEvent
 local combatVFXRemote: RemoteEvent
@@ -63,14 +89,14 @@ function CombatStateManager.Init()
 
 		-- 1. Sheath Toggle (R)
 		if payload.ToggleSheath then
-			local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+			local WeaponManager = getWeaponManager()
 			WeaponManager.ToggleSheath(player)
 			return
 		end
 
 		-- 1b. Flight Toggle (V)
 		if payload.ToggleFlight then
-			local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+			local WeaponManager = getWeaponManager()
 			WeaponManager.ToggleFlight(player)
 			return
 		end
@@ -123,7 +149,13 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 		LastReplicatedPosture = FlyingSwordConfig.Posture.MaxPosture,
 	}
 
-	player.CharacterAdded:Connect(function(character)
+	-- Clean up previous connection if already registered to avoid memory leak
+	if characterConnections[player] then
+		characterConnections[player]:Disconnect()
+		characterConnections[player] = nil
+	end
+
+	characterConnections[player] = player.CharacterAdded:Connect(function(character)
 		local state = playerStates[player]
 		if state then
 			state.ActionState = "Idle"
@@ -148,11 +180,21 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 end
 
 function CombatStateManager.OnPlayerRemoving(player: Player)
+	if characterConnections[player] then
+		characterConnections[player]:Disconnect()
+		characterConnections[player] = nil
+	end
 	playerStates[player] = nil
 end
 
 function CombatStateManager.GetState(player: Player): PlayerCombatState?
-	return playerStates[player]
+	local state = playerStates[player]
+	-- Self-healing fallback: auto-initialize if queried for an active player
+	if not state and player and player.Parent then
+		CombatStateManager.OnPlayerAdded(player)
+		state = playerStates[player]
+	end
+	return state
 end
 
 -- =============================================================================
@@ -251,7 +293,7 @@ function CombatStateManager.ApplyCC(player: Player, ccType: CCState, duration: n
 
 		-- Dismount if stunned or guard-broken during flight
 		if char:GetAttribute("IsFlying") == true then
-			local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+			local WeaponManager = getWeaponManager()
 			WeaponManager.ToggleFlight(player)
 		end
 
@@ -298,11 +340,11 @@ function CombatStateManager.StartBlock(player: Player, clientTimestamp: number?)
 	-- Dismount if blocking during flight
 	local char = player.Character
 	if char and char:GetAttribute("IsFlying") == true then
-		local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+		local WeaponManager = getWeaponManager()
 		WeaponManager.ToggleFlight(player)
 	end
 
-	local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+	local WeaponManager = getWeaponManager()
 	if WeaponManager.GetWeaponState(player) == "Back" then
 		WeaponManager.SetWeaponState(player, "Hand")
 	end
@@ -388,7 +430,7 @@ function CombatStateManager.HandleStartChargeF(player: Player): boolean
 	if state.CCState == "Stunned" or state.CCState == "GuardBroken" then return false end
 
 	-- Authoritative Qi Gate for Ultimate Charge
-	local cultMgr = require(ServerScriptService.Server.Cultivation.CultivationManager)
+	local cultMgr = getCultivationManager()
 	local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
 	if not pData then return false end
 
@@ -403,7 +445,7 @@ function CombatStateManager.HandleStartChargeF(player: Player): boolean
 	state.ActionState = "ChargingF"
 	state.RecoveryEndTime = 0
 
-	local FlyingSwordServer = require(ServerScriptService.Server.Combat.Weapons.FlyingSwordServer)
+	local FlyingSwordServer = getFlyingSwordServer()
 	FlyingSwordServer.StartChargeF(player)
 	return true
 end
@@ -432,7 +474,7 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 
 	-- Dismount if attacking during flight
 	if character:GetAttribute("IsFlying") == true then
-		local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+		local WeaponManager = getWeaponManager()
 		WeaponManager.ToggleFlight(player)
 	end
 
@@ -444,14 +486,14 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	if (now - lastUsed) < cdDuration then return false end
 
 	-- Auto-draw weapon
-	local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
+	local WeaponManager = getWeaponManager()
 	if WeaponManager.GetWeaponState(player) == "Back" then
 		WeaponManager.SetWeaponState(player, "Hand")
 	end
 
 	-- Dynamic Qi Consumption (For Q, E, and F skills)
 	if skillKey ~= "M1" then
-		local cultMgr = require(ServerScriptService.Server.Cultivation.CultivationManager)
+		local cultMgr = getCultivationManager()
 		local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
 
 		if pData then
@@ -486,7 +528,7 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	state.RecoveryEndTime = now + recoveryTime
 
 	-- Execute Server Attack Engine
-	local FlyingSwordServer = require(ServerScriptService.Server.Combat.Weapons.FlyingSwordServer)
+	local FlyingSwordServer = getFlyingSwordServer()
 	payload = FlyingSwordServer.ExecuteAttack(player, skillKey, payload)
 
 	-- Broadcast atomic combat results
