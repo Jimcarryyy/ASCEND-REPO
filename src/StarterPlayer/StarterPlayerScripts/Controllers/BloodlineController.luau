@@ -396,7 +396,7 @@ function BloodlineController.Init()
 
 	overlayBackdrop.Visible = false
 	screenGui.Enabled = false
-	print("[BloodlineController] Initialized with Meridian Vault Slots & Pity Engine.")
+	print("[BloodlineController] Initialized with Meridian Vault Slots & Pity Engine.") 
 end
 
 function BloodlineController.Start()
