@@ -4,7 +4,8 @@
     Location: src/ServerScriptService/Server/Cultivation/CultivationManager.luau
     Server-authoritative cultivation state engine for ASCEND:
     - Synchronous zero-delay CharacterAdded stat binding
-    - Full body aura lifecycle during Meditation
+    - Dynamic Bloodline Tier Aura Lifecycle during Meditation (Tier 1 to 4 from AuraTemplates)
+    - 12-Lineage Custom Multi-Keypoint ColorSequence Gradient & Light Harmonization
     - Calibrated 10-Realm passive Qi loop: expansionRate = realmInfo.GatherRate * qiNodeMult * sectMult * samsaraRefineMult
     - +30% Qi refining/meditation speed boost per Samsara cycle (Phase 5)
     - Breakthrough Dan consumption requirement
@@ -22,6 +23,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
+local BloodlineConfig = require(ReplicatedStorage.Shared.Configs.BloodlineConfig)
 local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 
@@ -49,6 +51,135 @@ local REALM_BREAKTHROUGH_DAN: { [CultivationConfig.RealmTier]: { ItemId: string,
 	ImmortalAscension = { ItemId = "ImmortalAscensionDan", DisplayName = "Immortal Ascension Dan" },
 }
 
+-- =============================================================================
+-- 12 UNIQUE BLOODLINE AURA PALETTES (Multi-Keypoint ColorSequence & Light Tints)
+-- =============================================================================
+type AuraPalette = {
+	Gradient: ColorSequence,
+	LightColor: Color3,
+}
+
+local BLOODLINE_AURA_PALETTES: { [string]: AuraPalette } = {
+	-- Tier 1 Common
+	["MortalSwordBone"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(210, 225, 240)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(180, 205, 225)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(140, 175, 200)),
+		}),
+		LightColor = Color3.fromRGB(190, 210, 225),
+	},
+	["IronMeridianRoot"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(220, 145, 95)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(180, 110, 60)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(120, 65, 30)),
+		}),
+		LightColor = Color3.fromRGB(180, 115, 65),
+	},
+	["BreezeSpiritVein"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(170, 250, 215)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(130, 230, 195)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(90, 200, 170)),
+		}),
+		LightColor = Color3.fromRGB(150, 235, 200),
+	},
+
+	-- Tier 2 Rare
+	["AzureDragonMeridian"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(60, 230, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(34, 211, 238)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(245, 190, 40)),
+		}),
+		LightColor = Color3.fromRGB(34, 211, 238),
+	},
+	["VerdantLifeCore"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(110, 245, 175)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(52, 211, 153)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(20, 150, 95)),
+		}),
+		LightColor = Color3.fromRGB(52, 211, 153),
+	},
+	["ThunderSoulVessel"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(235, 140, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(192, 132, 252)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(130, 60, 230)),
+		}),
+		LightColor = Color3.fromRGB(192, 132, 252),
+	},
+
+	-- Tier 3 Legendary
+	["AsuraSlaughterBloodline"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 70, 90)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(220, 20, 60)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(110, 10, 25)),
+		}),
+		LightColor = Color3.fromRGB(220, 20, 60),
+	},
+	["EightBladeCelestialHalo"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 250, 210)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(250, 204, 21)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(200, 135, 10)),
+		}),
+		LightColor = Color3.fromRGB(250, 204, 21),
+	},
+	["HeavenlySwordBody"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 250, 210)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(250, 204, 21)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(200, 135, 10)),
+		}),
+		LightColor = Color3.fromRGB(250, 204, 21),
+	},
+	["GlacialPhoenixMeridian"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(215, 245, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 230, 255)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(50, 135, 255)),
+		}),
+		LightColor = Color3.fromRGB(160, 230, 255),
+	},
+	["VoidSpiritRoot"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(200, 120, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(147, 51, 234)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(55, 15, 125)),
+		}),
+		LightColor = Color3.fromRGB(147, 51, 234),
+	},
+
+	-- Tier 4 Mythic
+	["ChaosPrimordialDaoBody"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 255, 230)),
+			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 235, 120)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(235, 160, 30)),
+		}),
+		LightColor = Color3.fromRGB(255, 235, 120),
+	},
+	["NineNetherSovereign"] = {
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(110, 255, 230)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(30, 220, 190)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(10, 85, 75)),
+		}),
+		LightColor = Color3.fromRGB(30, 220, 190),
+	},
+}
+
+local TIER_TEMPLATE_MAP: { [BloodlineConfig.BloodlineTier]: string } = {
+	Common = "Tier1_Common",
+	Rare = "Tier2_Rare",
+	Legendary = "Tier3_Legendary",
+	Mythic = "Tier4_Mythic",
+}
+
 local CultivationManager = {}
 local playerData: { [Player]: PlayerCultivationData } = {}
 local characterConnections: { [Player]: RBXScriptConnection } = {}
@@ -64,8 +195,6 @@ local heavenlyAnnouncementRemote: RemoteEvent? = nil
 local weaponManagerRef: any = nil
 local playerDataManagerRef: any = nil
 local inventoryManagerRef: any = nil
-
-local vfxFolder = ReplicatedStorage:WaitForChild("VFX", 5) :: Folder?
 
 local function getUpdateCultivationRemote(): RemoteEvent?
 	if not updateCultivationRemote then
@@ -224,7 +353,7 @@ function CultivationManager.Init()
 		end)
 	end
 
-	-- Master Passive Qi Loop (Paused while flying; drains Qi and auto-dismounts on exhaustion)
+	-- Master Passive Qi Loop
 	passiveQiLoopThread = task.spawn(function()
 		while true do
 			task.wait(0.5)
@@ -236,7 +365,6 @@ function CultivationManager.Init()
 						local isFlying = (character:GetAttribute("IsFlying") == true)
 
 						if isFlying then
-							-- Dynamic Realm-Scaled Airborne Flight Qi Drain
 							local flightCfg = FlyingSwordConfig.Flight
 							local realmFlight = if flightCfg and flightCfg.Realms then flightCfg.Realms[pData.Realm] else nil
 							local drainPercent = if realmFlight then realmFlight.QiDrainPercent else 0.01
@@ -246,7 +374,6 @@ function CultivationManager.Init()
 
 							pData.CurrentQi = math.max(0, pData.CurrentQi - drainThisTick)
 
-							-- Auto-dismount on Qi exhaustion
 							if pData.CurrentQi <= 0 then
 								local weaponMgr = getWeaponManager()
 								if weaponMgr and weaponMgr.ToggleFlight then
@@ -256,11 +383,10 @@ function CultivationManager.Init()
 
 							CultivationManager.SyncClient(player)
 						else
-							-- Grounded Passive Qi Recovery (Only when not airborne)
 							local sectMult = GetSectQiBuffMultiplier(player)
 							local samsaraRefineMult = GetSamsaraRefineMultiplier(player)
 							local recoveryRate = if isMeditating then ((pData.CultivatedQi / 10.0) * sectMult * samsaraRefineMult) else (pData.CultivatedQi / 60.0)
-							
+
 							if pData.CurrentQi < pData.CultivatedQi then
 								local qiGained = recoveryRate * 0.5
 								pData.CurrentQi = math.min(pData.CultivatedQi, pData.CurrentQi + qiGained)
@@ -285,7 +411,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Initialized (Synchronous Cache & Samsara Qi Loop).")
+	print("[ASCEND] CultivationManager Initialized with Bloodline Tier Aura Engine.")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -305,7 +431,6 @@ function CultivationManager.OnPlayerAdded(player: Player)
 		}
 	end
 
-	-- Clean up previous connection if already registered to avoid memory leak
 	if characterConnections[player] then
 		characterConnections[player]:Disconnect()
 		characterConnections[player] = nil
@@ -345,7 +470,6 @@ end
 function CultivationManager.GetPlayerData(player: Player): PlayerCultivationData?
 	local data = playerData[player]
 	if not data and player.Parent then
-		-- Synchronous lazy fallback: reconstruct session cache from attributes if available
 		local rawRealm = player:GetAttribute("Realm")
 		local cleanRealm = if type(rawRealm) == "string" then rawRealm:gsub("%s*[-–].*", ""):gsub("%s+", "") else "QiCondensation"
 		local realmKey: any = if CultivationConfig[cleanRealm] then cleanRealm else "QiCondensation"
@@ -421,7 +545,7 @@ function CultivationManager.ApplyRealmStats(player: Player)
 
 	local realmInfo = CultivationConfig[pData.Realm]
 	local realmText = if realmInfo then string.format("%s - Order %d", realmInfo.Name, pData.Order) else "Qi Condensation - Order 1"
-	
+
 	character:SetAttribute("MaxHealth", maxHp)
 	character:SetAttribute("Health", if humanoid then humanoid.Health else maxHp)
 	character:SetAttribute("Realm", realmText)
@@ -435,7 +559,7 @@ end
 
 function CultivationManager.ConsumeQi(player: Player, amount: number): boolean
 	local pData = CultivationManager.GetPlayerData(player)
-	if not pData then return end
+	if not pData then return false end
 
 	if pData.CurrentQi < amount then
 		return false
@@ -481,6 +605,9 @@ function CultivationManager.ToggleMeditation(player: Player)
 	CultivationManager.SyncClient(player)
 end
 
+-- =============================================================================
+-- PHASE 5.2: DYNAMIC BLOODLINE TIER AURA & PALETTE WELDER
+-- =============================================================================
 function CultivationManager.StartGroundedMeditation(player: Player, character: Model, realm: CultivationConfig.RealmTier, isBreakthrough: boolean)
 	CultivationManager.StopGroundedMeditation(player, character)
 
@@ -488,86 +615,117 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not hrp or not humanoid then return end
 
-	local realmInfo = CultivationConfig[realm]
-	local auraColor = if realmInfo then (if isBreakthrough then realmInfo.Tribulation.AuraColor else realmInfo.AuraColor) else Color3.fromRGB(0, 220, 255)
+	-- 1. Resolve Active Bloodline, Tier Template & Custom Palette
+	local pdm = getPlayerDataManager()
+	local bloodlineId = if pdm and pdm.GetBloodline then pdm.GetBloodline(player) else (player:GetAttribute("Bloodline") or "MortalSwordBone")
+	local bloodlineDef = BloodlineConfig.GetBloodline(bloodlineId)
+	local tier: BloodlineConfig.BloodlineTier = if bloodlineDef then bloodlineDef.Tier else "Common"
+	local templateName = TIER_TEMPLATE_MAP[tier] or "Tier1_Common"
+
+	local palette = BLOODLINE_AURA_PALETTES[bloodlineId]
+	if not palette then
+		local fallbackColor = if bloodlineDef and bloodlineDef.VisualArtifact then bloodlineDef.VisualArtifact.AuraColor else Color3.fromRGB(0, 220, 255)
+		palette = {
+			Gradient = ColorSequence.new(fallbackColor),
+			LightColor = fallbackColor,
+		}
+	end
 
 	humanoid.WalkSpeed = 0
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
 	character:SetAttribute("IsMeditating", true)
 
+	-- 2. Clean Spirit Highlight
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "QiMeditationHighlight"
 	highlight.Adornee = character
-	highlight.FillColor = auraColor
-	highlight.FillTransparency = if isBreakthrough then 0.85 else 0.95
-	highlight.OutlineColor = auraColor
-	highlight.OutlineTransparency = 0.2
+	highlight.FillColor = palette.LightColor
+	highlight.FillTransparency = if isBreakthrough then 0.82 else 0.90
+	highlight.OutlineColor = palette.LightColor
+	highlight.OutlineTransparency = 0.25
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.Parent = character
 
+	-- 3. Raycast Leg Ground Adjustment
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterDescendantsInstances = { character }
 	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
 	local rayResult = Workspace:Raycast(hrp.Position, Vector3.new(0, -25, 0), raycastParams)
 	local groundY = if rayResult then rayResult.Position.Y else (hrp.Position.Y - 3.0)
-
 	hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 4.8, hrp.Position.Z) * hrp.CFrame.Rotation
 
-	local auraTemplate = (vfxFolder and vfxFolder:FindFirstChild("Full body aura"))
-		or (ReplicatedStorage:FindFirstChild("Full body aura", true) :: Instance?)
+	-- 4. Locate Modular Aura Template Folder
+	local auraFolder = ReplicatedStorage:FindFirstChild("AuraTemplates") 
+		or Workspace:FindFirstChild("AuraTemplates")
+	local tierTemplate = auraFolder and auraFolder:FindFirstChild(templateName) :: Folder?
 
-	if auraTemplate then
-		local auraClone = auraTemplate:Clone()
-		auraClone.Name = "QiMeditationAura"
+	if tierTemplate then
+		local clonedAttachments: { [string]: Attachment } = {}
 
-		for _, descendant in ipairs(auraClone:GetDescendants()) do
-			if descendant:IsA("ParticleEmitter") then
-				descendant.Color = ColorSequence.new(auraColor)
-				descendant.Enabled = true
-			elseif descendant:IsA("PointLight") then
-				descendant.Color = auraColor
-				descendant.Enabled = true
-			elseif descendant:IsA("BasePart") then
-				descendant.CanCollide = false
-				descendant.CanTouch = false
-				descendant.CanQuery = false
-				descendant.Massless = true
-				descendant.Transparency = 1
+		-- Pass 1: Clone all attachments to HumanoidRootPart
+		for _, child in ipairs(tierTemplate:GetChildren()) do
+			if child:IsA("Attachment") then
+				local attClone = child:Clone()
+				attClone.Name = "Aura_" .. child.Name
+				attClone.Parent = hrp
+				clonedAttachments[child.Name] = attClone
 
-				descendant.CFrame = hrp.CFrame
-				local weld = Instance.new("WeldConstraint")
-				weld.Part0 = hrp
-				weld.Part1 = descendant
-				weld.Parent = descendant
+				-- Smart-Tint: Preserves high-contrast white centers and deep shadow waves
+				for _, desc in ipairs(attClone:GetDescendants()) do
+					if desc:IsA("ParticleEmitter") then
+						local origEmission = desc:GetAttribute("OriginalEmission") or desc.LightEmission
+						if origEmission == 0 then
+							-- Deep shadow / dark wave: blend dark accent of bloodline
+							desc.Color = ColorSequence.new(Color3.fromRGB(20, 20, 30))
+						elseif desc.Name == "Eye" then
+							-- Spirit Eye core: keep bright sacred white
+							desc.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+						else
+							-- Main energy: apply the custom Bloodline palette
+							desc.Color = palette.Gradient
+						end
+						desc.Enabled = true
+					elseif desc:IsA("PointLight") then
+						desc.Color = palette.LightColor
+						desc.Enabled = true
+					end
+				end
 			end
 		end
 
-		auraClone.Parent = character
+		-- Pass 2: Rewire Beams (e.g. Tier 4 Skyward Vortex)
+		local pillarBottomClone = clonedAttachments["PillarBottom"]
+		local pillarTopClone = clonedAttachments["PillarTop"]
+		if pillarBottomClone and pillarTopClone then
+			for _, desc in ipairs(pillarBottomClone:GetDescendants()) do
+				if desc:IsA("Beam") then
+					desc.Attachment0 = pillarBottomClone
+					desc.Attachment1 = pillarTopClone
+					desc.Color = palette.Gradient
+					desc.Enabled = true
+				end
+			end
+		end
 	end
 
 	hrp.Anchored = true
 end
 
 function CultivationManager.StopGroundedMeditation(player: Player, character: Model)
+	-- 1. Destroy Character Highlights
 	for _, child in ipairs(character:GetChildren()) do
-		if child.Name == "QiMeditationAura" or child.Name == "QiMeditationHighlight" then
-			for _, emitter in ipairs(child:GetDescendants()) do
-				if emitter:IsA("ParticleEmitter") then
-					emitter.Enabled = false
-				elseif emitter:IsA("PointLight") then
-					emitter.Enabled = false
-				end
-			end
+		if child.Name == "QiMeditationHighlight" or child.Name == "QiMeditationAura" then
 			child:Destroy()
 		end
 	end
 
+	-- 2. Destroy Cloned Aura Attachments on HumanoidRootPart
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if hrp then
 		for _, child in ipairs(hrp:GetChildren()) do
-			if child.Name == "QiMeditationAura" or child.Name:match("^Aura") then
+			if child:IsA("Attachment") and (child.Name:match("^Aura_") or child.Name:match("^RootAttachment") or child.Name:match("^GroundAttachment")) then
 				child:Destroy()
 			end
 		end

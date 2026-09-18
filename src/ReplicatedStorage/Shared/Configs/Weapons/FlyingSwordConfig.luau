@@ -3,7 +3,9 @@
     FlyingSwordConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/Weapons/FlyingSwordConfig.luau
     Defines 5-Hit M1 combo, Skills (Q, E, F Ultimate Domain), Block/Parry (T), and Dash.
-    Phase 4: Dynamic Realm-Scaled 3D Flight Physics & Qi Drain Table.
+    - M1 Hits 1-4 Knockback normalized to micro-stagger (prevents knocking targets out of combo)
+    - F Ultimate buffed to 260 Base Damage with 2-Stage Lightning Shred + Shatter Finisher
+    - Phase 4: Dynamic Realm-Scaled 3D Flight Physics & Qi Drain Table
 ]]
 
 export type ComboStep = {
@@ -70,12 +72,13 @@ export type FlightConfig = {
 }
 
 local FlyingSwordConfig = {
+	-- M1 Hits 1-4 keep victims locked in blade range with micro-stagger; only Hit 5 launches
 	M1Combo = {
-		[1] = { Step = 1, Damage = 15, ArenaDamage = 45, PostureDamage = 15, Range = Vector3.new(6.5, 6, 8), Offset = Vector3.new(0, 0, -4), Knockback = Vector3.new(0, 3, -6), Windup = 0.08, ActiveDuration = 0.14, Recovery = 0.16, Cooldown = 0.38 },
-		[2] = { Step = 2, Damage = 15, ArenaDamage = 45, PostureDamage = 15, Range = Vector3.new(6.5, 6, 8), Offset = Vector3.new(0, 0, -4), Knockback = Vector3.new(0, 3, -6), Windup = 0.08, ActiveDuration = 0.14, Recovery = 0.16, Cooldown = 0.38 },
-		[3] = { Step = 3, Damage = 20, ArenaDamage = 60, PostureDamage = 20, Range = Vector3.new(7.5, 7, 9), Offset = Vector3.new(0, 0, -4.5), Knockback = Vector3.new(0, 6, -10), Windup = 0.09, ActiveDuration = 0.15, Recovery = 0.18, Cooldown = 0.42 },
-		[4] = { Step = 4, Damage = 25, ArenaDamage = 75, PostureDamage = 20, Range = Vector3.new(7.5, 7, 9), Offset = Vector3.new(0, 0, -4.5), Knockback = Vector3.new(0, 8, -15), Windup = 0.09, ActiveDuration = 0.15, Recovery = 0.20, Cooldown = 0.44 },
-		[5] = { Step = 5, Damage = 45, ArenaDamage = 130, PostureDamage = 40, Range = Vector3.new(9.5, 8, 11), Offset = Vector3.new(0, 0, -5), Knockback = Vector3.new(0, 20, -32), Windup = 0.14, ActiveDuration = 0.18, Recovery = 0.33, Cooldown = 0.65 },
+		[1] = { Step = 1, Damage = 15, ArenaDamage = 45, PostureDamage = 15, Range = Vector3.new(7.0, 6, 8.5), Offset = Vector3.new(0, 0, -4), Knockback = Vector3.new(0, 0, -0.5), Windup = 0.08, ActiveDuration = 0.14, Recovery = 0.16, Cooldown = 0.38 },
+		[2] = { Step = 2, Damage = 15, ArenaDamage = 45, PostureDamage = 15, Range = Vector3.new(7.0, 6, 8.5), Offset = Vector3.new(0, 0, -4), Knockback = Vector3.new(0, 0, -0.5), Windup = 0.08, ActiveDuration = 0.14, Recovery = 0.16, Cooldown = 0.38 },
+		[3] = { Step = 3, Damage = 20, ArenaDamage = 60, PostureDamage = 20, Range = Vector3.new(8.0, 7, 9.5), Offset = Vector3.new(0, 0, -4.5), Knockback = Vector3.new(0, 0, -0.5), Windup = 0.09, ActiveDuration = 0.15, Recovery = 0.18, Cooldown = 0.42 },
+		[4] = { Step = 4, Damage = 25, ArenaDamage = 75, PostureDamage = 20, Range = Vector3.new(8.0, 7, 9.5), Offset = Vector3.new(0, 0, -4.5), Knockback = Vector3.new(0, 0, -0.5), Windup = 0.09, ActiveDuration = 0.15, Recovery = 0.20, Cooldown = 0.44 },
+		[5] = { Step = 5, Damage = 45, ArenaDamage = 130, PostureDamage = 40, Range = Vector3.new(10.0, 8, 12.0), Offset = Vector3.new(0, 0, -5), Knockback = Vector3.new(0, 18, -30), Windup = 0.14, ActiveDuration = 0.18, Recovery = 0.33, Cooldown = 0.65 },
 	} :: { [number]: ComboStep },
 
 	Skills = {
@@ -111,19 +114,19 @@ local FlyingSwordConfig = {
 		},
 		F = {
 			Name = "100-Slash Flash Domain",
-			Damage = 100,               -- 5 ticks x 20 damage
-			ArenaDamage = 240,
-			PostureDamage = 70,
-			Cooldown = 5.5,             -- 5.5s cooldown
-			QiCostPercent = 0.20,       -- 20% Max Qi cost
-			Range = Vector3.new(36, 16, 36),
+			Damage = 260,              -- 4 electric ticks x 39 + 156 final detonation
+			ArenaDamage = 450,
+			PostureDamage = 120,       -- High guard break threat
+			Cooldown = 7.0,
+			QiCostPercent = 0.25,
+			Range = Vector3.new(36, 18, 36),
 			Offset = Vector3.new(0, 0, -14),
-			Knockback = Vector3.new(0, 16, -26),
+			Knockback = Vector3.new(0, 20, -35),
 			Windup = 0.20,
-			ActiveDuration = 0.70,
-			Recovery = 0.20,
-			DashSpeed = 150,            -- Snappy 150 studs/s velocity
-			DashDistance = 28,          -- Tuned to 28 studs (close-to-mid range)
+			ActiveDuration = 0.60,
+			Recovery = 0.25,
+			DashSpeed = 160,
+			DashDistance = 32,
 		},
 		T = {
 			Name = "Block & Parry",
@@ -176,9 +179,6 @@ local FlyingSwordConfig = {
 		ClashWindow = 0.08,
 	} :: CCConfig,
 
-	-- =========================================================================
-	-- DYNAMIC REALM-SCALED FLIGHT VELOCITY & QI DRAIN (PHASE 4)
-	-- =========================================================================
 	Flight = {
 		Realms = {
 			QiCondensation = { Velocity = 38.0, QiDrainPercent = 0.0200, FlatDrain = 5 },
