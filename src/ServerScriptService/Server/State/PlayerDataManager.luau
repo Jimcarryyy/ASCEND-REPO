@@ -6,7 +6,7 @@
     - DataVersion 3 Persistence Pipeline with Legacy Test Sword Sanitizer
     - Developer Exclusive Arsenal Engine (Auto-grants all present & future swords to Han_jueee only)
     - Normal Player Grind Isolation (Regular players / alts only have MortalIronJian and must buy/earn swords one-by-one)
-    - Sword Bloodline Lineages, Spin Economy & 3D Visual Artifacts (Phase 4)
+    - Sword Bloodline Lineages, Meridian Storage Slots, Pity Counter & Spin Economy (Phase 5.2)
     - Ultimate Pinnacle Samsara Rebirth Persistence & Celestial Footstep Trail / Aura Welder (Phase 5)
     - Authoritative Direct Workspace.SpawnLocation Router
     - Fixed WeldConstraint CFrame displacement bug in AttachBloodlineVisual
@@ -41,6 +41,11 @@ export type SavedQuestState = {
 	AllTiersCompleted: boolean,
 }
 
+export type SavedBloodlinePity = {
+	SpinsSinceLegendary: number?,
+	SpinsSinceMythic: number?,
+}
+
 export type SavedPlayerData = {
 	Version: number,
 	Cultivation: {
@@ -64,6 +69,9 @@ export type SavedPlayerData = {
 	LastStipendClaim: number?,
 	Bloodline: string?,
 	BloodlineSpins: number?,
+	BloodlineSlots: { [string]: string }?,
+	MaxBloodlineSlots: number?,
+	BloodlinePity: SavedBloodlinePity?,
 	SamsaraCycle: number?,
 }
 
@@ -122,7 +130,18 @@ local playerAlchemyData: { [Player]: { Exp: number, Level: number } } = {}
 local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfig.DiscipleRank, ContributionPoints: number } } = {}
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
-local playerBloodlines: { [Player]: { Current: string, Spins: number } } = {}
+
+-- Expanded Bloodline Session Cache: tracks active lineage, spins, unlocked meridian slots, and pity counters
+local playerBloodlines: {
+	[Player]: {
+		Current: string,
+		Spins: number,
+		Slots: { [number]: string },
+		MaxSlots: number,
+		Pity: { SpinsSinceLegendary: number, SpinsSinceMythic: number },
+	}
+} = {}
+
 local playerSamsaraData: { [Player]: number } = {}
 local characterConnections: { [Player]: RBXScriptConnection } = {}
 
@@ -158,6 +177,12 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	EquippedSkin = "DefaultBronze",
 	Bloodline = "MortalSwordBone",
 	BloodlineSpins = 5,
+	BloodlineSlots = { ["1"] = "MortalSwordBone" },
+	MaxBloodlineSlots = 1,
+	BloodlinePity = {
+		SpinsSinceLegendary = 0,
+		SpinsSinceMythic = 0,
+	},
 	SamsaraCycle = 0,
 }
 
@@ -189,7 +214,7 @@ local function RouteToSpawnDais(character: Model)
 	end
 end
 
--- 3D Visual Artifact Welder for Bloodlines (Clean: only attaches real models, zero placeholder junk)
+-- 3D Visual Artifact Welder for Bloodlines
 local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	local old = char:FindFirstChild("BloodlineArtifact")
 	if old then old:Destroy() end
@@ -203,12 +228,10 @@ local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 		or char:FindFirstChild("Torso") :: BasePart?
 	if not parentPart then return end
 
-	-- Look for actual 3D model in BloodlineModels or Assets.Bloodlines
-	local modelsFolder = ReplicatedStorage:FindFirstChild("BloodlineModels")
+	local modelsFolder = ReplicatedStorage:FindFirstChild("Bloodlines")
 		or (ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("Bloodlines"))
 	local preMadeModel = modelsFolder and modelsFolder:FindFirstChild(vSpec.ArtifactName) :: Model?
 
-	-- If no custom 3D mesh model exists, do NOT spawn ugly neon placeholder shapes
 	if not preMadeModel then return end
 
 	local artifactModel = preMadeModel:Clone()
@@ -224,7 +247,7 @@ local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	local prim = artifactModel.PrimaryPart or artifactModel:FindFirstChildWhichIsA("BasePart", true)
 	if prim then
 		artifactModel.Parent = char
-		local offset = if vSpec.AttachmentPoint == "Head" then Vector3.new(0, 1.4, 0) else Vector3.new(0, 0.4, -0.9)
+		local offset = if vSpec.AttachmentPoint == "Head" then Vector3.new(0, 1.4, 0) else Vector3.new(0, 0.4, 0.95)
 		prim.CFrame = parentPart.CFrame * CFrame.new(offset)
 
 		local weld = Instance.new("WeldConstraint")
@@ -249,7 +272,6 @@ local function AttachSamsaraCelestialAura(character: Model, cycle: number)
 	auraFolder.Name = "SamsaraCelestialAura"
 	auraFolder.Parent = character
 
-	-- Torso / Root Subtle Celestial Lotus Ring
 	local attCenter = Instance.new("Attachment")
 	attCenter.Name = "SamsaraCenterAtt"
 	attCenter.Position = Vector3.new(0, -2.5, 0)
@@ -279,7 +301,6 @@ local function AttachSamsaraCelestialAura(character: Model, cycle: number)
 	particles.SpreadAngle = Vector2.new(180, 20)
 	particles.Parent = attCenter
 
-	-- Footstep Celestial Trails (supports both R15 and R6)
 	for _, footName in ipairs({ "LeftFoot", "RightFoot", "Left Leg", "Right Leg" }) do
 		local footPart = character:FindFirstChild(footName) :: BasePart?
 		if footPart and not footPart:FindFirstChild("SamsaraTrail") then
@@ -369,7 +390,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	local isDev = IsDeveloper(player)
 	local defaultEquipped = if isDev then "VoidStarCleaverDao" else STARTER_WEAPON
 
-	-- Set native engine respawn location to direct SpawnLocation
 	local daisSpawn = GetPrimarySpawnLocation()
 	if daisSpawn then
 		player.RespawnLocation = daisSpawn
@@ -393,7 +413,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end
 	end
 
-	-- Fallback to V2 store if V3 has no record yet
 	local isMigratedFromV2 = false
 	if not loadedData then
 		pcall(function()
@@ -432,6 +451,12 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			EquippedSkin = "DefaultBronze",
 			Bloodline = "MortalSwordBone",
 			BloodlineSpins = 5,
+			BloodlineSlots = { ["1"] = "MortalSwordBone" },
+			MaxBloodlineSlots = 1,
+			BloodlinePity = {
+				SpinsSinceLegendary = 0,
+				SpinsSinceMythic = 0,
+			},
 			SamsaraCycle = 0,
 		}
 	else
@@ -440,7 +465,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			loadedData.Version = CURRENT_VERSION
 		end
 
-		-- SANITIZE CLOUD DATA: Fix corrupted FlyingSword or force developer default to VoidStarCleaverDao
 		local eq = tostring(loadedData.EquippedWeapon or "")
 		if eq == "" or eq == "FlyingSword" or eq == "Celestial Thunder Sovereign Sword" or string.find(eq:lower(), "flyingsword") or (isDev and eq == "MortalIronJian") then
 			loadedData.EquippedWeapon = defaultEquipped
@@ -468,9 +492,31 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		UnlockedSkins = loadedData.UnlockedSkins or { ["DefaultBronze"] = true },
 	}
 
+	-- Hydrate Meridian Storage Slots
+	local activeBloodline = loadedData.Bloodline or "MortalSwordBone"
+	local hydratedSlots: { [number]: string } = { [1] = activeBloodline }
+	if loadedData.BloodlineSlots and type(loadedData.BloodlineSlots) == "table" then
+		for slotKey, bloodlineId in pairs(loadedData.BloodlineSlots) do
+			local slotNum = tonumber(slotKey)
+			if slotNum and type(bloodlineId) == "string" then
+				hydratedSlots[slotNum] = bloodlineId
+			end
+		end
+	end
+
+	-- Hydrate Pity Progress
+	local loadedPity = loadedData.BloodlinePity or {}
+	local pityData = {
+		SpinsSinceLegendary = loadedPity.SpinsSinceLegendary or 0,
+		SpinsSinceMythic = loadedPity.SpinsSinceMythic or 0,
+	}
+
 	playerBloodlines[player] = {
-		Current = loadedData.Bloodline or "MortalSwordBone",
+		Current = activeBloodline,
 		Spins = loadedData.BloodlineSpins or 5,
+		Slots = hydratedSlots,
+		MaxSlots = loadedData.MaxBloodlineSlots or 1,
+		Pity = pityData,
 	}
 
 	playerSamsaraData[player] = loadedData.SamsaraCycle or 0
@@ -483,7 +529,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		loadedData.Cultivation.CultivatedQi
 	)
 
-	-- Normalize inventory keys
 	local normalizedInventory: { [number]: SavedInventorySlot } = {}
 
 	if loadedData.Inventory and type(loadedData.Inventory) == "table" then
@@ -503,9 +548,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end
 	end
 
-	-- =========================================================================
-	-- WEAPON ACCESS MANAGEMENT
-	-- =========================================================================
 	if isDev then
 		print(string.format("[PlayerDataManager] Developer detected (%s) — injecting full weapon arsenal.", player.Name))
 		local allItems = ItemConfig.GetAllItems()
@@ -560,7 +602,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		SectManager.SetLastStipendClaim(player, loadedData.LastStipendClaim)
 	end
 
-	-- Sync Player Attributes
+	-- Sync Attributes
 	player:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
 	player:SetAttribute("SectRank", playerEconomyData[player].SectRank)
 	player:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
@@ -568,6 +610,9 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	player:SetAttribute("EquippedHUDSkin", loadedData.EquippedSkin or "DefaultBronze")
 	player:SetAttribute("Bloodline", playerBloodlines[player].Current)
 	player:SetAttribute("BloodlineSpins", playerBloodlines[player].Spins)
+	player:SetAttribute("MaxBloodlineSlots", playerBloodlines[player].MaxSlots)
+	player:SetAttribute("LegendaryPity", playerBloodlines[player].Pity.SpinsSinceLegendary)
+	player:SetAttribute("MythicPity", playerBloodlines[player].Pity.SpinsSinceMythic)
 	player:SetAttribute("SamsaraCycle", playerSamsaraData[player])
 	if playerSamsaraData[player] > 0 then
 		player:SetAttribute("SamsaraTitle", string.format("[Samsara %s]", ToRoman(playerSamsaraData[player])))
@@ -586,7 +631,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			AttachSamsaraCelestialAura(character, cycle)
 		end
 
-		-- Authoritative Spawn Location Repositioning
 		RouteToSpawnDais(character)
 
 		task.defer(function()
@@ -599,7 +643,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end)
 	end
 
-	-- Clean up prior connection if re-invoked
 	if characterConnections[player] then
 		characterConnections[player]:Disconnect()
 		characterConnections[player] = nil
@@ -610,14 +653,15 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 	characterConnections[player] = player.CharacterAdded:Connect(bindChar)
 
-	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Samsara: %d, Bloodline: %s).",
+	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Samsara: %d, Bloodline: %s, Slots: %d).",
 		player.Name,
 		loadedData.Cultivation.Realm,
 		loadedData.Cultivation.Order or 1,
 		loadedData.SpiritStones or 250,
 		loadedData.SectRank or "OuterDisciple",
 		playerSamsaraData[player],
-		playerBloodlines[player].Current
+		playerBloodlines[player].Current,
+		playerBloodlines[player].MaxSlots
 	))
 end
 
@@ -739,7 +783,7 @@ function PlayerDataManager.GetAlchemyData(player: Player): (number, number)
 end
 
 -- =============================================================================
--- PHASE 4: BLOODLINE ACCESSORS & GACHA ROLLER
+-- PHASE 4 & 5.2: BLOODLINE ACCESSORS, MERIDIAN SLOTS & PITY ENGINE
 -- =============================================================================
 function PlayerDataManager.GetBloodline(player: Player): string
 	local data = playerBloodlines[player]
@@ -753,10 +797,17 @@ end
 function PlayerDataManager.SetBloodline(player: Player, bloodlineId: string)
 	local data = playerBloodlines[player]
 	if not data then
-		data = { Current = bloodlineId, Spins = PlayerDataManager.GetBloodlineSpins(player) }
+		data = {
+			Current = bloodlineId,
+			Spins = PlayerDataManager.GetBloodlineSpins(player),
+			Slots = { [1] = bloodlineId },
+			MaxSlots = 1,
+			Pity = { SpinsSinceLegendary = 0, SpinsSinceMythic = 0 },
+		}
 		playerBloodlines[player] = data
 	else
 		data.Current = bloodlineId
+		data.Slots[1] = bloodlineId
 	end
 	player:SetAttribute("Bloodline", bloodlineId)
 	if player.Character then
@@ -779,7 +830,13 @@ function PlayerDataManager.AddBloodlineSpins(player: Player, amount: number): nu
 	if not data then
 		local current = PlayerDataManager.GetBloodlineSpins(player)
 		local currentBloodline = PlayerDataManager.GetBloodline(player)
-		data = { Current = currentBloodline, Spins = current }
+		data = {
+			Current = currentBloodline,
+			Spins = current,
+			Slots = { [1] = currentBloodline },
+			MaxSlots = 1,
+			Pity = { SpinsSinceLegendary = 0, SpinsSinceMythic = 0 },
+		}
 		playerBloodlines[player] = data
 	end
 	data.Spins = math.max(0, data.Spins + amount)
@@ -787,19 +844,119 @@ function PlayerDataManager.AddBloodlineSpins(player: Player, amount: number): nu
 	return data.Spins
 end
 
+-- Meridian Vault Slots Management
+function PlayerDataManager.GetBloodlineSlots(player: Player): { [number]: string }
+	local data = playerBloodlines[player]
+	if not data then return { [1] = PlayerDataManager.GetBloodline(player) } end
+	return data.Slots
+end
+
+function PlayerDataManager.GetMaxBloodlineSlots(player: Player): number
+	local data = playerBloodlines[player]
+	return if data then data.MaxSlots else 1
+end
+
+function PlayerDataManager.SetMaxBloodlineSlots(player: Player, maxSlots: number)
+	local data = playerBloodlines[player]
+	if not data then return end
+	data.MaxSlots = math.clamp(maxSlots, 1, 4)
+	player:SetAttribute("MaxBloodlineSlots", data.MaxSlots)
+end
+
+function PlayerDataManager.SaveBloodlineToSlot(player: Player, slotIndex: number, bloodlineId: string): boolean
+	local data = playerBloodlines[player]
+	if not data then return false end
+	if slotIndex < 1 or slotIndex > data.MaxSlots then return false end
+
+	data.Slots[slotIndex] = bloodlineId
+	if slotIndex == 1 then
+		PlayerDataManager.SetBloodline(player, bloodlineId)
+	end
+	return true
+end
+
+function PlayerDataManager.EquipBloodlineFromSlot(player: Player, slotIndex: number): boolean
+	local data = playerBloodlines[player]
+	if not data then return false end
+	local targetBloodline = data.Slots[slotIndex]
+	if not targetBloodline then return false end
+
+	data.Current = targetBloodline
+	player:SetAttribute("Bloodline", targetBloodline)
+	if player.Character then
+		player.Character:SetAttribute("Bloodline", targetBloodline)
+		AttachBloodlineVisual(player.Character, targetBloodline)
+	end
+	return true
+end
+
+-- Bad-Luck Pity Counter Management
+function PlayerDataManager.GetBloodlinePity(player: Player): { SpinsSinceLegendary: number, SpinsSinceMythic: number }
+	local data = playerBloodlines[player]
+	if not data then return { SpinsSinceLegendary = 0, SpinsSinceMythic = 0 } end
+	return data.Pity
+end
+
+function PlayerDataManager.IncrementBloodlinePity(player: Player): { SpinsSinceLegendary: number, SpinsSinceMythic: number }
+	local data = playerBloodlines[player]
+	if not data then
+		data = {
+			Current = PlayerDataManager.GetBloodline(player),
+			Spins = PlayerDataManager.GetBloodlineSpins(player),
+			Slots = { [1] = PlayerDataManager.GetBloodline(player) },
+			MaxSlots = 1,
+			Pity = { SpinsSinceLegendary = 0, SpinsSinceMythic = 0 },
+		}
+		playerBloodlines[player] = data
+	end
+
+	data.Pity.SpinsSinceLegendary += 1
+	data.Pity.SpinsSinceMythic += 1
+
+	player:SetAttribute("LegendaryPity", data.Pity.SpinsSinceLegendary)
+	player:SetAttribute("MythicPity", data.Pity.SpinsSinceMythic)
+
+	return data.Pity
+end
+
+function PlayerDataManager.ResetBloodlinePity(player: Player, tier: "Legendary" | "Mythic")
+	local data = playerBloodlines[player]
+	if not data then return end
+
+	if tier == "Legendary" then
+		data.Pity.SpinsSinceLegendary = 0
+		player:SetAttribute("LegendaryPity", 0)
+	elseif tier == "Mythic" then
+		data.Pity.SpinsSinceLegendary = 0
+		data.Pity.SpinsSinceMythic = 0
+		player:SetAttribute("LegendaryPity", 0)
+		player:SetAttribute("MythicPity", 0)
+	end
+end
+
 function PlayerDataManager.RollBloodline(player: Player): (string?, boolean)
 	local currentSpins = PlayerDataManager.GetBloodlineSpins(player)
 	if currentSpins <= 0 then return nil, false end
 
 	PlayerDataManager.AddBloodlineSpins(player, -1)
+	PlayerDataManager.IncrementBloodlinePity(player)
+
 	local rolledId = BloodlineConfig.RollBloodline()
 	PlayerDataManager.SetBloodline(player, rolledId)
 
 	local def = BloodlineConfig.GetBloodline(rolledId)
-	if def and (def.Tier == "Legendary" or def.Tier == "Mythic") then
-		local remote = RemoteEvents.GetRemote("HeavenlyAnnouncement")
-		if remote then
-			remote:FireAllClients(string.format("[HEAVENLY FATE] Cultivator %s awakened the [%s] (%s Lineage)!", player.DisplayName, def.Name, def.Tier))
+	if def then
+		if def.Tier == "Mythic" then
+			PlayerDataManager.ResetBloodlinePity(player, "Mythic")
+		elseif def.Tier == "Legendary" then
+			PlayerDataManager.ResetBloodlinePity(player, "Legendary")
+		end
+
+		if def.Tier == "Legendary" or def.Tier == "Mythic" then
+			local remote = RemoteEvents.GetRemote("HeavenlyAnnouncement")
+			if remote then
+				remote:FireAllClients(string.format("[HEAVENLY FATE] Cultivator %s awakened the [%s] (%s Lineage)!", player.DisplayName, def.Name, def.Tier))
+			end
 		end
 	end
 
@@ -849,7 +1006,13 @@ function PlayerDataManager.SaveData(player: Player): boolean
 	local economy = playerEconomyData[player] or { SpiritStones = 250, SectRank = "OuterDisciple", ContributionPoints = 0 }
 	local gamepasses = playerGamepasses[player] or {}
 	local skinData = playerSkinData[player] or { EquippedSkin = "DefaultBronze", UnlockedSkins = { ["DefaultBronze"] = true } }
-	local bData = playerBloodlines[player] or { Current = "MortalSwordBone", Spins = 5 }
+	local bData = playerBloodlines[player] or {
+		Current = "MortalSwordBone",
+		Spins = 5,
+		Slots = { [1] = "MortalSwordBone" },
+		MaxSlots = 1,
+		Pity = { SpinsSinceLegendary = 0, SpinsSinceMythic = 0 },
+	}
 	local samsaraCycle = playerSamsaraData[player] or 0
 
 	local SectManager = getSectManager()
@@ -861,7 +1024,6 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		return false
 	end
 
-	-- SANITIZE BEFORE SAVING: Prevent FlyingSword from ever entering cloud save
 	local defaultWep = if IsDeveloper(player) then "VoidStarCleaverDao" else STARTER_WEAPON
 	if not equippedWeapon or equippedWeapon == "FlyingSword" or string.find(tostring(equippedWeapon):lower(), "flyingsword") then
 		equippedWeapon = defaultWep
@@ -876,6 +1038,12 @@ function PlayerDataManager.SaveData(player: Player): boolean
 				Quality = slot.Quality,
 			}
 		end
+	end
+
+	-- Serialize Meridian Slots
+	local serializedSlots: { [string]: string } = {}
+	for slotIdx, bloodlineId in pairs(bData.Slots or {}) do
+		serializedSlots[tostring(slotIdx)] = bloodlineId
 	end
 
 	local dataToSave: SavedPlayerData = {
@@ -901,6 +1069,12 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		LastStipendClaim = lastStipendClaim,
 		Bloodline = bData.Current,
 		BloodlineSpins = bData.Spins,
+		BloodlineSlots = serializedSlots,
+		MaxBloodlineSlots = bData.MaxSlots or 1,
+		BloodlinePity = {
+			SpinsSinceLegendary = bData.Pity and bData.Pity.SpinsSinceLegendary or 0,
+			SpinsSinceMythic = bData.Pity and bData.Pity.SpinsSinceMythic or 0,
+		},
 		SamsaraCycle = samsaraCycle,
 	}
 
@@ -914,7 +1088,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 
 		if success then
 			saveSuccess = true
-			print(string.format("[PlayerDataManager] Successfully saved data for %s (Equipped: %s, Samsara: %d).", player.Name, equippedWeapon, samsaraCycle))
+			print(string.format("[PlayerDataManager] Successfully saved data for %s (Equipped: %s, Samsara: %d, Lineage: %s).", player.Name, equippedWeapon, samsaraCycle, bData.Current))
 			break
 		else
 			warn(string.format("[PlayerDataManager] SetAsync attempt %d failed for %s: %s", attempt, player.Name, tostring(err)))

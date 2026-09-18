@@ -1,4 +1,14 @@
 --!strict
+--[[
+    BloodlineManager.luau
+    Location: src/ServerScriptService/Server/State/BloodlineManager.luau
+    Server-authoritative Bloodline manager:
+    - 12-Lineage Gacha with Bad-Luck Pity (Guaranteed Legendary @ 30, Mythic @ 100)
+    - Keep or Discard Decision Pipeline (Refunds unrefined stones on discard)
+    - Meridian Vault Slots (Store, swap, and unlock multiple lineages)
+    - Dynamic Floating 3D Relic Welder with Sacred Aura Lighting & Particle Motes
+]]
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -6,20 +16,29 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local BloodlineConfig = require(ReplicatedStorage.Shared.Configs.BloodlineConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
+local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 
 local BloodlineManager = {}
 local bloodlineRemote: RemoteEvent
 
-local TIER_RANK = {
+local TIER_RANK: { [BloodlineConfig.BloodlineTier]: number } = {
 	Common = 1,
 	Rare = 2,
 	Legendary = 3,
 	Mythic = 4,
 }
 
--- All relics float around the cultivator. No relics are directly embedded into the skin.
+local LEGENDARY_PITY_THRESHOLD = 30
+local MYTHIC_PITY_THRESHOLD = 100
+local DISCARD_REFUND_STONES = 100
+local SLOT_3_STONE_COST = 25000
+
+-- In-memory pending roll storage for the Keep/Discard decision
+local pendingRolls: { [Player]: BloodlineConfig.BloodlineDefinition } = {}
+
+-- All relics float around the cultivator with calibrated air gaps
 local ARTIFACT_OFFSETS: { [string]: CFrame } = {
-	-- Floating Top-Left Shoulder Orbs (Pushed out and lifted for true floating clearance)
+	-- Floating Top-Left Shoulder Orbs (Clean clearance, ear/shoulder level)
 	JadeLotusOrb = CFrame.new(-1.65, 2.25, 0.10),
 	CosmicVoidSphere = CFrame.new(-1.65, 2.25, 0.10),
 
@@ -31,7 +50,7 @@ local ARTIFACT_OFFSETS: { [string]: CFrame } = {
 	PrimordialDragonWings = CFrame.new(0, 0.38, 0.95),
 	ThunderSpineNeedles = CFrame.new(0, 0.30, 0.85),
 
-	-- Placeholders (Kept for future floating redesign)
+	-- Placeholders
 	IronRootCore = CFrame.new(0, 0.20, -0.75),
 	SteelMeridianGlow = CFrame.new(0.85, 0.30, 0.20),
 	WindGaleAnklets = CFrame.new(0, -0.40, 0.30),
@@ -69,7 +88,6 @@ local function attachVisualArtifact(character: Model, artifactMeshName: string?,
 
 	if not artifactMeshName or artifactMeshName == "" then return end
 
-	-- All floating relics anchor relative to UpperTorso for stable, non-flailing orbit
 	local upperTorso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") :: BasePart?
 	if not upperTorso then return end
 
@@ -133,9 +151,15 @@ local function attachVisualArtifact(character: Model, artifactMeshName: string?,
 	end
 end
 
+-- Full State Sync: includes active bloodline, slots, pity counters, and pending rolls
 local function sendState(player: Player)
 	local bloodlineId = PlayerDataManager.GetBloodline(player) or "MortalSwordBone"
 	local def = BloodlineConfig.GetBloodline(bloodlineId)
+	local slots = PlayerDataManager.GetBloodlineSlots(player)
+	local maxSlots = PlayerDataManager.GetMaxBloodlineSlots(player)
+	local pity = PlayerDataManager.GetBloodlinePity(player)
+	local pending = pendingRolls[player]
+
 	bloodlineRemote:FireClient(player, {
 		Action = "StateUpdate",
 		BloodlineId = bloodlineId,
@@ -145,9 +169,57 @@ local function sendState(player: Player)
 		Passives = def and def.Passives or {},
 		RemainingSpins = PlayerDataManager.GetBloodlineSpins(player),
 		RemainingStones = PlayerDataManager.GetSpiritStones(player),
+		Slots = slots,
+		MaxSlots = maxSlots,
+		LegendaryPity = pity.SpinsSinceLegendary,
+		MythicPity = pity.SpinsSinceMythic,
+		PendingRoll = pending and {
+			Id = pending.Id,
+			DisplayName = pending.Name,
+			Rarity = pending.Tier,
+			Description = pending.Description,
+			Passives = pending.Passives,
+		} or nil,
 	})
 end
 
+-- Pity-Enforced Single Roll Resolution
+local function rollSingleWithPity(player: Player): (string, BloodlineConfig.BloodlineDefinition)
+	local pity = PlayerDataManager.IncrementBloodlinePity(player)
+	local forcedTier: BloodlineConfig.BloodlineTier? = nil
+
+	if pity.SpinsSinceMythic >= MYTHIC_PITY_THRESHOLD then
+		forcedTier = "Mythic"
+	elseif pity.SpinsSinceLegendary >= LEGENDARY_PITY_THRESHOLD then
+		forcedTier = "Legendary"
+	end
+
+	local rolledId: string
+	if forcedTier then
+		local candidates = {}
+		for id, def in pairs(BloodlineConfig.GetAllBloodlines()) do
+			if def.Tier == forcedTier then
+				table.insert(candidates, id)
+			end
+		end
+		rolledId = candidates[math.random(1, #candidates)]
+	else
+		rolledId = BloodlineConfig.RollBloodline()
+	end
+
+	local rolledDef = BloodlineConfig.GetBloodline(rolledId) or BloodlineConfig.GetBloodline("MortalSwordBone") :: BloodlineConfig.BloodlineDefinition
+
+	-- Reset pity when a tier is hit
+	if rolledDef.Tier == "Mythic" then
+		PlayerDataManager.ResetBloodlinePity(player, "Mythic")
+	elseif rolledDef.Tier == "Legendary" then
+		PlayerDataManager.ResetBloodlinePity(player, "Legendary")
+	end
+
+	return rolledId, rolledDef
+end
+
+-- Single Spin
 function BloodlineManager.ProcessSpin(player: Player)
 	local success = deductSpins(player, 1)
 	if not success then
@@ -158,33 +230,26 @@ function BloodlineManager.ProcessSpin(player: Player)
 		return
 	end
 
-	local bloodlineId = BloodlineConfig.RollBloodline()
-	local rolledDef = BloodlineConfig.GetBloodline(bloodlineId)
-	if not rolledDef then return end
+	local rolledId, rolledDef = rollSingleWithPity(player)
+	pendingRolls[player] = rolledDef
 
-	PlayerDataManager.SetBloodline(player, rolledDef.Id)
-
-	if player.Character and rolledDef.VisualArtifact then
-		attachVisualArtifact(
-			player.Character,
-			rolledDef.VisualArtifact.ArtifactName,
-			rolledDef.VisualArtifact.AttachmentPoint,
-			rolledDef.VisualArtifact.AuraColor
-		)
-	end
+	local pity = PlayerDataManager.GetBloodlinePity(player)
 
 	bloodlineRemote:FireClient(player, {
-		Action = "SpinResult",
-		BloodlineId = rolledDef.Id,
+		Action = "RollDecide",
+		BloodlineId = rolledId,
 		DisplayName = rolledDef.Name,
 		Rarity = rolledDef.Tier,
 		Description = rolledDef.Description,
 		Passives = rolledDef.Passives,
 		RemainingSpins = PlayerDataManager.GetBloodlineSpins(player),
 		RemainingStones = PlayerDataManager.GetSpiritStones(player),
+		LegendaryPity = pity.SpinsSinceLegendary,
+		MythicPity = pity.SpinsSinceMythic,
 	})
 end
 
+-- 10x Ritual Spin
 function BloodlineManager.Process10xSpin(player: Player)
 	local success = deductSpins(player, 10)
 	if not success then
@@ -200,31 +265,20 @@ function BloodlineManager.Process10xSpin(player: Player)
 	local bestRank = 0
 
 	for _ = 1, 10 do
-		local rollId = BloodlineConfig.RollBloodline()
-		local def = BloodlineConfig.GetBloodline(rollId)
-		if def then
-			local rank = TIER_RANK[def.Tier] or 1
-			if rank > bestRank then
-				bestRank = rank
-				bestDef = def
-			end
+		local _, def = rollSingleWithPity(player)
+		local rank = TIER_RANK[def.Tier] or 1
+		if rank > bestRank then
+			bestRank = rank
+			bestDef = def
 		end
 	end
 
 	if bestDef then
-		PlayerDataManager.SetBloodline(player, bestDef.Id)
-
-		if player.Character and bestDef.VisualArtifact then
-			attachVisualArtifact(
-				player.Character,
-				bestDef.VisualArtifact.ArtifactName,
-				bestDef.VisualArtifact.AttachmentPoint,
-				bestDef.VisualArtifact.AuraColor
-			)
-		end
+		pendingRolls[player] = bestDef
+		local pity = PlayerDataManager.GetBloodlinePity(player)
 
 		bloodlineRemote:FireClient(player, {
-			Action = "SpinResult",
+			Action = "RollDecide",
 			BloodlineId = bestDef.Id,
 			DisplayName = bestDef.Name,
 			Rarity = bestDef.Tier,
@@ -232,10 +286,117 @@ function BloodlineManager.Process10xSpin(player: Player)
 			Passives = bestDef.Passives,
 			RemainingSpins = PlayerDataManager.GetBloodlineSpins(player),
 			RemainingStones = PlayerDataManager.GetSpiritStones(player),
+			LegendaryPity = pity.SpinsSinceLegendary,
+			MythicPity = pity.SpinsSinceMythic,
 		})
 	end
 end
 
+-- Decision: Claim / Equip Pending Roll
+function BloodlineManager.ClaimRoll(player: Player, targetSlot: number?)
+	local pending = pendingRolls[player]
+	if not pending then
+		bloodlineRemote:FireClient(player, { Action = "ActionFailed", Message = "No pending awakening roll to claim!" })
+		return
+	end
+
+	local slotIdx = math.clamp(targetSlot or 1, 1, PlayerDataManager.GetMaxBloodlineSlots(player))
+	PlayerDataManager.SaveBloodlineToSlot(player, slotIdx, pending.Id)
+
+	if slotIdx == 1 then
+		PlayerDataManager.SetBloodline(player, pending.Id)
+		if player.Character and pending.VisualArtifact then
+			attachVisualArtifact(
+				player.Character,
+				pending.VisualArtifact.ArtifactName,
+				pending.VisualArtifact.AttachmentPoint,
+				pending.VisualArtifact.AuraColor
+			)
+		end
+	end
+
+	pendingRolls[player] = nil
+	sendState(player)
+	print(string.format("[BloodlineManager] %s claimed %s into Meridian Slot %d.", player.Name, pending.Name, slotIdx))
+end
+
+-- Decision: Discard Pending Roll (Refunds unrefined stones)
+function BloodlineManager.DiscardRoll(player: Player)
+	local pending = pendingRolls[player]
+	if not pending then return end
+
+	pendingRolls[player] = nil
+	PlayerDataManager.AddSpiritStones(player, DISCARD_REFUND_STONES)
+
+	bloodlineRemote:FireClient(player, {
+		Action = "RollDiscarded",
+		RefundedStones = DISCARD_REFUND_STONES,
+		RemainingStones = PlayerDataManager.GetSpiritStones(player),
+	})
+	sendState(player)
+	print(string.format("[BloodlineManager] %s discarded roll and reclaimed %d Spirit Stones.", player.Name, DISCARD_REFUND_STONES))
+end
+
+-- Meridian Slot Management: Equip From Slot
+function BloodlineManager.EquipSlot(player: Player, slotIndex: number)
+	local maxSlots = PlayerDataManager.GetMaxBloodlineSlots(player)
+	if slotIndex < 1 or slotIndex > maxSlots then return end
+
+	local success = PlayerDataManager.EquipBloodlineFromSlot(player, slotIndex)
+	if not success then return end
+
+	local activeId = PlayerDataManager.GetBloodline(player)
+	local def = BloodlineConfig.GetBloodline(activeId)
+	if player.Character and def and def.VisualArtifact then
+		attachVisualArtifact(
+			player.Character,
+			def.VisualArtifact.ArtifactName,
+			def.VisualArtifact.AttachmentPoint,
+			def.VisualArtifact.AuraColor
+		)
+	end
+
+	sendState(player)
+	print(string.format("[BloodlineManager] %s switched active lineage to Slot %d (%s).", player.Name, slotIndex, activeId))
+end
+
+-- Meridian Slot Management: Unlock Higher Slots
+function BloodlineManager.UnlockSlot(player: Player, slotIndex: number)
+	local currentMax = PlayerDataManager.GetMaxBloodlineSlots(player)
+	if slotIndex ~= currentMax + 1 or slotIndex > 3 then return end
+
+	if slotIndex == 2 then
+		-- Slot 2 Requirement: Reach Foundation Establishment
+		local cultivation = CultivationManager.GetPlayerData(player)
+		local realm = cultivation and cultivation.Realm or "QiCondensation"
+		if realm == "QiCondensation" then
+			bloodlineRemote:FireClient(player, {
+				Action = "ActionFailed",
+				Message = "Meridian Slot 2 unlocks upon reaching Foundation Establishment realm!",
+			})
+			return
+		end
+		PlayerDataManager.SetMaxBloodlineSlots(player, 2)
+
+	elseif slotIndex == 3 then
+		-- Slot 3 Requirement: 25,000 Spirit Stones
+		local currentStones = PlayerDataManager.GetSpiritStones(player)
+		if currentStones < SLOT_3_STONE_COST then
+			bloodlineRemote:FireClient(player, {
+				Action = "ActionFailed",
+				Message = string.format("Insufficient Spirit Stones for Slot 3! Need %d (Have %d).", SLOT_3_STONE_COST, currentStones),
+			})
+			return
+		end
+		PlayerDataManager.RemoveSpiritStones(player, SLOT_3_STONE_COST)
+		PlayerDataManager.SetMaxBloodlineSlots(player, 3)
+	end
+
+	sendState(player)
+	print(string.format("[BloodlineManager] %s successfully unlocked Meridian Slot %d!", player.Name, slotIndex))
+end
+
+-- Currency Exchange
 function BloodlineManager.ExchangeSpins(player: Player, amount: number?)
 	local count = math.clamp(math.floor(tonumber(amount) or 1), 1, 10)
 	local cost = count * 500
@@ -268,6 +429,14 @@ function BloodlineManager.Init()
 			BloodlineManager.ProcessSpin(player)
 		elseif payload.Action == "Spin10x" then
 			BloodlineManager.Process10xSpin(player)
+		elseif payload.Action == "ClaimRoll" then
+			BloodlineManager.ClaimRoll(player, payload.TargetSlot)
+		elseif payload.Action == "DiscardRoll" then
+			BloodlineManager.DiscardRoll(player)
+		elseif payload.Action == "EquipSlot" then
+			BloodlineManager.EquipSlot(player, payload.SlotIndex)
+		elseif payload.Action == "UnlockSlot" then
+			BloodlineManager.UnlockSlot(player, payload.SlotIndex)
 		elseif payload.Action == "ExchangeSpins" then
 			BloodlineManager.ExchangeSpins(player, payload.Amount)
 		end
@@ -291,7 +460,11 @@ function BloodlineManager.Init()
 		end)
 	end)
 
-	print("[BloodlineManager] Initialized successfully.")
+	Players.PlayerRemoving:Connect(function(player)
+		pendingRolls[player] = nil
+	end)
+
+	print("[BloodlineManager] Master Gacha, Pity & Meridian Vault Server Engine Initialized.")
 end
 
 return BloodlineManager
