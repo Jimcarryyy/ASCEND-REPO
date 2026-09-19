@@ -3,14 +3,14 @@
     FocusTargetController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/FocusTargetController.luau
     Handles:
-      - Azure Reticle & Upper-Body Focus Targeting (Bound to MMB / Z)
-      - Top-Center Target Lock-On / Boss Frame (HP, Posture / Guard Break Gauge, Distance)
+      - Azure Reticle & Upper-Body Focus Targeting (Bound to MMB / Z).
+      - Sets Character attribute 'IsFocusMode' for unified facing coordination (A2).
+      - Top-Center Target Lock-On / Boss Frame (HP, Posture / Guard Break Gauge, Distance).
 ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local FocusTargetController = {}
@@ -33,14 +33,12 @@ local targetHpText: TextLabel?
 local targetPostureFill: Frame?
 
 local UI_FONT = Enum.Font.Bangers
-local TWEEN_FAST = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local function CreateReticleAndHUD()
 	if focusReticleGui then return end
 
 	local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
 
-	-- 1. Center Reticle GUI
 	focusReticleGui = Instance.new("ScreenGui")
 	focusReticleGui.Name = "FocusTargetReticleGui"
 	focusReticleGui.ResetOnSpawn = false
@@ -57,7 +55,6 @@ local function CreateReticleAndHUD()
 	reticleImage.ImageColor3 = Color3.fromRGB(100, 220, 255)
 	reticleImage.Parent = focusReticleGui
 
-	-- 2. Top-Center Target Lock-On Frame
 	targetHudGui = Instance.new("ScreenGui")
 	targetHudGui.Name = "TargetLockHUD"
 	targetHudGui.ResetOnSpawn = false
@@ -83,7 +80,6 @@ local function CreateReticleAndHUD()
 	stroke.Thickness = 1.2
 	stroke.Transparency = 0.4
 
-	-- Target Name
 	targetNameLabel = Instance.new("TextLabel")
 	targetNameLabel.Name = "TargetName"
 	targetNameLabel.Size = UDim2.new(0.65, 0, 0, 18)
@@ -96,7 +92,6 @@ local function CreateReticleAndHUD()
 	targetNameLabel.Text = "DEMONIC BEAST"
 	targetNameLabel.Parent = targetCard
 
-	-- Realm / Tier
 	targetRealmLabel = Instance.new("TextLabel")
 	targetRealmLabel.Name = "TargetRealm"
 	targetRealmLabel.Size = UDim2.new(0.35, -10, 0, 18)
@@ -109,7 +104,6 @@ local function CreateReticleAndHUD()
 	targetRealmLabel.Text = "ORDER 3"
 	targetRealmLabel.Parent = targetCard
 
-	-- HP Gauge (Green/Jade)
 	local hpTrack = Instance.new("Frame")
 	hpTrack.Name = "HPTrack"
 	hpTrack.Size = UDim2.new(1, -20, 0, 14)
@@ -130,8 +124,8 @@ local function CreateReticleAndHUD()
 
 	local hpGrad = Instance.new("UIGradient")
 	hpGrad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(46, 204, 113)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 120, 66)),
+		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(46, 204, 113)),
+		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(26, 120, 66)),
 	})
 	hpGrad.Parent = targetHpFill
 
@@ -144,7 +138,6 @@ local function CreateReticleAndHUD()
 	targetHpText.Text = "100%"
 	targetHpText.Parent = hpTrack
 
-	-- Posture Gauge (Orange Guard-Break Meter)
 	local postureTrack = Instance.new("Frame")
 	postureTrack.Name = "PostureTrack"
 	postureTrack.Size = UDim2.new(1, -20, 0, 6)
@@ -164,15 +157,28 @@ local function CreateReticleAndHUD()
 	Instance.new("UICorner", targetPostureFill).CornerRadius = UDim.new(0, 2)
 end
 
+-- Searches both Players and Workspace.MobSpawns / ActiveMobs
 local function FindBestTarget(): Model?
 	local myChar = player.Character
 	local myHrp = if myChar then myChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 	if not myHrp then return nil end
 
 	local bestTarget: Model? = nil
-	local bestDist = 60
+	local bestDist = 65
 
+	local potentialTargets: { Instance } = {}
 	for _, obj in ipairs(Workspace:GetChildren()) do
+		table.insert(potentialTargets, obj)
+	end
+
+	local mobSpawns = Workspace:FindFirstChild("MobSpawns") or Workspace:FindFirstChild("ActiveMobs")
+	if mobSpawns then
+		for _, m in ipairs(mobSpawns:GetChildren()) do
+			table.insert(potentialTargets, m)
+		end
+	end
+
+	for _, obj in ipairs(potentialTargets) do
 		if obj:IsA("Model") and obj ~= myChar then
 			local humanoid = obj:FindFirstChildOfClass("Humanoid")
 			local targetHrp = obj:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -182,7 +188,7 @@ local function FindBestTarget(): Model?
 				if dist <= bestDist then
 					local toTarget = (targetHrp.Position - myHrp.Position).Unit
 					local dot = camera.CFrame.LookVector:Dot(toTarget)
-					if dot > 0.4 then
+					if dot > 0.35 then
 						bestTarget = obj
 						bestDist = dist
 					end
@@ -249,13 +255,18 @@ function FocusTargetController.Init()
 		if not isFocusActive then return end
 
 		local character = player.Character
-		if not character or character:GetAttribute("IsMeditating") == true then
+		if not character or character:GetAttribute("IsMeditating") == true or character:GetAttribute("IsFlying") == true then
 			if isFocusActive then FocusTargetController.SetFocus(false) end
 			return
 		end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if not hrp then return end
+
+		-- Do not fight active dashes or blink abilities
+		if character:GetAttribute("IsDashing") == true or character:GetAttribute("IsBlinking") == true then
+			return
+		end
 
 		if currentTarget and currentTarget.Parent then
 			local targetHrp = currentTarget:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -277,7 +288,7 @@ function FocusTargetController.Init()
 		UpdateTargetHUD(dt)
 	end)
 
-	print("[ASCEND] FocusTargetController Initialized (Target Lock & Top HUD Active).")
+	print("[ASCEND] FocusTargetController Initialized (A2 Unified Facing Coordination Active).")
 end
 
 function FocusTargetController.ToggleFocus()
@@ -287,6 +298,11 @@ end
 function FocusTargetController.SetFocus(active: boolean)
 	isFocusActive = active
 	currentTarget = if isFocusActive then FindBestTarget() else nil
+
+	local character = player.Character
+	if character then
+		character:SetAttribute("IsFocusMode", isFocusActive)
+	end
 
 	if focusReticleGui then
 		focusReticleGui.Enabled = isFocusActive

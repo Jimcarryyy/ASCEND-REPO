@@ -2,8 +2,12 @@
 --[[
     HitboxManager.luau
     Location: src/ServerScriptService/Server/Combat/HitboxManager.luau
-    Authoritative hit detection, lag-compensated box casting, native posture / parry state,
-    Sect safe zone peace protection, and wilderness Karmic Retribution griefing reflections.
+    Authoritative hit detection & combat resolution:
+    Phase 1 Updates:
+      - E1 & E2: Supports attackerCharOverride for mobs, allowing players to block,
+        parry, and dodge mob attacks through the unified combat pipeline.
+      - Parrying a mob stuns the beast for 1.2s and restores Qi to the player.
+      - A1: Victim knockback routed to owning client with zero Freefall Y launch.
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -34,11 +38,15 @@ export type HitResolution = {
 
 local HitboxManager = {}
 local combatVFXRemote: RemoteEvent? = nil
+local combatActionRemote: RemoteEvent? = nil
 local arenaManagerRef: any = nil
 
 local function GetRemotes()
 	if not combatVFXRemote then
 		combatVFXRemote = RemoteEvents.GetRemote("CombatVFX")
+	end
+	if not combatActionRemote then
+		combatActionRemote = RemoteEvents.GetRemote("CombatAction")
 	end
 end
 
@@ -53,9 +61,6 @@ function HitboxManager.Init()
 	GetRemotes()
 end
 
--- =============================================================================
--- 1. LAG-COMPENSATED HITBOX CHECK (Required by FlyingSwordServer lines 230, 298, 323, 417)
--- =============================================================================
 function HitboxManager.CastCompensatedBox(
 	attacker: Model,
 	cframe: CFrame,
@@ -98,14 +103,15 @@ function HitboxManager.CastCompensatedBox(
 end
 
 -- =============================================================================
--- 2. COMBAT RESOLUTION & POSTURE ENGINE (With Phase 3 PvP Rules)
+-- E1 & E2 FIX: SUPPORTS BOTH PLAYERS AND MOB ATTACKERS IN COMBAT RESOLUTION
 -- =============================================================================
 function HitboxManager.ApplyCombatResolution(
 	attackerPlayer: Player?,
 	targetResult: HitResult,
 	rawDamage: number,
 	postureDamage: number,
-	knockbackVector: Vector3?
+	knockbackVector: Vector3?,
+	attackerCharOverride: Model?
 ): HitResolution
 	GetRemotes()
 
@@ -113,14 +119,13 @@ function HitboxManager.ApplyCombatResolution(
 	local humanoid = targetResult.Humanoid
 	local targetHrp = targetChar:FindFirstChild("HumanoidRootPart") :: BasePart?
 
-	local attackerChar = if attackerPlayer then attackerPlayer.Character else nil
-	local attackerHrp = if attackerChar then attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+	local attackerChar = if attackerCharOverride then attackerCharOverride else (if attackerPlayer then attackerPlayer.Character else nil)
+	local attackerHrp = if attackerChar then (attackerChar:FindFirstChild("HumanoidRootPart") or attackerChar.PrimaryPart) :: BasePart? else nil
 
 	local targetPlayer = targetResult.TargetPlayer
 	local targetState = if targetPlayer then CombatStateManager.GetState(targetPlayer) else nil
-	local attackerState = if attackerPlayer then CombatStateManager.GetState(attackerPlayer) else nil
 
-	local now = os.clock()
+	local now = Workspace:GetServerTimeNow()
 	local arenaMgr = getArenaManager()
 
 	-- A. PVP, SPARRING & SAFE ZONE RESOLUTION
@@ -128,7 +133,6 @@ function HitboxManager.ApplyCombatResolution(
 		local areDueling = (attackerPlayer and targetPlayer) and arenaMgr and arenaMgr.AreDueling(attackerPlayer, targetPlayer)
 
 		if areDueling then
-			-- Non-Lethal Sparring Clamp at 1 HP
 			local currentHp = humanoid.Health
 			local prospectiveHp = currentHp - rawDamage
 
@@ -148,7 +152,6 @@ function HitboxManager.ApplyCombatResolution(
 				}
 			end
 		elseif arenaMgr then
-			-- Safe Zone Peace Check (Sect Courtyard / Disciple Grounds)
 			local inSafeZone = arenaMgr.IsInSafeZone(targetHrp.Position) or (attackerHrp and arenaMgr.IsInSafeZone(attackerHrp.Position))
 			if inSafeZone then
 				return {
@@ -161,7 +164,6 @@ function HitboxManager.ApplyCombatResolution(
 				}
 			end
 
-			-- Wilderness Karmic Retribution Check (Griefing Penalty)
 			local aRealm = (attackerChar and attackerChar:GetAttribute("CultivationRealm"))
 				or (attackerPlayer and attackerPlayer:GetAttribute("CultivationRealm"))
 				or "QiCondensation"
@@ -198,7 +200,7 @@ function HitboxManager.ApplyCombatResolution(
 		end
 	end
 
-	-- B. I-Frame Dodge Check
+	-- B. I-Frame Dodge Check (Dash Dodges Player & Mob Attacks)
 	if targetState and now < targetState.IFrameEndTime then
 		return {
 			WasParried = false,
@@ -210,8 +212,8 @@ function HitboxManager.ApplyCombatResolution(
 		}
 	end
 
-	-- C. Sword Clash Check
-	if targetState and targetState.ActiveStrike and (now - targetState.ActiveStrike.StartTime) <= FlyingSwordConfig.CC.ClashWindow then
+	-- C. Sword Clash Check (Player vs Player)
+	if attackerPlayer and targetState and targetState.ActiveStrike and (now - targetState.ActiveStrike.StartTime) <= FlyingSwordConfig.CC.ClashWindow then
 		if targetHrp and attackerHrp then
 			local dot = targetHrp.CFrame.LookVector:Dot(attackerHrp.CFrame.LookVector)
 			if dot < -0.3 then
@@ -239,12 +241,12 @@ function HitboxManager.ApplyCombatResolution(
 	local finalDamage = rawDamage
 	local finalKnockback = knockbackVector
 
-	-- D. Guard & Perfect Parry Resolution (Native Posture)
+	-- D. Guard & Perfect Parry Resolution (Works Against Players and Mobs)
 	if targetState and targetState.IsBlocking and targetHrp then
 		local toAttacker = if attackerHrp then (attackerHrp.Position - targetHrp.Position).Unit else targetHrp.CFrame.LookVector
 		local dot = targetHrp.CFrame.LookVector:Dot(toAttacker)
 
-		if dot >= -0.2 then
+		if dot >= -0.25 then
 			local parryWindow = FlyingSwordConfig.Posture.ParryWindow
 			local blockElapsed = now - targetState.BlockStartTime
 
@@ -255,6 +257,20 @@ function HitboxManager.ApplyCombatResolution(
 
 				if attackerPlayer then
 					CombatStateManager.ApplyCC(attackerPlayer, "Stunned", FlyingSwordConfig.Posture.ParryStunDuration)
+				elseif attackerChar then
+					-- Parrying a mob stuns the beast for 1.2s
+					attackerChar:SetAttribute("IsStunned", true)
+					local mobHum = attackerChar:FindFirstChildOfClass("Humanoid")
+					if mobHum then
+						local prevSpeed = mobHum.WalkSpeed
+						mobHum.WalkSpeed = 0
+						task.delay(FlyingSwordConfig.Posture.ParryStunDuration, function()
+							if attackerChar and attackerChar.Parent then
+								attackerChar:SetAttribute("IsStunned", false)
+								mobHum.WalkSpeed = prevSpeed
+							end
+						end)
+					end
 				end
 
 				if targetPlayer then
@@ -306,7 +322,7 @@ function HitboxManager.ApplyCombatResolution(
 		end
 	end
 
-	-- E. Apply Damage (Tag both in combat & Register Mob Damage)
+	-- E. Apply Damage & Tag Combat
 	if finalDamage > 0 then
 		humanoid:TakeDamage(finalDamage)
 		if attackerPlayer then
@@ -320,26 +336,23 @@ function HitboxManager.ApplyCombatResolution(
 		end
 	end
 
-	-- F. Apply Physical Knockback
+	-- F. Flat Client-Side Knockback
 	if finalKnockback and targetHrp and finalKnockback.Magnitude > 0 then
 		local orientation = if attackerHrp then attackerHrp.CFrame else CFrame.lookAt(targetHrp.Position, targetHrp.Position - finalKnockback)
 		local worldKnockback = orientation:VectorToWorldSpace(finalKnockback)
+		local flatKnockback = Vector3.new(worldKnockback.X, 0, worldKnockback.Z).Unit * math.min(worldKnockback.Magnitude, 38)
 
-		local attachment = Instance.new("Attachment")
-		attachment.Parent = targetHrp
-
-		local linearVel = Instance.new("LinearVelocity")
-		linearVel.Name = "KnockbackVel"
-		linearVel.Attachment0 = attachment
-		linearVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
-		linearVel.MaxAxesForce = Vector3.new(250000, 100000, 250000)
-		linearVel.VectorVelocity = worldKnockback
-		linearVel.Parent = targetHrp
-
-		task.delay(0.15, function()
-			linearVel:Destroy()
-			attachment:Destroy()
-		end)
+		if targetPlayer then
+			if combatActionRemote then
+				combatActionRemote:FireClient(targetPlayer, attackerPlayer, "ApplyClientKnockback", {
+					KnockbackVelocity = flatKnockback,
+					Duration = 0.16,
+				})
+			end
+		else
+			local mass = targetHrp.AssemblyMass
+			targetHrp:ApplyImpulse(flatKnockback * (mass * 0.85))
+		end
 	end
 
 	return {

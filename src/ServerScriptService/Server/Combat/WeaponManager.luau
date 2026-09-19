@@ -3,13 +3,11 @@
     WeaponManager.luau
     Location: src/ServerScriptService/Server/Combat/WeaponManager.luau
     Server-authoritative weapon lifecycle manager:
-      - Replaces character's default LeftFootAttachment with the pre-defined
-        LeftFootAttachment from ReplicatedStorage.FlyingSword.Mesh1.0.
+      - Classic Upper Back Sword Sheath Mount (CFrame 0, 0.35, 0.68, 135 deg).
+      - Replaces LeftFootAttachment for flight mounting.
       - RigidConstraint + AnimationConstraint flight mounting.
       - Hides combat sword during flight to eliminate visual clutter.
-      - Replicates character:SetAttribute("EquippedWeapon", weaponId) for dynamic VFX color binding.
-      - Disables jumping and restores physics on dismount.
-      - Phase 4: Dynamic Realm-Scaled Flight Speed & In-Combat Mount Gate.
+      - Dynamic Realm-Scaled Flight Speed & In-Combat Mount Gate.
 ]]
 
 local Players = game:GetService("Players")
@@ -94,6 +92,7 @@ local function SnapToHand(character: Model, swordMesh: MeshPart)
 	constraint.Parent = swordMesh
 end
 
+-- Sheathed on the Upper Back (Classic Cultivator Back Mount)
 local function SnapToBack(character: Model, swordMesh: MeshPart)
 	local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso") :: BasePart?
 	if not torso then return end
@@ -104,14 +103,16 @@ local function SnapToBack(character: Model, swordMesh: MeshPart)
 		torsoBackAtt.Name = "BackSwordMount"
 		torsoBackAtt.CFrame = CFrame.new(0, 0.35, 0.68) * CFrame.Angles(0, 0, math.rad(135))
 		torsoBackAtt.Parent = torso
+	else
+		torsoBackAtt.CFrame = CFrame.new(0, 0.35, 0.68) * CFrame.Angles(0, 0, math.rad(135))
 	end
 
-	local swordBackAtt = (swordMesh:FindFirstChild("BackSwordAttachment") or swordMesh:FindFirstChild("SwordAttachment") or swordMesh:FindFirstChildWhichIsA("Attachment")) :: Attachment?
-	if not swordBackAtt then
-		swordBackAtt = Instance.new("Attachment")
-		swordBackAtt.Name = "BackSwordAttachment"
-		swordBackAtt.CFrame = CFrame.new(0, 0, 0)
-		swordBackAtt.Parent = swordMesh
+	local swordAtt = (swordMesh:FindFirstChild("BackSwordAttachment") or swordMesh:FindFirstChild("SwordAttachment") or swordMesh:FindFirstChildWhichIsA("Attachment")) :: Attachment?
+	if not swordAtt then
+		swordAtt = Instance.new("Attachment")
+		swordAtt.Name = "BackSwordAttachment"
+		swordAtt.CFrame = CFrame.new(0, 0, 0)
+		swordAtt.Parent = swordMesh
 	end
 
 	swordMesh.Anchored = false
@@ -123,7 +124,7 @@ local function SnapToBack(character: Model, swordMesh: MeshPart)
 	local constraint = Instance.new("RigidConstraint")
 	constraint.Name = "WeaponGripConstraint"
 	constraint.Attachment0 = torsoBackAtt
-	constraint.Attachment1 = swordBackAtt
+	constraint.Attachment1 = swordAtt
 	constraint.Parent = swordMesh
 end
 
@@ -180,11 +181,13 @@ function WeaponManager.SetWeaponState(player: Player, state: "Hand" | "Back" | "
 		swordMesh.Transparency = 0
 		if trail then trail.Enabled = false end
 		SnapToHand(character, swordMesh)
+		character:SetAttribute("IsWeaponDrawn", true)
 		if not suppressAudio then Play3DWeaponSound(character, SWORD_EQUIP_SOUND_ID) end
 	elseif state == "Back" then
 		swordMesh.Transparency = 0
 		if trail then trail.Enabled = false end
 		SnapToBack(character, swordMesh)
+		character:SetAttribute("IsWeaponDrawn", false)
 		if not suppressAudio then Play3DWeaponSound(character, SWORD_UNEQUIP_SOUND_ID) end
 	end
 end
@@ -260,15 +263,10 @@ function WeaponManager.EquipWeapon(player: Player, weaponId: string, initialStat
 		WeaponId = weaponId,
 	}
 
-	-- Replicate weapon ID to all clients so VFX controllers can read it instantly
 	character:SetAttribute("EquippedWeapon", weaponId)
-
 	WeaponManager.SetWeaponState(player, targetState)
 end
 
---------------------------------------------------------------------------------
--- FLYING SWORD MOUNT & DISMOUNT (V KEY)
---------------------------------------------------------------------------------
 function WeaponManager.ToggleFlight(player: Player)
 	local character = player.Character
 	if not character then return end
@@ -282,7 +280,6 @@ function WeaponManager.ToggleFlight(player: Player)
 
 	local CombatStateManager = require(ServerScriptService.Server.State.CombatStateManager)
 
-	-- InCombat Mount Gate: Block flight mounting while in combat
 	local isCurrentlyFlying = (character:GetAttribute("IsFlying") == true)
 	if not isCurrentlyFlying then
 		if CombatStateManager.IsInCombat and CombatStateManager.IsInCombat(player) then
@@ -301,9 +298,6 @@ function WeaponManager.ToggleFlight(player: Player)
 	end
 
 	if isCurrentlyFlying then
-		------------------------------------------------------------------------
-		-- DISMOUNT FLIGHT
-		------------------------------------------------------------------------
 		character:SetAttribute("IsFlying", false)
 
 		if activeFlightSwords[player] then
@@ -314,15 +308,12 @@ function WeaponManager.ToggleFlight(player: Player)
 		WeaponManager.SetWeaponState(player, "Hand")
 
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
-		humanoid.JumpPower = 50
-		humanoid.JumpHeight = 7.2
-		humanoid.WalkSpeed = (character:GetAttribute("InArena") == true) and 16 or 13.5
+		humanoid.JumpPower = 76
+		humanoid.JumpHeight = 8.5
+		humanoid.WalkSpeed = (character:GetAttribute("InArena") == true) and 14 or 16
 
 		print(string.format("🛬 [%s] Dismounted flight mode.", player.Name))
 	else
-		------------------------------------------------------------------------
-		-- ENTER FLIGHT MODE
-		------------------------------------------------------------------------
 		local flightTemplate = ReplicatedStorage:FindFirstChild("FlyingSword") :: Model?
 		if not flightTemplate then
 			warn("[WeaponManager] ReplicatedStorage.FlyingSword model not found!")
@@ -399,10 +390,9 @@ function WeaponManager.ToggleFlight(player: Player)
 
 		character:SetAttribute("IsFlying", true)
 
-		-- Realm-scaled velocity lookup
 		local flightCfg = FlyingSwordConfig.Flight
 		local realmFlight = if flightCfg and flightCfg.Realms and pData then flightCfg.Realms[pData.Realm] else nil
-		local targetFlightSpeed = if realmFlight then realmFlight.Velocity else 48.0
+		local targetFlightSpeed = if realmFlight then realmFlight.Velocity else 50.0
 
 		humanoid.WalkSpeed = targetFlightSpeed
 		print(string.format("🚀 [%s] Mounted FlyingSword at %.1f studs/s (%s Tier).",
@@ -433,7 +423,7 @@ function WeaponManager.Init()
 		end
 	end)
 
-	print("[ASCEND] WeaponManager Initialized (Server-Authoritative Flight & Combat Weapon Suite Active).")
+	print("[ASCEND] WeaponManager Initialized (Upper Back Sheath Mount Suite Active).")
 end
 
 return WeaponManager

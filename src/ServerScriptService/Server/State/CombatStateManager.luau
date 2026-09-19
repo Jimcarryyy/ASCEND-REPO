@@ -2,15 +2,20 @@
 --[[
     CombatStateManager.luau
     Location: src/ServerScriptService/Server/State/CombatStateManager.luau
-    Unified Server-Side Combat & CC State Machine for ASCEND.
-    Authoritatively manages Action States, CC States, Posture, Guard-Break,
-    Stun Immunity (Hyperarmor), Qi Dash I-Frames, In-Combat lockouts, and Flight Mode (V).
+    Phase 1 Updates:
+      - A6: Removed redundant server-side WalkSpeed writes. The server exclusively sets
+        attributes (CCState, InCombat), allowing the client WalkSpeed Governor to enforce
+        smooth transitions with zero physics contention.
+      - B1 Active -> Recovery -> Idle state promotion timers.
+      - B3 Staggered CC state support.
+      - C4 workspace:GetServerTimeNow() parry sync.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")
+local Workspace = game:GetService("Workspace")
 
 local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -22,6 +27,7 @@ export type PlayerCombatState = {
 	ActionState: ActionState,
 	CCState: CCState,
 	CCImmunityEndTime: number,
+	ActiveEndTime: number,
 	RecoveryEndTime: number,
 	BlockStartTime: number,
 	IsBlocking: boolean,
@@ -39,7 +45,6 @@ local CombatStateManager = {}
 local playerStates: { [Player]: PlayerCombatState } = {}
 local characterConnections: { [Player]: RBXScriptConnection } = {}
 
--- Cached module getters (eliminates cyclical require locks & high-frequency runtime require overhead)
 local weaponManagerRef: any = nil
 local function getWeaponManager(): any
 	if not weaponManagerRef then
@@ -80,28 +85,23 @@ function CombatStateManager.Init()
 		CombatStateManager.OnPlayerAdded(player)
 	end
 
-	-- Master State & Posture Regen Loop (60Hz Server Tick)
 	RunService.Heartbeat:Connect(CombatStateManager.UpdateHeartbeat)
 
-	-- Remote Event Gateway
 	combatActionRemote.OnServerEvent:Connect(function(player: Player, payload: any)
 		if type(payload) ~= "table" then return end
 
-		-- 1. Sheath Toggle (R)
 		if payload.ToggleSheath then
 			local WeaponManager = getWeaponManager()
 			WeaponManager.ToggleSheath(player)
 			return
 		end
 
-		-- 1b. Flight Toggle (V)
 		if payload.ToggleFlight then
 			local WeaponManager = getWeaponManager()
 			WeaponManager.ToggleFlight(player)
 			return
 		end
 
-		-- 2. Guard / Block Stance (T)
 		if payload.Action == "BlockStart" then
 			CombatStateManager.StartBlock(player, payload.Timestamp)
 			return
@@ -110,25 +110,22 @@ function CombatStateManager.Init()
 			return
 		end
 
-		-- 3. Dash (Shift)
 		if payload.SkillKey == "Shift" then
 			CombatStateManager.ExecuteDash(player, payload)
 			return
 		end
 
-		-- 4. Ultimate F Charge Initiation
 		if payload.Action == "StartChargeF" or payload.SkillKey == "StartChargeF" then
 			CombatStateManager.HandleStartChargeF(player)
 			return
 		end
 
-		-- 5. Combat Skills / M1
 		if type(payload.SkillKey) == "string" then
 			CombatStateManager.HandleSkillRequest(player, payload.SkillKey, payload)
 		end
 	end)
 
-	print("[ASCEND] Unified CombatStateManager Initialized (Full CC, Posture & Flight Engine Active).")
+	print("[ASCEND] CombatStateManager Initialized (A6 Server Decoupled & B1/B3 Active).")
 end
 
 function CombatStateManager.OnPlayerAdded(player: Player)
@@ -136,6 +133,7 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 		ActionState = "Idle",
 		CCState = "None",
 		CCImmunityEndTime = 0,
+		ActiveEndTime = 0,
 		RecoveryEndTime = 0,
 		BlockStartTime = 0,
 		IsBlocking = false,
@@ -149,7 +147,6 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 		LastReplicatedPosture = FlyingSwordConfig.Posture.MaxPosture,
 	}
 
-	-- Clean up previous connection if already registered to avoid memory leak
 	if characterConnections[player] then
 		characterConnections[player]:Disconnect()
 		characterConnections[player] = nil
@@ -161,6 +158,7 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 			state.ActionState = "Idle"
 			state.CCState = "None"
 			state.CCImmunityEndTime = 0
+			state.ActiveEndTime = 0
 			state.RecoveryEndTime = 0
 			state.IsBlocking = false
 			state.Posture = state.MaxPosture
@@ -189,7 +187,6 @@ end
 
 function CombatStateManager.GetState(player: Player): PlayerCombatState?
 	local state = playerStates[player]
-	-- Self-healing fallback: auto-initialize if queried for an active player
 	if not state and player and player.Parent then
 		CombatStateManager.OnPlayerAdded(player)
 		state = playerStates[player]
@@ -197,39 +194,35 @@ function CombatStateManager.GetState(player: Player): PlayerCombatState?
 	return state
 end
 
--- =============================================================================
--- 1. POSTURE & RECOVERY HEARTBEAT
--- =============================================================================
 function CombatStateManager.UpdateHeartbeat(dt: number)
-	local now = os.clock()
+	local now = Workspace:GetServerTimeNow()
 
 	for player, state in pairs(playerStates) do
 		local char = player.Character
 		if not char or not char.Parent then continue end
 
-		-- CC Immunity Expiration
 		if state.CCState == "CCImmune" and now >= state.CCImmunityEndTime then
 			state.CCState = "None"
 			char:SetAttribute("CCState", "None")
 		end
 
-		-- Recovery Expiration
+		if state.ActionState == "Active" and now >= state.ActiveEndTime then
+			state.ActionState = "Recovery"
+		end
+
 		if state.ActionState == "Recovery" and now >= state.RecoveryEndTime then
 			state.ActionState = "Idle"
 		end
 
-		-- Active Strike Expiration
 		if state.ActiveStrike and (now - state.ActiveStrike.StartTime) > 0.35 then
 			state.ActiveStrike = nil
 		end
 
-		-- In-Combat Tagging Expiration
 		local inCombat = (now < state.InCombatEndTime)
 		if char:GetAttribute("InCombat") ~= inCombat then
 			char:SetAttribute("InCombat", inCombat)
 		end
 
-		-- Posture Regeneration (Only when not blocking and out of CC)
 		if not state.IsBlocking and state.CCState == "None" then
 			if (now - state.LastBlockReleaseTime) >= FlyingSwordConfig.Posture.RegenDelay then
 				if state.Posture < state.MaxPosture then
@@ -245,19 +238,14 @@ function CombatStateManager.UpdateHeartbeat(dt: number)
 	end
 end
 
--- =============================================================================
--- 2. IN-COMBAT TAGGING (DISPATCHES INSTANT FLIGHT DISMOUNT)
--- =============================================================================
 function CombatStateManager.TagInCombat(player: Player)
 	local state = playerStates[player]
 	if not state then return end
 
-	state.InCombatEndTime = os.clock() + FlyingSwordConfig.CC.InCombatDuration
+	state.InCombatEndTime = Workspace:GetServerTimeNow() + FlyingSwordConfig.CC.InCombatDuration
 	local char = player.Character
 	if char then
 		char:SetAttribute("InCombat", true)
-
-		-- Force dismount immediately if damaged or tagged In Combat while flying
 		if char:GetAttribute("IsFlying") == true then
 			local WeaponManager = getWeaponManager()
 			WeaponManager.ToggleFlight(player)
@@ -267,24 +255,21 @@ end
 
 function CombatStateManager.IsInCombat(player: Player): boolean
 	local state = playerStates[player]
-	return (state ~= nil) and (os.clock() < state.InCombatEndTime)
+	return (state ~= nil) and (Workspace:GetServerTimeNow() < state.InCombatEndTime)
 end
 
 -- =============================================================================
--- 3. UNIFIED CC & HYPERARMOR ENGINE
+-- A6 FIX: ATTRIBUTE-ONLY CC APPLICATION (CLIENT GOVERNOR ENFORCES WALKSPEED)
 -- =============================================================================
 function CombatStateManager.ApplyCC(player: Player, ccType: CCState, duration: number): boolean
 	local state = playerStates[player]
 	if not state then return false end
 
-	local now = os.clock()
-
-	-- Reject if player has active CC-Immunity (Hyperarmor)
+	local now = Workspace:GetServerTimeNow()
 	if state.CCState == "CCImmune" or (now < state.CCImmunityEndTime) then
 		return false
 	end
 
-	-- Cancel active attacks and blocks cleanly
 	state.IsBlocking = false
 	state.ActiveStrike = nil
 	state.ActionState = "Idle"
@@ -297,33 +282,22 @@ function CombatStateManager.ApplyCC(player: Player, ccType: CCState, duration: n
 		char:SetAttribute("IsChargingF", false)
 		char:SetAttribute("IsBlinking", false)
 
-		-- Dismount if stunned or guard-broken during flight
 		if char:GetAttribute("IsFlying") == true then
 			local WeaponManager = getWeaponManager()
 			WeaponManager.ToggleFlight(player)
 		end
-
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then hum.WalkSpeed = 0 end
 	end
 
-	-- Replicate CC state to all clients
 	combatActionRemote:FireAllClients(player, "StatusEffect", { Effect = ccType, Duration = duration })
 
 	task.delay(duration, function()
 		if player.Parent and playerStates[player] == state and state.CCState == ccType then
-			-- Transition cleanly into 0.6s CC-Immunity window
 			state.CCState = "CCImmune"
-			state.CCImmunityEndTime = os.clock() + FlyingSwordConfig.CC.StunImmunityDuration
+			state.CCImmunityEndTime = Workspace:GetServerTimeNow() + FlyingSwordConfig.CC.StunImmunityDuration
 			state.ActionState = "Idle"
 
 			if char and char.Parent then
 				char:SetAttribute("CCState", "CCImmune")
-				local hum = char:FindFirstChildOfClass("Humanoid")
-				if hum then
-					local inArena = char:GetAttribute("InArena") == true
-					hum.WalkSpeed = inArena and 16.0 or 13.5
-				end
 			end
 		end
 	end)
@@ -331,19 +305,15 @@ function CombatStateManager.ApplyCC(player: Player, ccType: CCState, duration: n
 	return true
 end
 
--- =============================================================================
--- 4. BLOCK & PARRY GATEWAY
--- =============================================================================
 function CombatStateManager.StartBlock(player: Player, clientTimestamp: number?)
 	local state = playerStates[player]
 	if not state then return end
 
-	local now = os.clock()
-	if state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.ActionState == "Windup" or state.ActionState == "Active" then
+	local now = Workspace:GetServerTimeNow()
+	if state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" or state.ActionState == "Windup" or state.ActionState == "Active" then
 		return
 	end
 
-	-- Dismount if blocking during flight
 	local char = player.Character
 	if char and char:GetAttribute("IsFlying") == true then
 		local WeaponManager = getWeaponManager()
@@ -355,7 +325,6 @@ function CombatStateManager.StartBlock(player: Player, clientTimestamp: number?)
 		WeaponManager.SetWeaponState(player, "Hand")
 	end
 
-	-- Clamp client timestamp against ping tolerance
 	local clampedStart = now
 	if clientTimestamp and type(clientTimestamp) == "number" then
 		local pingDelta = math.clamp(now - clientTimestamp, 0, FlyingSwordConfig.CC.MaxPingTolerance)
@@ -383,7 +352,7 @@ function CombatStateManager.EndBlock(player: Player)
 	if not state then return end
 
 	state.IsBlocking = false
-	state.LastBlockReleaseTime = os.clock()
+	state.LastBlockReleaseTime = Workspace:GetServerTimeNow()
 	if state.ActionState == "Blocking" then
 		state.ActionState = "Idle"
 	end
@@ -400,15 +369,12 @@ function CombatStateManager.EndBlock(player: Player)
 	end
 end
 
--- =============================================================================
--- 5. QI DASH & I-FRAMES
--- =============================================================================
 function CombatStateManager.ExecuteDash(player: Player, payload: any)
 	local state = playerStates[player]
 	if not state then return end
 
-	local now = os.clock()
-	if state.CCState == "Stunned" or state.CCState == "GuardBroken" then return end
+	local now = Workspace:GetServerTimeNow()
+	if state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" then return end
 
 	local lastDash = state.Cooldowns["Shift"] or 0
 	if (now - lastDash) < FlyingSwordConfig.Skills.Shift.Cooldown then return end
@@ -417,7 +383,7 @@ function CombatStateManager.ExecuteDash(player: Player, payload: any)
 	state.ActionState = "Dashing"
 	state.IFrameEndTime = now + FlyingSwordConfig.CC.IFrameDuration
 
-	task.delay(0.24, function()
+	task.delay(0.30, function()
 		if state.ActionState == "Dashing" then
 			state.ActionState = "Idle"
 		end
@@ -426,16 +392,12 @@ function CombatStateManager.ExecuteDash(player: Player, payload: any)
 	combatActionRemote:FireAllClients(player, "Shift", payload)
 end
 
--- =============================================================================
--- 5b. ULTIMATE F CHARGE GATEWAY
--- =============================================================================
 function CombatStateManager.HandleStartChargeF(player: Player): boolean
 	local state = playerStates[player]
 	if not state then return false end
 
-	if state.CCState == "Stunned" or state.CCState == "GuardBroken" then return false end
+	if state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" then return false end
 
-	-- Authoritative Qi Gate for Ultimate Charge
 	local cultMgr = getCultivationManager()
 	local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
 	if not pData then return false end
@@ -456,9 +418,6 @@ function CombatStateManager.HandleStartChargeF(player: Player): boolean
 	return true
 end
 
--- =============================================================================
--- 6. SKILL & M1 EXECUTION GATEWAY (ANTI-ANIMATION CANCELING)
--- =============================================================================
 function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string, payload: any?): boolean
 	local state = playerStates[player]
 	if not state then return false end
@@ -468,36 +427,40 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return false end
 
-	-- CC and Lockout Gate
-	if state.CCState == "Stunned" or state.CCState == "GuardBroken" then return false end
+	if state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" then return false end
 
-	-- Seamless F Execution Interrupt: bypass recovery lockout if releasing charge
 	if skillKey == "F" and state.ActionState == "ChargingF" then
-		-- Allow immediate release transition
-	elseif state.ActionState == "Windup" or state.ActionState == "Recovery" then
+		-- Allowed
+	elseif skillKey == "M1" then
+		-- Allowed: chains seamlessly
+	elseif state.ActionState == "Windup" or state.ActionState == "Active" or state.ActionState == "Recovery" then
 		return false
 	end
 
-	-- Dismount if attacking during flight
 	if character:GetAttribute("IsFlying") == true then
 		local WeaponManager = getWeaponManager()
 		WeaponManager.ToggleFlight(player)
 	end
 
-	local now = os.clock()
+	local now = Workspace:GetServerTimeNow()
 
-	-- Cooldown Gate
-	local cdDuration = if skillKey == "M1" then (FlyingSwordConfig.Skills.M1 and FlyingSwordConfig.Skills.M1.Cooldown or 1.10) else (FlyingSwordConfig.Skills[skillKey] and FlyingSwordConfig.Skills[skillKey].Cooldown or 1.0)
+	local cdDuration = 0.28
+	if skillKey == "M1" then
+		local stepIdx = (payload and payload.ComboIndex) or 1
+		local stepData = FlyingSwordConfig.M1Combo[stepIdx] or FlyingSwordConfig.M1Combo[1]
+		cdDuration = (stepData.Cooldown or 0.38) * 0.72
+	elseif FlyingSwordConfig.Skills[skillKey] then
+		cdDuration = FlyingSwordConfig.Skills[skillKey].Cooldown or 1.0
+	end
+
 	local lastUsed = state.Cooldowns[skillKey] or 0
 	if (now - lastUsed) < cdDuration then return false end
 
-	-- Auto-draw weapon
 	local WeaponManager = getWeaponManager()
 	if WeaponManager.GetWeaponState(player) == "Back" then
 		WeaponManager.SetWeaponState(player, "Hand")
 	end
 
-	-- Dynamic Qi Consumption (For Q, E, and F skills)
 	if skillKey ~= "M1" then
 		local cultMgr = getCultivationManager()
 		local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
@@ -514,30 +477,30 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 		end
 	end
 
-	-- Record Cooldown atomically
 	state.Cooldowns[skillKey] = now
 	state.ActiveStrike = { SkillKey = skillKey, StartTime = now }
 	state.ActionState = "Active"
 
 	CombatStateManager.TagInCombat(player)
 
-	-- Calculate Recovery duration to prevent animation cancel exploits
-	local recoveryTime = 0.20
+	local activeTime = 0.18
+	local recoveryTime = 0.14
 	if skillKey == "M1" then
 		local stepIdx = (payload and payload.ComboIndex) or 1
 		local stepData = FlyingSwordConfig.M1Combo[stepIdx] or FlyingSwordConfig.M1Combo[1]
-		recoveryTime = stepData.Recovery
+		activeTime = (stepData.CastDuration or 0.44) * 0.45
+		recoveryTime = (stepData.Recovery or 0.25) * 0.55
 	elseif FlyingSwordConfig.Skills[skillKey] then
-		recoveryTime = FlyingSwordConfig.Skills[skillKey].Recovery
+		activeTime = (FlyingSwordConfig.Skills[skillKey].CastDuration or 0.50) * 0.5
+		recoveryTime = FlyingSwordConfig.Skills[skillKey].Recovery or 0.2
 	end
 
-	state.RecoveryEndTime = now + recoveryTime
+	state.ActiveEndTime = now + activeTime
+	state.RecoveryEndTime = now + activeTime + recoveryTime
 
-	-- Execute Server Attack Engine
 	local FlyingSwordServer = getFlyingSwordServer()
 	payload = FlyingSwordServer.ExecuteAttack(player, skillKey, payload)
 
-	-- Broadcast atomic combat results
 	combatActionRemote:FireAllClients(player, skillKey, payload)
 
 	return true

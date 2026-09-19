@@ -2,20 +2,17 @@
 --[[
     FlyingSwordServer.luau
     Location: src/ServerScriptService/Server/Combat/Weapons/FlyingSwordServer.luau
-    Authoritative server attack & movement engine:
-    - Fixed M1 Consecutive Hit Registration (Micro-stagger on Hits 1-4 keeps targets in range)
-    - Spatial Flash-Step Blink for Ultimate (F): Character vanishes and reappears forward
-    - 2-Stage Ultimate Damage: 4x Electric Shred Ticks + Cataclysmic Ground Detonation
-    - Dual Hitbox Q Skill (Point-Blank Melee + 3x Traveling Waves)
-    - Phase 5 Samsara Prestige Base Sword Damage Multiplier
+    Phase 1 Updates:
+      - Q Skill Knockback: Zero knockback on both melee slash and waves (does not push enemies).
+      - B2 Hitbox Timing Overhaul: Configured Windup delay + ActiveDuration sampling loop.
+      - C5 Payload Sanitization: NaN/infinite vector validation on AimDirection.
+      - Spatial Flash-Step Blink for F Ultimate with 2-stage damage.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
-local Debris = game:GetService("Debris")
 
 local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
@@ -38,13 +35,15 @@ local function GetEquippedWeaponBaseDamage(player: Player): number
 end
 
 local function ResolveAimDirection(payload: any?, fallback: Vector3): Vector3
-	if payload and typeof(payload.AimDirection) == "Vector3" and payload.AimDirection.Magnitude > 0 then
-		return payload.AimDirection
+	if payload and typeof(payload.AimDirection) == "Vector3" then
+		local dir = payload.AimDirection
+		if dir.X == dir.X and dir.Y == dir.Y and dir.Z == dir.Z and dir.Magnitude > 0.001 then
+			return dir.Unit
+		end
 	end
 	return fallback
 end
 
--- Sets character invisibility for spatial flash-step disappearance
 local function SetCharacterCloak(character: Model, invisible: boolean)
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -55,9 +54,6 @@ local function SetCharacterCloak(character: Model, invisible: boolean)
 	end
 end
 
--- =============================================================================
--- SPATIAL FLASH-STEP BLINK (F ULTIMATE)
--- =============================================================================
 function FlyingSwordServer.StartChargeF(player: Player)
 	local character = player.Character
 	if not character then return end
@@ -84,21 +80,17 @@ function FlyingSwordServer.ExecuteSpatialBlink(player: Player, charForward: Vect
 	character:SetAttribute("IsChargingF", false)
 	character:SetAttribute("IsBlinking", true)
 
-	-- 1. Vanish from current spot
 	SetCharacterCloak(character, true)
 
-	-- 2. Raycast to find destination safely without clipping through terrain
 	local rayParams = RaycastParams.new()
 	rayParams.FilterType = Enum.RaycastFilterType.Exclude
 	rayParams.FilterDescendantsInstances = { character }
 	local rayResult = workspace:Raycast(hrp.Position, charForward * travelDistance, rayParams)
 	local targetPos = if rayResult then rayResult.Position - (charForward * 2) else hrp.Position + (charForward * travelDistance)
 
-	-- 3. Teleport forward after flash duration (0.35s)
 	task.delay(0.35, function()
 		if not hrp or not hrp.Parent then return end
 
-		-- Reappear at target position
 		hrp.CFrame = CFrame.lookAt(targetPos, targetPos + charForward)
 		hrp.AssemblyLinearVelocity = Vector3.zero
 		hrp.AssemblyAngularVelocity = Vector3.zero
@@ -107,7 +99,6 @@ function FlyingSwordServer.ExecuteSpatialBlink(player: Player, charForward: Vect
 		character:SetAttribute("IsBlinking", false)
 		character:SetAttribute("IsAttacking", false)
 
-		-- Notify client of arrival
 		local remoteFolder = ReplicatedStorage:FindFirstChild("Shared") and ReplicatedStorage.Shared:FindFirstChild("Network")
 		local RemoteEventsMod = remoteFolder and require(remoteFolder:FindFirstChild("RemoteEvents"))
 		local combatActionRemote = RemoteEventsMod and RemoteEventsMod.GetRemote("CombatAction")
@@ -266,7 +257,7 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 	local char = hrp.Parent :: Model
 
 	if skillKey == "Q" then
-		-- Melee slice + 3 waves
+		-- Q Skill: Slices in place with ZERO knockback (does not push enemies)
 		local torsoOrigin = hrp.Position + Vector3.new(0, -0.40, 0)
 		local orientationCFrame = CFrame.lookAt(torsoOrigin, torsoOrigin + flatAimDir)
 		local hitCharacters: { [Model]: boolean } = {}
@@ -281,7 +272,7 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 				table.insert(hits, hit)
 
 				local ok, res = pcall(function()
-					return HitboxManager.ApplyCombatResolution(player, hit, meleeDmg, skillData.PostureDamage * 0.4, skillData.Knockback * 0.5)
+					return HitboxManager.ApplyCombatResolution(player, hit, meleeDmg, skillData.PostureDamage * 0.4, Vector3.zero)
 				end)
 				if ok and res then
 					if res.WasParried then anyParried = true end
@@ -308,7 +299,8 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 					local waveHits = HitboxManager.CastCompensatedBox(char, currCF, Vector3.new(16, 4.5, 10))
 					for _, hit in ipairs(waveHits) do
 						local ok, res = pcall(function()
-							return HitboxManager.ApplyCombatResolution(player, hit, waveDmg, skillData.PostureDamage * 0.25, skillData.Knockback)
+							-- ZERO KNOCKBACK on wave projectiles
+							return HitboxManager.ApplyCombatResolution(player, hit, waveDmg, skillData.PostureDamage * 0.25, Vector3.zero)
 						end)
 						if ok and res then
 							if res.WasParried then anyParried = true end
@@ -326,18 +318,13 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 		end
 
 	elseif skillKey == "F" then
-		-- =============================================================
-		-- SKILL F: SPATIAL BLINK & 2-STAGE LIGHTNING SHRED + SHATTER BURST
-		-- =============================================================
 		local travelDist = skillData.DashDistance or 32.0
 
-		-- 1. Execute Spatial Flash-Step Disappearance
 		FlyingSwordServer.ExecuteSpatialBlink(player, flatAimDir, travelDist)
 
-		-- 2. Stage 1: Lightning Shred Ticks at the Domain Center
 		local domainCenter = hrp.Position + flatAimDir * (travelDist * 0.5)
 		local shredRadius = 18.0
-		local tickDmg = math.floor(finalDamage * 0.15) -- 4 ticks x 15% = 60%
+		local tickDmg = math.floor(finalDamage * 0.15)
 		local hitCooldowns: { [Model]: number } = {}
 		local shredDuration = 0.45
 		local elapsed = 0
@@ -345,7 +332,7 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 		local conn: RBXScriptConnection?
 		conn = RunService.Heartbeat:Connect(function(dt)
 			elapsed += dt
-			local now = os.clock()
+			local nowClock = os.clock()
 
 			local overlap = OverlapParams.new()
 			overlap.FilterType = Enum.RaycastFilterType.Exclude
@@ -357,15 +344,14 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 				local targetHum = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
 
 				if targetHum and targetModel ~= char and targetHum.Health > 0 then
-					if not hitCooldowns[targetModel] or (now - hitCooldowns[targetModel]) >= 0.10 then
-						hitCooldowns[targetModel] = now
+					if not hitCooldowns[targetModel] or (nowClock - hitCooldowns[targetModel]) >= 0.10 then
+						hitCooldowns[targetModel] = nowClock
 
 						local fakeHit: HitboxManager.HitResult = {
 							HitPart = part,
 							Character = targetModel,
-							Position = part.Position,
-							Normal = Vector3.new(0, 1, 0),
-							Distance = (part.Position - domainCenter).Magnitude,
+							Humanoid = targetHum,
+							TargetPlayer = Players:GetPlayerFromCharacter(targetModel),
 						}
 						table.insert(hits, fakeHit)
 
@@ -382,9 +368,8 @@ function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: B
 			end
 		end)
 
-		-- 3. Stage 2: Cataclysmic Ground Shatter Detonation on Reappearance
 		task.delay(0.40, function()
-			local finishDmg = math.floor(finalDamage * 0.60) -- 60% Finishing Burst
+			local finishDmg = math.floor(finalDamage * 0.60)
 			local finishBox = CFrame.lookAt(domainCenter, domainCenter + flatAimDir)
 			local finishHits = HitboxManager.CastCompensatedBox(char, finishBox, Vector3.new(24, 12, 24))
 

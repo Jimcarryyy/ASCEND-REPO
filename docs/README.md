@@ -1,53 +1,56 @@
+### 2. Complete Replacement: `docs/README.md`
+
+```markdown
 # ASCEND — Technical Documentation & Architecture Index
 
 > **Authoritative Technical Index**  
 > **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
 > **Source of Truth:** Live Luau Codebase (`src/`)  
-> **Active Phase:** Phase 8.5 — Combat Engine Standardization & Defensive VFX Integration
+> **Active Phase:** Phase 2 — Architecture Cleanup & Anti-Pattern Purge  
+> **Baseline Engine Status:** Phase 1 Complete & Verified (DataStore V3, 16 Typed Remotes)
 
 ---
 
-## 1. Project Overview
+## 1. Architectural Baseline & Standards
 
-**ASCEND** is a high-performance Roblox Xianxia (Eastern Immortal Hero) Action RPG built on the standardized Roblox R6 avatar rig. The game features fast-paced martial sword combat, an exponential 10-realm internal cultivation system, daily sect life, deep crafting professions (Alchemy, Blacksmithing, Tea Brewing, Gathering), and strict server-authoritative state synchronization.
+**ASCEND** is a high-performance Roblox Xianxia Action RPG built on the Roblox R6 avatar rig. The architecture enforces strict server authority, deterministic combat hitboxes, zero dynamic runtime UI instantiation, and strict type safety.
 
 ### Technical Baseline
-- **Avatar Rig:** Standard Roblox R6 (Rigid joint hierarchy, snappier martial arts keyframing, deterministic physics, zero ragdoll jitter, 60 FPS mobile budget).
-- **Persistence Engine:** `ASCEND_PlayerData_V3` (Server-authoritative DataStore with automatic V2-to-V3 schema migration, 300s auto-saves, shutdown flushes via `BindToClose`, and strict starter weapon isolation).
-- **Network Architecture:** 22 centralized `RemoteEvent` instances initialized in `src/ReplicatedStorage/Shared/Network/RemoteEvents.luau`.
-- **UI Architecture (ADR-041):** Studio-Authoritative `StarterGui` instances. Client controllers strictly wire events, tween properties, and bind logic. Programmatic UI construction via `Instance.new` is strictly forbidden for static layouts.
-- **Typography Standard (ADR-042):**
-  - **Headers, Titles, World Billboards, Station Overhead:** `Enum.Font.Bangers` with a mandatory solid black `UIStroke` (`Thickness = 1.5 - 2.0`, `Color = Color3.fromRGB(0, 0, 0)`).
-  - **Body Text, Lore, Descriptions, Dialogue:** `Enum.Font.Fundamento`.
-- **Modal Window Management (ADR-043):** Centralized modal stack handled by `ModalWindowManager.luau` to prevent UI overlaps and manage camera locks.
+- **Avatar Hierarchy:** Standard Roblox R6. Rigid joint hierarchy, predictable physics replication, zero ragdoll twitching, and mobile performance optimization.
+- **Persistence Engine:** `ASCEND_PlayerData_V3` (`PlayerDataManager.luau`). Authoritative DataStore with automatic schema migration, Samsara cycle tracking, Roman numeral prestige titles, Bloodline pity tracking, and authoritative `RouteToSpawnDais` spawn fallback.
+- **Network Pipeline:** Exactly 16 centralized, strictly typed (`--!strict`) `RemoteEvent` instances in `src/ReplicatedStorage/Shared/Network/RemoteEvents.luau`. 16 legacy unused remotes have been pruned.
+- **UI Architecture (ADR-041, ADR-069):** Studio-authoritative `StarterGui` instances built via Edit Mode scripts. Programmatic `Instance.new` GUI generation in client scripts is prohibited. All frames, buttons, and slots strictly enforce a **Zero UICorner** mandate with dark celestial slate containers.
+- **Typography Standards (ADR-042, ADR-072):**
+  - **Headers & Titles:** `Enum.Font.Bangers` with solid black `UIStroke` (`Thickness = 1.5 - 2.0`).
+  - **Body Text & Lore:** `Enum.Font.Fondamento`.
+  - **Combat Damage Numbers:** `Font.fromName("Press Start 2P")` / `Enum.Font.Arcade` displaying pure numeric values only (no words or intent badges).
 
 ---
 
 ## 2. Canonical Master Keybind Map
 
-This table reflects the actual, live keybindings wired in `InputController.luau`, `WeaponManager.luau`, and `FlyingSwordServer.luau`:
-
 | Keybind | Action | Description & Mechanical Rules |
 | :---: | :--- | :--- |
-| **`M1`** | **5-Hit Broadsword Combo** | Heavy sword chain (`Hit 1` to `Hit 5`). Movement dampened to `WalkSpeed = 8` during swings. Landed hits generate **+25% Sword Intent**. At **100% Intent**, the next strike consumes the bar to deal **1.75× Empowered Damage** with golden critical VFX. Pausing $>1.3\text{s}$ resets the chain. |
-| **`Left Control`** | **Sprint Toggle** | Toggles movement between Walk and Sprint (Open World: 18 / 44 studs/s; Arena: 16 / 34 studs/s). Features harmonic head-bobbing and dynamic FOV expansion ($70^\circ \rightarrow 76^\circ$). |
-| **`Left Shift`** | **Qi Flash-Step Dash** | Explosive 150 studs/s burst over 0.16s (~20 studs distance). Lifts character +1.2 studs with temporary `Freefall` state and anti-trip `AlignOrientation`. 3.0s cooldown, costs 3% Qi. Automatically resumes sprint if movement keys are held. |
-| **`T`** | **Block / Perfect Parry** | **Hold:** Frontal 180° guard arc reducing damage by 80% and knockback by 70%, consuming Posture. <br>**Tap within 0.22s:** Perfect Parry negating 100% damage, inflicting 0.5s stagger on the attacker, restoring +5% Qi, and detonating golden deflection sparks. |
-| **`C`** | **Qi Meditation** | Toggles seated cultivation. Restores Qi at 10.0%/s (full pool in 10s). Completely locks combat actions while active. |
-| **`R`** | **Draw / Sheathe Weapon** | Toggles Flying Sword between combat hand grip (`RightGripAttachment`) and resting back sheath (`BackSwordMount`). |
-| **`V`** | **Flying Sword Flight Mode** | Mounts flying sword under feet for 3D aerial navigation (75 studs/s). Features ground cushion ($6.5\text{ studs}$ altitude maintenance) and obstacle buffer ($8.5\text{ studs}$). Ascend with `Spacebar`, descend with `C` or `LeftControl`. |
-| **`B`** | **Realm Breakthrough** | Attempts realm breakthrough when Cultivated Qi reaches 100% capacity. Triggers heavenly lightning tribulation strikes for major realms. |
-| **`Q`** | **Skill: Sword Tempest** | Dual-hitbox skill: point-blank 360° melee cleave (25 damage) + 3 forward-traveling purple sawblades (54 damage across waves). Costs 15% Qi, 3.5s cooldown. |
-| **`E`** | **Skill: Piercing Void Thrust** | High-velocity penetrating sword thrust beam (80 base damage, 40-stud knockback). Costs 12% Qi, 5.0s cooldown. |
-| **`F`** | **Ultimate: 100-Slash Flash Domain** | Single-click ultimate. Lifts cultivator +2.2 studs into Freefall, dashes forward at 145 studs/s phasing through targets, mid-air slashes, and detonates a 36-stud 100-slash sphere (5 hits × 20 damage). Costs 20% Qi, 5.5s cooldown. |
-| **`P`** | **Character Stats Sheet** | Toggles the dedicated `CharacterStatsGui` overview showing Realm, Order, Attributes, and Stats. |
-| **`Tab`** | **Notice Board / Quests** | Opens sect daily duty tracking and active bounties. |
+| **`M1`** | **5-Hit Sword Combo** | Heavy sword chain (`Hit 1` to `Hit 5`). Movement dampened to `WalkSpeed = 8` during swings. AutoRotate locked against RootJoint twisting. Hits grant **+25% Sword Intent**. At **100% Intent**, the next hit delivers **1.75× Damage** with golden VFX. |
+| **`Left Control`** | **Sprint Toggle** | Toggles movement between Walk (13.5 studs/s) and Sprint (36 studs/s open world / 30 arena) with dynamic FOV expansion ($70^\circ \rightarrow 76^\circ$). |
+| **`Left Shift`** | **Qi Flash-Step Dash** | 4-way camera-relative directional burst over 0.16s with Shunpo vanish/reappear VFX and anti-trip `AlignOrientation`. 3.0s cooldown, costs 3% Qi. |
+| **`T`** | **Guard / Perfect Parry** | **Hold:** Frontal 180° guard reducing damage by 80% and knockback by 70%, consuming Posture.<br>**Tap within 0.22s:** Perfect Parry via `Workspace:GetServerTimeNow()`, negating 100% damage, staggering attacker for 0.5s, and restoring +5% Qi. |
+| **`C`** | **Qi Meditation** | Seated cultivation restoring 10.0% Qi/s. Gated behind `InCombat == false`; combat actions lock during meditation. |
+| **`R`** | **Draw / Sheathe Sword** | Toggles weapon weld between Hand Grip (`RightGripAttachment`) and upper back torso sheath. |
+| **`V`** | **Flying Sword Flight Mode** | Mounts sword under feet for 3D aerial navigation. Flight velocity scales dynamically by cultivation realm (48+ studs/s). Pauses passive recovery, drains 25 Qi/s, and auto-dismounts at 0 Qi or when struck in combat. |
+| **`B`** | **Realm Breakthrough** | Attempts realm breakthrough when Cultivated Qi is at 100%. Gated behind Breakthrough Dan validation, Inner Demon QTE, or Tribulation Lightning. |
+| **`Q`** | **Skill: Sword Tempest** | Point-blank 360° melee cleave (25 dmg) + 3 traveling sawblades (54 total dmg). Zero knockback (`Vector3.zero`) slices targets in place. Costs 15% Qi, 3.5s cooldown. |
+| **`E`** | **Interact / Piercing Thrust** | Primary world interaction (Bloodline Altar, Merchant Qian, Dialogue). When weapon is drawn: Piercing Void Thrust beam (80 dmg). |
+| **`F`** | **Ultimate: Flash Domain** | 28-stud instant Celestial Flash-Step slash phasing through enemies + mid-air slice + 36-stud domain detonation (5 hits × 20 dmg). Costs 20% Qi, 5.5s cooldown. |
+| **`H`** | **Heavenly Codex** | Opens the comprehensive in-game cultivation guidebook (`CodexGui`). |
+| **`P`** | **Character Stats Sheet** | Toggles `CharacterStatsGui` displaying Realm, Order, Attributes, and active Bloodline. |
+| **`Tab` / `I`** | **Spirit Pouch (Inventory)** | Opens spatial inventory pouch for pills, herbs, and materials. |
 
 ---
 
 ## 3. Weapon Arsenal & Dynamic VFX Palettes
 
-All weapons in ASCEND are Flying Swords governed by `ItemConfig.luau` and dynamically attune visual effects via `ItemConfig.GetWeaponPalette(weaponId)`:
+All weapons in ASCEND are Flying Swords governed by `ItemConfig.luau` and dynamically attuned via `ItemConfig.GetWeaponPalette(weaponId)`:
 
 | Tier | Weapon ID | Name | Rarity | Base Dmg | VFX Palette Theme | Primary Hex |
 | :---: | :--- | :--- | :---: | :---: | :--- | :---: |
@@ -60,11 +63,13 @@ All weapons in ASCEND are Flying Swords governed by `ItemConfig.luau` and dynami
 | **7** | `AzurePatriarchHeritageJian` | Azure Patriarch Heritage Jian | Divine | 450 | Luminescent Divine Cyan | `#22D3EE` |
 | **8** | `RadiantImmortalSovereignJian` | Radiant Immortal Sovereign Jian | Immortal | 1000 | Blinding Solar Dao Gold | `#FACC15` |
 
+*Note: In accordance with ADR-074, swords cannot be bought or sold in the Sect Merchant Market.*
+
 ---
 
 ## 4. Cultivation Progression Matrix
 
-Cultivation is configured in `CultivationConfig.luau` across **10 Major Realms**, each containing **9 Orders** (90 total stages):
+Configured in `CultivationConfig.luau` across **10 Major Realms**, each with **9 Orders** (90 total stages):
 
 $$\text{Order Health} = \lfloor \text{BaseMaxHealth} \times 1.35^{(\text{Order}-1)} \rfloor$$
 $$\text{Order Target Qi} = \lfloor \text{BaseTargetQi} \times 1.45^{(\text{Order}-1)} \rfloor$$
@@ -85,46 +90,33 @@ $$\text{Power Multiplier} = \text{HealthMultiplier} \times [1 + (\text{Order}-1)
 
 ---
 
-## 5. Zone 1: Jade Pure Sect World Hub (ADR-044)
+## 5. Bestiary Architecture: Pure Humanoid R6 Cultivators
 
-The primary world hub is arranged in a 3-tier stepped elevation layout:
+In accordance with ADR-076, all quadruped beast models have been permanently purged from the engine. All zone enemies are standard Roblox Humanoid R6 Cultivators powered by `MobAIManager.luau` and `SPAWNER_ALIAS_MAP`:
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ TIER 3: UPPER SOVEREIGN PALACE                                              │
-│ - Grand Sect Palace Hall (Black Roof Tile Aesthetic)                        │
-│ - Supreme Sect Leader, Grand Sword Elder Liang                              │
-│ - Top 7 Pillars of the Sect (Lore Masters) & Elite Sect Guards              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ TIER 2: MIDDLE SPIRITUAL DAO SANCTUARY                                      │
-│ - Elevated Sword Altar (Weapon Attunement & Pedestal Display)               │
-│ - Inner Disciple Courtyards & Spirit Qi Meditation Pavements                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ TIER 1: LOWER SERVICE & TRAINING GROUNDS                                    │
-│ - Blacksmith Forge (Madame Tie: +10 Blade Refinement)                       │
-│ - Spirit Tea Pavilion (Xiao Ling: 3 Brews, Timed Cultivation Buffs)         │
-│ - Sect Training Grounds (Instructor Wu, 3 Immortal Dummies, DPS Meters)     │
-│ - Sect Starter Guide Pavilion (Elder Qing: Interactive 4-Tab Codex)         │
-│ - Bronze Alchemy Cauldron (Master Shen: 3-Slot Herb Minigame)               │
-│ - Notice Board (Deacon Zhao: 3-Tier Daily Duties & Bounty Submissions)       │
-│ - Sect Treasury & Market (Steward Jin: Weapon Catalog & Trading)            │
-│ - Sakura Grove (2.0x Qi Buff), Training Disciples, Wilderness Portal        │
-└─────────────────────────────────────────────────────────────────────────────┘
-6. Documentation Directory
-Document	Path	Scope & Ground Truth Content
-Architecture Specification	docs/ARCHITECTURE_SPEC.md	Complete map of 16 Server Managers, 22 Client Controllers, 22 Remotes, and network data flow.
-Combat Specification	docs/COMBAT_SPEC.md	Pure sword combat engine: 5-hit combo, Sword Intent, Parrying/Posture, skills (Q, E, F), and flight.
-Progression Specification	docs/PROGRESSION_SPEC.md	10 Major Realms × 9 Orders cultivation math, breakthroughs, Tribulation Lightning, and Spirit Tea buffs.
-UI/UX Specification	docs/UI_UX_SPEC.md	Studio-authoritative GUI standards, Bangers/Fundamento typography, color tokens, and Master HUD layouts.
-Game Design Document	docs/GAME_DESIGN.md	Core game loop, world geography, NPC roster, sect duties, economy, and gathering/crafting systems.
-Asset Manifest	docs/ASSET_MANIFEST.md	Canonical index of weapon models, audio IDs, animations, and particle VFX references.
-Code Dependency Guide	docs/CODE_DEPENDENCY_GUIDE.md	Require hierarchy, remote event bindings, circular dependency safeguards, and boot sequences.
-Codebase Cleanup Guide	docs/CODEBASE_CLEANUP_GUIDE.md	Strict pruning policies, single-weapon architecture enforcement, and dead-code prevention rules.
-Roblox Performance Rules	docs/ROBLOX_PERFORMANCE_RULES.md	60 FPS mobile budgets, memory limits, raycast culling, foliage collision pruning, and network limits.
-7. Operational State Tracking (.ai/)
-File	Purpose	Rule
-.ai/CURRENT_TASK.md	Active single task focus	Only 1 active task at a time. Verified against live code before execution.
-.ai/NEXT_STEPS.md	Prioritized technical roadmap	Queued engineering milestones in logical dependency order.
-.ai/PROJECT_STATUS.md	Subsystem health matrix	Factual audit of system status; no inflated completion percentages.
-.ai/DECISIONS.md	Architecture Decision Records	Formal log of decisions (ADR-001 through ADR-044). Consult before making architectural shifts.
-.ai/CHANGELOG.md	Verifiable development history
+| Index | Mob Model Key | Display Name | Role / Danger Tier | Weapon Equipped |
+| :---: | :--- | :--- | :--- | :--- |
+| **1** | `RogueDisciple` | Rogue Disciple | Tier 1 Swarm (Qi Condensation) | Mortal Iron Jian |
+| **2** | `BanditCultivator` | Bandit Cultivator | Tier 1 Roamer (Qi Condensation) | Mortal Iron Jian |
+| **3** | `GhostBladeMarauder`| Ghost Blade Marauder | Tier 2 Skirmisher (Foundation) | Azure Cloud Disciple Jian |
+| **4** | `BloodShadowAssassin`| Blood Shadow Assassin | Tier 2 Agility Flanker (Foundation)| Azure Cloud Disciple Jian |
+| **5** | `CorruptedIronGuard` | Corrupted Iron Guard | Tier 3 Heavy Brute (Golden Core) | Flowing Qi Spirit Sword |
+| **6** | `FrostPeakApostle` | Frost Peak Apostle | Tier 3 Elementalist (Golden Core) | Flowing Qi Spirit Sword |
+| **7** | `FallenInnerProdigy` | Fallen Inner Prodigy | Tier 4 Mini-Boss (Nascent Soul) | Verdant Jade Flying Sword |
+| **8** | `VoidPhantomSwordmaster`| Void Phantom Swordmaster| Tier 4 Elite Duelist (Nascent Soul)| Verdant Jade Flying Sword |
+| **9** | `Boss_FallenSwordGenius`| Mo Chen (Fallen Genius)| Zone 1 World Boss (Nascent Soul) | Violet Soul Sovereign Jian |
+| **10**| `AsuraSwordSovereign`| Asura Sword Sovereign | Calamity World Boss (Immortal) | Radiant Immortal Sovereign Jian |
+
+---
+
+## 6. Documentation Directory & Tracking
+
+| Document | Path | Scope & Ground Truth Content |
+| :--- | :--- | :--- |
+| **Architecture Specification** | `docs/ARCHITECTURE_SPEC.md` | Maps Server Managers, Client Controllers, 16 Typed Remotes, and lifecycle pipelines. |
+| **Combat Specification** | `docs/COMBAT_SPEC.md` | Authoritative sword combat: 5-hit chain, Sword Intent, Posture/Parry, Skills (Q, E, F), and Flight. |
+| **Progression Specification** | `docs/PROGRESSION_SPEC.md` | Cultivation formulas, Breakthrough Dan recipes, Tribulation Lightning, and Samsara Rebirth. |
+| **Asset Manifest** | `docs/ASSET_MANIFEST.md` | Canonical index of sword models, 12 bloodline floating relics, 10 R6 mobs, audio, and animations. |
+| **UI/UX Specification** | `docs/UI_UX_SPEC.md` | Studio-authoritative GUI layouts, Bangers/Fondamento typography, Arcade damage numbers, Zero UICorner rule. |
+| **Roblox Performance Rules** | `docs/ROBLOX_PERFORMANCE_RULES.md`| 60 FPS mobile budgets, raycast spatial queries, memory ceilings (<800 MB), and cleanup rules. |
+| **Operational Tracking** | `.ai/` | Single-task tracker (`CURRENT_TASK.md`), technical roadmap (`NEXT_STEPS.md`), health matrix (`PROJECT_STATUS.md`), and ADR log (`DECISIONS.md`). |

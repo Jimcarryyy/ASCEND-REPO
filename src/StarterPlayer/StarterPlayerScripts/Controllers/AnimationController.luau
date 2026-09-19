@@ -2,12 +2,10 @@
 --[[
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
-    Handles:
-      - Lightning Flash-Step Dash with Elevation Hover & Anti-Trip Orientation Lock.
-      - Dynamic Weapon-Attuned Dash Silhouette Colors (Mortal Steel, Azure, Void, Radiant Gold).
-      - Sword slash particle emissions directly from equipped blade tip.
-      - Movement Sound Governor (zero stuck footsteps on flight/jump spam).
-      - Flight mode animation & suppression of ground animations.
+    Updates:
+      - 4-Way Dash with Shunpo Vanish/Reappear Effect (character disappears and snaps back).
+      - M1 Body Twist Fix: Locks AutoRotate during attack so avatar never spins mid-slash.
+      - A6 Attribute Governance for WalkSpeed.
 ]]
 
 local Players = game:GetService("Players")
@@ -15,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Debris = game:GetService("Debris")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
@@ -32,24 +31,20 @@ local blockTrack: AnimationTrack? = nil
 local flightTrack: AnimationTrack? = nil
 local animPlayedConn: RBXScriptConnection? = nil
 
--- Audio Assets
 local SWORD_SLASH_SOUND_ID = "rbxassetid://79218449800283"
-local DASH_SOUND_ID = "rbxassetid://93272068959626"
-local MEDITATION_ANIM_ID = (AnimationConfig.Movement and (AnimationConfig.Movement :: any).Meditation) or "rbxassetid://129333803961409"
-local FLIGHT_ANIM_ID = (AnimationConfig.Movement and (AnimationConfig.Movement :: any).Flight) or "rbxassetid://81098622855235"
+local DASH_SOUND_ID        = "rbxasset://sounds/swordlunge.wav"
+local MEDITATION_ANIM_ID   = (AnimationConfig.Movement and (AnimationConfig.Movement :: any).Meditation) or "rbxassetid://129333803961409"
+local FLIGHT_ANIM_ID       = (AnimationConfig.Movement and (AnimationConfig.Movement :: any).Flight) or "rbxassetid://81098622855235"
 
 local meditationTrack: AnimationTrack? = nil
 local isCurrentlyMeditating = false
 local meditationRequestId = 0
 
---------------------------------------------------------------------------------
--- LIGHTNING DASH CONSTANTS (Explosive Impulse & Anti-Trip Protection)
---------------------------------------------------------------------------------
-local DASH_BURST_DURATION = 0.16
-local DASH_PEAK_SPEED = 150.0
+local DASH_BURST_SPEED = 125.0
+local DASH_DURATION    = 0.28
+local DASH_FLOAT_LIFT  = 0.35
 local DASH_WALL_SLOW_SPEED = 14.0
 local DASH_WALL_CHECK_DISTANCE = 5.0
-local DASH_FLOAT_LIFT = 1.2
 
 local function PlayLocalSFX(soundId: string, volume: number?, speed: number?)
 	local character = player.Character
@@ -59,7 +54,7 @@ local function PlayLocalSFX(soundId: string, volume: number?, speed: number?)
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
 	sound.Volume = volume or 0.95
-	sound.PlaybackSpeed = speed or (math.random(96, 104) / 100)
+	sound.PlaybackSpeed = speed or (math.random(98, 102) / 100)
 	sound.Parent = hrp
 	sound:Play()
 
@@ -94,9 +89,17 @@ function AnimationController.EmitSwordSlash(character: Model)
 	end
 end
 
--- =============================================================================
--- LIGHTNING DASH VISUAL POLISH: AFTERIMAGES (ATTUNED TO EQUIPPED SWORD)
--- =============================================================================
+-- Shunpo Disappear/Reappear Helper
+local function SetCharacterVanish(character: Model, vanish: boolean)
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			part.Transparency = if vanish then 0.92 else 0
+		elseif part:IsA("Decal") then
+			part.Transparency = if vanish then 0.92 else 0
+		end
+	end
+end
+
 local function SpawnDashAfterimage(character: Model)
 	local afterimageModel = Instance.new("Model")
 	afterimageModel.Name = "DashGhostSilhouette"
@@ -111,7 +114,7 @@ local function SpawnDashAfterimage(character: Model)
 			ghost.CFrame = part.CFrame
 			ghost.Color = palette.PrimaryColor
 			ghost.Material = Enum.Material.Neon
-			ghost.Transparency = 0.42
+			ghost.Transparency = 0.45
 			ghost.Anchored = true
 			ghost.CanCollide = false
 			ghost.CanTouch = false
@@ -132,41 +135,19 @@ local function TriggerDashCameraFX()
 	local camera = Workspace.CurrentCamera
 	if not camera then return end
 
-	local baseFov = 70
-	local warpFov = 79
+	local baseFov = camera.FieldOfView
+	local warpFov = baseFov + 6.5
 	local fovTweenIn = TweenService:Create(camera, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		FieldOfView = warpFov,
 	})
 	fovTweenIn:Play()
 	fovTweenIn.Completed:Connect(function()
-		TweenService:Create(camera, TweenInfo.new(0.20, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+		TweenService:Create(camera, TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 			FieldOfView = baseFov,
 		}):Play()
 	end)
-
-	local shakeStartTime = os.clock()
-	local shakeDuration = 0.14
-	local shakeConn: RBXScriptConnection? = nil
-
-	shakeConn = RunService.RenderStepped:Connect(function()
-		local elapsed = os.clock() - shakeStartTime
-		if elapsed >= shakeDuration then
-			if shakeConn then shakeConn:Disconnect() end
-			return
-		end
-
-		local decay = 1 - (elapsed / shakeDuration)
-		local rollJitter = (math.random() - 0.5) * math.rad(1.4) * decay
-		local pitchJitter = (math.random() - 0.5) * math.rad(1.0) * decay
-		local yDip = (math.random() - 0.5) * 0.1 * decay
-
-		camera.CFrame = camera.CFrame * CFrame.Angles(pitchJitter, 0, rollJitter) * CFrame.new(0, yDip, 0)
-	end)
 end
 
--- =============================================================================
--- MOVEMENT SOUND GOVERNOR
--- =============================================================================
 local function BindSoundGovernor(character: Model)
 	local hrp = character:WaitForChild("HumanoidRootPart", 5) :: BasePart?
 	local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
@@ -297,6 +278,7 @@ function AnimationController.Init()
 		flightTrack = nil
 		character:SetAttribute("IsAttacking", false)
 		character:SetAttribute("IsFlying", false)
+		character:SetAttribute("IsDashing", false)
 		BindFlightListener(character)
 		BindSoundGovernor(character)
 	end)
@@ -375,23 +357,34 @@ function AnimationController.Init()
 
 	combatActionRemote.OnClientEvent:Connect(function(target: Player, skillKey: string, payload: any?)
 		if target == player and skillKey == "StatusEffect" then
+			if activeAttackTrack and activeAttackTrack.IsPlaying then
+				activeAttackTrack:Stop(0.04)
+				activeAttackTrack = nil
+			end
+			if player.Character then
+				player.Character:SetAttribute("IsAttacking", false)
+				player.Character:SetAttribute("AttackSpeedDampen", nil)
+				local hum = player.Character:FindFirstChildOfClass("Humanoid")
+				if hum then hum.AutoRotate = true end
+			end
+
 			local effectType = payload and payload.Effect
 			local duration = payload and payload.Duration or 0.5
-			if effectType == "Stunned" or effectType == "GuardBroken" then
+			if effectType == "Stunned" or effectType == "GuardBroken" or effectType == "Staggered" then
 				AnimationController.PlayStunAnimation(duration)
 			end
 		elseif target ~= player and skillKey == "Shift" then
 			local otherChar = target.Character
 			if otherChar then
 				SpawnDashAfterimage(otherChar)
-				task.delay(0.06, function()
+				task.delay(0.08, function()
 					if otherChar.Parent then SpawnDashAfterimage(otherChar) end
 				end)
 			end
 		end
 	end)
 
-	print("[ASCEND] AnimationController Initialized (Lightning Flash-Step Dash & Anti-Trip Active).")
+	print("[ASCEND] AnimationController Initialized (Shunpo Vanish Dash & M1 AutoRotate Fix Active).")
 end
 
 function AnimationController.ClearLoadedTracks()
@@ -439,10 +432,7 @@ function AnimationController.StartBlock()
 		loadedTracks[trackKey] = track
 	end
 
-	if humanoid and blockDef.WalkSpeedDampen then
-		humanoid.WalkSpeed = blockDef.WalkSpeedDampen
-	end
-
+	character:SetAttribute("IsBlocking", true)
 	track:Play(0.05, 1, 1.0)
 	blockTrack = track
 end
@@ -454,10 +444,8 @@ function AnimationController.StopBlock()
 	blockTrack = nil
 
 	local character = player.Character
-	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
-	if humanoid then
-		local inArena = character:GetAttribute("InArena") == true
-		humanoid.WalkSpeed = inArena and 16 or 18
+	if character then
+		character:SetAttribute("IsBlocking", false)
 	end
 end
 
@@ -468,15 +456,15 @@ function AnimationController.PlayStunAnimation(duration: number)
 	local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
 	if not humanoid or not animator then return end
 
-	local swordCfg = AnimationConfig.FlyingSword :: any
-	local stunDef = if swordCfg then swordCfg.Stun else nil
-	if not stunDef then return end
+	local moveCfg = AnimationConfig.Movement :: any
+	local stunId = moveCfg.Parryed or (AnimationConfig.FlyingSword and AnimationConfig.FlyingSword.Stun.AnimationId)
+	if not stunId or stunId == "" then return end
 
-	local trackKey = "FlyingSword_Stun"
+	local trackKey = "Combat_Stun"
 	local track = loadedTracks[trackKey]
 	if not track or track.Parent == nil then
 		local animInstance = Instance.new("Animation")
-		animInstance.AnimationId = stunDef.AnimationId
+		animInstance.AnimationId = stunId
 		track = animator:LoadAnimation(animInstance)
 		track.Priority = Enum.AnimationPriority.Action4
 		loadedTracks[trackKey] = track
@@ -488,10 +476,78 @@ function AnimationController.PlayStunAnimation(duration: number)
 	end)
 end
 
+function AnimationController.PlayEquipAnimation(isEquipping: boolean)
+	local character = player.Character
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
+	if not humanoid or not animator then return end
+
+	local moveCfg = AnimationConfig.Movement :: any
+	local animId = if isEquipping then moveCfg.Equip else moveCfg.Unequip
+	if not animId or animId == "" then return end
+
+	local trackKey = if isEquipping then "Weapon_Equip" else "Weapon_Unequip"
+	local track = loadedTracks[trackKey]
+	if not track or track.Parent == nil then
+		local animInstance = Instance.new("Animation")
+		animInstance.AnimationId = animId
+		track = animator:LoadAnimation(animInstance)
+		track.Priority = Enum.AnimationPriority.Action3
+		track.Looped = false
+		loadedTracks[trackKey] = track
+	end
+
+	local oppositeKey = if isEquipping then "Weapon_Unequip" else "Weapon_Equip"
+	local oppositeTrack = loadedTracks[oppositeKey]
+	if oppositeTrack and oppositeTrack.IsPlaying then
+		oppositeTrack:Stop(0.12)
+	end
+
+	track:Play(0.15, 1, 1.0)
+end
+
+function AnimationController.PlayHitReaction(reactionType: string?)
+	local character = player.Character
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
+	if not humanoid or not animator or humanoid.Health <= 0 then return end
+
+	local moveCfg = AnimationConfig.Movement :: any
+	local trackKey: string
+	local animId: string
+	local priority = Enum.AnimationPriority.Action3
+
+	if reactionType == "Parryed" then
+		trackKey = "Hit_Parryed"
+		animId = moveCfg.Parryed or "rbxassetid://121973766317438"
+		priority = Enum.AnimationPriority.Action4
+	else
+		local pick = math.random(1, 2)
+		trackKey = "HitReaction_" .. tostring(pick)
+		animId = if pick == 1 then moveCfg.HitReaction1 else moveCfg.HitReaction2
+	end
+
+	if not animId or animId == "" then return end
+
+	local track = loadedTracks[trackKey]
+	if not track or track.Parent == nil then
+		local animInstance = Instance.new("Animation")
+		animInstance.AnimationId = animId
+		track = animator:LoadAnimation(animInstance)
+		track.Priority = priority
+		track.Looped = false
+		loadedTracks[trackKey] = track
+	end
+
+	track:Play(0.04, 1, 1.1)
+end
+
 -- =============================================================================
--- LIGHTNING FLASH-STEP DASH (ANTI-TRIP ELEVATION & UPRIGHT LOCK)
+-- 4-WAY DASH WITH SHUNPO VANISH & REAPPEAR REFINEMENT
 -- =============================================================================
-function AnimationController.PerformDash(dashStep: number)
+function AnimationController.PerformDash(_dashStep: number?, overrideDir: Vector3?, overrideDirCode: string?)
 	local character = player.Character
 	if not character then return end
 
@@ -501,41 +557,73 @@ function AnimationController.PerformDash(dashStep: number)
 	if not humanoid or not hrp or not animator or humanoid.Health <= 0 then return end
 
 	if character:GetAttribute("IsMeditating") == true or character:GetAttribute("IsFlying") == true then return end
+	if character:GetAttribute("IsDashing") == true then return end
 
 	character:SetAttribute("IsDashing", true)
 
-	PlayLocalSFX(DASH_SOUND_ID, 1.0, 1.18)
-	SpawnDashAfterimage(character)
-	TriggerDashCameraFX()
+	local cam = Workspace.CurrentCamera
+	local dashDir: Vector3
+	local dirCode: string = overrideDirCode or "W"
 
-	local animId = if dashStep == 1
-		then ((AnimationConfig.Movement :: any).Dash_1 or "rbxassetid://118004062849712")
-		else ((AnimationConfig.Movement :: any).Dash_2 or "rbxassetid://87494050060721")
+	if overrideDir and overrideDir.Magnitude > 0.1 then
+		dashDir = overrideDir
+	else
+		local camLook = if cam then cam.CFrame.LookVector else hrp.CFrame.LookVector
+		local camFlatCF = CFrame.lookAt(Vector3.zero, Vector3.new(camLook.X, 0, camLook.Z).Unit)
 
-	local trackKey = "Dash_" .. tostring(dashStep)
-	local track = loadedTracks[trackKey]
+		local isW = UserInputService:IsKeyDown(Enum.KeyCode.W)
+		local isS = UserInputService:IsKeyDown(Enum.KeyCode.S)
+		local isA = UserInputService:IsKeyDown(Enum.KeyCode.A)
+		local isD = UserInputService:IsKeyDown(Enum.KeyCode.D)
+
+		local inputVec = Vector3.zero
+		if isW then inputVec += Vector3.new(0, 0, -1) end
+		if isS then inputVec += Vector3.new(0, 0, 1) end
+		if isA then inputVec += Vector3.new(-1, 0, 0) end
+		if isD then inputVec += Vector3.new(1, 0, 0) end
+
+		if inputVec.Magnitude < 0.1 then
+			if humanoid.MoveDirection.Magnitude > 0.1 then
+				inputVec = camFlatCF:VectorToObjectSpace(humanoid.MoveDirection)
+			else
+				inputVec = Vector3.new(0, 0, -1)
+			end
+		end
+
+		inputVec = inputVec.Unit
+
+		if math.abs(inputVec.X) > math.abs(inputVec.Z) then
+			dirCode = if inputVec.X > 0 then "D" else "A"
+		else
+			dirCode = if inputVec.Z > 0 then "S" else "W"
+		end
+
+		dashDir = camFlatCF:VectorToWorldSpace(inputVec)
+	end
+
+	local moveCfg = AnimationConfig.Movement :: any
+	local animKey = "Dash_" .. dirCode
+	local animId = moveCfg[animKey] or moveCfg.Dash_W or "rbxassetid://137006811308011"
+
+	local track = loadedTracks[animKey]
 	if not track or track.Parent == nil then
 		local animInstance = Instance.new("Animation")
 		animInstance.AnimationId = animId
 		track = animator:LoadAnimation(animInstance)
-		loadedTracks[trackKey] = track
+		track.Priority = Enum.AnimationPriority.Action4
+		track.Looped = false
+		loadedTracks[animKey] = track
 	end
 
-	track.Priority = Enum.AnimationPriority.Action4
-	track.Looped = false
-	track:Play(0.01, 1, 1.55)
+	PlayLocalSFX(DASH_SOUND_ID, 1.0, 1.0)
+	SpawnDashAfterimage(character)
+	TriggerDashCameraFX()
 
-	-- 1. Determine Dash Direction
-	local dashDir = humanoid.MoveDirection
-	if dashDir.Magnitude < 0.1 then
-		dashDir = hrp.CFrame.LookVector
-	end
-	dashDir = Vector3.new(dashDir.X, 0, dashDir.Z).Unit
+	-- SHUNPO VANISH: Character dissolves into spectral blur
+	SetCharacterVanish(character, true)
+	track:Play(0.02, 1, 1.30)
 
-	-- 2. Anti-Trip Elevation Lift
 	hrp.CFrame = hrp.CFrame + Vector3.new(0, DASH_FLOAT_LIFT, 0)
-
-	-- 3. Temporarily disable ground-friction solver to prevent tripping
 	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 
 	local rayParams = RaycastParams.new()
@@ -543,7 +631,7 @@ function AnimationController.PerformDash(dashStep: number)
 	rayParams.FilterDescendantsInstances = { character }
 	local hitWall = Workspace:Raycast(hrp.Position, dashDir * DASH_WALL_CHECK_DISTANCE, rayParams)
 
-	local dashVelocity = if hitWall then dashDir * DASH_WALL_SLOW_SPEED else dashDir * DASH_PEAK_SPEED
+	local initialDashSpeed = if hitWall then DASH_WALL_SLOW_SPEED else DASH_BURST_SPEED
 
 	local attach = hrp:FindFirstChild("DashAttachment") :: Attachment?
 	if not attach then
@@ -552,103 +640,82 @@ function AnimationController.PerformDash(dashStep: number)
 		attach.Parent = hrp
 	end
 
-	-- 4. High-Torque Upright Lock
+	local camFlatLook = if cam then Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z).Unit else hrp.CFrame.LookVector
 	local dashOrientation = Instance.new("AlignOrientation")
 	dashOrientation.Name = "DashOrientationLock"
 	dashOrientation.Attachment0 = attach
 	dashOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
-	dashOrientation.Responsiveness = 40
-	dashOrientation.MaxTorque = 10000000
-	dashOrientation.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + dashDir)
+	dashOrientation.Responsiveness = 45
+	dashOrientation.MaxTorque = 9000000
+	dashOrientation.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + camFlatLook)
 	dashOrientation.Parent = hrp
 
-	-- 5. Linear Impulse with gentle vertical float (+2.5 studs/s) to maintain elevation
 	local linearVel = Instance.new("LinearVelocity")
 	linearVel.Name = "DashForce"
 	linearVel.Attachment0 = attach
 	linearVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
-	linearVel.MaxAxesForce = Vector3.new(350000, 50000, 350000)
-	linearVel.VectorVelocity = Vector3.new(dashVelocity.X, 2.5, dashVelocity.Z)
+	linearVel.MaxAxesForce = Vector3.new(450000, 35000, 450000)
+	linearVel.VectorVelocity = Vector3.new(dashDir.X * initialDashSpeed, 0.35, dashDir.Z * initialDashSpeed)
 	linearVel.RelativeTo = Enum.ActuatorRelativeTo.World
 	linearVel.Parent = hrp
 
-	hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, 3.0, hrp.AssemblyLinearVelocity.Z)
-
 	local previousAutoRotate = humanoid.AutoRotate
-	humanoid.WalkSpeed = 0
 	humanoid.AutoRotate = false
 
-	task.delay(0.06, function()
+	task.delay(0.08, function()
 		if character.Parent and character:GetAttribute("IsDashing") == true then
 			SpawnDashAfterimage(character)
 		end
 	end)
 
-	local startTime = os.clock()
-	local dashHeartbeatConn: RBXScriptConnection? = nil
-	dashHeartbeatConn = RunService.Heartbeat:Connect(function()
-		if not hrp.Parent or not linearVel.Parent then
-			if dashHeartbeatConn then dashHeartbeatConn:Disconnect() end
-			return
-		end
-
-		if os.clock() - startTime >= DASH_BURST_DURATION then
-			if dashHeartbeatConn then dashHeartbeatConn:Disconnect() end
-			return
-		end
-
-		local wallAhead = Workspace:Raycast(hrp.Position, dashDir * DASH_WALL_CHECK_DISTANCE, rayParams)
-		if wallAhead then
-			linearVel.VectorVelocity = Vector3.new(dashDir.X * DASH_WALL_SLOW_SPEED, 2.0, dashDir.Z * DASH_WALL_SLOW_SPEED)
-		end
-	end)
-
-	task.delay(DASH_BURST_DURATION, function()
-		if dashHeartbeatConn then dashHeartbeatConn:Disconnect() end
-
+	-- SHUNPO REAPPEAR & SNAP BRAKE
+	task.delay(DASH_DURATION * 0.40, function()
 		if linearVel and linearVel.Parent then
-			local decayTween = TweenService:Create(linearVel, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				VectorVelocity = Vector3.new(dashDir.X * 15, 0, dashDir.Z * 15),
-			})
-			decayTween:Play()
-			decayTween.Completed:Connect(function()
+			local snapDecay = TweenService:Create(
+				linearVel,
+				TweenInfo.new(DASH_DURATION * 0.60, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+				{ VectorVelocity = Vector3.new(dashDir.X * 10, 0, dashDir.Z * 10) }
+			)
+			snapDecay:Play()
+			snapDecay.Completed:Connect(function()
 				if linearVel and linearVel.Parent then linearVel:Destroy() end
 				if dashOrientation and dashOrientation.Parent then dashOrientation:Destroy() end
-				character:SetAttribute("IsDashing", false)
-				if track and track.IsPlaying then track:Stop(0.06) end
+				if track and track.IsPlaying then track:Stop(0.08) end
+
+				-- Instant snap back to full visibility at destination
+				SetCharacterVanish(character, false)
+				SpawnDashAfterimage(character)
 
 				if humanoid and humanoid.Parent then
 					humanoid.AutoRotate = previousAutoRotate
 					humanoid:ChangeState(Enum.HumanoidStateType.Running)
-					local InputController = require(player.PlayerScripts.Controllers.InputController)
-					local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
-					local isSprinting = InputController.IsSprinting()
-					humanoid.WalkSpeed = isSprinting and sprintSpeed or walkSpeed
 				end
+				character:SetAttribute("IsDashing", false)
 			end)
 		else
+			SetCharacterVanish(character, false)
 			if dashOrientation and dashOrientation.Parent then dashOrientation:Destroy() end
 			if humanoid and humanoid.Parent then
 				humanoid.AutoRotate = previousAutoRotate
 				humanoid:ChangeState(Enum.HumanoidStateType.Running)
-				local InputController = require(player.PlayerScripts.Controllers.InputController)
-				local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
-				local isSprinting = InputController.IsSprinting()
-				humanoid.WalkSpeed = isSprinting and sprintSpeed or walkSpeed
 			end
 			character:SetAttribute("IsDashing", false)
 		end
 	end)
 end
 
+-- =============================================================================
+-- HEAVY M1 SWING EXECUTION WITH AUTOROTATE LOCK (ELIMINATES BODY SPIN)
+-- =============================================================================
 function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: number?)
 	local character = player.Character
 	if not character then return end
 	if character:GetAttribute("IsFlying") == true then return end
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
-	if not humanoid or not animator then return end
+	if not humanoid or not hrp or not animator then return end
 
 	local weaponConfig = AnimationConfig[currentWeapon]
 	if not weaponConfig then return end
@@ -682,30 +749,27 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 	local trail = if equippedSword then equippedSword:FindFirstChildOfClass("Trail") else nil
 	if trail then trail.Enabled = true end
 
-	character:SetAttribute("IsAttacking", true)
+	-- AUTOROTATE LOCK: Prevents character from spinning its body mid-slash
+	humanoid.AutoRotate = false
 
-	if animDef.WalkSpeedDampen and humanoid then
-		humanoid.WalkSpeed = animDef.WalkSpeedDampen
-	end
+	character:SetAttribute("AttackSpeedDampen", animDef.WalkSpeedDampen or 6.0)
+	character:SetAttribute("IsAttacking", true)
 
 	track.Priority = Enum.AnimationPriority.Action4
 	track.Looped = false
-	track:Play(animDef.FadeTime or 0.08, 1, animDef.Speed or 0.85)
+	track:Play(animDef.FadeTime or 0.08, 1, animDef.Speed or 0.50)
 	activeAttackTrack = track
 
-	local duration = animDef.CastDuration or 0.44
+	local duration = animDef.CastDuration or 0.58
 	task.delay(duration, function()
 		if trail and activeAttackTrack == track then trail.Enabled = false end
 		if track and track.IsPlaying and activeAttackTrack == track then track:Stop(0.08) end
 		if activeAttackTrack == track then
 			character:SetAttribute("IsAttacking", false)
-		end
-
-		if humanoid and humanoid.Parent and activeAttackTrack == track then
-			local InputController = require(player.PlayerScripts.Controllers.InputController)
-			local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
-			local isSprinting = InputController.IsSprinting()
-			humanoid.WalkSpeed = isSprinting and sprintSpeed or walkSpeed
+			character:SetAttribute("AttackSpeedDampen", nil)
+			if humanoid and humanoid.Parent then
+				humanoid.AutoRotate = true
+			end
 		end
 	end)
 end

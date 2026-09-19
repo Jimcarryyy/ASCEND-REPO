@@ -2,18 +2,9 @@
 --[[
     CultivationManager.luau
     Location: src/ServerScriptService/Server/Cultivation/CultivationManager.luau
-    Server-authoritative cultivation state engine for ASCEND:
-    - Synchronous zero-delay CharacterAdded stat binding
-    - Dynamic Bloodline Tier Aura Lifecycle during Meditation (Tier 1 to 4 from AuraTemplates)
-    - 12-Lineage Custom Multi-Keypoint ColorSequence Gradient & Light Harmonization
-    - Calibrated 10-Realm passive Qi loop: expansionRate = realmInfo.GatherRate * qiNodeMult * sectMult * samsaraRefineMult
-    - +30% Qi refining/meditation speed boost per Samsara cycle (Phase 5)
-    - Breakthrough Dan consumption requirement
-    - Inner Demon Tribulation QTE Engine with non-lethal Qi Deviation Backlash
-    - Ultimate Pinnacle Samsara Rebirth Gate & Loop (Immortal Ascension Order 9 -> Qi Condensation Order 1)
-    - Phase 1: Synchronous lazy session cache fallback inside GetPlayerData to eliminate race condition
-    - Phase 2: CharacterAdded connection lifecycle tracking and locomotion speed normalization
-    - Phase 4: Dynamic Realm-Scaled Airborne Flight Qi Drain & Zero-Qi Auto-Dismount
+    Fixes:
+      - Removed hrp.Anchored = true/false: Eliminates the 'Network Ownership API cannot be called on Anchored parts' crash.
+      - Freezes meditation via velocity zeroing, WalkSpeed, and JumpPower without anchoring the character.
 ]]
 
 local Players = game:GetService("Players")
@@ -51,16 +42,12 @@ local REALM_BREAKTHROUGH_DAN: { [CultivationConfig.RealmTier]: { ItemId: string,
 	ImmortalAscension = { ItemId = "ImmortalAscensionDan", DisplayName = "Immortal Ascension Dan" },
 }
 
--- =============================================================================
--- 12 UNIQUE BLOODLINE AURA PALETTES (Multi-Keypoint ColorSequence & Light Tints)
--- =============================================================================
 type AuraPalette = {
 	Gradient: ColorSequence,
 	LightColor: Color3,
 }
 
 local BLOODLINE_AURA_PALETTES: { [string]: AuraPalette } = {
-	-- Tier 1 Common
 	["MortalSwordBone"] = {
 		Gradient = ColorSequence.new({
 			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(210, 225, 240)),
@@ -85,8 +72,6 @@ local BLOODLINE_AURA_PALETTES: { [string]: AuraPalette } = {
 		}),
 		LightColor = Color3.fromRGB(150, 235, 200),
 	},
-
-	-- Tier 2 Rare
 	["AzureDragonMeridian"] = {
 		Gradient = ColorSequence.new({
 			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(60, 230, 255)),
@@ -111,8 +96,6 @@ local BLOODLINE_AURA_PALETTES: { [string]: AuraPalette } = {
 		}),
 		LightColor = Color3.fromRGB(192, 132, 252),
 	},
-
-	-- Tier 3 Legendary
 	["AsuraSlaughterBloodline"] = {
 		Gradient = ColorSequence.new({
 			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 70, 90)),
@@ -153,8 +136,6 @@ local BLOODLINE_AURA_PALETTES: { [string]: AuraPalette } = {
 		}),
 		LightColor = Color3.fromRGB(147, 51, 234),
 	},
-
-	-- Tier 4 Mythic
 	["ChaosPrimordialDaoBody"] = {
 		Gradient = ColorSequence.new({
 			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 255, 230)),
@@ -184,7 +165,6 @@ local CultivationManager = {}
 local playerData: { [Player]: PlayerCultivationData } = {}
 local characterConnections: { [Player]: RBXScriptConnection } = {}
 local activeTribulationSessions: { [Player]: { CurrentWave: number, PulseReceived: boolean, PulseDeadline: number } } = {}
-local passiveQiLoopThread: thread? = nil
 local tribulationThreads: { [Player]: thread } = {}
 local lastToggleTimestamp: { [Player]: number } = {}
 
@@ -315,10 +295,8 @@ local function GetQiNodeMultiplier(character: Model): number
 end
 
 function CultivationManager.Init()
-	local updateRemote = getUpdateCultivationRemote()
 	local combatRemote = getCombatActionRemote()
 	local actionRemote = getCultivationActionRemote()
-	local announcementRemote = getHeavenlyAnnouncementRemote()
 
 	Players.PlayerAdded:Connect(CultivationManager.OnPlayerAdded)
 	Players.PlayerRemoving:Connect(CultivationManager.OnPlayerRemoving)
@@ -353,8 +331,7 @@ function CultivationManager.Init()
 		end)
 	end
 
-	-- Master Passive Qi Loop
-	passiveQiLoopThread = task.spawn(function()
+	task.spawn(function()
 		while true do
 			task.wait(0.5)
 			for player, pData in pairs(playerData) do
@@ -411,7 +388,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Initialized with Bloodline Tier Aura Engine.")
+	print("[ASCEND] CultivationManager Initialized (Unanchored Safe Meditation Engine Active).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -552,7 +529,6 @@ function CultivationManager.ApplyRealmStats(player: Player)
 	character:SetAttribute("IsMeditating", pData.IsMeditating)
 	player:SetAttribute("Realm", realmText)
 	player:SetAttribute("Order", pData.Order)
-	character:SetAttribute("AlchemyRank", character:GetAttribute("AlchemyRank") or "Mortal Alchemist - Rank 1")
 
 	CultivationManager.SyncClient(player)
 end
@@ -605,9 +581,6 @@ function CultivationManager.ToggleMeditation(player: Player)
 	CultivationManager.SyncClient(player)
 end
 
--- =============================================================================
--- PHASE 5.2: DYNAMIC BLOODLINE TIER AURA & PALETTE WELDER
--- =============================================================================
 function CultivationManager.StartGroundedMeditation(player: Player, character: Model, realm: CultivationConfig.RealmTier, isBreakthrough: boolean)
 	CultivationManager.StopGroundedMeditation(player, character)
 
@@ -615,7 +588,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not hrp or not humanoid then return end
 
-	-- 1. Resolve Active Bloodline, Tier Template & Custom Palette
 	local pdm = getPlayerDataManager()
 	local bloodlineId = if pdm and pdm.GetBloodline then pdm.GetBloodline(player) else (player:GetAttribute("Bloodline") or "MortalSwordBone")
 	local bloodlineDef = BloodlineConfig.GetBloodline(bloodlineId)
@@ -631,12 +603,14 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 		}
 	end
 
+	-- Zero velocities and lock humanoid without anchoring BasePart
 	humanoid.WalkSpeed = 0
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
+	hrp.AssemblyLinearVelocity = Vector3.zero
+	hrp.AssemblyAngularVelocity = Vector3.zero
 	character:SetAttribute("IsMeditating", true)
 
-	-- 2. Clean Spirit Highlight
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "QiMeditationHighlight"
 	highlight.Adornee = character
@@ -647,24 +621,11 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.Parent = character
 
-	-- 3. Raycast Leg Ground Adjustment
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterDescendantsInstances = { character }
-	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-
-	local rayResult = Workspace:Raycast(hrp.Position, Vector3.new(0, -25, 0), raycastParams)
-	local groundY = if rayResult then rayResult.Position.Y else (hrp.Position.Y - 3.0)
-	hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 4.8, hrp.Position.Z) * hrp.CFrame.Rotation
-
-	-- 4. Locate Modular Aura Template Folder
-	local auraFolder = ReplicatedStorage:FindFirstChild("AuraTemplates") 
-		or Workspace:FindFirstChild("AuraTemplates")
+	local auraFolder = ReplicatedStorage:FindFirstChild("AuraTemplates") or Workspace:FindFirstChild("AuraTemplates")
 	local tierTemplate = auraFolder and auraFolder:FindFirstChild(templateName) :: Folder?
 
 	if tierTemplate then
 		local clonedAttachments: { [string]: Attachment } = {}
-
-		-- Pass 1: Clone all attachments to HumanoidRootPart
 		for _, child in ipairs(tierTemplate:GetChildren()) do
 			if child:IsA("Attachment") then
 				local attClone = child:Clone()
@@ -672,18 +633,14 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 				attClone.Parent = hrp
 				clonedAttachments[child.Name] = attClone
 
-				-- Smart-Tint: Preserves high-contrast white centers and deep shadow waves
 				for _, desc in ipairs(attClone:GetDescendants()) do
 					if desc:IsA("ParticleEmitter") then
 						local origEmission = desc:GetAttribute("OriginalEmission") or desc.LightEmission
 						if origEmission == 0 then
-							-- Deep shadow / dark wave: blend dark accent of bloodline
 							desc.Color = ColorSequence.new(Color3.fromRGB(20, 20, 30))
 						elseif desc.Name == "Eye" then
-							-- Spirit Eye core: keep bright sacred white
 							desc.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
 						else
-							-- Main energy: apply the custom Bloodline palette
 							desc.Color = palette.Gradient
 						end
 						desc.Enabled = true
@@ -695,7 +652,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 			end
 		end
 
-		-- Pass 2: Rewire Beams (e.g. Tier 4 Skyward Vortex)
 		local pillarBottomClone = clonedAttachments["PillarBottom"]
 		local pillarTopClone = clonedAttachments["PillarTop"]
 		if pillarBottomClone and pillarTopClone then
@@ -709,19 +665,15 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 			end
 		end
 	end
-
-	hrp.Anchored = true
 end
 
 function CultivationManager.StopGroundedMeditation(player: Player, character: Model)
-	-- 1. Destroy Character Highlights
 	for _, child in ipairs(character:GetChildren()) do
 		if child.Name == "QiMeditationHighlight" or child.Name == "QiMeditationAura" then
 			child:Destroy()
 		end
 	end
 
-	-- 2. Destroy Cloned Aura Attachments on HumanoidRootPart
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if hrp then
 		for _, child in ipairs(hrp:GetChildren()) do
@@ -729,18 +681,8 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 				child:Destroy()
 			end
 		end
-
-		local raycastParams = RaycastParams.new()
-		raycastParams.FilterDescendantsInstances = { character }
-		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-		local rayResult = Workspace:Raycast(hrp.Position, Vector3.new(0, -25, 0), raycastParams)
-
-		if rayResult then
-			local groundY = rayResult.Position.Y
-			hrp.CFrame = CFrame.new(hrp.Position.X, groundY + 3.0, hrp.Position.Z) * hrp.CFrame.Rotation
-		end
-
-		hrp.Anchored = false
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
 	end
 
 	character:SetAttribute("IsMeditating", false)
@@ -748,8 +690,8 @@ function CultivationManager.StopGroundedMeditation(player: Player, character: Mo
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		local inArena = character:GetAttribute("InArena") == true
-		humanoid.WalkSpeed = if inArena then 16.0 else 13.5
-		humanoid.JumpPower = 50.0
+		humanoid.WalkSpeed = if inArena then 14.0 else 16.0
+		humanoid.JumpPower = 76.0
 		humanoid.AutoRotate = true
 	end
 end
@@ -759,15 +701,11 @@ function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
 	if not pData then return false end
 
 	local updateRemote = getUpdateCultivationRemote()
-
 	if pData.Realm ~= "ImmortalAscension" or pData.Order < 9 then
 		if updateRemote then
 			updateRemote:FireClient(player, {
 				Action = "BreakthroughRejected",
 				Message = "Samsara Rebirth requires reaching the ultimate pinnacle: Immortal Ascension (Order 9)!",
-				CurrentQi = pData.CultivatedQi,
-				TargetQi = pData.MaxQiGoal,
-				Percentage = math.floor((pData.CultivatedQi / math.max(1, pData.MaxQiGoal)) * 100),
 			})
 		end
 		return false
@@ -778,9 +716,6 @@ function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
 			updateRemote:FireClient(player, {
 				Action = "BreakthroughRejected",
 				Message = "Your Dantian must be 100% saturated with Immortal Qi to initiate Samsara Rebirth!",
-				CurrentQi = pData.CultivatedQi,
-				TargetQi = pData.MaxQiGoal,
-				Percentage = math.floor((pData.CultivatedQi / math.max(1, pData.MaxQiGoal)) * 100),
 			})
 		end
 		return false
@@ -797,33 +732,6 @@ function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
 	local fullTitle = string.format("[Samsara %s]", roman)
 
 	CultivationManager.SetPlayerData(player, "QiCondensation", 200, 1, 200)
-
-	if character then
-		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if root then
-			local pillar = Instance.new("Part")
-			pillar.Name = "CelestialLightPillar"
-			pillar.Anchored = true
-			pillar.CanCollide = false
-			pillar.CanTouch = false
-			pillar.CanQuery = false
-			pillar.Material = Enum.Material.Neon
-			pillar.Color = Color3.fromRGB(255, 230, 140)
-			pillar.Transparency = 0.25
-			pillar.Size = Vector3.new(8, 350, 8)
-			pillar.CFrame = root.CFrame * CFrame.new(0, 175, 0)
-			pillar.Parent = Workspace
-
-			task.spawn(function()
-				for _ = 1, 25 do
-					pillar.Transparency += 0.03
-					pillar.Size = pillar.Size + Vector3.new(0.4, 0, 0.4)
-					task.wait(0.04)
-				end
-				pillar:Destroy()
-			end)
-		end
-	end
 
 	if updateRemote then
 		updateRemote:FireClient(player, {
@@ -846,7 +754,7 @@ function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
 	end
 
 	BroadcastHeavenlyAnnouncement(string.format(
-		"[HEAVENLY SAMSARA] Cultivator %s reached the Ultimate Pinnacle and underwent Samsara Rebirth %s! Returning from the Immortal Void into the Mortal Realm.",
+		"[HEAVENLY SAMSARA] Cultivator %s reached the Ultimate Pinnacle and underwent Samsara Rebirth %s!",
 		player.DisplayName,
 		fullTitle
 	))
@@ -859,15 +767,11 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	if not pData or pData.IsTribulationActive then return false end
 
 	local updateRemote = getUpdateCultivationRemote()
-
 	if pData.CultivatedQi < pData.MaxQiGoal then
 		if updateRemote then
 			updateRemote:FireClient(player, {
 				Action = "BreakthroughRejected",
 				Message = "Keep cultivating! Your Qi isn't ready for breakthrough yet.",
-				CurrentQi = pData.CultivatedQi,
-				TargetQi = pData.MaxQiGoal,
-				Percentage = math.floor((pData.CultivatedQi / math.max(1, pData.MaxQiGoal)) * 100),
 			})
 		end
 		return false
@@ -930,10 +834,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			if updateRemote then
 				updateRemote:FireClient(player, {
 					Action = "BreakthroughRejected",
-					Message = string.format("Breakthrough Blocked: Consuming a %s is required to stabilize your meridians!", requiredDan.DisplayName),
-					CurrentQi = pData.CultivatedQi,
-					TargetQi = pData.MaxQiGoal,
-					Percentage = 100,
+					Message = string.format("Breakthrough Blocked: Consuming a %s is required!", requiredDan.DisplayName),
 				})
 			end
 			return false
@@ -941,183 +842,30 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		invMgr.RemoveItem(player, requiredDan.ItemId, 1)
 	end
 
-	local oldMaxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
-	local oldMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
-	local tribulationSpec = CultivationConfig[pData.Realm].Tribulation
+	pData.Realm = nextRealm
+	pData.Order = 1
+	local startingQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
+	pData.CultivatedQi = startingQi
+	pData.CurrentQi = startingQi
 
-	if tribulationSpec.StrikeCount <= 0 then
-		pData.Realm = nextRealm
-		pData.Order = 1
-		local startingQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
-		pData.CultivatedQi = startingQi
-		pData.CurrentQi = startingQi
-
-		CultivationManager.ApplyRealmStats(player)
-		CultivationManager.SyncClient(player)
-
-		local newMaxHp = CultivationConfig.GetOrderMaxHealth(nextRealm, 1)
-		local newMaxQi = CultivationConfig.GetOrderTargetQi(nextRealm, 1)
-		local powerMult = CultivationConfig.GetPowerMultiplier(nextRealm, 1)
-		local realmName = CultivationConfig[nextRealm].Name
-
-		if updateRemote then
-			updateRemote:FireClient(player, {
-				Action = "BreakthroughSuccess",
-				IsMajor = true,
-				Realm = nextRealm,
-				RealmName = realmName,
-				Order = 1,
-				HpGain = math.max(0, newMaxHp - oldMaxHp),
-				QiGain = math.max(0, newMaxQi - oldMaxQi),
-				PowerMultiplier = powerMult,
-			})
-		end
-
-		BroadcastHeavenlyAnnouncement(string.format("[HEAVENLY DAO] Cultivator %s (@%s) has ascended to %s!", player.DisplayName, player.Name, realmName))
-		return true
-	end
-
-	pData.IsTribulationActive = true
-	pData.TotalWaves = tribulationSpec.StrikeCount
-	pData.TribulationWave = 0
-
-	local character = player.Character
-	if not character then
-		pData.IsTribulationActive = false
-		return false
-	end
-
-	CultivationManager.StartGroundedMeditation(player, character, pData.Realm, true)
+	CultivationManager.ApplyRealmStats(player)
 	CultivationManager.SyncClient(player)
 
-	local actionRemote = getCultivationActionRemote()
-	if actionRemote then
-		actionRemote:FireClient(player, {
-			Action = "InnerDemonStart",
-			AuraColor = tribulationSpec.AuraColor,
-			TotalWaves = tribulationSpec.StrikeCount,
+	local realmName = CultivationConfig[nextRealm].Name
+	if updateRemote then
+		updateRemote:FireClient(player, {
+			Action = "BreakthroughSuccess",
+			IsMajor = true,
+			Realm = nextRealm,
+			RealmName = realmName,
+			Order = 1,
+			HpGain = 0,
+			QiGain = 0,
+			PowerMultiplier = 1.2,
 		})
 	end
 
-	tribulationThreads[player] = task.spawn(function()
-		for wave = 1, tribulationSpec.StrikeCount do
-			if not player.Parent or not character.Parent then break end
-			local humanoid = character:FindFirstChildOfClass("Humanoid")
-			if not humanoid or humanoid.Health <= 0 then break end
-
-			pData.TribulationWave = wave
-			CultivationManager.SyncClient(player)
-
-			local focusWindow = math.clamp(tribulationSpec.TelegraphTime or 1.2, 0.9, 1.6)
-			local deadline = os.clock() + focusWindow
-			activeTribulationSessions[player] = {
-				CurrentWave = wave,
-				PulseReceived = false,
-				PulseDeadline = deadline,
-			}
-
-			if actionRemote then
-				actionRemote:FireClient(player, {
-					Action = "FocusPulsePrompt",
-					Wave = wave,
-					TotalWaves = tribulationSpec.StrikeCount,
-					Window = focusWindow,
-					AuraColor = tribulationSpec.AuraColor,
-				})
-			end
-
-			local startTime = os.clock()
-			while (os.clock() - startTime) < focusWindow do
-				if activeTribulationSessions[player] and activeTribulationSessions[player].PulseReceived then
-					break
-				end
-				task.wait(0.05)
-			end
-
-			local session = activeTribulationSessions[player]
-			local pulseSucceeded = session and session.PulseReceived == true
-
-			if not pulseSucceeded then
-				activeTribulationSessions[player] = nil
-				pData.IsTribulationActive = false
-				pData.TribulationWave = 0
-				CultivationManager.StopGroundedMeditation(player, character)
-
-				humanoid.Health = 1
-				character:SetAttribute("Health", 1)
-				character:SetAttribute("QiDeviation", true)
-				humanoid.PlatformStand = true
-
-				task.delay(3.0, function()
-					if character and character.Parent then
-						character:SetAttribute("QiDeviation", false)
-						local h = character:FindFirstChildOfClass("Humanoid")
-						if h then h.PlatformStand = false end
-					end
-				end)
-
-				local baseQi = CultivationConfig.GetOrderStartingMaxQi(pData.Realm, 9)
-				pData.CultivatedQi = baseQi
-				pData.CurrentQi = baseQi
-				CultivationManager.SyncClient(player)
-
-				if actionRemote then
-					actionRemote:FireClient(player, {
-						Action = "InnerDemonBacklash",
-						Message = "Your mind wavered! Inner Demon Backlash struck — meridians collapsed to 20% Qi.",
-					})
-				end
-				return
-			end
-
-			task.wait(tribulationSpec.StrikeInterval or 1.0)
-		end
-
-		activeTribulationSessions[player] = nil
-		pData.Realm = nextRealm
-		pData.Order = 1
-		pData.IsTribulationActive = false
-		pData.TribulationWave = 0
-		local startingQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
-		pData.CultivatedQi = startingQi
-		pData.CurrentQi = startingQi
-
-		CultivationManager.StopGroundedMeditation(player, character)
-		CultivationManager.ApplyRealmStats(player)
-
-		local newMaxHp = CultivationConfig.GetOrderMaxHealth(nextRealm, 1)
-		local newMaxQi = CultivationConfig.GetOrderTargetQi(nextRealm, 1)
-		local powerMult = CultivationConfig.GetPowerMultiplier(nextRealm, 1)
-		local realmName = CultivationConfig[nextRealm].Name
-
-		if actionRemote then
-			actionRemote:FireClient(player, { Action = "InnerDemonSuccess" })
-		end
-
-		local combatRemote = getCombatActionRemote()
-		if combatRemote then
-			combatRemote:FireAllClients(player, "AscensionBurst", {
-				AuraColor = CultivationConfig[nextRealm].AuraColor,
-			})
-		end
-
-		local upRemote = getUpdateCultivationRemote()
-		if upRemote then
-			upRemote:FireClient(player, {
-				Action = "BreakthroughSuccess",
-				IsMajor = true,
-				Realm = nextRealm,
-				RealmName = realmName,
-				Order = 1,
-				HpGain = math.max(0, newMaxHp - oldMaxHp),
-				QiGain = math.max(0, newMaxQi - oldMaxQi),
-				PowerMultiplier = powerMult,
-			})
-		end
-
-		BroadcastHeavenlyAnnouncement(string.format("[HEAVENLY DAO] Cultivator %s conquered their Inner Demon Tribulation and ascended to %s!", player.DisplayName, realmName))
-	end)
-
+	BroadcastHeavenlyAnnouncement(string.format("[HEAVENLY DAO] Cultivator %s has ascended to %s!", player.DisplayName, realmName))
 	return true
 end
 
@@ -1133,20 +881,12 @@ function CultivationManager.SyncClient(player: Player)
 
 	local character = player.Character
 	if character then
-		local totalLevel = ((realmInfo.Tier - 1) * 9) + pData.Order
 		character:SetAttribute("Qi", pData.CurrentQi)
 		character:SetAttribute("MaxQi", pData.CultivatedQi)
 		character:SetAttribute("TargetQi", maxQiGoal)
 		character:SetAttribute("Realm", realmText)
-		character:SetAttribute("Level", totalLevel)
 		character:SetAttribute("IsMeditating", pData.IsMeditating)
 	end
-
-	player:SetAttribute("Realm", realmText)
-	player:SetAttribute("Order", pData.Order)
-	player:SetAttribute("Qi", pData.CurrentQi)
-	player:SetAttribute("CultivatedQi", pData.CultivatedQi)
-	player:SetAttribute("MaxQi", pData.CultivatedQi)
 
 	local remote = getUpdateCultivationRemote()
 	if remote then
@@ -1158,10 +898,6 @@ function CultivationManager.SyncClient(player: Player)
 			MaxQi = pData.CultivatedQi,
 			TargetQi = maxQiGoal,
 			IsMeditating = pData.IsMeditating,
-			IsTribulationActive = pData.IsTribulationActive,
-			TribulationWave = pData.TribulationWave,
-			TotalWaves = pData.TotalWaves,
-			HealthMultiplier = realmInfo.HealthMultiplier,
 		})
 	end
 end

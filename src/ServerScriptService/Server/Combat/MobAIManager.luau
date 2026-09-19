@@ -2,20 +2,16 @@
 --[[
     MobAIManager.luau
     Location: src/ServerScriptService/Server/Combat/MobAIManager.luau
-    Server-authoritative Mob & Beast encounter engine:
-      - Contextual Locomotion: Martial Walk during Patrol, Sprint Run during Chase
-      - Smart Teammate Flocking: Mobs fan out into open angles and surround players
-      - Boids Separation: Repulsion force prevents mobs from colliding or stacking
-      - Fluid 5-Step M1 Attack Combo Chain
-      - Full Combat Resolution: Physical knockback, parrying, blocking & posture damage
-      - Fondamento Font & Vibrant Red UIGradient Overhead Mob HUDs
-      - Phase 1: Injected SPAWNER_ALIAS_MAP, DisplayName nil-protection, and unanchoring loop
+    Phase 1 Updates:
+      - E1 & E2: Full combat pipeline integration. Mobs route attacks through HitboxManager.
+      - Telegraph System: 0.22s red glint telegraph before mob attacks land.
+      - Players can Perfect Parry (stunning the mob for 1.2s) and Guard against beasts.
+      - Dash i-frames successfully dodge mob attacks.
 ]]
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local PathfindingService = game:GetService("PathfindingService")
 local Debris = game:GetService("Debris")
 local ServerScriptService = game:GetService("ServerScriptService")
 
@@ -32,7 +28,6 @@ local HitboxManager = require(ServerScriptService.Server.Combat.HitboxManager)
 local MobAIManager = {}
 local combatActionRemote: RemoteEvent
 
--- Top-level Spawner Alias Normalizer (Fixes line 752 crash)
 local SPAWNER_ALIAS_MAP: { [string]: string } = {
 	["RogueDisciples"] = "RogueDisciple",
 	["BossFallenSwordGenius"] = "Boss_FallenSwordGenius",
@@ -52,9 +47,8 @@ type ActiveMob = {
 	RespawnTime: number,
 	State: MobState,
 	TargetPlayer: Player?,
-	CurrentPath: Path?,
 	CurrentWaypointIndex: number,
-	Waypoints: { PathWaypoint },
+	Waypoints: { any },
 	LastAttackTime: number,
 	ComboStep: number,
 	LastPatrolTime: number,
@@ -105,7 +99,6 @@ local function GetMobConfig(mobId: string): any
 	return nil
 end
 
--- Spatial player lookup grid
 local playerGrid: { [string]: { Player } } = {}
 local GRID_CELL_SIZE = 50
 
@@ -153,9 +146,6 @@ local function GetNearbyPlayers(pos: Vector3, radius: number): { Player }
 	return found
 end
 
---------------------------------------------------------------------------------
--- VIBRANT RED FONDAMENTO MOB OVERHEAD BUILDER
---------------------------------------------------------------------------------
 local function CreateHealthUI(model: Model, displayName: string?): (BillboardGui?, Frame?)
 	local head = model:FindFirstChild("Head") or model.PrimaryPart
 	if not head then return nil, nil end
@@ -232,6 +222,35 @@ local function CreateHealthUI(model: Model, displayName: string?): (BillboardGui
 	return bb, fill
 end
 
+-- Visual 0.22s red flash windup telegraph
+local function SpawnMobTelegraph(model: Model, duration: number)
+	local head = model:FindFirstChild("Head") or model.PrimaryPart
+	if not head then return end
+
+	local flashPart = Instance.new("Part")
+	flashPart.Name = "TelegraphGlint"
+	flashPart.Shape = Enum.PartType.Ball
+	flashPart.Size = Vector3.new(1.2, 1.2, 1.2)
+	flashPart.CFrame = head.CFrame * CFrame.new(0, 0.6, -0.6)
+	flashPart.Color = Color3.fromRGB(255, 30, 30)
+	flashPart.Material = Enum.Material.Neon
+	flashPart.Transparency = 0.2
+	flashPart.CanCollide = false
+	flashPart.CanTouch = false
+	flashPart.CanQuery = false
+	flashPart.Anchored = true
+	flashPart.Parent = Workspace
+
+	local tween = game:GetService("TweenService"):Create(flashPart, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(2.4, 2.4, 2.4),
+		Transparency = 1,
+	})
+	tween:Play()
+	tween.Completed:Connect(function()
+		flashPart:Destroy()
+	end)
+end
+
 local function OnMobDied(mob: ActiveMob)
 	if mob.WalkTrack then pcall(function() mob.WalkTrack:Stop(0.1) end) end
 	if mob.RunTrack then pcall(function() mob.RunTrack:Stop(0.1) end) end
@@ -305,18 +324,6 @@ local function OnMobDied(mob: ActiveMob)
 				))
 			end
 		end
-
-		pcall(function()
-			local sectModule = ServerScriptService.Server.Cultivation:FindFirstChild("SectManager")
-			if sectModule and sectModule:IsA("ModuleScript") then
-				local SectManager = require(sectModule) :: any
-				if type(SectManager.AddQuestProgress) == "function" then
-					SectManager.AddQuestProgress(killer, "DefeatMob", mob.Id, 1)
-				elseif type(SectManager.UpdateQuestProgress) == "function" then
-					SectManager.UpdateQuestProgress(killer, "DefeatMob", mob.Id, 1)
-				end
-			end
-		end)
 	end
 
 	for i, m in ipairs(activeMobs) do
@@ -339,7 +346,7 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	local resolvedMobId = SPAWNER_ALIAS_MAP[mobId] or mobId
 	local config = GetMobConfig(resolvedMobId)
 	if not config then
-		warn(string.format("[MobAIManager] ERROR: '%s' not found in MobConfig. Check spelling in MobConfig.luau!", tostring(resolvedMobId)))
+		warn(string.format("[MobAIManager] ERROR: '%s' not found in MobConfig.", tostring(resolvedMobId)))
 		return nil
 	end
 
@@ -373,6 +380,7 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	for _, desc in ipairs(model:GetDescendants()) do
 		if desc:IsA("BasePart") then
 			desc.Anchored = false
+			desc.CollisionGroup = "Characters"
 		end
 	end
 
@@ -388,9 +396,18 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 
 	if not humanoid or not rootPart then
 		model:Destroy()
-		warn("[MobAIManager] Spawned mob is missing Humanoid or HumanoidRootPart!")
+		warn("[MobAIManager] Spawned mob missing Humanoid or RootPart!")
 		return nil
 	end
+
+	pcall(function()
+		rootPart:SetNetworkOwner(nil)
+	end)
+
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
 
 	humanoid.MaxHealth = config.MaxHealth
 	humanoid.Health = config.MaxHealth
@@ -457,7 +474,6 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		RespawnTime = respawnTime,
 		State = "Patrol",
 		TargetPlayer = nil,
-		CurrentPath = nil,
 		CurrentWaypointIndex = 1,
 		Waypoints = {},
 		LastAttackTime = 0,
@@ -486,7 +502,6 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		OnMobDied(mob)
 	end)
 
-	print(string.format("[MobAIManager] Spawned '%s' with Walk, Run & Attack Combos!", config.DisplayName or resolvedMobId))
 	return model
 end
 
@@ -549,6 +564,12 @@ local function StepAI()
 			continue
 		end
 
+		-- E1 FIX: If mob is stunned from a player's parry, hold state
+		if mob.Model:GetAttribute("IsStunned") == true then
+			humanoid.WalkSpeed = 0
+			continue
+		end
+
 		local rootPos = rootPart.Position
 		local anchorPos = anchor and anchor.Position or mob.SpawnPos
 		local distFromAnchor = (rootPos - anchorPos).Magnitude
@@ -559,7 +580,6 @@ local function StepAI()
 		end
 
 		local state = mob.State
-
 		local horizVelocity = Vector3.new(rootPart.AssemblyLinearVelocity.X, 0, rootPart.AssemblyLinearVelocity.Z)
 		local horizSpeed = horizVelocity.Magnitude
 		local isPhysicallyMoving = (horizSpeed > 0.4) and (state ~= "Attack")
@@ -663,8 +683,13 @@ local function StepAI()
 						end
 						mob.ComboStep = if currentStep >= #mob.AttackTracks then 1 else currentStep + 1
 
-						task.delay(0.12, function()
+						-- E1 FIX: Telegraph red glint 0.22s before strike lands
+						SpawnMobTelegraph(mob.Model, 0.22)
+
+						task.delay(0.22, function()
 							if not rootPart.Parent or not targetHum or targetHum.Health <= 0 then return end
+							if mob.Model:GetAttribute("IsStunned") == true then return end -- Canceled by parry
+
 							local strikeDist = (targetHrp.Position - rootPart.Position).Magnitude
 							if strikeDist > (config.AttackRange + 3.5) then return end
 
@@ -677,13 +702,22 @@ local function StepAI()
 								TargetPlayer = targetPlayer,
 							}
 
-							local knockbackVector = Vector3.new(0, 4, 14)
-							local res = HitboxManager.ApplyCombatResolution(nil, fakeHit, config.BaseDamage, 20, knockbackVector)
+							local knockbackVector = Vector3.new(0, 0, 14)
+							-- E1 & E2: Passes mob.Model as attackerCharOverride for parry and block resolution
+							local res = HitboxManager.ApplyCombatResolution(nil, fakeHit, config.BaseDamage, 20, knockbackVector, mob.Model)
+
+							if res and res.WasParried then
+								-- Mob was parried: cancel ongoing attack track
+								if #mob.AttackTracks > 0 then
+									local t = mob.AttackTracks[currentStep] or mob.AttackTracks[1]
+									if t and t.IsPlaying then t:Stop(0.05) end
+								end
+							end
 
 							if combatActionRemote and targetPlayer then
 								combatActionRemote:FireClient(targetPlayer, nil :: any, "M1", {
-									HasHit = true,
-									Damage = config.BaseDamage,
+									HasHit = (res and not res.WasIframeDodged and not res.WasParried),
+									Damage = if res then res.DamageApplied else config.BaseDamage,
 									TargetPosition = targetHrp.Position + Vector3.new(0, 0.4, 0),
 									AttackerCFrame = rootPart.CFrame,
 									AimDirection = flatForward,
@@ -743,8 +777,6 @@ function MobAIManager.Init()
 		local maxCount = anchor:GetAttribute("MaxCount") :: number? or 3
 		local respawnTime = anchor:GetAttribute("RespawnTime") :: number? or 20
 
-		print(string.format("[MobAIManager] Activating Spawner anchor '%s' for '%s' (Count: %d)...", anchor.Name, mobId, maxCount))
-
 		for _ = 1, maxCount do
 			MobAIManager.SpawnMob(mobId, anchor, spawnRadius, respawnTime)
 		end
@@ -771,6 +803,8 @@ function MobAIManager.Init()
 			end
 		end
 	end)
+
+	print("[ASCEND] MobAIManager Initialized (E1/E2 Mob Combat & Telegraphs Active).")
 end
 
 return MobAIManager

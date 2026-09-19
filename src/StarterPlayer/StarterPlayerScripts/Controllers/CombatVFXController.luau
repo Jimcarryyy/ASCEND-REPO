@@ -2,15 +2,16 @@
 --[[
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
-    Handles:
-      1. Dynamic Weapon-Attuned Colors: Q Sawblades & F 100-Slash Domain match the equipped sword!
-      2. Xianxia Floating Damage Numbers (Pure text, no icons)
-      3. Floating Sword Intent Combo & Unleashed Text Popups (Pure text, no icons)
-      4. Slash VFX with Procedural Slashmark Fallback (Guaranteed split-second hitmark)
-      5. Camera Impact Shudder & Screen Hit Flash on Damage Received
-      6. Parry Clashes, Block Sparks & Blade Impact Audio (Full Mob & Player Support)
-      7. Heavenly Tribulation Lightning Bolts, Ground Telegraphs & Ascension Light Pillars
-      8. 🚀 Interactive Martial Trees: Pure High-Frequency Shudder & Fluttering Leaves (Verified Audio)
+    Master Combat VFX, Audio & Impact Engine for ASCEND:
+      1. Dynamic Weapon-Attuned Colors: Q Sawblades & F 100-Slash Domain match the equipped sword.
+      2. Pure Damage Numbers: Retro Press Start 2P / Arcade font (Pure White for normal, Vivid Gold for crit).
+         Zero words ("CRIT!", "PARRY!", "GUARD BROKEN!", "INTENT"), zero icons.
+      3. Slash VFX with Procedural Slashmark Fallback.
+      4. Camera Impact Shudder & Screen Hit Flash on Damage Received.
+      5. Parry Clashes, Block Sparks & Blade Impact Audio (Full Mob & Player Support).
+      6. Heavenly Tribulation Lightning Bolts, Ground Telegraphs & Ascension Light Pillars.
+      7. Interactive Martial Trees: Pure High-Frequency Shudder & Fluttering Leaves.
+      8. D1 Proximity Scoping: Distant fights never shake your camera or freeze your tracks.
 ]]
 
 local Players = game:GetService("Players")
@@ -38,12 +39,11 @@ local PARRY_CLASH_SOUND_ID = "rbxassetid://9114223175"
 local SLASH_RELEASE_SFX = "rbxassetid://109735549169421"
 local THUNDER_STRIKE_SFX = "rbxassetid://138090596"
 local ASCENSION_GONG_SFX = "rbxassetid://131237241"
-local TREE_RUSTLE_SFX = "rbxassetid://566593606" -- Verified wood/foliage impact sound
+local TREE_RUSTLE_SFX = "rbxassetid://566593606"
 
 local shakeIntensity = 0
 local shakeDecay = 8
 
--- Tree Vibration Cache (Guarantees zero cumulative drift and zero tipping)
 local treeOriginalPivots: { [Model]: CFrame } = {}
 local treeIsVibrating: { [Model]: boolean } = {}
 
@@ -61,7 +61,7 @@ local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
 	sound.Volume = volume or 1.15
-	sound.RollOffMaxDistance = 80
+	sound.RollOffMaxDistance = 75
 	sound.RollOffMinDistance = 5
 	sound.Parent = soundPart
 
@@ -112,7 +112,6 @@ function CombatVFXController.TriggerTreeReaction(tree: Model, strikeOrigin: Vect
 	local bbCFrame, bbSize = tree:GetBoundingBox()
 	local canopyTop = bbCFrame.Position + Vector3.new(0, bbSize.Y * 0.35, 0)
 
-	-- 1. Read canopy color to dynamically tint the leaves
 	local leafColor = Color3.fromRGB(52, 211, 153)
 	for _, child in ipairs(tree:GetChildren()) do
 		if child:IsA("BasePart") and not string.find(child.Name:lower(), "trunk") then
@@ -121,7 +120,6 @@ function CombatVFXController.TriggerTreeReaction(tree: Model, strikeOrigin: Vect
 		end
 	end
 
-	-- 2. Emit Falling Leaves from Canopy
 	local leafEmitterPart = Instance.new("Part")
 	leafEmitterPart.Name = "TreeLeafEmitter"
 	leafEmitterPart.Position = canopyTop
@@ -163,11 +161,10 @@ function CombatVFXController.TriggerTreeReaction(tree: Model, strikeOrigin: Vect
 
 	Play3DSound(TREE_RUSTLE_SFX, canopyTop, 0.85)
 
-	-- 3. Pure Lateral Vibration Shudder (Zero Angular Tilt, Zero Tipping)
 	task.spawn(function()
 		local duration = 0.20
 		local elapsed = 0
-		local maxJitter = 0.22 -- studs of lateral vibration
+		local maxJitter = 0.22
 
 		while elapsed < duration do
 			local dt = RunService.RenderStepped:Wait()
@@ -207,10 +204,21 @@ function CombatVFXController.CheckAndTriggerNearbyTrees(strikePos: Vector3, radi
 end
 
 -- =============================================================================
--- COMBAT RESOLUTION & HIT FEEDBACK
+-- DAMAGE FEEDBACK & RED HIT FLASH
 -- =============================================================================
 function CombatVFXController.OnLocalPlayerDamaged(damage: number, isCrit: boolean)
 	CombatVFXController.AddCameraShake(if isCrit then 1.1 else 0.85)
+
+	local controllers = player.PlayerScripts:FindFirstChild("Controllers")
+	if controllers then
+		local animCtrl = controllers:FindFirstChild("AnimationController")
+		if animCtrl then
+			local req = require(animCtrl) :: any
+			if req and req.PlayHitReaction then
+				req.PlayHitReaction(nil)
+			end
+		end
+	end
 
 	if camera then
 		task.spawn(function()
@@ -366,6 +374,9 @@ function CombatVFXController.SpawnAscensionPillar(pos: Vector3, auraColor: Color
 	Debris:AddItem(shockwave, 1.0)
 end
 
+-- =============================================================================
+-- WEAPON-ATTUNED SLASHMARKS & COMBAT PARTICLES
+-- =============================================================================
 function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFrame: CFrame?, weaponId: string?)
 	local palette = ItemConfig.GetWeaponPalette(weaponId)
 
@@ -427,58 +438,9 @@ function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFra
 	Debris:AddItem(hitHolder, 0.4)
 end
 
-function CombatVFXController.SpawnIntentComboPopup(position: Vector3, comboCount: number, currentIntent: number, isEmpowered: boolean)
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "IntentComboGui"
-	billboard.Size = UDim2.new(0, 220, 0, 45)
-	billboard.StudsOffsetWorldSpace = position + Vector3.new(0, 3.8, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Adornee = workspace.Terrain
-	billboard.Parent = workspace
-
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.Bangers
-
-	local stroke = Instance.new("UIStroke", label)
-
-	if isEmpowered then
-		label.Text = "SWORD INTENT UNLEASHED (1.75X)"
-		label.TextSize = 24
-		label.TextColor3 = Color3.fromRGB(255, 235, 120)
-		stroke.Color = Color3.fromRGB(200, 50, 0)
-		stroke.Thickness = 2.0
-	elseif currentIntent >= 100 then
-		label.Text = "INTENT 100% - FULL CHARGE!"
-		label.TextSize = 22
-		label.TextColor3 = Color3.fromRGB(255, 215, 0)
-		stroke.Color = Color3.fromRGB(15, 15, 20)
-		stroke.Thickness = 1.6
-	else
-		label.Text = string.format("INTENT +25%% [COMBO x%d]", math.max(1, comboCount))
-		label.TextSize = 18
-		label.TextColor3 = Color3.fromRGB(0, 215, 255)
-		stroke.Color = Color3.fromRGB(10, 20, 35)
-		stroke.Thickness = 1.4
-	end
-
-	label.Parent = billboard
-
-	local floatTween = TweenService:Create(billboard, TweenInfo.new(0.85, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		StudsOffsetWorldSpace = billboard.StudsOffsetWorldSpace + Vector3.new(0, 2.2, 0),
-	})
-
-	local fadeTween = TweenService:Create(label, TweenInfo.new(0.85, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-		TextTransparency = 1,
-	})
-
-	floatTween:Play()
-	fadeTween:Play()
-
-	floatTween.Completed:Connect(function()
-		billboard:Destroy()
-	end)
+-- Intent text popups suppressed: No words or icons displayed
+function CombatVFXController.SpawnIntentComboPopup(_position: Vector3, _comboCount: number, _currentIntent: number, _isEmpowered: boolean)
+	-- Pure numbers only: Intent word popups are intentionally silenced
 end
 
 function CombatVFXController.SpawnTriplePurpleTwirl(originPos: Vector3, direction: Vector3, isLocalCaster: boolean, weaponId: string?)
@@ -637,9 +599,10 @@ function CombatVFXController.Init()
 		local hrp = if attackerChar then attackerChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 		local origin = if hrp then hrp.Position else Vector3.zero
 		local isLocal = (attacker == player)
+		local myChar = player.Character
+		local myHrp = if myChar then myChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 		local weaponId = attackerChar and attackerChar:GetAttribute("EquippedWeapon") :: string?
 
-		-- 1. Heavenly Tribulation Telegraph Warning Circle
 		if skillKey == "TribulationTelegraph" and type(payload) == "table" and payload.TargetPosition then
 			CombatVFXController.SpawnTribulationTelegraph(
 				payload.TargetPosition,
@@ -649,26 +612,23 @@ function CombatVFXController.Init()
 			return
 		end
 
-		-- 2. Heavenly Tribulation Lightning Strike
 		if skillKey == "TribulationStrike" and type(payload) == "table" and payload.TargetPosition then
 			CombatVFXController.SpawnTribulationStrike(
 				payload.TargetPosition,
 				payload.AuraColor or Color3.fromRGB(0, 220, 255)
 			)
 			if payload.Damage and payload.Damage > 0 then
-				CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, true, payload.AuraColor, "TRIBULATION!")
+				CombatVFXController.SpawnDamageNumber(payload.TargetPosition, payload.Damage, true)
 			end
 			return
 		end
 
-		-- 3. Grand Ascension Light Pillar Burst
 		if skillKey == "AscensionBurst" and type(payload) == "table" then
 			local burstPos = if hrp then hrp.Position else (player.Character and player.Character:GetPivot().Position or Vector3.zero)
 			CombatVFXController.SpawnAscensionPillar(burstPos, payload.AuraColor or Color3.fromRGB(255, 215, 0))
 			return
 		end
 
-		-- 4. Martial Attacks & Dynamic Tree Interactions
 		if skillKey == "M1" then
 			if attacker ~= player and attacker ~= nil then
 				Play3DSound(SWING_AIR_SOUND_ID, origin, 0.7)
@@ -691,33 +651,70 @@ function CombatVFXController.Init()
 			CombatVFXController.CheckAndTriggerNearbyTrees(spherePos, 32)
 		end
 
-		-- Hits, Damage Popups & Full Audio/Slash VFX
 		if type(payload) == "table" and payload.HasHit == true and payload.TargetPosition ~= nil then
 			local targetPos: Vector3 = payload.TargetPosition
 			local hitOrientation = if hrp then hrp.CFrame else (payload.AttackerCFrame or nil)
 
 			CombatVFXController.CheckAndTriggerNearbyTrees(targetPos, 12)
 
+			local isVictim = false
 			if payload.Hits then
 				for _, hitData in ipairs(payload.Hits) do
 					if hitData.Character == player.Character then
+						isVictim = true
 						CombatVFXController.OnLocalPlayerDamaged(payload.Damage or 20, payload.IsCrit == true)
 					end
 				end
 			end
 
+			local distToFight = if myHrp then (myHrp.Position - targetPos).Magnitude else 999
+			local isNearby = distToFight <= 28.0
+
 			if payload.WasParried then
 				CombatVFXController.SpawnParryClash(targetPos)
-				CombatVFXController.SpawnDamageNumber(targetPos, 0, true, Color3.fromRGB(100, 220, 255), "PARRY!")
+				CombatVFXController.SpawnDamageNumber(targetPos, 0, false)
+				if attacker == player then
+					local controllers = player.PlayerScripts:FindFirstChild("Controllers")
+					if controllers then
+						local animCtrl = controllers:FindFirstChild("AnimationController")
+						if animCtrl then
+							local req = require(animCtrl) :: any
+							if req and req.PlayHitReaction then req.PlayHitReaction("Parryed") end
+						end
+					end
+				end
 			elseif payload.WasGuardBroken then
 				Play3DSound(PARRY_CLASH_SOUND_ID, targetPos, 1.0)
-				CombatVFXController.AddCameraShake(0.65)
-				CombatVFXController.ApplyHitstop(0.06)
-				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, true, Color3.fromRGB(255, 60, 60), "GUARD BROKEN!")
+				if isVictim or isLocal or isNearby then
+					CombatVFXController.AddCameraShake(if (isVictim or isLocal) then 0.65 else 0.25)
+					if isVictim or isLocal then
+						CombatVFXController.ApplyHitstop(0.06)
+					end
+				end
+				if payload.Damage and payload.Damage > 0 then
+					CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage, true)
+				end
+				local victimChar = payload.VictimCharacter
+				if victimChar == player.Character then
+					local controllers = player.PlayerScripts:FindFirstChild("Controllers")
+					if controllers then
+						local animCtrl = controllers:FindFirstChild("AnimationController")
+						if animCtrl then
+							local req = require(animCtrl) :: any
+							if req and req.PlayHitReaction then req.PlayHitReaction("Parryed") end
+						end
+					end
+				end
 			elseif payload.WasBlocked then
 				Play3DSound(PARRY_CLASH_SOUND_ID, targetPos, 0.8)
-				CombatVFXController.AddCameraShake(0.20)
-				CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage or 0, false, Color3.fromRGB(175, 195, 220), "BLOCKED")
+				if isVictim or isLocal then
+					CombatVFXController.AddCameraShake(0.20)
+				end
+				if payload.Damage and payload.Damage > 0 then
+					CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage, false)
+				else
+					CombatVFXController.SpawnDamageNumber(targetPos, 0, false)
+				end
 			else
 				Play3DSound(HIT_IMPACT_SOUND_ID, targetPos, 1.3)
 				CombatVFXController.SpawnSlashHitVFX(targetPos, hitOrientation, weaponId)
@@ -725,13 +722,6 @@ function CombatVFXController.Init()
 				if attacker == player then
 					CombatVFXController.AddCameraShake(payload.IsCrit and 0.45 or 0.25)
 					CombatVFXController.ApplyHitstop(payload.IsCrit and 0.06 or 0.04)
-
-					CombatVFXController.SpawnIntentComboPopup(
-						targetPos,
-						payload.ComboCount or 1,
-						payload.CurrentIntent or 0,
-						payload.IsCrit == true
-					)
 				end
 
 				if payload.Damage and payload.Damage > 0 then
@@ -742,7 +732,12 @@ function CombatVFXController.Init()
 	end)
 
 	combatVFXRemote.OnClientEvent:Connect(function(payload: any)
-		if type(payload) ~= "table" or not payload.EffectType then return end
+		if type(payload) ~= "table" or not payload.EffectType or not payload.Position then return end
+
+		local myChar = player.Character
+		local myHrp = if myChar then myChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+		local dist = if myHrp then (myHrp.Position - payload.Position).Magnitude else 999
+		if dist > 85 then return end
 
 		if payload.EffectType == "ParryClash" then
 			CombatVFXController.SpawnParryClash(payload.Position)
@@ -765,7 +760,7 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (Martial Tree Micro-Vibration Active).")
+	print("[ASCEND] CombatVFXController Initialized (Full VFX Suite & High-Visibility Numbers Active).")
 end
 
 function CombatVFXController.ApplyHitstop(duration: number)
@@ -775,14 +770,18 @@ function CombatVFXController.ApplyHitstop(duration: number)
 	local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
 	if not animator then return end
 
+	local savedSpeeds: { [AnimationTrack]: number } = {}
 	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+		savedSpeeds[track] = track.Speed
 		track:AdjustSpeed(0.05)
 	end
 
 	task.delay(duration, function()
 		if animator and animator.Parent then
-			for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-				track:AdjustSpeed(1.0)
+			for track, origSpeed in pairs(savedSpeeds) do
+				if track and track.IsPlaying then
+					track:AdjustSpeed(origSpeed)
+				end
 			end
 		end
 	end)
@@ -790,7 +789,11 @@ end
 
 function CombatVFXController.SpawnParryClash(position: Vector3)
 	Play3DSound(PARRY_CLASH_SOUND_ID, position, 1.0)
-	CombatVFXController.AddCameraShake(0.4)
+	local myChar = player.Character
+	local myHrp = if myChar then myChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+	if myHrp and (myHrp.Position - position).Magnitude <= 24 then
+		CombatVFXController.AddCameraShake(0.4)
+	end
 
 	local flashPart = Instance.new("Part")
 	flashPart.Name = "ParryFlash"
@@ -848,11 +851,14 @@ function CombatVFXController.SpawnBlockSparks(position: Vector3)
 	Debris:AddItem(sparkPart, 0.5)
 end
 
-function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number, isCrit: boolean?, customColor: Color3?, prefixText: string?)
+-- =============================================================================
+-- PRESS START 2P / ARCADE: HIGH-VISIBILITY PURE NUMBERS
+-- =============================================================================
+function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number, isCrit: boolean?)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "DamageNumberGui"
-	billboard.Size = if isCrit then UDim2.new(0, 180, 0, 50) else UDim2.new(0, 140, 0, 40)
-	billboard.StudsOffsetWorldSpace = position + Vector3.new(math.random(-10, 10) / 10, 2, math.random(-10, 10) / 10)
+	billboard.Size = if isCrit then UDim2.new(0, 180, 0, 52) else UDim2.new(0, 140, 0, 42)
+	billboard.StudsOffsetWorldSpace = position + Vector3.new(math.random(-8, 8) / 10, 2.2, math.random(-8, 8) / 10)
 	billboard.AlwaysOnTop = true
 	billboard.Adornee = workspace.Terrain
 	billboard.Parent = workspace
@@ -861,41 +867,38 @@ function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number
 	label.Size = UDim2.new(1, 0, 1, 0)
 	label.BackgroundTransparency = 1
 
-	local formattedNum = tostring(math.floor(damage))
-	if prefixText then
-		label.Text = string.format("%s %s", prefixText, (if damage > 0 then formattedNum else ""))
-	elseif isCrit then
-		label.Text = string.format("CRIT! %s", formattedNum)
-	else
-		label.Text = formattedNum
+	local ok = pcall(function()
+		label.FontFace = Font.fromName("Press Start 2P")
+	end)
+	if not ok then
+		label.Font = Enum.Font.Arcade
 	end
 
-	label.Font = Enum.Font.Bangers
+	label.Text = tostring(math.max(0, math.floor(damage)))
+
+	local s = Instance.new("UIStroke", label)
 
 	if isCrit then
-		label.TextSize = 34
-		label.TextColor3 = customColor or Color3.fromRGB(255, 215, 0)
-		local s = Instance.new("UIStroke", label)
-		s.Color = Color3.fromRGB(130, 25, 0)
-		s.Thickness = 1.8
+		label.TextSize = 28
+		label.TextColor3 = Color3.fromRGB(255, 205, 40)
+		s.Color = Color3.fromRGB(160, 40, 0)
+		s.Thickness = 2.4
 	else
-		local baseSize = math.clamp(20 + math.floor(damage / 15), 20, 26)
-		label.TextSize = baseSize
-		label.TextColor3 = customColor or Color3.fromRGB(255, 255, 255)
-		local s = Instance.new("UIStroke", label)
+		label.TextSize = 20
+		label.TextColor3 = Color3.fromRGB(255, 255, 255)
 		s.Color = Color3.fromRGB(15, 15, 20)
-		s.Thickness = 1.2
+		s.Thickness = 2.0
 	end
 
 	label.Parent = billboard
 
-	local targetOffset = billboard.StudsOffsetWorldSpace + Vector3.new(0, isCrit and 4.2 or 3.0, 0)
+	local targetOffset = billboard.StudsOffsetWorldSpace + Vector3.new(0, isCrit and 3.6 or 2.8, 0)
 
-	local floatTween = TweenService:Create(billboard, TweenInfo.new(isCrit and 0.95 or 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+	local floatTween = TweenService:Create(billboard, TweenInfo.new(isCrit and 0.85 or 0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		StudsOffsetWorldSpace = targetOffset,
 	})
 
-	local fadeTween = TweenService:Create(label, TweenInfo.new(isCrit and 0.95 or 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+	local fadeTween = TweenService:Create(label, TweenInfo.new(isCrit and 0.85 or 0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 		TextTransparency = 1,
 	})
 

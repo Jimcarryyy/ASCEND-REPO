@@ -561,3 +561,139 @@ This document records historical feature additions, engine enhancements, balance
   - Codified ADR-043 (`ModalWindowManager.luau` mutual exclusion).
   - Codified ADR-044 (3-Tier Jade Pure Sect stepped mountain layout).
 - **Subsystem & Task Tracking Synchronized:** Fully refreshed `.ai/CURRENT_TASK.md`, `.ai/NEXT_STEPS.md`, and `.ai/PROJECT_STATUS.md` with 100% codebase-verified facts and zero inflated completion claims.
+
+## [Unreleased] - 2026-09-17 (backfilled from Session Digest #2026-09-17)
+
+### Added
+- **Cultivation & Breakthrough Engine Calibration (`CultivationConfig.luau` & `CultivationManager.luau`):**
+  - Calibrated 10-realm pacing curve (~20m Qi Condensation to ~49.4h Immortal Ascension).
+  - Applied 20% starting Qi clamp, wired Sect `QiBuffMultiplier` into passive recovery, added Breakthrough Dan check, and integrated Inner Demon QTE trial with non-lethal backlash.
+  - Aligned realm keys in `SectConfig.luau` to `GoldenCore`, `SpiritSevering`, and `TribulationTranscending`, adding Tier 3 quest Bloodline Spin rewards.
+- **Client Inner Demon QTE Presentation (`CultivationController.luau`):**
+  - Added dark vignette, camera shake, and focus pulse QTE UI during breakthrough trials.
+- **Multiset Cauldron Alchemy Matching (`AlchemyConfig.luau`):**
+  - Registered all 9 Breakthrough Dans with exact multiset ingredient count matching, preventing subset recipe conflicts.
+- **4-Tier Wilderness Herb & Beast Core Balancing (`GatheringConfig.luau`, `MobConfig.luau`, `ItemConfig.luau`):**
+  - Configured 4-tier herb ages across world nodes.
+  - Added 4 wilderness mob danger tiers dropping graded beast cores (`DemonBeastCore` to `DemonBeastCore_1000Yr`).
+- **On-Demand Sparring Duel Engine (`ArenaManager.luau` & `ArenaController.luau`):**
+  - Implemented on-demand sparring with 50-stud circular Qi Ring, challenge modal, timer HUD, and 1-HP non-lethal concession.
+- **Sect Safe Zones & Karmic Retribution (`HitboxManager.luau`):**
+  - Integrated Sect Safe Zone 0-damage peace and Wilderness Karmic Retribution (75% penalty, 50% reflection) while preserving `CastCompensatedBox` and native posture logic.
+- **Bloodline Foundation & Monetization (`BloodlineConfig.luau`, `MonetizationConfig.luau`, `PlayerDataManager.luau`):**
+  - Configured bloodline lineages across 4 tiers with passives, gacha weights, and Meshy AI 3D manifests.
+  - Registered Robux Bloodline spin DevProducts (25, 99, 399, 999 R$).
+  - Integrated Bloodline & Spins persistence in `PlayerDataManager.luau` with lazy fallback init and 3D artifact welder.
+
+### Changed
+- **Skill F Refactor:** Re-engineered Skill F from a high-speed physics dash into a 28-stud instant Celestial Flash-Step / Blink slash to stop ragdoll tripping.
+
+### Fixed
+- Routed server announcements via `HeavenlyAnnouncement` remote after discovering `TextChannel:DisplaySystemMessage` is client-only.
+- Fixed `PlayerDataManager` method invocation from invalid `AddSectContribution` to `AddContributionPoints`.
+- Restored native posture handling in `HitboxManager.luau` after removing invalid require of non-existent `CombatConfig.luau`.
+- Fixed secondary weapon/flight parts remaining anchored in `WeaponManager.luau`, which previously caused network ownership crashes (`serverHumanoidShim:39`) on dismount.
+- Fixed `AddBloodlineSpins` static 5 return via lazy fallback attribute resolution.
+
+---
+
+## [Unreleased] - 2026-09-18 (backfilled from Session Digest #1)
+
+### Added
+- **Bloodline Manager & Controller Integration:**
+  - Registered `BloodlineController` in `ClientMain.client.luau` and `BloodlineManager` in `ServerMain.server.luau`.
+  - Implemented 30-pull Legendary and 100-pull Mythic pity counters, Keep/Discard refund actions, slot unlocking, and floating artifact offsets in `BloodlineManager.luau`.
+  - Extended `PlayerDataManager.luau` schema with `BloodlineSlots`, `MaxBloodlineSlots`, and `BloodlinePity` with backward-compatible V3 migration.
+  - Built `StarterGui.BloodlineGui` programmatically via Edit Mode Command Bar (100% scale, zero UICorner, Bangers/Fondamento typography).
+  - Wired `BloodlineController.luau` to Altar ProximityPrompt (`E`), Pity readouts, Meridian Vault, and Keep/Discard modal with SFX `rbxassetid://138567614125924`.
+- **Heavenly Cultivation Codex:**
+  - Built `StarterGui.CodexGui` via Edit Mode Command Bar, mapping the feature manual to unmapped keybind `[H]`.
+- **Dynamic Bloodline Meditation Auras (`CultivationManager.luau`):**
+  - Moved `AuraTemplates` from Workspace to `ReplicatedStorage.AuraTemplates` (Tiers 1–4 modular attachments).
+  - Decoupled meditation aura colors from Realm tiers; bound them directly to active Bloodline element palettes with a 12-palette `ColorSequence` dictionary.
+- **Roster Expansion:**
+  - Expanded bloodline roster from 10 to 12 lineages by adding `NineNetherSovereign` (Mythic #2) and `GlacialPhoenixMeridian` (Legendary #4).
+
+### Changed
+- Scaled Lightning 1 and Lightning 2 inside `workspace.UltimateSkill.Main` to 8.5 studs via Command Bar.
+- Standardized all 12 bloodlines to floating companion orbs/halos, replacing body-clinging relic meshes.
+
+### Fixed
+- Corrected `BloodlineManager.luau` function call from non-existent `RollRandomBloodline` to `RollBloodline`.
+- Corrected schema keys in `BloodlineManager.luau` to match `BloodlineConfig.luau` (`Name`, `Tier`, `VisualArtifact.ArtifactName`).
+- Fixed spin consumption crash by invoking `PlayerDataManager.AddBloodlineSpins(player, -count)` instead of non-existent `UseBloodlineSpin`.
+- Aligned client-server remote payload actions between `ExchangeSpins` and spin purchasing.
+- Fixed syntax error in `CultivationManager.luau:927` caused by duplicate dictionary block and dangling `})`.
+
+---
+
+## [Unreleased] - 2026-09-19 (backfilled from Session Digest #2026-09-19A)
+
+### Added
+- **ASCEND Monkey Verification Protocol:** Adopted Studio Command Bar automated test harness; passed 9/9 server verification checks (collision groups, mob network ownership, anti-ragdoll states, state promotion).
+- **Movement & Reaction Animation Suite:** Registered asset IDs for 13 R6 animations (Dash_W/A/S/D, Idle, Walk, Run, Landed, Equip, Unequip, HitReaction1/2, Parryed).
+
+### Changed
+- **Damage Number Presentation:** Set font to "Press Start 2P" / `Enum.Font.Arcade` and restricted popups to pure numbers only (purging "CRIT!", "PARRY!", and intent text) for zero screen clutter.
+- **Sword Sheathing:** Reverted sword sheath (`R`) back to upper back of Torso instead of lower-left hip.
+- **Skill Q Knockback:** Zeroed knockback (`Vector3.zero`) so the cleave slices enemies in place without pushing them out of range.
+- **Locomotion Cadence:** Reverted locomotion to a weighted, sluggish glide (0.70x playback, upper body holding idle pose while legs run) with committed, slower M1 slashes.
+- **Dash Mobility:** Re-enabled 4-way camera-relative dash with Shunpo vanish/reappear VFX.
+
+### Fixed
+- Fixed runtime crash in `CombatVFXController.luau` by using `Font.fromName("Press Start 2P")` with fallback to `Enum.Font.Arcade`.
+- Fixed `Network Ownership API cannot be called on Anchored parts` crash in `CultivationManager.luau` during `C` meditation.
+- Fixed 1.10s delay between M1 swings in `CombatStateManager.luau` caused by undefined `FlyingSwordConfig.Skills.M1`.
+- Fixed permanent guard block in `CombatStateManager.luau` where `ActionState` remained stuck in `Active` without promoting to `Recovery`/`Idle`.
+- Fixed parry clock compensation in `CombatStateManager.luau` and `InputController.luau` to use `Workspace:GetServerTimeNow()` instead of unsynchronized client/server `os.clock()`.
+- Fixed high Y-velocity in `HitboxManager.luau` that forced knockback victims into `Freefall` and caused tripping/ragdoll.
+- Fixed character body twisting during M1 slashes by locking `Humanoid.AutoRotate` against animation `RootJoint` keyframe rotation.
+
+---
+
+## [Unreleased] - 2026-09-19 (backfilled from Session Digest #2026-09-19B)
+
+### Added
+- **Phase 4 Flight Engine Server Handover:**
+  - Integrated dynamic realm flight speed table (Foundation Establishment: 48 studs/s) across `FlyingSwordConfig.luau`, `CultivationManager.luau`, `WeaponManager.luau`, and `CombatStateManager.luau`.
+  - Added 25 Qi/s flight drain, paused passive Qi recovery while flying, added 0-Qi auto-dismount, and enforced InCombat force-dismount (passed Double-Check 6/6).
+- **StarterGui ScreenGui Builds (Edit Mode CMD):**
+  - Built `StarterGui.SparringDuelHUD` following sharp dark celestial slate aesthetic, zero UICorner, no frame borders, multi-stop gradients, and responsive text sizing.
+  - Overhauled `StarterGui.SectMerchantMarketGui`: converted all ImageLabels to native Frames, stripped UICorners and borders, simplified counter buttons to `-` and `+`, and deleted `Tab_TALISMANS`.
+
+### Changed
+- **General Merchant Policy:** Permanently purged all sword/weapon buying and selling from `SectMerchantMarketGui` (swords are sacred artifacts).
+- **UI Architecture Standard:** Prohibited programmatic runtime `Instance.new` GUI generation in client scripts; all UI trees must reside in `StarterGui`.
+- **Market Interaction:** Gated strictly behind Merchant Qian ProximityPrompt, eliminating keyboard toggle keybind.
+
+### Fixed
+- Fixed `AttachBloodlineVisual` coordinate doubling bug in `PlayerDataManager.luau` caused by creating `WeldConstraint` before setting CFrame.
+- Fixed Qi oscillation in `CultivationManager.luau` where passive recovery ran concurrently with flight drain.
+- Fixed Play Solo startup yield in `ServerMain.server.luau` that prevented background managers from executing `InitializeServer()`.
+- Fixed hierarchy lookup in `MarketController.luau` by using recursive search for `MainFrame` inside `OverlayBackdrop`.
+- Fixed crash in `MarketController.luau:248` by calling `SectConfig.GetAllMarketItems()` instead of non-existent `GetSectVendorItems`.
+
+---
+
+## [Unreleased] - 2026-09-20 (backfilled from Session Digest #2026-09-20)
+
+### Added
+- **DataStore V3 Persistence & Samsara Engine (`PlayerDataManager.luau`):**
+  - Deployed DataVersion 3 schema with Samsara cycle tracking, Roman numeral title generator, and authoritative `RouteToSpawnDais` spawn fallback.
+- **Pure Humanoid R6 Cultivator Roster (`MobConfig.luau`, `MobAIManager.luau`):**
+  - Updated definitions for 10 Humanoid R6 Cultivators with `Name` and `DisplayName` schema safety.
+  - Integrated top-level `SPAWNER_ALIAS_MAP`, unanchoring loop on spawn, and `DisplayName` fallbacks in `MobAIManager.luau`.
+  - Generated 5 new R6 Cultivator models (`BanditCultivator`, `GhostBladeMarauder`, `FrostPeakApostle`, `VoidPhantomSwordmaster`, `AsuraSwordSovereign`) in `ReplicatedStorage.MobModels` with Motor6D `RightGrip` articulation.
+  - Placed and tagged 5 new spawner anchor parts in `Workspace.MobSpawns`.
+
+### Changed
+- **Beast Mob Purge:** Permanently purged all beast mobs (`DemonWolf`, `IronhideBoar`, `SilverbackFrostApe`, `VoidChasmChimera`, `AbyssalDemonSovereign`) in favor of 100% Humanoid R6 Cultivators.
+- **Production Scope Restructure:** Reset legacy phase numbering to eliminate drift; established authoritative 11-Phase Priority Roadmap with Phase 1 closed and Phase 2 active.
+- **Network Remote Pruning (`RemoteEvents.luau`):** Pruned 16 legacy unused remotes; strictly declared and instantiated the 16 active game remotes with `--!strict` union typing.
+
+### Fixed
+- Fixed Roblox spawn engine rejecting pad and dumping players at world origin (930, 37, -616) by setting `Murim_SpawnDais.SpawnLocation` properties to `CanCollide = true`, `Anchored = true`, and `Neutral = true`.
+- Fixed starter sword +5% damage perk being erased by `math.floor(15 * 1.05)` in `FlyingSwordServer.luau`; applied `math.round` and exposed `payload.CalculatedDamage`.
+- Fixed server boot crash in `MobAIManager.luau:752` by defining `SPAWNER_ALIAS_MAP`.
+- Fixed `CreateHealthUI` crash in `MobAIManager.luau:395` by providing fallbacks for missing `DisplayName` in `MobConfig.luau`.
+- Fixed nil session cache race condition in `CultivationManager.luau` by applying synchronous fallback in `GetPlayerData`.

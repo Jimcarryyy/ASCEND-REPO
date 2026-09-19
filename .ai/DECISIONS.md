@@ -562,3 +562,107 @@ This document records structural architectural decisions, design paradigms, secu
   3. `checkVitals()` always resolves `LocalPlayer.Character.Humanoid.Health` directly rather than closing over dead variables.
   4. `CultivationManager.luau` removed the `task.wait(0.2)` delay on `CharacterAdded`: Synchronously sets `MaxHealth` and `Health` to full realm values and replenishes Qi to 100% on the exact frame of spawn.
 * **Consequences:** Guaranteed full health and Qi restoration across unlimited deaths with zero GUI freezing.
+
+### ADR-065: Strict Phase Verification & Server Command Bar Hot-Patch Protocol
+* **Date:** 2026-09-17 (backfilled from Session Digest #2026-09-17)
+* **Status:** Accepted
+* **Context:** Blindly applying full script rewrites led to subtle regressions, nil method crashes, and broken state machines.
+* **Decision:** Every development phase strictly requires raw URL fetches followed by a live Server Command Bar hot-patch test before full file code is provided and committed.
+
+### ADR-066: MobAIManager Preservation & Phase Deferral
+* **Date:** 2026-09-17 (backfilled from Session Digest #2026-09-17)
+* **Status:** Accepted
+* **Context:** `MobAIManager.luau` contained a 727-line animation and AI state machine that was highly susceptible to regression.
+* **Decision:** Keep `MobAIManager.luau` 100% untouched during cultivation and bloodline phases. Combat hardening, ragdoll tripping, flight/meditation combat lockouts, and fall damage are deferred to dedicated hardening passes to avoid scope creep.
+
+### ADR-067: Celestial Flash-Step Instant Blink Traversal
+* **Date:** 2026-09-17 (backfilled from Session Digest #2026-09-17)
+* **Status:** Accepted
+* **Context:** High-speed physics dashes on Skill F interacted poorly with terrain and caused tripping/ragdoll.
+* **Decision:** Re-engineered Skill F from a physics velocity dash into a 28-stud instant Celestial Flash-Step / Blink slash, ensuring clean repositioning without tripping physics.
+
+### ADR-068: Bloodline Meridian Vault Architecture, Gacha Pity & Floating Relic Standard
+* **Date:** 2026-09-18 (backfilled from Session Digest #1)
+* **Status:** Accepted
+* **Context:** Bloodline mechanics required transparent pity systems, backward-compatible persistence, and visual prestige that avoided clipping with character clothing.
+* **Decision:**
+  1. Implemented Bloodline Meridian Vault in `PlayerDataManager.luau` (V3 schema) with 30-pull Legendary and 100-pull Mythic pity guarantees.
+  2. Substituted body-clinging 3D relics (bracers, chestplates) with floating companion orbs/halos across all bloodline lineages (`ARTIFACT_OFFSETS`).
+  3. Gated gacha interactions behind Bloodline Altar ProximityPrompt (`E`). Breakthrough remains bound to `[B]`. Feature guide bound to `[H]` (`CodexGui`).
+
+### ADR-069: Universal Sharp Rectangular Xianxia UI Standard (Zero UICorner Mandate)
+* **Date:** 2026-09-18 & 2026-09-19 (backfilled from Session Digests #1 & #3)
+* **Status:** Accepted
+* **Context:** Rounded corners (`UICorner`) eroded the traditional Xianxia martial plaque aesthetic and created visual inconsistency across modals.
+* **Decision:**
+  1. Strictly prohibited `UICorner` across all GUI elements (frames, buttons, pills, slots) to enforce a sharp, rectangular Xianxia plaque visual identity.
+  2. Standardized UI containers on dark celestial slate backgrounds (`#111827` / `#1C2638`), multi-stop subtle gradients, zero outer frame borders, and responsive text sizing (`TextScaled` + `UITextSizeConstraint` + `UIPadding`).
+  3. All UI hierarchies must reside directly in `StarterGui` via Edit Mode CMD scripts; runtime `Instance.new` UI creation in client scripts is prohibited.
+
+### ADR-070: Bloodline Roster Expansion & Element-Attuned Meditation Aura Decoupling
+* **Date:** 2026-09-18 (backfilled from Session Digest #1)
+* **Status:** Accepted
+* **Context:** A single Mythic bloodline created a progression bottleneck, and tying meditation aura colors to Cultivation Realm tiers ignored player lineage flavor.
+* **Decision:**
+  1. Expanded bloodlines from 10 to 12 by adding `NineNetherSovereign` (Mythic #2) and `GlacialPhoenixMeridian` (Legendary #4).
+  2. Decoupled meditation aura coloring from Cultivation Realms; dynamic aura cloning (`ReplicatedStorage.AuraTemplates`) is driven by the active Bloodline element via a 12-palette `ColorSequence` dictionary.
+
+### ADR-071: ASCEND Monkey Protocol for Live Studio Command Bar Verification
+* **Date:** 2026-09-19 (backfilled from Session Digest #2026-09-19A)
+* **Status:** Accepted
+* **Context:** Manual playtesting failed to detect latent network ownership errors, collision matrix bugs, and state machine stalls.
+* **Decision:** Adopted the ASCEND Monkey Protocol—a live Studio Command Bar verification suite that executes automated assertions across server subsystems (collision groups, mob ownership, anti-ragdoll states, and promotion queues) before code is accepted.
+
+### ADR-072: Damage Number Arcade Font & Clutter Purge
+* **Date:** 2026-09-19 (backfilled from Session Digest #2026-09-19A)
+* **Status:** Accepted
+* **Context:** Floating text popups ("CRIT!", "PARRY!", Intent badges) cluttered the screen during intense combat.
+* **Decision:** Standardized damage numbers to "Press Start 2P" / `Enum.Font.Arcade` and restricted popups to pure numeric values only, completely removing text popups.
+
+### ADR-073: Zero-Knockback Skill Q & Weighted Locomotion Sluggish Glide
+* **Date:** 2026-09-19 (backfilled from Session Digest #2026-09-19A)
+* **Status:** Accepted
+* **Context:** Skill Q knockback launched enemies out of melee range, and high-cadence twitchy movement felt ungrounded.
+* **Decision:**
+  1. Zeroed knockback on Skill Q (`Vector3.zero`) to slice enemies in place.
+  2. Reverted locomotion to a weighted, sluggish glide (0.70x playback, upper body holding idle pose while legs run) with committed, slower M1 slashes.
+  3. Re-enabled 4-way camera-relative dash with Shunpo vanish/reappear visual effects.
+
+### ADR-074: Sacred Weapon Market Exclusion Policy
+* **Date:** 2026-09-19 (backfilled from Session Digest #2026-09-19B)
+* **Status:** Accepted
+* **Context:** Selling swords at the general sect merchant diluted their lore identity as sacred spiritual artifacts.
+* **Decision:** Permanently purged all sword/weapon buying and selling from `SectMerchantMarketGui`. Flying swords and spirit blades are acquired exclusively through Sect progression, boss drops, and the Sacred Sword Altar.
+
+### ADR-075: Dynamic Realm Flight Speed Scaling & Qi Drain Synchronization
+* **Date:** 2026-09-19 (backfilled from Session Digest #2026-09-19B)
+* **Status:** Accepted
+* **Context:** Static flight speed ignored realm progression, and concurrent passive Qi recovery caused flight energy to oscillate.
+* **Decision:**
+  1. Scaled flight velocity dynamically with cultivation realm (Foundation Establishment: 48 studs/s).
+  2. Flight imposes a continuous 25 Qi/s drain and pauses passive Qi recovery. Reaching 0 Qi or taking damage in combat forces an immediate dismount.
+
+### ADR-076: Pure Humanoid R6 Cultivator Roster & Complete Beast Rig Purge
+* **Date:** 2026-09-20 (backfilled from Session Digest #2026-09-20)
+* **Status:** Accepted
+* **Context:** Custom 3D quadruped/beast rigs caused severe animation overhead, tripping bugs, and network ownership crashes.
+* **Decision:**
+  1. Permanently purged all beast mob rigs (`DemonWolf`, `IronhideBoar`, `SilverbackFrostApe`, `VoidChasmChimera`, `AbyssalDemonSovereign`).
+  2. Standardized 100% of zone enemies to 10 Humanoid R6 Cultivators using standard R6 joints, `Motor6D` `RightGrip`, and shared animation tables.
+  3. Mobs utilize `SPAWNER_ALIAS_MAP` and Boids spatial separation. Graded beast cores remain as item drops representing wilderness alchemy ingredients.
+
+### ADR-077: 11-Phase Production Roadmap Restructuring & Codebase Hardening Priority
+* **Date:** 2026-09-20 (backfilled from Session Digest #2026-09-20)
+* **Status:** Accepted
+* **Context:** Unsynced phase numbering across historical sessions caused architectural drift and compounding technical debt.
+* **Decision:**
+  1. Reset phase numbering to a clean 11-Phase Priority Roadmap.
+  2. Formally marked Phase 1 (Core Foundations) closed following 5/5 verification tests.
+  3. Elevated Phase 2 (Code cleanup, memory leak audit, circular dependency decoupling, strict typing) to active priority before continuing feature additions.
+  4. Deferred live M1/running cadence tuning and ribbon trails to Phase 3.
+
+### ADR-078: Network Remote Pruning & Strict Typing Standard
+* **Date:** 2026-09-20 (backfilled from Session Digest #2026-09-20)
+* **Status:** Accepted
+* **Context:** 16 legacy declared remotes had zero references across 87 project scripts, inflating network surface area.
+* **Decision:** Pruned all 16 unused remotes from `RemoteEvents.luau`. Strictly declared and instantiated only the 16 active remotes using `--!strict` Luau typing and discriminated union payloads.
