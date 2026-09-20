@@ -697,3 +697,31 @@ This document records historical feature additions, engine enhancements, balance
 - Fixed server boot crash in `MobAIManager.luau:752` by defining `SPAWNER_ALIAS_MAP`.
 - Fixed `CreateHealthUI` crash in `MobAIManager.luau:395` by providing fallbacks for missing `DisplayName` in `MobConfig.luau`.
 - Fixed nil session cache race condition in `CultivationManager.luau` by applying synchronous fallback in `GetPlayerData`.
+
+
+## [Phase 8.6 — Unified MainHub Drawer, 24h Stipend Persistence & Anti-Trip Server Engine] — 2026-09-20 (backfilled from Session Digest #1)
+
+### Added
+- **Unified MainHub Master Drawer (`StarterGui.MainHubGui`):**
+  - Scaffolding of master navigation drawer with a CoreGui-styled 36×36 circular 4-square topbar button, 300px sharp sidebar (`Fondamento` font, monochrome Lucide vector icons, `UITextSizeConstraint [14, 22]`, no `UICorner`).
+  - Fullscreen `MenuBackdrop` with `ScreenInsets = Enum.ScreenInsets.None` and 100px overscan permanently eliminating the 75px bottom safe-area viewport gap.
+  - Scaffolded placeholder pages for `Page_Shop` (Heavenly Treasury) and `Page_Updates` (Celestial Updates) with controller wiring deferred.
+- **Server-Authoritative Anti-Trip Engine (`AntiTripServer`):**
+  - Deployed `StarterPlayer.StarterCharacterScripts.AntiTripServer` server-authoritatively disabling `HumanoidStateType.FallingDown` and `Ragdoll` across R6 character lifecycles, eliminating physics stumble tumbles.
+- **Persistent 24-Hour Daily Sect Stipend Cycle:**
+  - Implemented exact 24-hour (`86,400s`) cooldown cycle in `SectManager.luau` persisted via DataStore in `PlayerDataManager.luau` and keyed to `player.UserId`.
+  - Dispatches live ticking countdown clock (`CLAIM IN 23h 59m 59s`) that persists across session reloads.
+
+### Changed
+- **Docked Panel Integration:**
+  - Docked `SpiritPouchInventoryGui.MainFrame` into `PageContainer` as `Page_Inventory`, purging red `X` close button, stripping spring pop-up scale tweens, and purging independent `I` keybind.
+  - Docked `SectPavilionGui.MainFrame` into `PageContainer` as `Page_Faction`, purging red `X` close button and independent `M` keybind.
+- **ProximityPrompt Station Isolation:**
+  - Restored `AlchemyGui` and `StarterGuideGui` back to standalone ScreenGuis for physical in-world ProximityPrompt interactions.
+
+### Fixed
+- **`PlayerDataManager.luau` Syntax Error:** Corrected syntax error on line 412 (`Namespace:GetDataStore`), restoring the full 600+ line authoritative script.
+- **R6 `StepHeight` Compatibility:** Wrapped `Humanoid.StepHeight` in `AntiTripServer` in a safe call to prevent runtime exceptions on R6 rigs.
+- **`GatheringManager.luau` Silent Harvest Abort:** Corrected `GetConfig` to query `GatheringConfig.GetNode()`, unblocking node interaction.
+- **Duplicate Quest Progression:** Diagnosed and isolated double-call bug in `MobAIManager.luau` and triple-call bug in `GatheringManager.luau`.
+- **Machine-Gun Audio Click Bug:** Isolated duplicate `.Activated` listener stacking in `SectController.luau`.

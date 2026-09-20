@@ -2,7 +2,11 @@
 --[[
     BloodlineController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/BloodlineController.luau
-    Master Client Controller for Bloodline Awakening, Meridian Vault & Pity
+    Client UI controller bound to MainHubGui.MenuBackdrop.PageContainer.Page_Bloodline:
+    - Auto-syncs live slot data upon opening (Slot 2 shows real Nine Nether Sovereign)
+    - DecisionModal integration (Equip Active, Save to Vault, Discard +100)
+    - 1X and 10X Awakening Rituals with server roll response
+    - Real-time Pity meters (Legendary 0/30 & Mythic 0/100) and Spirit Stones tribute
 ]]
 
 local Players = game:GetService("Players")
@@ -10,401 +14,434 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 
+local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
+local BloodlineConfig = require(ReplicatedStorage.Shared.Configs.BloodlineConfig)
+local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
+
 local BloodlineController = {}
+BloodlineController.__index = BloodlineController
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
+local bloodlineRemote: RemoteEvent
+
+local page: Frame? = nil
+local activeCard: Frame? = nil
+local vaultCard: Frame? = nil
+local pityCard: Frame? = nil
+local altarCard: Frame? = nil
+local decisionModal: Frame? = nil
+
+local lineageNameLabel: TextLabel? = nil
+local tierBadgeLabel: TextLabel? = nil
+local statModifiersLabel: TextLabel? = nil
+local passiveSummaryLabel: TextLabel? = nil
+local descriptionLabel: TextLabel? = nil
+
+local legendFill: Frame? = nil
+local legendCountLabel: TextLabel? = nil
+local mythicFill: Frame? = nil
+local mythicCountLabel: TextLabel? = nil
+
+local stonesLabel: TextLabel? = nil
+local beadsLabel: TextLabel? = nil
+
+local slotRows: { [number]: { Row: Frame, Label: TextLabel?, Btn: TextButton? } } = {}
+local buttonConnections: { RBXScriptConnection } = {}
+local lastSyncData: any = nil
 local isInitialized = false
 
-local CLICK_SFX_ID = "rbxassetid://138567614125924"
-local clickSound: Sound?
+local PANEL_CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
+local function PlayPanelClickSFX()
+	local sound = Instance.new("Sound")
+	sound.SoundId = PANEL_CLICK_SOUND_ID
+	sound.Volume = 0.55
+	sound.PlaybackSpeed = math.random(98, 102) / 100
+	sound.Parent = SoundService
+	sound:Play()
+	game:GetService("Debris"):AddItem(sound, 1.2)
+end
 
-local TIER_GRADIENTS = {
-	Common = { Color3.fromRGB(14, 116, 144), Color3.fromRGB(56, 189, 248), Color3.fromRGB(3, 105, 161) },
-	Rare = { Color3.fromRGB(5, 150, 105), Color3.fromRGB(16, 185, 129), Color3.fromRGB(4, 120, 87) },
-	Legendary = { Color3.fromRGB(159, 18, 57), Color3.fromRGB(244, 63, 94), Color3.fromRGB(136, 19, 55) },
-	Mythic = { Color3.fromRGB(76, 29, 149), Color3.fromRGB(167, 139, 250), Color3.fromRGB(67, 20, 120) },
-}
-
-local function playClick()
-	if not clickSound then
-		clickSound = Instance.new("Sound")
-		clickSound.Name = "BloodlineClickSFX"
-		clickSound.SoundId = CLICK_SFX_ID
-		clickSound.Volume = 0.65
-		clickSound.Parent = SoundService
+local function ClearButtonConnections()
+	for _, conn in ipairs(buttonConnections) do
+		conn:Disconnect()
 	end
-	clickSound:Play()
+	table.clear(buttonConnections)
+end
+
+local function EnsureUI(): boolean
+	if isInitialized and page and page.Parent then return true end
+
+	bloodlineRemote = RemoteEvents.GetRemote("BloodlineAction")
+
+	local hub = playerGui:WaitForChild("MainHubGui", 10) :: ScreenGui?
+	if not hub then return false end
+
+	local backdrop = hub:WaitForChild("MenuBackdrop", 5) :: Frame?
+	local pageContainer = backdrop and backdrop:WaitForChild("PageContainer", 5) :: Frame?
+	page = pageContainer and (pageContainer:WaitForChild("Page_Bloodline", 5) :: Frame?)
+
+	if not page then return false end
+
+	local body = page:FindFirstChild("BodyContainer") :: Frame?
+	if not body then return false end
+
+	local leftCol = body:FindFirstChild("LeftColumn") :: Frame?
+	local rightCol = body:FindFirstChild("RightColumn") :: Frame?
+	decisionModal = page:FindFirstChild("DecisionModal", true) :: Frame?
+
+	if not leftCol or not rightCol then return false end
+
+	activeCard = leftCol:FindFirstChild("ActiveCard") :: Frame?
+	vaultCard = leftCol:FindFirstChild("VaultCard") :: Frame?
+	pityCard = rightCol:FindFirstChild("PityCard") :: Frame?
+	altarCard = rightCol:FindFirstChild("AltarCard") :: Frame?
+
+	if activeCard then
+		tierBadgeLabel = activeCard:FindFirstChild("TierBadge", true) :: TextLabel?
+		local plate = activeCard:FindFirstChild("ShowcasePlate") :: Frame?
+		if plate then
+			lineageNameLabel = plate:FindFirstChild("LineageName") :: TextLabel?
+			statModifiersLabel = plate:FindFirstChild("StatModifiers") :: TextLabel?
+			passiveSummaryLabel = plate:FindFirstChild("PassiveSummary") :: TextLabel?
+		end
+		descriptionLabel = activeCard:FindFirstChild("DescriptionLabel") :: TextLabel?
+	end
+
+	if pityCard then
+		legendFill = pityCard:FindFirstChild("Fill", true) :: Frame?
+		local legRow = pityCard:FindFirstChild("LegendaryRow")
+		legendCountLabel = legRow and legRow:FindFirstChild("CountLabel", true) :: TextLabel?
+
+		local mytRow = pityCard:FindFirstChild("MythicRow")
+		mythicFill = mytRow and mytRow:FindFirstChild("Fill", true) :: Frame?
+		mythicCountLabel = mytRow and mytRow:FindFirstChild("CountLabel", true) :: TextLabel?
+
+		stonesLabel = pityCard:FindFirstChild("StonesLabel", true) :: TextLabel?
+	end
+
+	if altarCard then
+		beadsLabel = altarCard:FindFirstChild("BeadsLabel", true) :: TextLabel?
+	end
+
+	-- Map Meridian Vault Slots
+	table.clear(slotRows)
+	if vaultCard then
+		for idx = 1, 3 do
+			local row = vaultCard:FindFirstChild("SlotRow_" .. idx) :: Frame?
+			if row then
+				local sLbl = row:FindFirstChild("SlotLabel") :: TextLabel?
+				local sBtn = row:FindFirstChild("SlotActionBtn") :: TextButton?
+				slotRows[idx] = { Row = row, Label = sLbl, Btn = sBtn }
+			end
+		end
+	end
+
+	-- Connect Actions (Strictly Once)
+	ClearButtonConnections()
+
+	if pityCard then
+		local buy1 = pityCard:FindFirstChild("Buy1Btn") :: TextButton?
+		if buy1 then
+			local conn = buy1.Activated:Connect(function()
+				PlayPanelClickSFX()
+				bloodlineRemote:FireServer({ Action = "BuySpins", Amount = 1 })
+			end)
+			table.insert(buttonConnections, conn)
+		end
+
+		local buy10 = pityCard:FindFirstChild("Buy10Btn") :: TextButton?
+		if buy10 then
+			local conn = buy10.Activated:Connect(function()
+				PlayPanelClickSFX()
+				bloodlineRemote:FireServer({ Action = "BuySpins", Amount = 10 })
+			end)
+			table.insert(buttonConnections, conn)
+		end
+	end
+
+	if altarCard then
+		local spin1 = altarCard:FindFirstChild("Spin1xBtn") :: TextButton?
+		if spin1 then
+			local conn = spin1.Activated:Connect(function()
+				PlayPanelClickSFX()
+				bloodlineRemote:FireServer({ Action = "Roll", Count = 1 })
+			end)
+			table.insert(buttonConnections, conn)
+		end
+
+		local spin10 = altarCard:FindFirstChild("Spin10xBtn") :: TextButton?
+		if spin10 then
+			local conn = spin10.Activated:Connect(function()
+				PlayPanelClickSFX()
+				bloodlineRemote:FireServer({ Action = "Roll", Count = 10 })
+			end)
+			table.insert(buttonConnections, conn)
+		end
+	end
+
+	for idx, sData in pairs(slotRows) do
+		if sData.Btn then
+			local conn = sData.Btn.Activated:Connect(function()
+				PlayPanelClickSFX()
+				bloodlineRemote:FireServer({ Action = "EquipSlot", SlotIndex = idx })
+			end)
+			table.insert(buttonConnections, conn)
+		end
+	end
+
+	-- Wire DecisionModal Action Buttons
+	if decisionModal then
+		local card = decisionModal:FindFirstChild("ModalCard") or decisionModal
+		local claimActiveBtn = card:FindFirstChild("ClaimActiveBtn", true) :: TextButton?
+		local saveSlotBtn = card:FindFirstChild("SaveSlotBtn", true) :: TextButton?
+		local discardBtn = card:FindFirstChild("DiscardBtn", true) :: TextButton?
+
+		if claimActiveBtn then
+			local conn = claimActiveBtn.Activated:Connect(function()
+				PlayPanelClickSFX()
+				decisionModal.Visible = false
+				bloodlineRemote:FireServer({ Action = "ClaimActive" })
+			end)
+			table.insert(buttonConnections, conn)
+		end
+
+		if saveSlotBtn then
+			local conn = saveSlotBtn.Activated:Connect(function()
+				PlayPanelClickSFX()
+				decisionModal.Visible = false
+				local slots = (lastSyncData and lastSyncData.Slots) or {}
+				local targetSlot = 2
+				for i = 1, 3 do
+					if not slots[i] and not slots[tostring(i)] then
+						targetSlot = i
+						break
+					end
+				end
+				bloodlineRemote:FireServer({ Action = "SaveToSlot", SlotIndex = targetSlot })
+			end)
+			table.insert(buttonConnections, conn)
+		end
+
+		if discardBtn then
+			local conn = discardBtn.Activated:Connect(function()
+				PlayPanelClickSFX()
+				decisionModal.Visible = false
+				bloodlineRemote:FireServer({ Action = "Discard" })
+			end)
+			table.insert(buttonConnections, conn)
+		end
+	end
+
+	isInitialized = true
+	return true
+end
+
+function BloodlineController.Render()
+	if not EnsureUI() or not page then return end
+
+	-- 1. Active Lineage Card
+	local activeId = (lastSyncData and lastSyncData.Bloodline) or player:GetAttribute("Bloodline") or "MortalSwordBone"
+	local def = BloodlineConfig.GetBloodline(activeId) or {
+		Name = "Mortal Sword Bone",
+		Tier = "Mortal",
+		Description = "Standard mortal meridian alignment. No elemental Dao affinities active.",
+	}
+
+	local TIER_COLORS = {
+		Mortal = Color3.fromRGB(140, 140, 150),
+		Earth = Color3.fromRGB(40, 140, 220),
+		Heaven = Color3.fromRGB(160, 60, 220),
+		Legendary = Color3.fromRGB(240, 160, 20),
+		Mythic = Color3.fromRGB(230, 30, 70),
+	}
+
+	local tierColor = TIER_COLORS[def.Tier] or TIER_COLORS.Mortal
+
+	if tierBadgeLabel then
+		tierBadgeLabel.Text = string.upper(def.Tier)
+		tierBadgeLabel.TextColor3 = tierColor
+	end
+
+	if lineageNameLabel then
+		lineageNameLabel.Text = string.upper(def.Name)
+		lineageNameLabel.TextColor3 = tierColor
+	end
+
+	if statModifiersLabel then
+		local mods = {}
+		if def.StatMultipliers then
+			if def.StatMultipliers.Damage and def.StatMultipliers.Damage > 1 then
+				table.insert(mods, string.format("+%d%% Damage", math.round((def.StatMultipliers.Damage - 1) * 100)))
+			end
+			if def.StatMultipliers.QiMax and def.StatMultipliers.QiMax > 1 then
+				table.insert(mods, string.format("+%d%% Max Qi", math.round((def.StatMultipliers.QiMax - 1) * 100)))
+			end
+			if def.StatMultipliers.Speed and def.StatMultipliers.Speed > 1 then
+				table.insert(mods, string.format("+%d%% Speed", math.round((def.StatMultipliers.Speed - 1) * 100)))
+			end
+		end
+		statModifiersLabel.Text = if #mods > 0 then table.concat(mods, " • ") else "Base Attributes • Standard Dao Flow"
+	end
+
+	if passiveSummaryLabel then
+		local pList = def.PassiveEffects or {}
+		passiveSummaryLabel.Text = if #pList > 0 then "Passive: " .. table.concat(pList, ", ") else "No Passive Resonances"
+	end
+
+	if descriptionLabel then
+		descriptionLabel.Text = def.Description or "Channel celestial intent through the altar to awaken sovereign bloodlines."
+	end
+
+	-- 2. Pity Meters
+	local pity = (lastSyncData and lastSyncData.Pity) or {}
+	local legPity = pity.SpinsSinceLegendary or player:GetAttribute("LegendaryPity") or 0
+	local mytPity = pity.SpinsSinceMythic or player:GetAttribute("MythicPity") or 0
+
+	if legendFill and legendCountLabel then
+		local pct = math.clamp(legPity / 30, 0, 1)
+		legendFill.Size = UDim2.new(pct, 0, 1, 0)
+		legendCountLabel.Text = string.format("%d/30", legPity)
+	end
+
+	if mythicFill and mythicCountLabel then
+		local pct = math.clamp(mytPity / 100, 0, 1)
+		mythicFill.Size = UDim2.new(pct, 0, 1, 0)
+		mythicCountLabel.Text = string.format("%d/100", mytPity)
+	end
+
+	-- 3. Live Currencies
+	local stones = (lastSyncData and lastSyncData.SpiritStones) or player:GetAttribute("SpiritStones") or 0
+	local spins = (lastSyncData and lastSyncData.Spins) or player:GetAttribute("BloodlineSpins") or 0
+
+	if stonesLabel then stonesLabel.Text = string.format("Spirit Stones: %d", stones) end
+	if beadsLabel then beadsLabel.Text = string.format("BEADS: %d", spins) end
+
+	-- 4. Meridian Vault Slots (Renders Real Stored Bloodlines)
+	local slots = (lastSyncData and lastSyncData.Slots) or {}
+
+	for idx = 1, 3 do
+		local sData = slotRows[idx]
+		if sData and sData.Label and sData.Btn then
+			local storedId = slots[idx] or slots[tostring(idx)]
+
+			if idx == 1 and (not storedId or storedId == "") then
+				storedId = activeId
+			end
+
+			if storedId and storedId ~= "" then
+				local sDef = BloodlineConfig.GetBloodline(storedId)
+				local name = sDef and sDef.Name or storedId
+				local sTier = sDef and sDef.Tier or "Common"
+				local isEquipped = (storedId == activeId)
+
+				sData.Label.Text = string.format("SLOT %d: [%s] %s", idx, string.upper(sTier), name)
+				sData.Label.TextColor3 = isEquipped and Color3.fromRGB(240, 210, 120) or Color3.fromRGB(200, 195, 185)
+
+				if isEquipped then
+					sData.Btn.Text = "EQUIPPED"
+					sData.Btn.BackgroundColor3 = Color3.fromRGB(35, 60, 35)
+					sData.Btn.TextColor3 = Color3.fromRGB(140, 230, 140)
+					sData.Btn.AutoButtonColor = false
+				else
+					sData.Btn.Text = "EQUIP"
+					sData.Btn.BackgroundColor3 = Color3.fromRGB(30, 45, 65)
+					sData.Btn.TextColor3 = Color3.fromRGB(240, 210, 120)
+					sData.Btn.AutoButtonColor = true
+				end
+			else
+				sData.Label.Text = string.format("SLOT %d: [Empty Meridian]", idx)
+				sData.Label.TextColor3 = Color3.fromRGB(130, 125, 120)
+
+				sData.Btn.Text = "STORE ACTIVE"
+				sData.Btn.BackgroundColor3 = Color3.fromRGB(45, 38, 20)
+				sData.Btn.TextColor3 = Color3.fromRGB(240, 210, 120)
+				sData.Btn.AutoButtonColor = true
+			end
+		end
+	end
+end
+
+function BloodlineController.ShowDecisionModal(bloodlineId: string)
+	if not EnsureUI() or not decisionModal then return end
+
+	local def = BloodlineConfig.GetBloodline(bloodlineId)
+	if not def then return end
+
+	local card = decisionModal:FindFirstChild("ModalCard") or decisionModal
+	local plate = card:FindFirstChild("DecPlate", true)
+
+	local lName = plate and (plate:FindFirstChild("LineageName") or plate:FindFirstChildWhichIsA("TextLabel")) :: TextLabel?
+	if lName then
+		lName.Text = string.upper(def.Name)
+		local TIER_COLORS = {
+			Mortal = Color3.fromRGB(140, 140, 150),
+			Earth = Color3.fromRGB(40, 140, 220),
+			Heaven = Color3.fromRGB(160, 60, 220),
+			Legendary = Color3.fromRGB(240, 160, 20),
+			Mythic = Color3.fromRGB(230, 30, 70),
+		}
+		lName.TextColor3 = TIER_COLORS[def.Tier] or Color3.fromRGB(240, 210, 120)
+	end
+
+	local sLbl = plate and plate:FindFirstChild("StatModifiers", true) :: TextLabel?
+	if sLbl then
+		local mods = {}
+		if def.StatMultipliers then
+			if def.StatMultipliers.Damage then table.insert(mods, string.format("+%d%% Damage", math.round((def.StatMultipliers.Damage - 1) * 100))) end
+			if def.StatMultipliers.QiMax then table.insert(mods, string.format("+%d%% Max Qi", math.round((def.StatMultipliers.QiMax - 1) * 100))) end
+		end
+		sLbl.Text = table.concat(mods, " • ") .. "\n" .. (def.Description or "")
+	end
+
+	decisionModal.Visible = true
+
+	local mCard = decisionModal:FindFirstChild("ModalCard") :: Frame?
+	if mCard then
+		mCard.Size = UDim2.new(0, 480, 0, 280)
+		TweenService:Create(mCard, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0, 520, 0, 310)
+		}):Play()
+	end
+end
+
+function BloodlineController.Open()
+	if not EnsureUI() or not page then return end
+	page.Visible = true
+	if bloodlineRemote then
+		bloodlineRemote:FireServer({ Action = "RequestSync" })
+	end
+	BloodlineController.Render()
+end
+
+function BloodlineController.Close()
+	if not page then return end
+	page.Visible = false
+	if decisionModal then decisionModal.Visible = false end
 end
 
 function BloodlineController.Init()
-	if isInitialized then return end
-	isInitialized = true
+	bloodlineRemote = RemoteEvents.GetRemote("BloodlineAction")
 
-	local lp = Players.LocalPlayer
-	local pGui = lp:WaitForChild("PlayerGui") :: PlayerGui
-	local screenGui = pGui:WaitForChild("BloodlineGui", 10) :: ScreenGui?
-	if not screenGui then
-		warn("[BloodlineController] BloodlineGui not found in PlayerGui.")
-		return
-	end
-
-	local overlayBackdrop = screenGui:WaitForChild("OverlayBackdrop") :: Frame
-	local mainFrame = overlayBackdrop:WaitForChild("MainFrame") :: Frame
-	local uiScale = mainFrame:WaitForChild("UIScale") :: UIScale
-
-	local headerFrame = mainFrame:WaitForChild("HeaderFrame") :: Frame
-	local closeBtn = headerFrame:WaitForChild("CloseImageButton") :: TextButton
-
-	-- Left Column Elements
-	local firstFrame = mainFrame:WaitForChild("FirstFrame") :: Frame
-	local leftSub1 = firstFrame:WaitForChild("SubFrame1") :: Frame
-	local tierPill = leftSub1:WaitForChild("TierPill") :: Frame
-	local showcasePlate = leftSub1:WaitForChild("ShowcasePlate") :: Frame
-	local lineageName = showcasePlate:WaitForChild("LineageName") :: TextLabel
-	local passiveSummary = showcasePlate:WaitForChild("PassiveSummary") :: TextLabel
-	local lineageDesc = leftSub1:WaitForChild("LineageDescription") :: TextLabel
-
-	-- Meridian Vault Slot Rows
-	local leftSub2 = firstFrame:WaitForChild("SubFrame2") :: Frame
-	local slotRow1 = leftSub2:WaitForChild("SlotRow_1") :: Frame
-	local slotLabel1 = slotRow1:WaitForChild("SlotLabel") :: TextLabel
-	local slotBtn1 = slotRow1:WaitForChild("SlotActionBtn") :: TextButton
-
-	local slotRow2 = leftSub2:WaitForChild("SlotRow_2") :: Frame
-	local slotLabel2 = slotRow2:WaitForChild("SlotLabel") :: TextLabel
-	local slotBtn2 = slotRow2:WaitForChild("SlotActionBtn") :: TextButton
-
-	local slotRow3 = leftSub2:WaitForChild("SlotRow_3") :: Frame
-	local slotLabel3 = slotRow3:WaitForChild("SlotLabel") :: TextLabel
-	local slotBtn3 = slotRow3:WaitForChild("SlotActionBtn") :: TextButton
-
-	-- Right Column Elements
-	local secondFrame = mainFrame:WaitForChild("SecondFrame") :: Frame
-	local rightSub1 = secondFrame:WaitForChild("SubFrame1") :: Frame
-	local legPityPill = rightSub1:WaitForChild("LegendaryPityPill") :: Frame
-	local mythPityPill = rightSub1:WaitForChild("MythicPityPill") :: Frame
-	local stonesPill = rightSub1:WaitForChild("StonesPill") :: Frame
-	local buy1Btn = rightSub1:WaitForChild("Buy1Btn") :: TextButton
-	local buy10Btn = rightSub1:WaitForChild("Buy10Btn") :: TextButton
-
-	local rightSub2 = secondFrame:WaitForChild("SubFrame2") :: Frame
-	local spinsPill = rightSub2:WaitForChild("SpinsPill") :: Frame
-	local spin1xBtn = rightSub2:WaitForChild("Spin1xBtn") :: TextButton
-	local spin10xBtn = rightSub2:WaitForChild("Spin10xBtn") :: TextButton
-
-	-- Decision Modal
-	local decisionModal = overlayBackdrop:WaitForChild("DecisionModal") :: Frame
-	local decPlate = decisionModal:WaitForChild("DecPlate") :: Frame
-	local decLineageName = decPlate:WaitForChild("DecLineageName") :: TextLabel
-	local decSummary = decPlate:WaitForChild("DecSummary") :: TextLabel
-	local claimActiveBtn = decisionModal:WaitForChild("ClaimActiveBtn") :: TextButton
-	local saveSlotBtn = decisionModal:WaitForChild("SaveSlotBtn") :: TextButton
-	local discardBtn = decisionModal:WaitForChild("DiscardBtn") :: TextButton
-
-	local RemoteEvents = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Network"):WaitForChild("RemoteEvents") :: any)
-	local bloodlineRemote = RemoteEvents.GetRemote("BloodlineAction") :: RemoteEvent
-
-	local isOpen = false
-	local cachedMaxSlots = 1
-	local cachedSlots: { [number]: string } = {}
-
-	-- Button Micro-Interactions
-	local function wireButton(btn: TextButton)
-		local bScale = btn:FindFirstChild("UIScale") :: UIScale?
-		local glow = btn:FindFirstChild("GlowOverlayImage") :: ImageLabel?
-		if not bScale then return end
-
-		btn.MouseEnter:Connect(function()
-			if glow then glow.Visible = true end
-			TweenService:Create(bScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.03 }):Play()
-		end)
-		btn.MouseLeave:Connect(function()
-			if glow then glow.Visible = false end
-			TweenService:Create(bScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
-		end)
-		btn.MouseButton1Down:Connect(function()
-			TweenService:Create(bScale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.97 }):Play()
-		end)
-		btn.MouseButton1Up:Connect(function()
-			TweenService:Create(bScale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.03 }):Play()
-		end)
-	end
-
-	wireButton(closeBtn)
-	wireButton(spin1xBtn)
-	wireButton(spin10xBtn)
-	wireButton(buy1Btn)
-	wireButton(buy10Btn)
-	wireButton(slotBtn1)
-	wireButton(slotBtn2)
-	wireButton(slotBtn3)
-	wireButton(claimActiveBtn)
-	wireButton(saveSlotBtn)
-	wireButton(discardBtn)
-
-	-- Open & Close Tweens
-	local function openModal()
-		if isOpen then return end
-		isOpen = true
-		playClick()
-
-		screenGui.Enabled = true
-		overlayBackdrop.BackgroundTransparency = 1
-		overlayBackdrop.Visible = true
-		uiScale.Scale = 0.75
-
-		TweenService:Create(overlayBackdrop, TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			BackgroundTransparency = 0.45,
-		}):Play()
-
-		TweenService:Create(uiScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-			Scale = 1.0,
-		}):Play()
-
-		bloodlineRemote:FireServer({ Action = "GetState" })
-	end
-
-	local function closeModal()
-		if not isOpen then return end
-		isOpen = false
-		playClick()
-
-		decisionModal.Visible = false
-		local tInfo = TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-		local scaleTween = TweenService:Create(uiScale, tInfo, { Scale = 0.75 })
-		local fadeTween = TweenService:Create(overlayBackdrop, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			BackgroundTransparency = 1,
-		})
-
-		scaleTween:Play()
-		fadeTween:Play()
-		scaleTween.Completed:Connect(function()
-			if not isOpen then
-				overlayBackdrop.Visible = false
-				screenGui.Enabled = false
-				uiScale.Scale = 1.0
-			end
-		end)
-	end
-
-	closeBtn.Activated:Connect(closeModal)
-
-	-- Proximity Prompt Hook
-	local function bindAltarPrompt(prompt: ProximityPrompt)
-		prompt.RequiresLineOfSight = false
-		prompt.MaxActivationDistance = 25
-		prompt.HoldDuration = 0.3
-		prompt.Triggered:Connect(function()
-			openModal()
-		end)
-	end
-
-	local altar = workspace:FindFirstChild("BloodlineAltar")
-	local dais = altar and altar:FindFirstChild("AttunementDais")
-	local existingPrompt = dais and dais:FindFirstChild("BloodlineAltarPrompt") :: ProximityPrompt?
-	if existingPrompt then
-		bindAltarPrompt(existingPrompt)
-	else
-		workspace.DescendantAdded:Connect(function(desc)
-			if desc:IsA("ProximityPrompt") and desc.Name == "BloodlineAltarPrompt" then
-				bindAltarPrompt(desc)
-			end
-		end)
-	end
-
-	-- Formatting Helpers
-	local function updatePillCaption(pill: Frame, text: string)
-		local cap = pill:FindFirstChild("PillCaption") :: TextLabel?
-		if cap then cap.Text = string.upper(text) end
-	end
-
-	local function setButtonCaption(btn: TextButton, text: string)
-		local cap = btn:FindFirstChild("CaptionLabel") :: TextLabel?
-		if cap then cap.Text = string.upper(text) end
-	end
-
-	local function applyTierPillStyle(tierName: string)
-		updatePillCaption(tierPill, tierName)
-		local grad = tierPill:FindFirstChildWhichIsA("UIGradient")
-		local colors = TIER_GRADIENTS[tierName] or TIER_GRADIENTS.Common
-		if grad then
-			grad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, colors[1]),
-				ColorSequenceKeypoint.new(0.5, colors[2]),
-				ColorSequenceKeypoint.new(1, colors[3]),
-			})
-		end
-	end
-
-	local function formatPassivesText(passives: { [string]: number }?): string
-		if not passives or next(passives) == nil then
-			return "Base Attributes • No Ancestral Amplifications Active"
-		end
-
-		local parts = {}
-		if passives.DamageMultiplier then
-			table.insert(parts, string.format("+%d%% SWORD DMG", math.round((passives.DamageMultiplier - 1) * 100)))
-		end
-		if passives.HealthMultiplier then
-			table.insert(parts, string.format("+%d%% MAX HP", math.round((passives.HealthMultiplier - 1) * 100)))
-		end
-		if passives.QiGatherMultiplier then
-			table.insert(parts, string.format("+%d%% QI FLOW", math.round((passives.QiGatherMultiplier - 1) * 100)))
-		end
-		if passives.SpeedMultiplier then
-			table.insert(parts, string.format("+%d%% FOOTWORK", math.round((passives.SpeedMultiplier - 1) * 100)))
-		end
-		if passives.CritChance then
-			table.insert(parts, string.format("+%d%% CRIT", math.round(passives.CritChance * 100)))
-		end
-		if passives.GuardPierce then
-			table.insert(parts, string.format("+%d%% PIERCE", math.round(passives.GuardPierce * 100)))
-		end
-
-		if #parts == 0 then return "Ancestral Resonance Active" end
-		return table.concat(parts, " • ")
-	end
-
-	-- Slot Buttons Routing
-	slotBtn1.Activated:Connect(function()
-		playClick()
-		bloodlineRemote:FireServer({ Action = "EquipSlot", SlotIndex = 1 })
-	end)
-
-	slotBtn2.Activated:Connect(function()
-		playClick()
-		if cachedMaxSlots >= 2 then
-			bloodlineRemote:FireServer({ Action = "EquipSlot", SlotIndex = 2 })
-		else
-			bloodlineRemote:FireServer({ Action = "UnlockSlot", SlotIndex = 2 })
-		end
-	end)
-
-	slotBtn3.Activated:Connect(function()
-		playClick()
-		if cachedMaxSlots >= 3 then
-			bloodlineRemote:FireServer({ Action = "EquipSlot", SlotIndex = 3 })
-		else
-			bloodlineRemote:FireServer({ Action = "UnlockSlot", SlotIndex = 3 })
-		end
-	end)
-
-	-- Decision Modal Actions
-	claimActiveBtn.Activated:Connect(function()
-		playClick()
-		decisionModal.Visible = false
-		bloodlineRemote:FireServer({ Action = "ClaimRoll", TargetSlot = 1 })
-	end)
-
-	saveSlotBtn.Activated:Connect(function()
-		playClick()
-		decisionModal.Visible = false
-		local target = if cachedMaxSlots >= 2 then 2 else 1
-		bloodlineRemote:FireServer({ Action = "ClaimRoll", TargetSlot = target })
-	end)
-
-	discardBtn.Activated:Connect(function()
-		playClick()
-		decisionModal.Visible = false
-		bloodlineRemote:FireServer({ Action = "DiscardRoll" })
-	end)
-
-	-- Awakening & Exchange Buttons
-	spin1xBtn.Activated:Connect(function()
-		playClick()
-		bloodlineRemote:FireServer({ Action = "Spin" })
-	end)
-
-	spin10xBtn.Activated:Connect(function()
-		playClick()
-		bloodlineRemote:FireServer({ Action = "Spin10x" })
-	end)
-
-	buy1Btn.Activated:Connect(function()
-		playClick()
-		bloodlineRemote:FireServer({ Action = "ExchangeSpins", Amount = 1 })
-	end)
-
-	buy10Btn.Activated:Connect(function()
-		playClick()
-		bloodlineRemote:FireServer({ Action = "ExchangeSpins", Amount = 10 })
-	end)
-
-	-- Server Network Listener
-	bloodlineRemote.OnClientEvent:Connect(function(payload)
+	bloodlineRemote.OnClientEvent:Connect(function(payload: any)
 		if type(payload) ~= "table" then return end
+		local action = payload.Action
 
-		if payload.Action == "StateUpdate" then
-			lineageName.Text = string.upper(payload.DisplayName or payload.BloodlineId or "MORTAL MERIDIANS")
-			applyTierPillStyle(payload.Rarity or "Common")
-			passiveSummary.Text = formatPassivesText(payload.Passives)
-			lineageDesc.Text = payload.Description or ""
-
-			updatePillCaption(spinsPill, string.format("+%d AWAKEN BEADS", payload.RemainingSpins or 0))
-			if payload.RemainingStones then
-				updatePillCaption(stonesPill, string.format("+%d STONES", payload.RemainingStones))
-			end
-
-			-- Update Pity Trackers
-			updatePillCaption(legPityPill, string.format("LEGEND: %d/30", payload.LegendaryPity or 0))
-			updatePillCaption(mythPityPill, string.format("MYTHIC: %d/100", payload.MythicPity or 0))
-
-			-- Update Meridian Slots Drawer
-			cachedMaxSlots = payload.MaxSlots or 1
-			cachedSlots = payload.Slots or {}
-
-			slotLabel1.Text = string.format("SLOT 1 (ACTIVE): %s", string.upper(cachedSlots[1] or payload.DisplayName or "None"))
-			setButtonCaption(slotBtn1, "ACTIVE")
-
-			if cachedMaxSlots >= 2 then
-				local s2Name = cachedSlots[2] or "Empty"
-				slotLabel2.Text = string.format("SLOT 2: %s", string.upper(s2Name))
-				setButtonCaption(slotBtn2, if s2Name ~= "Empty" then "EQUIP" else "UNLOCKED")
-			else
-				slotLabel2.Text = "SLOT 2: [LOCKED · REACH FOUNDATION]"
-				setButtonCaption(slotBtn2, "UNLOCK")
-			end
-
-			if cachedMaxSlots >= 3 then
-				local s3Name = cachedSlots[3] or "Empty"
-				slotLabel3.Text = string.format("SLOT 3: %s", string.upper(s3Name))
-				setButtonCaption(slotBtn3, if s3Name ~= "Empty" then "EQUIP" else "UNLOCKED")
-			else
-				slotLabel3.Text = "SLOT 3: [LOCKED · 25,000 STONES]"
-				setButtonCaption(slotBtn3, "UNLOCK")
-			end
-
-		elseif payload.Action == "RollDecide" then
-			-- Open Keep or Discard Modal
-			playClick()
-			decisionModal.Visible = true
-			decLineageName.Text = string.upper(payload.DisplayName or payload.BloodlineId)
-			decSummary.Text = formatPassivesText(payload.Passives)
-
-			updatePillCaption(spinsPill, string.format("+%d AWAKEN BEADS", payload.RemainingSpins or 0))
-			updatePillCaption(legPityPill, string.format("LEGEND: %d/30", payload.LegendaryPity or 0))
-			updatePillCaption(mythPityPill, string.format("MYTHIC: %d/100", payload.MythicPity or 0))
-
-		elseif payload.Action == "RollDiscarded" then
-			decisionModal.Visible = false
-			if payload.RemainingStones then
-				updatePillCaption(stonesPill, string.format("+%d STONES", payload.RemainingStones))
-			end
-
-		elseif payload.Action == "ActionFailed" or payload.Action == "SpinFailed" or payload.Action == "ExchangeFailed" then
-			warn("[BloodlineController] " .. tostring(payload.Message))
+		if (action == "BloodlineAwakened" or action == "RollResult") and payload.BloodlineId then
+			BloodlineController.ShowDecisionModal(payload.BloodlineId)
+		elseif action == "SyncBloodlineData" or action == "TributeSuccess" or action == "SlotUpdated" then
+			lastSyncData = payload
+			BloodlineController.Render()
 		end
 	end)
 
-	overlayBackdrop.Visible = false
-	screenGui.Enabled = false
-	print("[BloodlineController] Initialized with Meridian Vault Slots & Pity Engine.") 
-end
+	player:GetAttributeChangedSignal("Bloodline"):Connect(BloodlineController.Render)
+	player:GetAttributeChangedSignal("BloodlineSpins"):Connect(BloodlineController.Render)
+	player:GetAttributeChangedSignal("LegendaryPity"):Connect(BloodlineController.Render)
+	player:GetAttributeChangedSignal("MythicPity"):Connect(BloodlineController.Render)
+	player:GetAttributeChangedSignal("SpiritStones"):Connect(BloodlineController.Render)
 
-function BloodlineController.Start()
-	BloodlineController.Init()
+	print("[ASCEND] BloodlineController Initialized & Connected to MainHub.")
 end
-
-task.defer(function()
-	BloodlineController.Init()
-end)
 
 return BloodlineController

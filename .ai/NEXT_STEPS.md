@@ -16,6 +16,8 @@
 │   16 typed remotes, 10 Humanoid R6 mob models and spawners.                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ [ACTIVE] PHASE 2: ARCHITECTURE CLEANUP & ANTI-PATTERN PURGE                 │
+│ - MainHub master drawer controller wiring (Bloodline, Stats, Codex)         │
+│ - Gathering channeled hold delay & strict quest progression validation      │
 │ - Memory leak audit (characterConnections & event listeners)                │
 │ - Circular dependency decoupling (cached getters across managers)           │
 │ - Strict typing (--!strict) across configs and remote handlers              │
@@ -26,13 +28,13 @@
 │ - Defensive VFX wiring (ActiveShield on T, ShieldBreakEffects on break)     │
 │ - Black-bordered white ribbon sword trails & Shunpo dash polish             │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 4: FLYING SWORD 3D FLIGHT ENGINE (CLIENT REFINEMENT)                  │
-│ - Server handover complete (realm speed scaling, 25 Qi/s drain)             │
-│ - Client flight smoothing, camera pitch roll, and dismount transition       │
+│ [CLOSED] PHASE 4: FLYING SWORD 3D FLIGHT ENGINE                             │
+│ - Completed Phase 8.4: 3D flight, realm speed scaling, 25 Qi/s drain,       │
+│   ground/obstacle clearance cushions, and auto-dismount.                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 5: MISSING GUI SCREENS & INTERFACES                                   │
-│ - Complete AlchemyCauldronGui, BossHealthHUD, CharacterStatsGui             │
-│ - Build SpiritPouchGui Studio hierarchy; connect live inventory             │
+│ PHASE 5: UNIFIED GUI SYSTEMS & MODAL REFINEMENT                             │
+│ - Complete docked controller wiring (CharacterStats, Bloodline, Codex)      │
+│ - Connect Heavenly Treasury (Shop) & Celestial Updates to backend engines  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 6: BEGINNER WALKTHROUGH & GUIDING SYSTEMS                             │
 │ - 3D guide lines and progressive quest markers                              │
