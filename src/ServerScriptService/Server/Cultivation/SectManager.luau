@@ -2,24 +2,27 @@
 --[[
     SectManager.luau
     Location: src/ServerScriptService/Server/Cultivation/SectManager.luau
-    Server-authoritative Sect Management Engine:
-      - 3-Tier Sect Duties (DefeatMob, Gather, CraftDan)
-      - Promotion pipeline
-      - Daily stipend claims
+    Server-authoritative Sect progression, 24-hour daily stipend, and 3-tier duty tracking:
+    - 24-Hour (86,400s) persistent cooldown cycle keyed to player.UserId & PlayerDataManager
+    - Strictly matches 'Spirit Grass' for Herbal Foraging duty (rejects other herbs)
+    - Item-agnostic quest submission upon reaching target counts
+    - Full countdown timestamps sent to client for live ticking clock
 ]]
 
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 
+local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
-local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
-
 local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
-local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
+local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
+
+local SectManager = {}
+
+local STIPEND_COOLDOWN_SECONDS = 86400 -- 24 Hours in Seconds
 
 export type ServerQuestState = {
 	QuestId: string,
@@ -28,7 +31,8 @@ export type ServerQuestState = {
 	AllTiersCompleted: boolean,
 }
 
-local SectManager = {}
+local playerQuests: { [Player]: { [string]: ServerQuestState } } = {}
+local stipendCacheByUserId: { [number]: number } = {} -- Keyed to UserId so it never wipes on player reload
 local sectRemote: RemoteEvent? = nil
 
 local function GetSectRemote(): RemoteEvent
@@ -38,28 +42,12 @@ local function GetSectRemote(): RemoteEvent
 	return sectRemote
 end
 
-local function SafeGet(fnName: string, fn: any, ...: any): any
-	if type(fn) ~= "function" then return nil end
-	local ok, result = pcall(fn, ...)
-	if not ok then return nil end
-	return result
-end
-
-local playerQuests: { [Player]: { [string]: ServerQuestState } } = {}
-local lastStipendClaim: { [Player]: number } = {}
-
-local PROMOTION_CHAIN: { SectConfig.DiscipleRank } = {
-	"OuterDisciple",
-	"InnerDisciple",
-	"CoreDisciple",
-	"DirectDisciple",
-	"SectElder",
-	"GrandElder",
-}
-
-local function GetRealmTier(realmTier: CultivationConfig.RealmTier): number
-	local info = CultivationConfig[realmTier]
-	return if info then info.Tier else 1
+local function SafeGet(funcName: string, func: any, ...)
+	if type(func) == "function" then
+		local success, result = pcall(func, ...)
+		if success then return result end
+	end
+	return nil
 end
 
 function SectManager.Init()
@@ -81,9 +69,12 @@ function SectManager.Init()
 	end)
 
 	Players.PlayerAdded:Connect(SectManager.OnPlayerAdded)
+
+	-- Delayed memory purge: PlayerDataManager.SaveData has plenty of time to save
 	Players.PlayerRemoving:Connect(function(player: Player)
-		playerQuests[player] = nil
-		lastStipendClaim[player] = nil
+		task.delay(10, function()
+			playerQuests[player] = nil
+		end)
 	end)
 
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -92,8 +83,8 @@ function SectManager.Init()
 		end)
 	end
 
-	task.spawn(SectManager.SetupQuestElderPrompt)
-	print("[ASCEND] SectManager Initialized (3-Tier Quest Engine Active).")
+	SectManager.SetupQuestElderPrompt()
+	print("[ASCEND] SectManager Initialized (24h Daily Cycle & Persistent Quest Sync Active).")
 end
 
 function SectManager.OnPlayerAdded(player: Player)
@@ -103,6 +94,11 @@ function SectManager.OnPlayerAdded(player: Player)
 			["Quest_RefineDan"]          = { QuestId = "Quest_RefineDan", Tier = 1, CurrentAmount = 0, AllTiersCompleted = false },
 			["Quest_SparringTrial"]       = { QuestId = "Quest_SparringTrial", Tier = 1, CurrentAmount = 0, AllTiersCompleted = false },
 		}
+	end
+
+	local savedTimestamp = player:GetAttribute("LastStipendClaim")
+	if typeof(savedTimestamp) == "number" and savedTimestamp > 0 then
+		stipendCacheByUserId[player.UserId] = savedTimestamp
 	end
 
 	task.spawn(function()
@@ -116,15 +112,20 @@ function SectManager.GetQuestState(player: Player): { [string]: ServerQuestState
 end
 
 function SectManager.SetQuestState(player: Player, savedQuests: { [string]: ServerQuestState }?)
-	if savedQuests then playerQuests[player] = savedQuests end
+	if savedQuests and type(savedQuests) == "table" then
+		playerQuests[player] = savedQuests
+	end
 end
 
 function SectManager.GetLastStipendClaim(player: Player): number?
-	return lastStipendClaim[player]
+	return stipendCacheByUserId[player.UserId] or player:GetAttribute("LastStipendClaim")
 end
 
 function SectManager.SetLastStipendClaim(player: Player, timestamp: number?)
-	lastStipendClaim[player] = timestamp
+	if timestamp and timestamp > 0 then
+		stipendCacheByUserId[player.UserId] = timestamp
+		player:SetAttribute("LastStipendClaim", timestamp)
+	end
 end
 
 function SectManager.SetupQuestElderPrompt()
@@ -137,11 +138,11 @@ function SectManager.SetupQuestElderPrompt()
 		end
 	end
 
-	for _, desc in ipairs(Workspace:GetDescendants()) do
+	for _, desc in ipairs(workspace:GetDescendants()) do
 		if desc:IsA("ProximityPrompt") then BindPrompt(desc) end
 	end
 
-	Workspace.DescendantAdded:Connect(function(desc)
+	workspace.DescendantAdded:Connect(function(desc)
 		if desc:IsA("ProximityPrompt") then BindPrompt(desc) end
 	end)
 end
@@ -156,7 +157,7 @@ function SectManager.SyncSectData(player: Player)
 	if not cultData then return end
 
 	local rank = SafeGet("GetSectRank", PlayerDataManager.GetSectRank, player) or "OuterDisciple"
-	local rankDef = SectConfig.GetRank(rank)
+	local rankDef = SectConfig.GetRank(rank) or { DisplayName = "Outer Disciple", DailyStipendStones = 100 }
 	local contribution = SafeGet("GetContributionPoints", PlayerDataManager.GetContributionPoints, player) or 0
 	local stones = SafeGet("GetSpiritStones", PlayerDataManager.GetSpiritStones, player) or 0
 	local rawQuests = playerQuests[player] or {}
@@ -176,6 +177,11 @@ function SectManager.SyncSectData(player: Player)
 		}
 	end
 
+	local now = os.time()
+	local lastClaim = stipendCacheByUserId[player.UserId] or player:GetAttribute("LastStipendClaim") or 0
+	local isClaimed = (lastClaim > 0) and ((now - lastClaim) < STIPEND_COOLDOWN_SECONDS)
+	local remaining = if isClaimed then math.max(0, STIPEND_COOLDOWN_SECONDS - (now - lastClaim)) else 0
+
 	GetSectRemote():FireClient(player, {
 		Action = "SyncSectData",
 		Rank = rank,
@@ -183,7 +189,10 @@ function SectManager.SyncSectData(player: Player)
 		ContributionPoints = contribution,
 		SpiritStones = stones,
 		Quests = clientQuests,
-		StipendClaimed = (lastStipendClaim[player] ~= nil and (os.time() - lastStipendClaim[player]) < 72000),
+		StipendClaimed = isClaimed,
+		LastStipendClaim = lastClaim,
+		NextStipendTimestamp = lastClaim + STIPEND_COOLDOWN_SECONDS,
+		RemainingSeconds = remaining,
 		Realm = cultData.Realm or "QiCondensation",
 		Order = cultData.Order or 1,
 	})
@@ -193,11 +202,24 @@ function SectManager.AddQuestProgress(player: Player, questType: "Gather" | "Cul
 	local quests = playerQuests[player]
 	if not quests then return end
 
+	local cleanTarget = targetId:gsub("_%d+Yr$", ""):gsub("%s+", ""):lower()
+
 	for _, quest in pairs(quests) do
 		if not quest.AllTiersCompleted then
 			local questDef = SectConfig.GetQuest(quest.QuestId, quest.Tier)
 			if questDef and questDef.QuestType == questType then
-				if questDef.TargetId == targetId or questDef.TargetId == "AnyDan" then
+				local cleanDefTarget = (questDef.TargetId or ""):gsub("%s+", ""):lower()
+
+				-- Strict Herbal Foraging: ONLY Spirit Grass advances this quest
+				local isGatherMatch = (questType == "Gather") and (
+					cleanDefTarget == "spiritgrass" and (cleanTarget == "spiritgrass" or cleanTarget == "spiritgrasscluster")
+				)
+				local isDanMatch = (questType == "CraftDan") and (cleanDefTarget == "anydan" or cleanTarget:find("dan") or cleanTarget:find("pill"))
+				local isMobMatch = (questType == "DefeatMob") and (
+					cleanDefTarget == "roguedisciple" and (cleanTarget == "roguedisciple" or cleanTarget:find("rogue") or cleanTarget:find("disciple"))
+				)
+
+				if isGatherMatch or isDanMatch or isMobMatch or (cleanDefTarget == cleanTarget) then
 					quest.CurrentAmount = math.min(questDef.TargetAmount, quest.CurrentAmount + amount)
 					SectManager.SyncSectData(player)
 				end
@@ -222,17 +244,7 @@ function SectManager.ProcessSubmitQuest(player: Player, questId: any)
 
 	if quest.CurrentAmount < questDef.TargetAmount then return end
 
-	if questDef.QuestType == "Gather" then
-		if not InventoryManager.HasItem(player, questDef.TargetId, questDef.TargetAmount) then
-			local variantId = questDef.TargetId .. "_1Yr"
-			if not InventoryManager.HasItem(player, variantId, questDef.TargetAmount) then return else
-				InventoryManager.RemoveItem(player, variantId, questDef.TargetAmount)
-			end
-		else
-			InventoryManager.RemoveItem(player, questDef.TargetId, questDef.TargetAmount)
-		end
-	end
-
+	-- Award Contribution Points, Spirit Stones, and Cultivated Qi
 	SafeGet("AddContributionPoints", PlayerDataManager.AddContributionPoints, player, questDef.RewardContribution)
 	SafeGet("AddSpiritStones", PlayerDataManager.AddSpiritStones, player, questDef.RewardSpiritStones)
 
@@ -244,6 +256,7 @@ function SectManager.ProcessSubmitQuest(player: Player, questId: any)
 		CultivationManager.SyncClient(player)
 	end
 
+	-- Advance tier or mark completed
 	if quest.Tier < 3 then
 		quest.Tier += 1
 		quest.CurrentAmount = 0
@@ -253,72 +266,88 @@ function SectManager.ProcessSubmitQuest(player: Player, questId: any)
 		quest.CurrentAmount = questDef.TargetAmount
 	end
 
+	SectManager.SyncSectData(player)
+
 	GetSectRemote():FireClient(player, {
 		Action = "QuestCompleted",
 		QuestId = questId,
 		RewardContribution = questDef.RewardContribution,
 		RewardSpiritStones = questDef.RewardSpiritStones,
-		RewardQi = questDef.RewardQi,
 	})
+end
+
+function SectManager.ProcessClaimStipend(player: Player)
+	local now = os.time()
+	local last = stipendCacheByUserId[player.UserId] or player:GetAttribute("LastStipendClaim") or 0
+
+	-- Strict 24-Hour Enforcement
+	if last > 0 and (now - last) < STIPEND_COOLDOWN_SECONDS then
+		SectManager.SyncSectData(player)
+		return
+	end
+
+	stipendCacheByUserId[player.UserId] = now
+	player:SetAttribute("LastStipendClaim", now)
+
+	local rank = SafeGet("GetSectRank", PlayerDataManager.GetSectRank, player) or "OuterDisciple"
+	local rankDef = SectConfig.GetRank(rank)
+	if not rankDef then return end
+
+	SafeGet("AddSpiritStones", PlayerDataManager.AddSpiritStones, player, rankDef.DailyStipendStones)
+
+	local danItemId = "CommonSpiritDan_1Yr"
+	if rank == "InnerDisciple" then danItemId = "SpiritualSpiritDan_1Yr"
+	elseif rank == "CoreDisciple" then danItemId = "EarthSpiritDan_1Yr"
+	elseif rank == "DirectDisciple" or rank == "SectElder" or rank == "GrandElder" then danItemId = "HeavenSpiritDan_1Yr" end
+
+	pcall(function()
+		InventoryManager.AddItem(player, danItemId, 1)
+	end)
 
 	SectManager.SyncSectData(player)
+
+	GetSectRemote():FireClient(player, {
+		Action = "StipendClaimed",
+		StonesGranted = rankDef.DailyStipendStones,
+		DanGranted = danItemId,
+	})
 end
 
 function SectManager.ProcessPromotion(player: Player)
 	local currentRank = SafeGet("GetSectRank", PlayerDataManager.GetSectRank, player) or "OuterDisciple"
-	local currentContribution = SafeGet("GetContributionPoints", PlayerDataManager.GetContributionPoints, player) or 0
-	local cultivation = CultivationManager.GetPlayerData(player)
-	if not cultivation then return end
+	local PROMOTION_ORDER = { "OuterDisciple", "InnerDisciple", "CoreDisciple", "DirectDisciple", "SectElder", "GrandElder" }
 
-	local nextRank: SectConfig.DiscipleRank? = nil
-	for i, rank in ipairs(PROMOTION_CHAIN) do
-		if rank == currentRank and i < #PROMOTION_CHAIN then
-			nextRank = PROMOTION_CHAIN[i + 1]
+	local nextRank: string? = nil
+	for i, r in ipairs(PROMOTION_ORDER) do
+		if r == currentRank and i < #PROMOTION_ORDER then
+			nextRank = PROMOTION_ORDER[i + 1]
 			break
 		end
 	end
 
 	if not nextRank then return end
-	local nextRankDef = SectConfig.GetRank(nextRank)
 
-	if currentContribution < nextRankDef.RequiredContribution then return end
+	local nextDef = SectConfig.GetRank(nextRank)
+	if not nextDef then return end
 
-	local playerRealmTier = GetRealmTier(cultivation.Realm)
-	local reqRealmTier = GetRealmTier(nextRankDef.RequiredRealm)
-	if playerRealmTier < reqRealmTier then return end
+	local currentCp = SafeGet("GetContributionPoints", PlayerDataManager.GetContributionPoints, player) or 0
+	if currentCp < nextDef.RequiredContribution then return end
+
+	local cultData = CultivationManager.GetPlayerData(player)
+	if cultData and nextDef.MinRealm then
+		local curIdx = CultivationConfig.GetRealmIndex(cultData.Realm)
+		local minIdx = CultivationConfig.GetRealmIndex(nextDef.MinRealm)
+		if curIdx < minIdx then return end
+	end
 
 	SafeGet("SetSectRank", PlayerDataManager.SetSectRank, player, nextRank)
+	SectManager.SyncSectData(player)
 
 	GetSectRemote():FireClient(player, {
-		Action = "PromotionSuccess",
+		Action = "Promoted",
 		NewRank = nextRank,
-		DisplayName = nextRankDef.DisplayName,
+		RankTitle = nextDef.DisplayName,
 	})
-
-	SectManager.SyncSectData(player)
-end
-
-function SectManager.ProcessClaimStipend(player: Player)
-	local lastClaim = lastStipendClaim[player] or 0
-	local now = os.time()
-	local COOLDOWN = 72000
-
-	if now - lastClaim < COOLDOWN then return end
-
-	local currentRank = SafeGet("GetSectRank", PlayerDataManager.GetSectRank, player) or "OuterDisciple"
-	local rankDef = SectConfig.GetRank(currentRank)
-	local stipend = rankDef.DailyStipendStones
-
-	lastStipendClaim[player] = now
-	SafeGet("AddSpiritStones", PlayerDataManager.AddSpiritStones, player, stipend)
-
-	GetSectRemote():FireClient(player, {
-		Action = "StipendClaimed",
-		Amount = stipend,
-		NewBalance = SafeGet("GetSpiritStones", PlayerDataManager.GetSpiritStones, player) or 0,
-	})
-
-	SectManager.SyncSectData(player)
 end
 
 return SectManager

@@ -2,14 +2,13 @@
 --[[
     InventoryController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InventoryController.luau
-    Directly bound to StarterGui.SpiritPouchInventoryGui:
-    - 🚀 Wired to ModalWindowManager (Auto-closes when opening other menus)
-    - Dedicated 'Tab' and 'I' Keybinds (CoreGui PlayerList suppressed)
-    - Max 5 slots per row with balanced margins (Zero awkward gaps)
-    - Vibrant rarity-matched slot background gradients (Emerald, Azure, Amethyst, Gold, Crimson)
+    Directly bound to MainHubGui.MenuBackdrop.PageContainer.Page_Inventory:
+    - 🚀 Wired to ModalWindowManager & MainHub navigation
+    - Max 5 slots per row with balanced margins
+    - Vibrant rarity-matched slot background gradients
     - Instant scroll snap to top on tab/category/search switches
-    - 2D High-Resolution Weapon Showcase for all 8 Sword Tiers (Replaces 3D ViewportFrames)
-    - Universal Pop-Up Animation (Spring Scale 0.75 -> 1.0, Backdrop Fade & Universal SFX)
+    - 2D High-Resolution Weapon Showcase for all 8 Sword Tiers
+    - Server-synchronized with InventoryManager via UpdateInventory remote
 ]]
 
 local Players = game:GetService("Players")
@@ -61,8 +60,8 @@ local function PlayPanelClickSFX()
 	game:GetService("Debris"):AddItem(sound, 1.2)
 end
 
-local screenGui: ScreenGui
-local overlayBackdrop: Frame
+local screenGui: ScreenGui? = nil
+local overlayBackdrop: Frame? = nil
 local mainFrame: GuiObject
 local mainScale: UIScale?
 local headerFrame: Frame
@@ -134,12 +133,6 @@ local RARITY_TOKENS: { [string]: RarityColorToken } = {
 
 local function GetRarityToken(rarityName: string): RarityColorToken
 	return RARITY_TOKENS[rarityName] or RARITY_TOKENS.Common
-end
-
-local function IsPositionInsideGui(guiObject: GuiObject, x: number, y: number): boolean
-	local pos = guiObject.AbsolutePosition
-	local size = guiObject.AbsoluteSize
-	return x >= pos.X and x <= (pos.X + size.X) and y >= pos.Y and y <= (pos.Y + size.Y)
 end
 
 local function GetItemIconAsset(itemId: string): string?
@@ -219,36 +212,26 @@ function InventoryController.Init()
 	inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
 	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
 
-	-- Register with Modal Window Manager
-	local mgr = GetModalManager()
-	if mgr then
-		mgr.Register("Inventory", function()
-			InventoryController.Close()
-		end)
+	-- 1. Locate MainFrame (Docked in MainHubGui or legacy fallback)
+	local hub = playerGui:WaitForChild("MainHubGui", 10) :: ScreenGui?
+	if hub then
+		local backdrop = hub:WaitForChild("MenuBackdrop", 5) :: Frame?
+		local pageContainer = backdrop and backdrop:WaitForChild("PageContainer", 5) :: Frame?
+		mainFrame = pageContainer and (pageContainer:WaitForChild("Page_Inventory", 5) :: GuiObject?)
 	end
 
-	-- Suppress CoreGui PlayerList
-	task.spawn(function()
-		for attempt = 1, 6 do
-			local success = pcall(function()
-				StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
-			end)
-			if success then break end
-			task.wait(0.2)
+	if not mainFrame then
+		screenGui = playerGui:WaitForChild("SpiritPouchInventoryGui", 5) :: ScreenGui?
+		if screenGui then
+			overlayBackdrop = screenGui:WaitForChild("OverlayBackdrop", 5) :: Frame?
+			mainFrame = (overlayBackdrop and overlayBackdrop:WaitForChild("MainFrame", 5) or screenGui:WaitForChild("MainFrame", 5)) :: GuiObject
 		end
-	end)
+	end
 
-	screenGui = playerGui:WaitForChild("SpiritPouchInventoryGui", 10) :: ScreenGui
-	if not screenGui then return end
-
-	local tempHandler = screenGui:FindFirstChild("SpiritPouchPreviewHandler")
-	if tempHandler then tempHandler:Destroy() end
-
-	screenGui.DisplayOrder = 20
-	screenGui.Enabled = false
-
-	overlayBackdrop = screenGui:WaitForChild("OverlayBackdrop", 5) :: Frame
-	mainFrame = (overlayBackdrop:WaitForChild("MainFrame", 5) or screenGui:WaitForChild("MainFrame", 5)) :: GuiObject
+	if not mainFrame then
+		warn("[InventoryController] MainFrame not found in MainHubGui or SpiritPouchInventoryGui!")
+		return
+	end
 	mainFrame.Active = true
 
 	mainScale = mainFrame:FindFirstChildOfClass("UIScale")
@@ -335,16 +318,8 @@ function InventoryController.Init()
 	if closeButton then
 		closeButton.MouseButton1Click:Connect(function()
 			InventoryController.Close()
-		end)
-	end
-
-	if overlayBackdrop then
-		overlayBackdrop.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				local clickPos = input.Position
-				if not IsPositionInsideGui(mainFrame, clickPos.X, clickPos.Y) then
-					InventoryController.Close()
-				end
+			if _G.MainHubSetOpen then
+				_G.MainHubSetOpen(false)
 			end
 		end)
 	end
@@ -411,6 +386,7 @@ function InventoryController.Init()
 		end)
 	end
 
+	-- 2. Server Inventory Event Listener
 	updateInventoryRemote.OnClientEvent:Connect(function(newInventory: any)
 		inventoryCache = {}
 		if newInventory and type(newInventory) == "table" then
@@ -424,20 +400,13 @@ function InventoryController.Init()
 		InventoryController.RenderGrid()
 	end)
 
+	-- 3. Initial Server Sync Request
 	task.defer(function()
 		task.wait(0.3)
 		inventoryActionRemote:FireServer({ Action = "RequestSync" })
 	end)
 
-	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-		if UserInputService:GetFocusedTextBox() ~= nil then return end
-
-		if input.KeyCode == Enum.KeyCode.Tab or input.KeyCode == Enum.KeyCode.I then
-			InventoryController.Toggle()
-		end
-	end)
-
-	print("[ASCEND] InventoryController Initialized (Modal Exclusion & Max 5 Slots/Row Active).")
+	print("[ASCEND] InventoryController Initialized & Connected to MainHubGui Page_Inventory.")
 end
 
 local GRID_MAX_COLUMNS = 5
@@ -491,7 +460,6 @@ function InventoryController.Open()
 	if isOpen then return end
 	isOpen = true
 
-	-- 🚀 Request mutual exclusion open
 	local mgr = GetModalManager()
 	if mgr then
 		mgr.RequestOpen("Inventory")
@@ -499,8 +467,8 @@ function InventoryController.Open()
 
 	PlayPanelClickSFX()
 
-	screenGui.Enabled = true
-	mainFrame.Visible = true
+	if screenGui then screenGui.Enabled = true end
+	if mainFrame then mainFrame.Visible = true end
 
 	if overlayBackdrop then
 		overlayBackdrop.BackgroundTransparency = 1
@@ -541,30 +509,9 @@ function InventoryController.Close()
 		activeInspectionSpinCleanup = nil
 	end
 
-	if mainScale and overlayBackdrop then
-		local scaleTween = TweenService:Create(mainScale, TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-			Scale = 0.75
-		})
-		local fadeTween = TweenService:Create(overlayBackdrop, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			BackgroundTransparency = 1
-		})
-
-		scaleTween:Play()
-		fadeTween:Play()
-
-		scaleTween.Completed:Connect(function()
-			if not isOpen then
-				screenGui.Enabled = false
-				mainFrame.Visible = false
-				overlayBackdrop.Visible = false
-				mainScale.Scale = 1.0
-			end
-		end)
-	else
-		screenGui.Enabled = false
-		mainFrame.Visible = false
-		if overlayBackdrop then overlayBackdrop.Visible = false end
-	end
+	if screenGui then screenGui.Enabled = false end
+	if mainFrame then mainFrame.Visible = false end
+	if overlayBackdrop then overlayBackdrop.Visible = false end
 end
 
 function InventoryController.RenderGrid()

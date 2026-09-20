@@ -2,22 +2,19 @@
 --[[
     SectController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SectController.luau
-    Client UI controller for the Sect Elder Pavilion:
-    - 🚀 Wired to ModalWindowManager (Auto-closes when opening other menus)
-    - 'M' Keybind shortcut to toggle Sect Duties & Stipend from anywhere
-    - Instant ProximityPrompt trigger for Deacon Zhao & Notice Board
-    - Full sync for Disciple profile, Daily Stipends, Promotions, and 3-Tier Duties
+    Client UI controller bound to MainHubGui.MenuBackdrop.PageContainer.Page_Faction:
+    - Guaranteed single-listener binding (permanently purges spammed click SFX)
+    - 24-Hour live ticking countdown clock on Daily Stipend
+    - Instant quest submission and live progress display
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
-local ProximityPromptService = game:GetService("ProximityPromptService")
+local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
-local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local UIAssets = require(ReplicatedStorage.Shared.Configs.UIAssets)
 
 local SectController = {}
@@ -25,26 +22,44 @@ SectController.__index = SectController
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
-
 local sectRemote: RemoteEvent
-local modalManager: any = nil
 
-local function GetModalManager(): any
-	if not modalManager then
-		local controllers = player:WaitForChild("PlayerScripts"):WaitForChild("Controllers")
-		local mod = controllers:FindFirstChild("ModalWindowManager")
-		if mod and mod:IsA("ModuleScript") then
-			modalManager = require(mod)
-		end
-	end
-	return modalManager
-end
+local mainFrame: Frame? = nil
+local discipleUserName: TextLabel? = nil
+local discipleRankName: TextLabel? = nil
+local discipleBadgeName: TextLabel? = nil
+local stipendDescription: TextLabel? = nil
+local stipendButton: GuiButton? = nil
+local stipendButtonText: TextLabel? = nil
+local promotionButton: GuiButton? = nil
+local promotionButtonText: TextLabel? = nil
 
-local CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
+type QuestCardUI = {
+	Frame: Frame,
+	Title: TextLabel?,
+	Description: TextLabel?,
+	Button: GuiButton?,
+	ButtonText: TextLabel?,
+	Glow: ImageLabel?,
+}
 
+local questCards: { QuestCardUI } = {}
+local lastSectData: any = nil
+local isOpen = false
+local isInitialized = false
+local countdownThread: thread? = nil
+local buttonConnections: { RBXScriptConnection } = {}
+
+local QUEST_IDS = {
+	"Quest_GatherSpiritGrass",
+	"Quest_RefineDan",
+	"Quest_SparringTrial",
+}
+
+local PANEL_CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
 local function PlayPanelClickSFX()
 	local sound = Instance.new("Sound")
-	sound.SoundId = CLICK_SOUND_ID
+	sound.SoundId = PANEL_CLICK_SOUND_ID
 	sound.Volume = 0.55
 	sound.PlaybackSpeed = math.random(98, 102) / 100
 	sound.Parent = SoundService
@@ -52,92 +67,41 @@ local function PlayPanelClickSFX()
 	game:GetService("Debris"):AddItem(sound, 1.2)
 end
 
-local screenGui: ScreenGui?
-local overlayBackdrop: Frame?
-local mainFrame: Frame?
-local headerFrame: Frame?
-local closeButton: GuiButton?
+local function FormatTime(seconds: number): string
+	local h = math.floor(seconds / 3600)
+	local m = math.floor((seconds % 3600) / 60)
+	local s = math.floor(seconds % 60)
+	return string.format("%02dh %02dm %02ds", h, m, s)
+end
 
-local firstFrame: Frame?
-local discipleUserName: TextLabel?
-local discipleRankName: TextLabel?
-local discipleBadgeName: TextLabel?
-
-local stipendDescription: TextLabel?
-local stipendButton: GuiButton?
-local stipendButtonText: TextLabel?
-
-local promotionButton: GuiButton?
-local promotionButtonText: TextLabel?
-
-local secondFrame: Frame?
-type QuestCardUI = {
-	Container: Frame,
-	Title: TextLabel?,
-	Description: TextLabel?,
-	Reward1Text: TextLabel?,
-	Reward2Text: TextLabel?,
-	Reward3Text: TextLabel?,
-	ActionButton: GuiButton?,
-	ActionButtonText: TextLabel?,
-	GlowOverlay: ImageLabel?,
-	QuestId: string,
-}
-
-local questCards: { QuestCardUI } = {}
-
-local currentRankId: string = "OuterDisciple"
-local currentContribution: number = 0
-local currentStones: number = 0
-local liveQuestsData: { [string]: any } = {}
-local isOpen: boolean = false
-local isInitialized: boolean = false
-
-local QUEST_INDEX_ORDER = {
-	[1] = "Quest_GatherSpiritGrass",
-	[2] = "Quest_RefineDan",
-	[3] = "Quest_SparringTrial",
-}
-
-local TIER_LABELS = { [1] = "EASY", [2] = "MEDIUM", [3] = "HARD" }
-
-local PROMOTION_ORDER = {
-	"OuterDisciple",
-	"InnerDisciple",
-	"CoreDisciple",
-	"DirectDisciple",
-	"SectElder",
-	"GrandElder",
-}
-
-local function IsPositionInsideGui(guiObject: GuiObject, x: number, y: number): boolean
-	local pos = guiObject.AbsolutePosition
-	local size = guiObject.AbsoluteSize
-	return x >= pos.X and x <= (pos.X + size.X) and y >= pos.Y and y <= (pos.Y + size.Y)
+local function ClearButtonConnections()
+	for _, conn in ipairs(buttonConnections) do
+		conn:Disconnect()
+	end
+	table.clear(buttonConnections)
 end
 
 local function EnsureUI(): boolean
-	if isInitialized and screenGui and mainFrame then return true end
+	if isInitialized and mainFrame then return true end
 
 	sectRemote = RemoteEvents.GetRemote("SectAction")
 
-	screenGui = (playerGui:FindFirstChild("SectPavilionGui") or playerGui:WaitForChild("SectPavilionGui", 6)) :: ScreenGui?
-	if not screenGui then return false end
+	local hub = playerGui:WaitForChild("MainHubGui", 10) :: ScreenGui?
+	if hub then
+		local backdrop = hub:WaitForChild("MenuBackdrop", 5) :: Frame?
+		local pageContainer = backdrop and backdrop:WaitForChild("PageContainer", 5) :: Frame?
+		mainFrame = pageContainer and (pageContainer:WaitForChild("Page_Faction", 5) :: Frame?)
+	end
 
-	screenGui.DisplayOrder = 50
-	screenGui.IgnoreGuiInset = true
+	if not mainFrame then
+		local legacy = playerGui:FindFirstChild("SectPavilionGui")
+		mainFrame = legacy and legacy:FindFirstChild("Page_Faction", true) or (legacy and legacy:FindFirstChild("MainFrame", true))
+	end
 
-	overlayBackdrop = screenGui:FindFirstChild("OverlayBackdrop") :: Frame?
-	mainFrame = (screenGui:FindFirstChild("MainFrame") or (overlayBackdrop and overlayBackdrop:FindFirstChild("MainFrame")) or screenGui:FindFirstChildWhichIsA("Frame", true)) :: Frame?
 	if not mainFrame then return false end
 	mainFrame.Active = true
 
-	headerFrame = mainFrame:FindFirstChild("HeaderFrame") :: Frame?
-	if headerFrame then
-		closeButton = (headerFrame:FindFirstChild("CloseImageButton") or headerFrame:FindFirstChildWhichIsA("GuiButton")) :: GuiButton?
-	end
-
-	firstFrame = mainFrame:FindFirstChild("FirstFrame") :: Frame?
+	local firstFrame = mainFrame:FindFirstChild("FirstFrame") :: Frame?
 	if firstFrame then
 		local sub1 = firstFrame:FindFirstChild("SubFrame1") :: Frame?
 		if sub1 then
@@ -167,7 +131,7 @@ local function EnsureUI(): boolean
 		end
 	end
 
-	secondFrame = mainFrame:FindFirstChild("SecondFrame") :: Frame?
+	local secondFrame = mainFrame:FindFirstChild("SecondFrame") :: Frame?
 	table.clear(questCards)
 
 	if secondFrame then
@@ -176,317 +140,235 @@ local function EnsureUI(): boolean
 			if sub then
 				local title = sub:FindFirstChild("MissionTitle") :: TextLabel?
 				local desc = sub:FindFirstChild("MissionDescription") :: TextLabel?
-
-				local r1 = sub:FindFirstChild("Reward1") :: Frame?
-				local r1Text = if r1 then r1:FindFirstChild("TextLabel") :: TextLabel? else nil
-				local r2 = sub:FindFirstChild("Reward2") :: Frame?
-				local r2Text = if r2 then r2:FindFirstChild("TextLabel") :: TextLabel? else nil
-				local r3 = sub:FindFirstChild("Reward3") :: Frame?
-				local r3Text = if r3 then r3:FindFirstChild("TextLabel") :: TextLabel? else nil
-
 				local btn = (sub:FindFirstChild("ImageButton") or sub:FindFirstChildWhichIsA("GuiButton")) :: GuiButton?
-				local btnText = if btn then btn:FindFirstChild("TextLabel") :: TextLabel? else nil
-				local glow = if btn then btn:FindFirstChild("GlowOverlayImage") :: ImageLabel? else nil
-
-				local qId = QUEST_INDEX_ORDER[idx] or "Quest_GatherSpiritGrass"
+				local btnText = btn and (btn:FindFirstChild("TextLabel") or btn:FindFirstChildWhichIsA("TextLabel")) :: TextLabel?
+				local glow = btn and btn:FindFirstChild("GlowOverlayImage") :: ImageLabel?
 
 				table.insert(questCards, {
-					Container = sub,
+					Frame = sub,
 					Title = title,
 					Description = desc,
-					Reward1Text = r1Text,
-					Reward2Text = r2Text,
-					Reward3Text = r3Text,
-					ActionButton = btn,
-					ActionButtonText = btnText,
-					GlowOverlay = glow,
-					QuestId = qId,
+					Button = btn,
+					ButtonText = btnText,
+					Glow = glow,
 				})
-
-				if btn then
-					btn.Activated:Connect(function()
-						PlayPanelClickSFX()
-						SectController.OnQuestButtonClicked(qId)
-					end)
-				end
 			end
 		end
 	end
 
-	if closeButton then
-		closeButton.Activated:Connect(function()
-			PlayPanelClickSFX()
-			SectController.Close()
-		end)
-	end
+	-- Connect buttons exactly ONCE (purges duplicate listener machine-gun audio)
+	ClearButtonConnections()
 
-	if overlayBackdrop then
-		overlayBackdrop.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				local clickPos = input.Position
-				if mainFrame and not IsPositionInsideGui(mainFrame, clickPos.X, clickPos.Y) then
-					PlayPanelClickSFX()
-					SectController.Close()
-				end
-			end
-		end)
+	for idx = 1, 3 do
+		local card = questCards[idx]
+		local questId = QUEST_IDS[idx]
+		if card and card.Button then
+			local conn = card.Button.Activated:Connect(function()
+				PlayPanelClickSFX()
+				sectRemote:FireServer({ Action = "SubmitQuest", QuestId = questId })
+			end)
+			table.insert(buttonConnections, conn)
+		end
 	end
 
 	if stipendButton then
-		stipendButton.Activated:Connect(function()
+		local conn = stipendButton.Activated:Connect(function()
 			PlayPanelClickSFX()
 			sectRemote:FireServer({ Action = "ClaimDailyStipend" })
 		end)
+		table.insert(buttonConnections, conn)
 	end
 
 	if promotionButton then
-		promotionButton.Activated:Connect(function()
+		local conn = promotionButton.Activated:Connect(function()
 			PlayPanelClickSFX()
 			sectRemote:FireServer({ Action = "RequestPromotion" })
 		end)
+		table.insert(buttonConnections, conn)
 	end
 
 	isInitialized = true
 	return true
 end
 
-function SectController.Init()
-	EnsureUI()
-	sectRemote = RemoteEvents.GetRemote("SectAction")
+function SectController.Render(data: any?)
+	if not EnsureUI() or not mainFrame then return end
+	if data then lastSectData = data end
 
-	local mgr = GetModalManager()
-	if mgr then
-		mgr.Register("SectPavilion", function()
-			SectController.Close()
-		end)
+	-- 1. Disciple Identification
+	local currentRank = (lastSectData and lastSectData.Rank) or player:GetAttribute("SectRank") or "OuterDisciple"
+	local rankTitle = (lastSectData and lastSectData.RankTitle) or tostring(currentRank)
+	local cp = (lastSectData and lastSectData.ContributionPoints) or player:GetAttribute("ContributionPoints") or 0
+	local realm = (lastSectData and lastSectData.Realm) or player:GetAttribute("Realm") or "QiCondensation"
+	local order = (lastSectData and lastSectData.Order) or player:GetAttribute("Order") or 1
+
+	if discipleUserName then discipleUserName.Text = (player.DisplayName or player.Name):upper() end
+	if discipleRankName then discipleRankName.Text = string.gsub(tostring(rankTitle), "(%l)(%u)", "%1 %2"):upper() end
+	if discipleBadgeName then discipleBadgeName.Text = string.format("%s - ORDER %s", tostring(realm):upper(), tostring(order)) end
+
+	-- 2. Daily Sect Stipend (24h Live Countdown)
+	local rankDef = SectConfig.GetRank(currentRank)
+	if stipendDescription and rankDef then
+		stipendDescription.Text = string.format("%d Spirit Stones + Daily Dan", rankDef.DailyStipendStones)
 	end
 
-	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-		if UserInputService:GetFocusedTextBox() ~= nil then return end
-		if input.KeyCode == Enum.KeyCode.M then
-			PlayPanelClickSFX()
-			SectController.Toggle()
-		end
-	end)
+	if countdownThread then
+		task.cancel(countdownThread)
+		countdownThread = nil
+	end
 
-	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, triggeringPlayer: Player)
-		if triggeringPlayer == player then
-			local action = prompt.ActionText:lower()
-			local obj = prompt.ObjectText:lower()
-			if string.find(action, "sect") or string.find(action, "duties") or string.find(action, "missions") or string.find(obj, "deacon") or string.find(obj, "zhao") then
-				PlayPanelClickSFX()
-				SectController.Open()
+	if stipendButton and stipendButtonText then
+		local isClaimed = lastSectData and lastSectData.StipendClaimed
+		local nextTimestamp = (lastSectData and lastSectData.NextStipendTimestamp) or 0
+		local now = os.time()
+
+		if isClaimed and nextTimestamp > now then
+			countdownThread = task.spawn(function()
+				while true do
+					local remaining = nextTimestamp - os.time()
+					if remaining <= 0 then
+						if stipendButtonText then stipendButtonText.Text = "CLAIM DAILY STIPEND" end
+						if stipendButton then stipendButton.BackgroundColor3 = Color3.fromRGB(200, 150, 40) end
+						if lastSectData then lastSectData.StipendClaimed = false end
+						break
+					end
+					if stipendButtonText then
+						stipendButtonText.Text = "CLAIM IN " .. FormatTime(remaining)
+					end
+					if stipendButton then
+						stipendButton.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+					end
+					task.wait(1)
+				end
+			end)
+		else
+			stipendButtonText.Text = "CLAIM DAILY STIPEND"
+			stipendButton.BackgroundColor3 = Color3.fromRGB(200, 150, 40)
+		end
+	end
+
+	-- 3. Promotion Evaluation
+	if promotionButton and promotionButtonText then
+		local PROMOTION_CHAIN = { "OuterDisciple", "InnerDisciple", "CoreDisciple", "DirectDisciple", "SectElder", "GrandElder" }
+		local nextRank: string? = nil
+		for i, r in ipairs(PROMOTION_CHAIN) do
+			if r == currentRank and i < #PROMOTION_CHAIN then
+				nextRank = PROMOTION_CHAIN[i + 1]
+				break
 			end
 		end
-	end)
 
-	sectRemote.OnClientEvent:Connect(function(payload: any)
-		if type(payload) ~= "table" or not payload.Action then return end
-
-		if payload.Action == "OpenSectMenu" then
-			SectController.Open()
-		elseif payload.Action == "SyncSectData" then
-			currentRankId = payload.Rank or "OuterDisciple"
-			currentContribution = payload.ContributionPoints or 0
-			currentStones = payload.SpiritStones or 0
-			liveQuestsData = payload.Quests or {}
-			SectController.UpdateUI()
-		elseif payload.Action == "StipendClaimed" then
-			if stipendButtonText then
-				stipendButtonText.Text = "CLAIMED TODAY"
+		if nextRank then
+			local nextDef = SectConfig.GetRank(nextRank)
+			local reqCp = nextDef and nextDef.RequiredContribution or 2500
+			if cp >= reqCp then
+				promotionButtonText.Text = "REQUEST PROMOTION"
+				promotionButton.BackgroundColor3 = Color3.fromRGB(80, 40, 140)
+			else
+				promotionButtonText.Text = string.format("LOCKED (%d/%d CP)", cp, reqCp)
+				promotionButton.BackgroundColor3 = Color3.fromRGB(40, 30, 60)
 			end
-			if stipendButton then
-				stipendButton.BackgroundColor3 = Color3.fromRGB(75, 85, 99)
-				if stipendButton:IsA("ImageButton") then
-					(stipendButton :: ImageButton).ImageColor3 = Color3.fromRGB(120, 120, 130)
+		else
+			promotionButtonText.Text = "MAX RANK REACHED"
+			promotionButton.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+		end
+	end
+
+	-- 4. 3-Tier Duties
+	local quests = (lastSectData and lastSectData.Quests) or {}
+	local TIER_NAMES = { [1] = "EASY", [2] = "MEDIUM", [3] = "HARD" }
+
+	for idx = 1, 3 do
+		local card = questCards[idx]
+		local questId = QUEST_IDS[idx]
+		local qData = quests[questId]
+
+		if card and card.Frame then
+			local tier = qData and qData.Tier or 1
+			local qDef = SectConfig.GetQuest(questId, tier)
+			local target = qDef and qDef.TargetAmount or 1
+			local cur = qData and qData.CurrentAmount or 0
+			local tierLabel = TIER_NAMES[tier] or "EASY"
+
+			if card.Title and qDef then
+				card.Title.Text = string.format("%s — %s (%d/%d)", qDef.Title, tierLabel, math.min(cur, target), target)
+			end
+
+			if card.Description and qDef then
+				card.Description.Text = qDef.Description
+			end
+
+			if card.Button and card.ButtonText then
+				if qData and qData.AllTiersCompleted then
+					card.ButtonText.Text = "COMPLETED"
+					card.Button.BackgroundColor3 = Color3.fromRGB(40, 50, 40)
+					if card.Glow then card.Glow.Visible = false end
+				elseif qData and qData.ReadyToClaim then
+					card.ButtonText.Text = "CLAIM REWARD"
+					card.Button.BackgroundColor3 = Color3.fromRGB(40, 140, 60)
+					if card.Glow then card.Glow.Visible = true end
+				else
+					card.ButtonText.Text = "IN PROGRESS"
+					card.Button.BackgroundColor3 = Color3.fromRGB(30, 45, 65)
+					if card.Glow then card.Glow.Visible = false end
 				end
 			end
-		elseif payload.Action == "PromotionSuccess" then
-			currentRankId = payload.NewRank or currentRankId
-			sectRemote:FireServer({ Action = "RequestSectData" })
 		end
-	end)
-
-	task.defer(function()
-		task.wait(1.0)
-		sectRemote:FireServer({ Action = "RequestSectData" })
-	end)
-
-	print("[ASCEND] SectController Initialized (Modal Exclusion & 'M' Keybind Active).")
+	end
 end
 
 function SectController.Open()
-	if not EnsureUI() then return end
-	if not screenGui or not mainFrame then return end
+	if not EnsureUI() or not mainFrame then return end
+	isOpen = true
+	mainFrame.Visible = true
 
-	-- 🚀 Request mutual exclusion open
-	local mgr = GetModalManager()
-	if mgr then
-		mgr.RequestOpen("SectPavilion")
+	if sectRemote then
+		sectRemote:FireServer({ Action = "RequestSectData" })
 	end
 
-	isOpen = true
-	screenGui.Enabled = true
-	mainFrame.Visible = true
-	if overlayBackdrop then overlayBackdrop.Visible = true end
-
-	sectRemote:FireServer({ Action = "RequestSectData" })
-	SectController.UpdateUI()
+	SectController.Render()
 end
 
 function SectController.Close()
+	if not isOpen then return end
 	isOpen = false
-
-	local mgr = GetModalManager()
-	if mgr then
-		mgr.NotifyClosed("SectPavilion")
+	PlayPanelClickSFX()
+	if countdownThread then
+		task.cancel(countdownThread)
+		countdownThread = nil
 	end
-
-	if screenGui then screenGui.Enabled = false end
 	if mainFrame then mainFrame.Visible = false end
-	if overlayBackdrop then overlayBackdrop.Visible = false end
 end
 
 function SectController.Toggle()
-	if isOpen then
-		SectController.Close()
-	else
-		SectController.Open()
-	end
+	if isOpen then SectController.Close() else SectController.Open() end
 end
 
-function SectController.UpdateUI()
-	if not isInitialized then EnsureUI() end
+function SectController.Init()
+	sectRemote = RemoteEvents.GetRemote("SectAction")
 
-	local rankDef = SectConfig.GetRank(currentRankId :: any)
-
-	if discipleUserName then
-		discipleUserName.Text = player.DisplayName:upper()
-	end
-	if discipleRankName then
-		discipleRankName.Text = (rankDef.DisplayName or "Outer Disciple"):upper()
-		discipleRankName.TextColor3 = rankDef.TitleColor or Color3.fromRGB(240, 200, 100)
-	end
-	if discipleBadgeName then
-		local char = player.Character
-		local realm = (char and char:GetAttribute("Realm")) or "Qi Condensation - Order 1"
-		local order = (char and char:GetAttribute("Order")) or 1
-		local realmStr = tostring(realm):upper()
-		if string.find(realmStr, "ORDER") then
-			discipleBadgeName.Text = realmStr
-		else
-			discipleBadgeName.Text = string.format("%s - ORDER %d", realmStr, order)
-		end
-	end
-
-	local nextRankIndex = 1
-	for i, r in ipairs(PROMOTION_ORDER) do
-		if r == currentRankId then
-			nextRankIndex = math.min(#PROMOTION_ORDER, i + 1)
-			break
-		end
-	end
-	local nextRankId = PROMOTION_ORDER[nextRankIndex]
-	local nextRankDef = SectConfig.GetRank(nextRankId :: any)
-	local targetCP = math.max(1, nextRankDef.RequiredContribution or 500)
-
-	if stipendDescription then
-		stipendDescription.Text = string.format("%d Spirit Stones + Daily Dan", rankDef.DailyStipendStones or 100)
-	end
-
-	local isHighestRank = (currentRankId == PROMOTION_ORDER[#PROMOTION_ORDER])
-	local meetsCP = currentContribution >= targetCP
-	local isEligible = not isHighestRank and meetsCP
-
-	if promotionButton then
-		local stroke = promotionButton:FindFirstChildOfClass("UIStroke")
-		if isHighestRank then
-			promotionButton.BackgroundColor3 = Color3.fromRGB(75, 85, 99)
-			if stroke then stroke.Color = Color3.fromRGB(50, 65, 85) end
-			if promotionButtonText then promotionButtonText.Text = "HIGHEST RANK ACHIEVED" end
-		elseif isEligible then
-			promotionButton.BackgroundColor3 = Color3.fromRGB(245, 158, 11)
-			if stroke then stroke.Color = Color3.fromRGB(253, 224, 71) end
-			if promotionButtonText then promotionButtonText.Text = "REQUEST PROMOTION" end
-		else
-			promotionButton.BackgroundColor3 = Color3.fromRGB(75, 85, 99)
-			if stroke then stroke.Color = Color3.fromRGB(50, 65, 85) end
-			if promotionButtonText then promotionButtonText.Text = string.format("LOCKED (%d/%d CP)", currentContribution, targetCP) end
-		end
-	end
-
-	for _, card in ipairs(questCards) do
-		local qLive = liveQuestsData[card.QuestId]
-
-		if not qLive then
-			if card.ActionButtonText then card.ActionButtonText.Text = "..." end
-			if card.GlowOverlay then card.GlowOverlay.Visible = false end
-			continue
-		end
-
-		if qLive.AllTiersCompleted then
-			if card.Title then
-				card.Title.Text = string.format("%s — COMPLETED", (SectConfig.GetQuest(card.QuestId, 3) or {}).Title or "Duty")
+	sectRemote.OnClientEvent:Connect(function(payloadOrAction: any, maybePayload: any)
+		local payload = if type(payloadOrAction) == "table" then payloadOrAction else maybePayload
+		if type(payload) == "table" and (payload.Action == "SyncSectData" or payload.Action == "SectData") then
+			lastSectData = payload
+			SectController.Render(payload)
+		elseif type(payload) == "table" and payload.Action == "StipendClaimed" then
+			PlayPanelClickSFX()
+			if lastSectData then
+				lastSectData.StipendClaimed = true
+				lastSectData.NextStipendTimestamp = os.time() + 86400
+				SectController.Render(lastSectData)
 			end
-			if card.Description then
-				card.Description.Text = "You have completed all difficulty tiers for this duty."
-			end
-			if card.ActionButton and card.ActionButtonText then
-				card.ActionButton.BackgroundColor3 = Color3.fromRGB(50, 55, 65)
-				card.ActionButtonText.Text = "COMPLETED"
-				local str = card.ActionButton:FindFirstChildOfClass("UIStroke")
-				if str then str.Color = Color3.fromRGB(40, 48, 60) end
-			end
-			if card.GlowOverlay then card.GlowOverlay.Visible = false end
-			continue
+		elseif type(payload) == "table" and payload.Action == "QuestCompleted" then
+			PlayPanelClickSFX()
 		end
+	end)
 
-		local tier = math.clamp(qLive.Tier or 1, 1, 3)
-		local qDef = SectConfig.GetQuest(card.QuestId, tier)
-		if not qDef then continue end
+	player:GetAttributeChangedSignal("SectRank"):Connect(function() SectController.Render() end)
+	player:GetAttributeChangedSignal("Realm"):Connect(function() SectController.Render() end)
+	player:GetAttributeChangedSignal("ContributionPoints"):Connect(function() SectController.Render() end)
 
-		local curAmt = qLive.CurrentAmount or 0
-		local readyToClaim = qLive.ReadyToClaim == true
-
-		if card.Title then
-			local tierLabel = TIER_LABELS[tier] or "EASY"
-			card.Title.Text = string.format("%s — %s (%d/%d)", qDef.Title, tierLabel, curAmt, qDef.TargetAmount)
-		end
-		if card.Description then
-			card.Description.Text = qDef.Description
-		end
-		if card.Reward1Text then
-			card.Reward1Text.Text = string.format("+%d CP", qDef.RewardContribution)
-		end
-		if card.Reward2Text then
-			card.Reward2Text.Text = string.format("+%d STONES", qDef.RewardSpiritStones)
-		end
-		if card.Reward3Text then
-			card.Reward3Text.Text = string.format("+%d QI", qDef.RewardQi)
-		end
-
-		if card.ActionButton and card.ActionButtonText then
-			local str = card.ActionButton:FindFirstChildOfClass("UIStroke")
-			if readyToClaim then
-				card.ActionButton.BackgroundColor3 = Color3.fromRGB(16, 185, 129)
-				card.ActionButtonText.Text = "CLAIM"
-				if str then str.Color = Color3.fromRGB(52, 211, 153) end
-				if card.GlowOverlay then card.GlowOverlay.Visible = true end
-			else
-				card.ActionButton.BackgroundColor3 = Color3.fromRGB(75, 85, 99)
-				card.ActionButtonText.Text = "IN PROGRESS"
-				if str then str.Color = Color3.fromRGB(50, 65, 85) end
-				if card.GlowOverlay then card.GlowOverlay.Visible = false end
-			end
-		end
-	end
-end
-
-function SectController.OnQuestButtonClicked(questId: string)
-	local qLive = liveQuestsData[questId]
-	if qLive and qLive.ReadyToClaim and not qLive.AllTiersCompleted then
-		sectRemote:FireServer({ Action = "SubmitQuest", QuestId = questId })
-	end
+	print("[ASCEND] SectController Initialized & Live Dynamic Sync Active.")
 end
 
 return SectController

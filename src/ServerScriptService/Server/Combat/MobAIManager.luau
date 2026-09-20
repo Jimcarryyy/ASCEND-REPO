@@ -2,11 +2,9 @@
 --[[
     MobAIManager.luau
     Location: src/ServerScriptService/Server/Combat/MobAIManager.luau
-    Phase 1 Updates:
-      - E1 & E2: Full combat pipeline integration. Mobs route attacks through HitboxManager.
-      - Telegraph System: 0.22s red glint telegraph before mob attacks land.
-      - Players can Perfect Parry (stunning the mob for 1.2s) and Guard against beasts.
-      - Dash i-frames successfully dodge mob attacks.
+    - E1 & E2 Combat AI pipeline with 0.22s telegraph glint
+    - Hardened OnMobDied with IsDead guard (zero duplicate reward multipliers)
+    - Advances Sect Sparring Duty strictly ONCE (1 count per kill)
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -24,6 +22,7 @@ local InventoryManager = require(ServerScriptService.Server.State.InventoryManag
 local PlayerDataManager = require(ServerScriptService.Server.State.PlayerDataManager)
 local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 local HitboxManager = require(ServerScriptService.Server.Combat.HitboxManager)
+local SectManager = require(ServerScriptService.Server.Cultivation.SectManager)
 
 local MobAIManager = {}
 local combatActionRemote: RemoteEvent
@@ -60,6 +59,7 @@ type ActiveMob = {
 	WalkTrack: AnimationTrack?,
 	RunTrack: AnimationTrack?,
 	AttackTracks: { AnimationTrack },
+	IsDead: boolean?,
 }
 
 local activeMobs: { ActiveMob } = {}
@@ -177,16 +177,6 @@ local function CreateHealthUI(model: Model, displayName: string?): (BillboardGui
 	nameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	nameStroke.Parent = nameLabel
 
-	local nameGrad = Instance.new("UIGradient")
-	nameGrad.Name = "RedGradient"
-	nameGrad.Rotation = 90
-	nameGrad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 120, 120)),
-		ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 40, 40)),
-		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(180, 15, 15)),
-	})
-	nameGrad.Parent = nameLabel
-
 	local barBg = Instance.new("Frame")
 	barBg.Name = "BarBg"
 	barBg.Size = UDim2.new(1, 0, 0, 7)
@@ -197,32 +187,16 @@ local function CreateHealthUI(model: Model, displayName: string?): (BillboardGui
 	barBg.ClipsDescendants = true
 	barBg.Parent = bb
 
-	local bgStroke = Instance.new("UIStroke")
-	bgStroke.Color = Color3.fromRGB(0, 0, 0)
-	bgStroke.Thickness = 1.0
-	bgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	bgStroke.Parent = barBg
-
 	local fill = Instance.new("Frame")
 	fill.Name = "Fill"
 	fill.Size = UDim2.new(1, 0, 1, 0)
-	fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	fill.BackgroundColor3 = Color3.fromRGB(235, 30, 30)
 	fill.BorderSizePixel = 0
 	fill.Parent = barBg
-
-	local fillGrad = Instance.new("UIGradient")
-	fillGrad.Rotation = 0
-	fillGrad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 80, 80)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(235, 30, 30)),
-		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(160, 10, 10)),
-	})
-	fillGrad.Parent = fill
 
 	return bb, fill
 end
 
--- Visual 0.22s red flash windup telegraph
 local function SpawnMobTelegraph(model: Model, duration: number)
 	local head = model:FindFirstChild("Head") or model.PrimaryPart
 	if not head then return end
@@ -252,6 +226,10 @@ local function SpawnMobTelegraph(model: Model, duration: number)
 end
 
 local function OnMobDied(mob: ActiveMob)
+	-- Guard against duplicate death executions on the same mob
+	if (mob :: any).IsDead then return end
+	(mob :: any).IsDead = true
+
 	if mob.WalkTrack then pcall(function() mob.WalkTrack:Stop(0.1) end) end
 	if mob.RunTrack then pcall(function() mob.RunTrack:Stop(0.1) end) end
 	if mob.AttackTracks then
@@ -283,6 +261,11 @@ local function OnMobDied(mob: ActiveMob)
 			CultivationManager.AddInternalQi(killer, qiReward)
 		end
 
+		-- Advance Sect Sparring Duty STRICTLY ONCE with 1 count
+		pcall(function()
+			SectManager.AddQuestProgress(killer, "DefeatMob", "RogueDisciple", 1)
+		end)
+
 		local awardedDrops: { { Name: string, Count: number } } = {}
 		local drops = config.DropTable or config.Drops
 		if drops then
@@ -311,19 +294,6 @@ local function OnMobDied(mob: ActiveMob)
 				Drops = awardedDrops,
 			})
 		end
-
-		if config.IsBoss then
-			local TextChatService = game:GetService("TextChatService")
-			local textChannels = TextChatService:FindFirstChild("TextChannels")
-			local general = textChannels and textChannels:FindFirstChild("RBXGeneral") :: TextChannel?
-			if general then
-				general:DisplaySystemMessage(string.format(
-					"<font color='#FFD700'><b>[WORLD DECREE] Cultivator %s has vanquished World Boss %s!</b></font>",
-					killer.DisplayName,
-					config.DisplayName or mob.Id
-				))
-			end
-		end
 	end
 
 	for i, m in ipairs(activeMobs) do
@@ -345,10 +315,7 @@ end
 function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius: number, respawnTime: number): Model?
 	local resolvedMobId = SPAWNER_ALIAS_MAP[mobId] or mobId
 	local config = GetMobConfig(resolvedMobId)
-	if not config then
-		warn(string.format("[MobAIManager] ERROR: '%s' not found in MobConfig.", tostring(resolvedMobId)))
-		return nil
-	end
+	if not config then return nil end
 
 	local angle = math.random() * math.pi * 2
 	local dist = math.random() * (spawnRadius * 0.5)
@@ -371,7 +338,6 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	if template and template:IsA("Model") then
 		model = template:Clone()
 	else
-		warn(string.format("[MobAIManager] Template '%s' missing in ReplicatedStorage.MobModels!", resolvedMobId))
 		return nil
 	end
 
@@ -396,7 +362,6 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 
 	if not humanoid or not rootPart then
 		model:Destroy()
-		warn("[MobAIManager] Spawned mob missing Humanoid or RootPart!")
 		return nil
 	end
 
@@ -412,9 +377,6 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	humanoid.MaxHealth = config.MaxHealth
 	humanoid.Health = config.MaxHealth
 	humanoid.WalkSpeed = config.WalkSpeed
-
-	local oldHealthGui = model:FindFirstChild("MobHealthUI", true)
-	if oldHealthGui then oldHealthGui:Destroy() end
 
 	local healthGui, healthBar = CreateHealthUI(model, config.DisplayName or config.Name or resolvedMobId)
 
@@ -487,6 +449,7 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		WalkTrack = walkTrack,
 		RunTrack = runTrack,
 		AttackTracks = attackTracks,
+		IsDead = false,
 	}
 
 	table.insert(activeMobs, mob)
@@ -564,7 +527,6 @@ local function StepAI()
 			continue
 		end
 
-		-- E1 FIX: If mob is stunned from a player's parry, hold state
 		if mob.Model:GetAttribute("IsStunned") == true then
 			humanoid.WalkSpeed = 0
 			continue
@@ -670,31 +632,23 @@ local function StepAI()
 					if now - mob.LastAttackTime >= config.AttackCooldown then
 						mob.LastAttackTime = now
 
-						if (now - mob.LastAttackTime) > 2.2 then
-							mob.ComboStep = 1
-						end
-
 						local currentStep = mob.ComboStep or 1
 						if #mob.AttackTracks > 0 then
 							local track = mob.AttackTracks[currentStep] or mob.AttackTracks[1]
-							if track then
-								track:Play(0.06, 1, 1.25)
-							end
+							if track then track:Play(0.06, 1, 1.25) end
 						end
 						mob.ComboStep = if currentStep >= #mob.AttackTracks then 1 else currentStep + 1
 
-						-- E1 FIX: Telegraph red glint 0.22s before strike lands
 						SpawnMobTelegraph(mob.Model, 0.22)
 
 						task.delay(0.22, function()
 							if not rootPart.Parent or not targetHum or targetHum.Health <= 0 then return end
-							if mob.Model:GetAttribute("IsStunned") == true then return end -- Canceled by parry
+							if mob.Model:GetAttribute("IsStunned") == true then return end
 
 							local strikeDist = (targetHrp.Position - rootPart.Position).Magnitude
 							if strikeDist > (config.AttackRange + 3.5) then return end
 
 							local flatForward = Vector3.new(targetHrp.Position.X - rootPos.X, 0, targetHrp.Position.Z - rootPos.Z).Unit
-
 							local fakeHit: HitboxManager.HitResult = {
 								Character = targetChar,
 								Humanoid = targetHum,
@@ -703,35 +657,13 @@ local function StepAI()
 							}
 
 							local knockbackVector = Vector3.new(0, 0, 14)
-							-- E1 & E2: Passes mob.Model as attackerCharOverride for parry and block resolution
 							local res = HitboxManager.ApplyCombatResolution(nil, fakeHit, config.BaseDamage, 20, knockbackVector, mob.Model)
 
 							if res and res.WasParried then
-								-- Mob was parried: cancel ongoing attack track
 								if #mob.AttackTracks > 0 then
 									local t = mob.AttackTracks[currentStep] or mob.AttackTracks[1]
 									if t and t.IsPlaying then t:Stop(0.05) end
 								end
-							end
-
-							if combatActionRemote and targetPlayer then
-								combatActionRemote:FireClient(targetPlayer, nil :: any, "M1", {
-									HasHit = (res and not res.WasIframeDodged and not res.WasParried),
-									Damage = if res then res.DamageApplied else config.BaseDamage,
-									TargetPosition = targetHrp.Position + Vector3.new(0, 0.4, 0),
-									AttackerCFrame = rootPart.CFrame,
-									AimDirection = flatForward,
-									WasParried = if res then res.WasParried else false,
-									WasBlocked = if res then res.WasBlocked else false,
-									WasGuardBroken = if res then res.WasGuardBroken else false,
-									Hits = {
-										{
-											Character = targetChar,
-											HitPart = targetHrp,
-											Position = targetHrp.Position,
-										}
-									}
-								})
 							end
 						end)
 					end
@@ -797,14 +729,11 @@ function MobAIManager.Init()
 	task.spawn(function()
 		while true do
 			task.wait(0.25)
-			local ok, err = pcall(StepAI)
-			if not ok then
-				warn("[MobAIManager] Error in StepAI: " .. tostring(err))
-			end
+			pcall(StepAI)
 		end
 	end)
 
-	print("[ASCEND] MobAIManager Initialized (E1/E2 Mob Combat & Telegraphs Active).")
+	print("[ASCEND] MobAIManager Initialized (Single-Count Quest Progression Active).")
 end
 
 return MobAIManager

@@ -11,6 +11,7 @@
     - Authoritative Direct Workspace.SpawnLocation Router
     - Fixed WeldConstraint CFrame displacement bug in AttachBloodlineVisual
     - Phase 2: RBXScriptConnection lifecycle cleanup & zero-delay stream-safe dais placement
+    - Daily Sect Stipend 24-hour persistence integration
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -184,6 +185,7 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 		SpinsSinceMythic = 0,
 	},
 	SamsaraCycle = 0,
+	LastStipendClaim = 0,
 }
 
 -- =============================================================================
@@ -458,6 +460,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 				SpinsSinceMythic = 0,
 			},
 			SamsaraCycle = 0,
+			LastStipendClaim = 0,
 		}
 	else
 		if not loadedData.Version or loadedData.Version < CURRENT_VERSION then
@@ -614,6 +617,8 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	player:SetAttribute("LegendaryPity", playerBloodlines[player].Pity.SpinsSinceLegendary)
 	player:SetAttribute("MythicPity", playerBloodlines[player].Pity.SpinsSinceMythic)
 	player:SetAttribute("SamsaraCycle", playerSamsaraData[player])
+	player:SetAttribute("LastStipendClaim", loadedData.LastStipendClaim or 0)
+
 	if playerSamsaraData[player] > 0 then
 		player:SetAttribute("SamsaraTitle", string.format("[Samsara %s]", ToRoman(playerSamsaraData[player])))
 	end
