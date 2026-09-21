@@ -231,7 +231,7 @@ function AlchemyController.RefreshHerbGrid()
 
 	local consolidated: { [string]: ConsolidatedEntry } = {}
 
-	for slotIdx = 1, 60 do
+	for slotIdx = 1, 100 do
 		local slotData = currentInventory[slotIdx] or currentInventory[tostring(slotIdx) :: any]
 		if slotData and slotData.ItemId and slotData.ItemId ~= "" then
 			local itemDef = ItemConfig.GetItem(slotData.ItemId)
@@ -365,10 +365,9 @@ function AlchemyController.RefreshHerbGrid()
 		end
 	end
 
-	-- Dynamically calculate scroll height for 3-column grid
-	local rows = math.ceil(math.max(1, totalUniqueItems) / 3)
-	local neededScaleY = (rows * 0.33) + 0.12
-	herbScroll.CanvasSize = UDim2.new(0, 0, neededScaleY, 0)
+	-- Unlimited dynamic scrolling via AutomaticCanvasSize
+	herbScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	herbScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 end
 
 function AlchemyController.UpdateSlotsUI()

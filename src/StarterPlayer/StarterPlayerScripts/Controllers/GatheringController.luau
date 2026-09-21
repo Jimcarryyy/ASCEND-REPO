@@ -360,6 +360,13 @@ function GatheringController.Init()
 		})
 		activeTween:Play()
 
+		-- Safety timeout fallback so the bar can never get stuck on screen
+		task.delay(duration + 0.8, function()
+			if isHarvesting then
+				CancelChannel()
+			end
+		end)
+
 		-- Movement cancellation check
 		local char = localPlayer.Character
 		local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -379,7 +386,16 @@ function GatheringController.Init()
 	gatheringRemote.OnClientEvent:Connect(function(payload)
 		if type(payload) ~= "table" then return end
 
-		if payload.Action == "HarvestSuccess" then
+		if payload.Action == "ActionFailed" then
+			isHarvesting = false
+			if cancelConn then
+				cancelConn:Disconnect()
+				cancelConn = nil
+			end
+			CancelChannel()
+			HUDController.ShowToast(payload.Message or "Gathering failed.", Color3.fromRGB(255, 80, 80))
+			return
+		elseif payload.Action == "HarvestSuccess" then
 			isHarvesting = false
 
 			if cancelConn then

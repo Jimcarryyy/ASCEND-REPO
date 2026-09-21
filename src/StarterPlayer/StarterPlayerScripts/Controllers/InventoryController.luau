@@ -525,7 +525,7 @@ function InventoryController.RenderGrid()
 	type SlotEntry = { SlotIndex: number, ItemId: string, Count: number, Quality: string?, ItemDef: any }
 	local filteredSlots: { SlotEntry } = {}
 
-	for slotIdx = 1, 60 do
+	for slotIdx = 1, 100 do
 		local slotData = inventoryCache[slotIdx] or inventoryCache[tostring(slotIdx) :: any]
 		if slotData and slotData.ItemId and slotData.ItemId ~= "" then
 			local itemDef = ItemConfig.GetItem(slotData.ItemId)

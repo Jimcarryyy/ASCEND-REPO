@@ -15,6 +15,7 @@ local Players = game:GetService("Players")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local GatheringConfig = require(ReplicatedStorage.Shared.Configs.GatheringConfig)
+local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
 local SectManager = require(ServerScriptService.Server.Cultivation.SectManager)
 
@@ -52,26 +53,22 @@ end
 local function ResolveNode(inst: Instance?): (Instance?, string?, any?)
 	if not inst then return nil, nil, nil end
 
-	if activeNodes[inst] then
-		local nodeType = inst:GetAttribute("NodeType") or inst.Name
-		local cfg = GetConfig(nodeType)
-		if cfg then return inst, nodeType, cfg end
-	end
-
-	if inst.Parent and activeNodes[inst.Parent] then
-		local nodeType = inst.Parent:GetAttribute("NodeType") or inst.Parent.Name
-		local cfg = GetConfig(nodeType)
-		if cfg then return inst.Parent, nodeType, cfg end
-	end
-
+	-- Climb hierarchy to find the root node containing NodeType or matching a valid config
 	local curr: Instance? = inst
 	while curr and curr ~= workspace and curr ~= workspace:FindFirstChild("GatheringNodes") do
-		if activeNodes[curr] then
-			local nodeType = curr:GetAttribute("NodeType") or curr.Name
-			local cfg = GetConfig(nodeType)
-			if cfg then return curr, nodeType, cfg end
+		local nodeType = curr:GetAttribute("NodeType") or curr.Name
+		local cfg = GetConfig(nodeType)
+		if cfg then
+			return curr, nodeType, cfg
 		end
 		curr = curr.Parent
+	end
+
+	-- Fallback check directly on instance
+	local nodeType = inst:GetAttribute("NodeType") or inst.Name
+	local cfg = GetConfig(nodeType)
+	if cfg then
+		return inst, nodeType, cfg
 	end
 
 	return nil, nil, nil
@@ -163,20 +160,30 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	local resolvedNode, nodeType, config = ResolveNode(nodeInstance)
 	if not resolvedNode or not config then return end
 
-	if not activeNodes[resolvedNode] then return end
+	-- If node is on cooldown, notify the client immediately rather than returning silently
+	if not activeNodes[resolvedNode] then
+		gatheringActionRemote:FireClient(player, {
+			Action = "ActionFailed",
+			Message = "This node is currently depleted! Respawns shortly.",
+		})
+		return
+	end
 	activeNodes[resolvedNode] = false
 
-	local promptPart: BasePart? = nil
-	if resolvedNode:IsA("BasePart") then
-		promptPart = resolvedNode
-	elseif resolvedNode:IsA("Model") then
-		promptPart = resolvedNode.PrimaryPart or resolvedNode:FindFirstChildWhichIsA("BasePart")
+	-- Helper to reliably toggle all prompts across the entire node hierarchy
+	local function SetNodePromptsEnabled(state: boolean)
+		for _, desc in ipairs(resolvedNode:GetDescendants()) do
+			if desc:IsA("ProximityPrompt") then
+				desc.Enabled = state
+			end
+		end
+		if resolvedNode:IsA("ProximityPrompt") then
+			resolvedNode.Enabled = state
+		end
 	end
 
-	local prompt = promptPart and (promptPart:FindFirstChild("GatherPrompt") or promptPart:FindFirstChildOfClass("ProximityPrompt"))
-	if prompt then
-		prompt.Enabled = false
-	end
+	-- Disable all prompts immediately so player cannot trigger it while depleted
+	SetNodePromptsEnabled(false)
 
 	local cleanType = nodeType:gsub("%s+", "")
 	local channelDuration = NODE_DURATIONS[cleanType] or config.HoldDuration or 1.8
@@ -185,39 +192,53 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 	local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local startPos = hrp and hrp.Position
 
-	-- Server waits for the channel duration in sync with GatheringController's progress bar
+	-- Server waits for channel duration in sync with client
 	task.delay(channelDuration, function()
 		if not player.Parent or not hrp or not hrp.Parent then
 			activeNodes[resolvedNode] = true
-			if prompt then prompt.Enabled = true end
+			SetNodePromptsEnabled(true)
 			return
 		end
 
 		if startPos and (hrp.Position - startPos).Magnitude > 12 then
 			activeNodes[resolvedNode] = true
-			if prompt then prompt.Enabled = true end
+			SetNodePromptsEnabled(true)
 			return
 		end
 
-		local dropList = config.Drops or config.AgeDrops or {
-			{ ItemId = "SpiritGrass_1Yr", Weight = 60, MinCount = 1, MaxCount = 1 },
-		}
+		-- Roll drop using GatheringConfig
+		local rollSuccess, selectedItemId = pcall(function()
+			return GatheringConfig.RollHarvestResult(config.NodeId or nodeType)
+		end)
 
-		local selectedItemId, count = PickRandomDrop(dropList)
+		if not rollSuccess or not selectedItemId then
+			selectedItemId = "SpiritGrass_1Yr"
+		end
 
-		-- 1. Add item to inventory
-		InventoryManager.AddItem(player, selectedItemId, count)
+		local count = 1
+		local itemDef = ItemConfig.GetItem(selectedItemId)
+		local itemQuality = itemDef and itemDef.Rarity or "Common"
 
-		-- 2. Advance Sect Duty strictly ONCE with 1 count
-		SectManager.AddQuestProgress(player, "Gather", config.NodeId or nodeType, 1)
+		-- Add item to inventory with quality tier and verify addition
+		local added = InventoryManager.AddItem(player, selectedItemId, count, itemQuality)
 
-		-- 3. Notify GatheringController line 394 to complete exit tween and show toast
-		gatheringActionRemote:FireClient(player, {
-			Action = "HarvestSuccess",
-			ItemId = selectedItemId,
-			Count = count,
-			Node = resolvedNode,
-		})
+		if added then
+			pcall(function()
+				SectManager.AddQuestProgress(player, "Gather", config.NodeId or nodeType, 1)
+			end)
+
+			gatheringActionRemote:FireClient(player, {
+				Action = "HarvestSuccess",
+				ItemId = selectedItemId,
+				Count = count,
+				Node = resolvedNode,
+			})
+		else
+			gatheringActionRemote:FireClient(player, {
+				Action = "ActionFailed",
+				Message = "Inventory full! Cannot carry more herbs.",
+			})
+		end
 
 		-- Visual depletion
 		local originalTransparency: { [BasePart]: number } = {}
@@ -240,9 +261,12 @@ function GatheringManager.ProcessHarvest(player: Player, nodeInstance: Instance)
 					part.Transparency = trans
 				end
 			end
-			if prompt then
-				prompt.Enabled = true
+			if resolvedNode:IsA("BasePart") then
+				resolvedNode.Transparency = 0
 			end
+
+			-- Re-enable prompts and reactivate node
+			SetNodePromptsEnabled(true)
 			activeNodes[resolvedNode] = true
 		end)
 	end)

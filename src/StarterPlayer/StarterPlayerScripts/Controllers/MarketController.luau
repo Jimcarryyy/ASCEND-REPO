@@ -412,6 +412,8 @@ function MarketController.Open()
 
 	MarketController.SyncPlayerData()
 	marketActionRemote:FireServer({ Action = "RequestMarketData" })
+	local invRemote = RemoteEvents.GetRemote("InventoryAction")
+	if invRemote then invRemote:FireServer({ Action = "RequestSync" }) end
 
 	selectedQuantity = 1
 	MarketController.PopulateGrid()
@@ -689,8 +691,9 @@ function MarketController.Init()
 		if payload.Action == "OpenShop" then
 			MarketController.Open()
 		elseif payload.Action == "MarketData" then
-			if payload.Inventory then
-				playerInventoryCache = payload.Inventory
+			local inv = if payload.Inventory then payload.Inventory else payload
+			if type(inv) == "table" then
+				playerInventoryCache = inv
 				if isOpen and currentMode == "Sell" then
 					MarketController.PopulateGrid()
 				end
@@ -725,8 +728,9 @@ function MarketController.Init()
 
 	-- Listen for Inventory Updates
 	updateInventoryRemote.OnClientEvent:Connect(function(payload: any)
-		if type(payload) == "table" and payload.Inventory then
-			playerInventoryCache = payload.Inventory
+		if type(payload) == "table" then
+			local inv = if payload.Inventory then payload.Inventory else payload
+			playerInventoryCache = inv
 			if isOpen and currentMode == "Sell" then
 				MarketController.PopulateGrid()
 			end

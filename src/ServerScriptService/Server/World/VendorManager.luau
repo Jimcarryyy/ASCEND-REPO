@@ -54,6 +54,7 @@ function VendorManager.Init()
 			marketActionRemote:FireClient(player, {
 				Action = "MarketData",
 				Catalog = SectConfig.GetAllMarketItems(),
+				Inventory = InventoryManager.GetInventory(player),
 			})
 			return
 		end
@@ -122,6 +123,7 @@ function VendorManager.Init()
 					ItemId = itemId,
 					Amount = amount,
 					TotalPayout = totalPayout,
+					Inventory = InventoryManager.GetInventory(player),
 				})
 			else
 				marketActionRemote:FireClient(player, {

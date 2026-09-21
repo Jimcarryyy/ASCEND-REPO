@@ -22,7 +22,7 @@ export type InventorySlot = {
 }
 
 local InventoryManager = {}
-local MAX_SLOTS = 60
+local MAX_SLOTS = 100
 
 local playerInventories: { [Player]: { [number]: InventorySlot? } } = {}
 
@@ -86,20 +86,24 @@ function InventoryManager.AddItem(player: Player, itemId: string, count: number,
 
 	local maxStack = itemDef.MaxStack or 1
 	local remaining = count
+	local effectiveQuality = quality or itemDef.Rarity or "Common"
 
-	-- 1. Stack into existing slots
+	-- 1. Stack into existing slots (flexible quality match)
 	for slotIdx = 1, MAX_SLOTS do
 		local slot = inv[slotIdx]
-		if slot and slot.ItemId == itemId and slot.Quality == quality and slot.Count < maxStack then
+		if slot and slot.ItemId == itemId and (slot.Quality == effectiveQuality or slot.Quality == nil or quality == nil) and slot.Count < maxStack then
 			local space = maxStack - slot.Count
 			local toAdd = math.min(space, remaining)
 			slot.Count += toAdd
+			if not slot.Quality then
+				slot.Quality = effectiveQuality
+			end
 			remaining -= toAdd
 			if remaining <= 0 then break end
 		end
 	end
 
-	-- 2. Populate empty slots
+	-- 2. Populate empty slots with effectiveQuality
 	if remaining > 0 then
 		for slotIdx = 1, MAX_SLOTS do
 			if not inv[slotIdx] then
@@ -107,7 +111,7 @@ function InventoryManager.AddItem(player: Player, itemId: string, count: number,
 				inv[slotIdx] = {
 					ItemId = itemId,
 					Count = toAdd,
-					Quality = quality,
+					Quality = effectiveQuality,
 				}
 				remaining -= toAdd
 				if remaining <= 0 then break end
