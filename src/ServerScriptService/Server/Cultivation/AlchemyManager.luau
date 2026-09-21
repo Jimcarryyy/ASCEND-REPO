@@ -64,11 +64,11 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 		end
 	end
 
-	if #insertedHerbItemIds == 0 then
+	if #insertedHerbItemIds < 4 then
 		alchemyActionRemote:FireClient(player, {
 			Action = "RefineResult",
 			Success = false,
-			Message = "Cauldron is empty! Insert at least 1 herb.",
+			Message = string.format("Cauldron requires 4 herbs! (Current: %d/4)", #insertedHerbItemIds),
 		})
 		return
 	end
@@ -101,7 +101,25 @@ function AlchemyManager.RefineManualCombination(player: Player, selectedSlotIndi
 		CultivationManager.SyncClient(player)
 	end
 
-	-- Deduct Inserted Herbs
+	-- Multi-Item Stack Safety: Verify inventory has enough items before deducting
+	local neededCounts: { [number]: number } = {}
+	for _, sIdx in ipairs(slotsToDeduct) do
+		neededCounts[sIdx] = (neededCounts[sIdx] or 0) + 1
+	end
+	for sIdx, countNeeded in pairs(neededCounts) do
+		local slot = playerInventory[sIdx]
+		if not slot or slot.Count < countNeeded then
+			alchemyActionRemote:FireClient(player, {
+				Action = "RefineResult",
+				Success = false,
+				Message = "Insufficient ingredients in inventory!",
+			})
+			activeRefiningMap[player] = nil
+			return
+		end
+	end
+
+	-- Deduct Inserted Herbs safely
 	for _, slotIdx in ipairs(slotsToDeduct) do
 		local slot = playerInventory[slotIdx]
 		if slot then

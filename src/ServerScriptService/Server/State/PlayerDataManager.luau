@@ -858,13 +858,13 @@ end
 
 function PlayerDataManager.GetMaxBloodlineSlots(player: Player): number
 	local data = playerBloodlines[player]
-	return if data then data.MaxSlots else 1
+	return if data then data.MaxSlots else 2
 end
 
 function PlayerDataManager.SetMaxBloodlineSlots(player: Player, maxSlots: number)
 	local data = playerBloodlines[player]
 	if not data then return end
-	data.MaxSlots = math.clamp(maxSlots, 1, 4)
+	data.MaxSlots = math.clamp(maxSlots, 1, 5)
 	player:SetAttribute("MaxBloodlineSlots", data.MaxSlots)
 end
 

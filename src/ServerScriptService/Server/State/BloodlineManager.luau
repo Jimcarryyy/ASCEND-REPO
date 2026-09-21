@@ -363,7 +363,7 @@ end
 -- Meridian Slot Management: Unlock Higher Slots
 function BloodlineManager.UnlockSlot(player: Player, slotIndex: number)
 	local currentMax = PlayerDataManager.GetMaxBloodlineSlots(player)
-	if slotIndex ~= currentMax + 1 or slotIndex > 3 then return end
+	if slotIndex ~= currentMax + 1 or slotIndex > 5 then return end
 
 	if slotIndex == 2 then
 		-- Slot 2 Requirement: Reach Foundation Establishment

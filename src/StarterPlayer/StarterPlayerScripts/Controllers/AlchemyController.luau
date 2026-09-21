@@ -80,7 +80,7 @@ local function EnsureUI(): boolean
 			local slotsBox = centerPanel:FindFirstChild("SlotsContainer") :: Frame?
 			if slotsBox then
 				table.clear(slotButtons)
-				for s = 1, 3 do
+				for s = 1, 4 do
 					local slotBtn = slotsBox:FindFirstChild("Slot" .. s) :: TextButton?
 					if slotBtn then
 						slotButtons[s] = slotBtn
@@ -113,7 +113,7 @@ local function EnsureUI(): boolean
 	if refineBtn then
 		refineBtn.Activated:Connect(function()
 			local indices: { number } = {}
-			for s = 1, 3 do
+			for s = 1, 4 do
 				if selectedInventorySlots[s] then
 					table.insert(indices, selectedInventorySlots[s])
 				end
@@ -147,6 +147,9 @@ function AlchemyController.Init()
 			if EnsureUI() and backdrop and gui then
 				gui.Enabled = true
 				backdrop.Visible = true
+				if herbScroll then
+					herbScroll.CanvasPosition = Vector2.new(0, 0)
+				end
 				alchemyActionRemote:FireServer({ Action = "RequestMasterySync" })
 				local invRemote = RemoteEvents.GetRemote("InventoryAction")
 				invRemote:FireServer({ Action = "RequestSync" })
@@ -184,65 +187,192 @@ function AlchemyController.Init()
 	print("[ASCEND] AlchemyController Initialized.")
 end
 
+local gridConnections: { RBXScriptConnection } = {}
+
+local RARITY_RANKS: { [string]: number } = {
+	["Mortal"] = 1, ["Common"] = 1,
+	["Spiritual"] = 2, ["Uncommon"] = 2,
+	["Earth"] = 3, ["Rare"] = 3,
+	["Heaven"] = 4, ["Epic"] = 4,
+	["Legendary"] = 5,
+	["Mythic"] = 6,
+	["Divine"] = 7,
+	["Immortal"] = 8,
+	["Sovereign"] = 9,
+	["Celestial"] = 10,
+}
+
+local GEAR_TYPES = {
+	Weapon = true, FlyingSword = true, Sword = true,
+	Equipment = true, Artifact = true, Armor = true, Crest = true,
+}
+
+local MATS_AND_SUPPLIES_TYPES = {
+	Material = true, Herb = true, Ingredient = true,
+	Consumable = true, Pill = true, Dan = true, Rare = true,
+}
+
 function AlchemyController.RefreshHerbGrid()
 	if not herbScroll then return end
 
-	-- Use pre-built template slots in the static GUI without runtime instantiation
-	local herbItems = {}
-	for slotIdx, slotData in pairs(currentInventory) do
-		local itemDef = ItemConfig.GetItem(slotData.ItemId)
-		local itemIdLower = slotData.ItemId:lower()
-
-		local isHerb = itemDef and (
-			itemDef.Type == "Material" or 
-			string.find(itemIdLower, "grass") or 
-			string.find(itemIdLower, "dew") or 
-			string.find(itemIdLower, "vine") or 
-			string.find(itemIdLower, "lotus") or 
-			string.find(itemIdLower, "core")
-		)
-
-		if isHerb and itemDef then
-			table.insert(herbItems, { slotIdx = slotIdx, itemDef = itemDef, count = slotData.Count, itemId = slotData.ItemId })
-		end
+	for _, conn in ipairs(gridConnections) do
+		conn:Disconnect()
 	end
+	table.clear(gridConnections)
 
-	for i = 1, 12 do
-		local slotBtn = herbScroll:FindFirstChild("SlotTemplate_" .. i) :: TextButton?
-		if slotBtn then
-			local data = herbItems[i]
-			if data then
-				local icon = slotBtn:FindFirstChild("HerbIcon") :: ImageLabel?
-				local countLbl = slotBtn:FindFirstChild("CountLabel") :: TextLabel?
+	-- Group items strictly by unique ItemId to eliminate duplicate slots
+	type SlotRef = { SlotIdx: number, Count: number }
+	type ConsolidatedEntry = {
+		ItemId: string,
+		TotalCount: number,
+		Slots: { SlotRef },
+		ItemDef: any,
+	}
 
-				if icon then
-					icon.Image = data.itemDef.Icon or (UIAssets.Icons and UIAssets.Icons[data.itemId]) or ""
-				end
-				if countLbl then
-					countLbl.Text = "x" .. tostring(data.count)
-				end
+	local consolidated: { [string]: ConsolidatedEntry } = {}
 
-				slotBtn.Visible = true
+	for slotIdx = 1, 60 do
+		local slotData = currentInventory[slotIdx] or currentInventory[tostring(slotIdx) :: any]
+		if slotData and slotData.ItemId and slotData.ItemId ~= "" then
+			local itemDef = ItemConfig.GetItem(slotData.ItemId)
+			if itemDef then
+				local itemType = itemDef.Type or ""
 
-				slotBtn.Activated:Connect(function()
-					for s = 1, 3 do
-						if not selectedInventorySlots[s] then
-							selectedInventorySlots[s] = data.slotIdx
-							break
+				-- Strictly exclude gear/weapons
+				if not GEAR_TYPES[itemType] then
+					local itemIdLower = slotData.ItemId:lower()
+					local isMatsOrSupplies = MATS_AND_SUPPLIES_TYPES[itemType] == true
+					local isHerbKeyword = string.find(itemIdLower, "grass") or 
+					                      string.find(itemIdLower, "dew") or 
+					                      string.find(itemIdLower, "vine") or 
+					                      string.find(itemIdLower, "lotus") or 
+					                      string.find(itemIdLower, "core")
+					local isPillKeyword = string.find(itemIdLower, "dan") or 
+					                      string.find(itemIdLower, "pill")
+
+					if isMatsOrSupplies or isHerbKeyword or isPillKeyword then
+						local id = slotData.ItemId
+						if not consolidated[id] then
+							consolidated[id] = {
+								ItemId = id,
+								TotalCount = 0,
+								Slots = {},
+								ItemDef = itemDef,
+							}
 						end
+
+						local count = slotData.Count or 1
+						consolidated[id].TotalCount += count
+						table.insert(consolidated[id].Slots, {
+							SlotIdx = slotIdx,
+							Count = count,
+						})
 					end
-					AlchemyController.UpdateSlotsUI()
-					AlchemyController.UpdateMetrics()
-				end)
-			else
-				slotBtn.Visible = false
+				end
 			end
 		end
 	end
+
+	-- Convert consolidated table to a list
+	local herbItems = {}
+	for _, entry in pairs(consolidated) do
+		table.insert(herbItems, entry)
+	end
+
+	-- Sort strictly by Rarity (Mythic -> Rare -> Uncommon -> Common), then alphabetically by Name
+	table.sort(herbItems, function(a, b)
+		local rA = RARITY_RANKS[a.ItemDef.Rarity] or 1
+		local rB = RARITY_RANKS[b.ItemDef.Rarity] or 1
+		if rA ~= rB then
+			return rA > rB
+		end
+		local nameA = a.ItemDef.Name or a.ItemId
+		local nameB = b.ItemDef.Name or b.ItemId
+		return nameA < nameB
+	end)
+
+	local totalUniqueItems = #herbItems
+	local template1 = herbScroll:FindFirstChild("SlotTemplate_1") :: TextButton?
+
+	-- Dynamically clone template buttons if player holds more unique items than existing templates
+	for i = 1, totalUniqueItems do
+		local slotBtn = herbScroll:FindFirstChild("SlotTemplate_" .. i) :: TextButton?
+		if not slotBtn and template1 then
+			slotBtn = template1:Clone()
+			slotBtn.Name = "SlotTemplate_" .. i
+			slotBtn.Parent = herbScroll
+		end
+	end
+
+	-- Populate slots
+	for _, child in ipairs(herbScroll:GetChildren()) do
+		if child:IsA("GuiObject") and string.find(child.Name, "SlotTemplate_") then
+			local idxStr = string.gsub(child.Name, "SlotTemplate_", "")
+			local i = tonumber(idxStr)
+			if i then
+				local data = herbItems[i]
+				if data then
+					local icon = child:FindFirstChild("HerbIcon") :: ImageLabel?
+					local countLbl = child:FindFirstChild("CountLabel") :: TextLabel?
+
+					if icon then
+						icon.Image = data.ItemDef.Icon or (UIAssets.Icons and UIAssets.Icons[data.ItemId]) or ""
+						icon.Visible = true
+					end
+					if countLbl then
+						countLbl.Text = "x" .. tostring(data.TotalCount)
+					end
+
+					child.Visible = true
+
+					local conn = (child :: TextButton).Activated:Connect(function()
+						-- Count how many of this item are already placed across the 4 cauldron slots
+						local usedCountsBySlot: { [number]: number } = {}
+						for s = 1, 4 do
+							local usedIdx = selectedInventorySlots[s]
+							if usedIdx then
+								usedCountsBySlot[usedIdx] = (usedCountsBySlot[usedIdx] or 0) + 1
+							end
+						end
+
+						-- Find the first available inventory slot for this item that still has count remaining
+						local chosenSlotIdx: number? = nil
+						for _, sInfo in ipairs(data.Slots) do
+							local alreadyUsed = usedCountsBySlot[sInfo.SlotIdx] or 0
+							if alreadyUsed < sInfo.Count then
+								chosenSlotIdx = sInfo.SlotIdx
+								break
+							end
+						end
+
+						if chosenSlotIdx then
+							-- Insert into first empty cauldron slot (1..4)
+							for s = 1, 4 do
+								if not selectedInventorySlots[s] then
+									selectedInventorySlots[s] = chosenSlotIdx
+									break
+								end
+							end
+							AlchemyController.UpdateSlotsUI()
+							AlchemyController.UpdateMetrics()
+						end
+					end)
+					table.insert(gridConnections, conn)
+				else
+					child.Visible = false
+				end
+			end
+		end
+	end
+
+	-- Dynamically calculate scroll height for 3-column grid
+	local rows = math.ceil(math.max(1, totalUniqueItems) / 3)
+	local neededScaleY = (rows * 0.33) + 0.12
+	herbScroll.CanvasSize = UDim2.new(0, 0, neededScaleY, 0)
 end
 
 function AlchemyController.UpdateSlotsUI()
-	for s = 1, 3 do
+	for s = 1, 4 do
 		local slotBtn = slotButtons[s]
 		if slotBtn then
 			local invSlotIdx = selectedInventorySlots[s]
@@ -250,16 +380,17 @@ function AlchemyController.UpdateSlotsUI()
 			local slotIcon = slotBtn:FindFirstChild("SlotIcon") :: ImageLabel?
 
 			if invSlotIdx and currentInventory[invSlotIdx] then
-				local itemDef = ItemConfig.GetItem(currentInventory[invSlotIdx].ItemId)
-				if itemDef then
-					if promptLbl then
-						promptLbl.Text = itemDef.Name
-						promptLbl.TextColor3 = Color3.fromRGB(255, 215, 110)
-					end
-					if slotIcon then
-						slotIcon.Image = itemDef.Icon or (UIAssets.Icons and UIAssets.Icons[currentInventory[invSlotIdx].ItemId]) or ""
-						slotIcon.Visible = true
-					end
+				local slotData = currentInventory[invSlotIdx]
+				local itemDef = ItemConfig.GetItem(slotData.ItemId)
+				local displayName = (itemDef and itemDef.Name) or slotData.ItemId
+
+				if promptLbl then
+					promptLbl.Text = displayName
+					promptLbl.TextColor3 = Color3.fromRGB(255, 215, 110)
+				end
+				if slotIcon then
+					slotIcon.Image = (itemDef and itemDef.Icon) or (UIAssets.Icons and UIAssets.Icons[slotData.ItemId]) or ""
+					slotIcon.Visible = true
 				end
 			else
 				if promptLbl then
@@ -278,15 +409,15 @@ function AlchemyController.UpdateMetrics()
 	if not matchedFormulaLabel or not estimatedSuccessLabel or not expectedQualityLabel or not requiredQiLabel then return end
 
 	local insertedIds: { string } = {}
-	for s = 1, 3 do
+	for s = 1, 4 do
 		local idx = selectedInventorySlots[s]
 		if idx and currentInventory[idx] then
 			table.insert(insertedIds, currentInventory[idx].ItemId)
 		end
 	end
 
-	if #insertedIds == 0 then
-		matchedFormulaLabel.Text = "MATCHED FORMULA: NONE"
+	if #insertedIds < 4 then
+		matchedFormulaLabel.Text = string.format("MATCHED FORMULA: NONE (%d/4 Herbs)", #insertedIds)
 		estimatedSuccessLabel.Text = "Estimated Success Rate: 0%"
 		expectedQualityLabel.Text = "Expected Quality: Standard Grade"
 		requiredQiLabel.Text = "Required Spirit Qi: 0 Qi"
