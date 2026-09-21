@@ -96,3 +96,4 @@ https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/DeWidth.client.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/UIStrokeResponsiveScaler.client.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src_file_list.txt
+git ls-files | ForEach-Object { "https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/$_" } | Out-File -Encoding utf8 raw_links.txt
