@@ -230,12 +230,8 @@ function CultivationConfig.GetOrderTargetQi(realmTier: RealmTier, order: number)
 	if not realmInfo then return 1000 end
 
 	local clampedOrder = math.clamp(order, 1, 9)
-	local cumTarget = 0
-	for o = 1, clampedOrder do
-		local delta = math.floor(realmInfo.BaseTargetQi * math.pow(CultivationConfig.ORDER_TARGET_QI_EXPONENT, o - 1))
-		cumTarget += delta
-	end
-	return cumTarget
+	local orderScale = math.pow(CultivationConfig.ORDER_TARGET_QI_EXPONENT, clampedOrder - 1)
+	return math.floor(realmInfo.BaseTargetQi * orderScale)
 end
 
 function CultivationConfig.GetOrderStartingMaxQi(realmTier: RealmTier, order: number): number

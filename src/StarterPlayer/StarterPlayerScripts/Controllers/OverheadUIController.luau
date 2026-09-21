@@ -59,7 +59,7 @@ local function SpawnQiPopup(character: Model, delta: number)
 	label.BackgroundTransparency = 1
 	label.Text = string.format("+%s Qi", FormatNum(delta))
 	label.FontFace = Font.fromName("Bangers", Enum.FontWeight.Bold)
-	label.Font = Enum.Font.BangersBangers
+	label.Font = Enum.Font.BangersBangersBangers
 	label.TextSize = 28
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	label.TextXAlignment = Enum.TextXAlignment.Center
