@@ -178,3 +178,20 @@ Core System Services: ModalWindowManager and InputController initialize and lock
 Audio & VFX Engines: MusicController and CombatVFXController initialize.
 HUD & ScreenGuis: HUDController scans StarterGui.MasterHUDGui, establishes value observers, and binds the bottom-left 340px column stack.
 Interactive Controllers: Domain controllers (CultivationController, InventoryController, CharacterStatsController, etc.) connect to their respective remotes and Studio UI components.
+
+---
+
+## 8. Phase 2.1 System Architecture Addendum (September 2026)
+
+### 8.1 Inventory & Capacity Expansion (ADR-070)
+- **Engine Capacity:** `MAX_SLOTS` expanded from 60 to **100 slots** across `InventoryManager.luau`, `InventoryController.luau`, and `AlchemyController.luau`.
+- **Quality Stacking Standard:** `InventoryManager.AddItem` implements `effectiveQuality = quality or itemDef.Rarity or "Common"`, ensuring gathered herbs and crafted pills stack into existing slots regardless of omitted parameters.
+
+### 8.2 Gathering Lifecycle & Node Resolution
+- **Model Resolution:** `GatheringManager.ResolveNode` climbs instance hierarchies to resolve `NodeType` attributes independently of `activeNodes` cooldown states.
+- **Node Cooldown & Prompt Safety:** Depleted nodes disable all descendant `ProximityPrompt` instances recursively and re-enable them upon respawn (`RespawnTime = 12.0` to `25.0s`). Triggering a cooling-down node fires `ActionFailed`, immediately closing client channel bars without hanging.
+
+### 8.3 Bloodline Altar & Gacha Engine
+- **Active Controller:** `BloodlineController.luau` drives `Page_Bloodline` docked inside `StarterGui.MainHubGui`.
+- **Meridian Storage Vault:** 5 slots (`SlotRow_1..5`) persisted via `PlayerDataManager.luau` (Slots 1–2 free; Slots 3–5 locked behind Robux Developer Products).
+- **Roulette Reel:** Dynamic 35-card carousel with 3.2s exponential deceleration, rarity-tinted card backings, near-miss suspense at Card 27, and golden winner lock-in pulse at Card 28.

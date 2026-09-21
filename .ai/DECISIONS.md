@@ -666,3 +666,46 @@ This document records structural architectural decisions, design paradigms, secu
 * **Status:** Accepted
 * **Context:** 16 legacy declared remotes had zero references across 87 project scripts, inflating network surface area.
 * **Decision:** Pruned all 16 unused remotes from `RemoteEvents.luau`. Strictly declared and instantiated only the 16 active remotes using `--!strict` Luau typing and discriminated union payloads.
+
+### ADR-067: Meridian Storage Vault 5-Slot Expansion & Monetization Architecture
+* **Date:** 2026-09-21
+* **Status:** Accepted & Implemented
+* **Context:** Players required additional vault space to store awakened bloodline lineages, while establishing non-pay-to-win monetization hooks.
+* **Decision:**
+  1. Expanded the Meridian Storage Vault to **5 total slots** (`SlotRow_1` through `SlotRow_5`).
+  2. **Slots 1 & 2 are 100% free** by default for all cultivators.
+  3. **Slots 3, 4, and 5 are locked by default**, displaying `[LOCKED] Ancestral Meridian` and an `UNLOCK (ROBUX)` action button.
+  4. Clicking a locked slot sends `{ Action = "UnlockSlot", SlotIndex = idx }` to the server to trigger Developer Product purchase validation.
+  5. `PlayerDataManager.luau` defaults `MaxSlots = 2` and clamps maximum slots up to 5.
+* **Consequences:** Provides accessible storage for free-to-play cultivators while creating clean monetization sinks for serious collectors.
+
+### ADR-068: Universal 4-Slot Alchemy Formula Doctrine
+* **Date:** 2026-09-21
+* **Status:** Accepted & Implemented
+* **Context:** The cauldron was expanded to 4 slots to accommodate `ImmortalAscensionDan` (which required 4 ingredients), but having some recipes use 1, 2, or 3 slots created ambiguity in the combination slots.
+* **Decision:**
+  1. Overhauled all 13 formulas in `AlchemyConfig.luau` (4 utility/combat pills + 9 Major Realm Breakthrough Dans) so that **100% of alchemy recipes require exactly 4 archetypes**.
+  2. Cauldron in `StarterGui.AlchemyGui` features exactly 4 slots (`Slot1`, `Slot2`, `Slot3`, `Slot4`) of equal width (`0.235`).
+  3. `AlchemyController.UpdateMetrics` evaluates formula matches strictly when 4 herbs are inserted, displaying progress feedback (`MATCHED FORMULA: NONE (N/4 Herbs)`) when partially filled.
+  4. `AlchemyManager.luau` server-authoritatively validates that 4 valid ingredients are present before allowing pill refinement.
+* **Consequences:** Standardizes all alchemy gameplay around a consistent 4-ingredient combination mechanic with deep archetype experimentation.
+
+### ADR-069: Consolidated Mats & Supplies Alchemy Pouch Architecture
+* **Date:** 2026-09-21
+* **Status:** Accepted & Implemented
+* **Context:** Multiple stacks of the same herb in the inventory created duplicate identical buttons in the alchemy pouch (e.g. 3 separate `Spirit Grass x99` buttons), while weapons and equipment occasionally leaked into the cauldron picker.
+* **Decision:**
+  1. `AlchemyController.RefreshHerbGrid` strictly gates items by `InventoryController`'s `CATEGORY_MAP`: accepts 100% of `MATS` (`Material`, `Herb`, `Ingredient`) and `SUPPLIES` (`Consumable`, `Pill`, `Dan`), while barring `GEAR` (`Weapon`, `Armor`, `Equipment`, etc.).
+  2. Consolidates items by unique `ItemId` across all 100 inventory slots: multiple stacks merge into a single button displaying the combined total count (e.g. `1-Yr Spirit Grass x297`).
+  3. Sorts pouch cards by Rarity (`Mythic` $\rightarrow$ `Rare` $\rightarrow$ `Uncommon` $\rightarrow$ `Common`), ensuring highest-tier vintage herbs always display first.
+  4. Configured `HerbScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y` with `CanvasSize = (0, 0)`, eliminating hardcoded slot ceilings and providing unlimited dynamic scrolling.
+* **Consequences:** Eliminates visual clutter, prevents gear from entering cauldrons, and provides an organized, infinite inventory picker.
+
+### ADR-070: 100-Slot Universal Inventory Capacity Standard
+* **Date:** 2026-09-21
+* **Status:** Accepted & Implemented
+* **Context:** Developer sword arsenals (~35 blades), 13 gathering material stacks, and 8 pill stacks filled the legacy 60-slot inventory to 100% capacity (60/60), causing resource gathering of new herbs (like `GaleWindLotus`) to fail silently due to zero empty slots.
+* **Decision:**
+  1. Expanded `MAX_SLOTS` from 60 to **100 slots** across `InventoryManager.luau`, `InventoryController.luau`, and `AlchemyController.luau`.
+  2. Implemented flexible quality matching in `InventoryManager.AddItem` so gathered herbs stack into existing stacks regardless of omitted quality parameters, while populating new slots with `effectiveQuality = itemDef.Rarity or "Common"`.
+* **Consequences:** Immediately provides 40+ free inventory slots, completely resolving harvest addition failures and bag overflow lockouts.

@@ -725,3 +725,44 @@ This document records historical feature additions, engine enhancements, balance
 - **`GatheringManager.luau` Silent Harvest Abort:** Corrected `GetConfig` to query `GatheringConfig.GetNode()`, unblocking node interaction.
 - **Duplicate Quest Progression:** Diagnosed and isolated double-call bug in `MobAIManager.luau` and triple-call bug in `GatheringManager.luau`.
 - **Machine-Gun Audio Click Bug:** Isolated duplicate `.Activated` listener stacking in `SectController.luau`.
+
+## [Phase 2.1 — Bloodline Altar Roulette, 4-Slot Alchemy Overhaul & Gathering Engine] — 2026-09-21
+
+### Added
+- **Bloodline Altar Gacha Roulette Reel (`BloodlineController.luau` & `StarterGui.MainHubGui`):**
+  - Built a dynamic horizontal gacha carousel in `DecisionModal.ModalCard` (resized to $560 \times 430\text{px}$) featuring `RouletteViewport` with `ClipsDescendants = true`, antique gold borders, and top/bottom `CelestialReticle` indicator arrows (`▼`/`▲`).
+  - Populates a 35-card dynamic reel from all 12 lineages in `BloodlineConfig.luau` with rarity-tinted background gradients and colored `UIStroke`s.
+  - Implemented 3.2s exponential deceleration physics (`Enum.EasingStyle.Exponential`, `Enum.EasingDirection.Out`) with step-scaled click sound ticks.
+  - Added near-miss suspense at Card 27 (65% chance for a high-tier Mythic/Legendary card right before the winner at Card 28).
+  - Winner card triggers a golden `UIStroke` scale pulse, chime SFX, and reveals the action buttons with a punchy Back-out scale tween.
+- **5-Slot Meridian Storage Vault (`PlayerDataManager.luau`, `BloodlineManager.luau`, `BloodlineController.luau`):**
+  - Expanded `VaultCard` with `SlotRow_4` and `SlotRow_5`.
+  - Updated `PlayerDataManager.luau` so Slots 1 & 2 are free defaults, and allowed clamping `MaxSlots` up to 5.
+  - Configured Slots 3, 4, and 5 to render `[LOCKED] Ancestral Meridian` with an `UNLOCK (ROBUX)` action button, triggering `UnlockSlot` on the server.
+- **Universal 4-Slot Alchemy Cauldron (`AlchemyGui`, `AlchemyConfig.luau`, `AlchemyController.luau`, `AlchemyManager.luau`):**
+  - Expanded `SlotsContainer` in `AlchemyGui` to 4 slots (`Slot1`, `Slot2`, `Slot3`, `Slot4`) resized to width `0.235`. Fixed `SlotHeader` label text to `"SLOT 4"`.
+  - Overhauled all 13 formulas in `AlchemyConfig.luau` (4 utility/combat + 9 Major Realm Breakthrough Dans) so every single recipe requires an authentic 4-herb combination.
+  - Built auto-scrolling `RecipeScrollFrame` dynamically rendering all 13 formulas from `AlchemyConfig.GetAllFormulas()`, highlighting the 9 Breakthrough Dans with celestial gold styling.
+  - Upgraded `HerbScrollFrame` to `AutomaticCanvasSize = Enum.AutomaticSize.Y` with `(0, 0)` auto-reset, removing the hardcoded 9-slot ceiling.
+  - Non-selectively consolidated 100% of inventory Mats (`Material`, `Herb`, `Ingredient`) and Supplies (`Consumable`, `Pill`, `Dan`) by `ItemId` with combined stack counts, eliminating all duplicate cards while strictly barring Gear.
+  - Added multi-item stack safety validation in `AlchemyManager.luau` before deducting ingredients.
+- **100-Slot Universal Inventory Capacity (`InventoryManager.luau`, `InventoryController.luau`, `AlchemyController.luau`):**
+  - Expanded `MAX_SLOTS` from 60 to 100 across the server inventory engine, Spirit Pouch client grid, and alchemy station to accommodate developer weapon arsenals, materials, and consumables without harvest overflow lockouts.
+
+### Changed
+- **Gathering Node Resolution (`GatheringManager.luau`):**
+  - Decoupled `ResolveNode` from `activeNodes` cooldown state, allowing node geometry and configs to resolve regardless of whether a plant is cooling down.
+  - Directly reads `nodeInstance:GetAttribute("NodeType")` across all 57 nodes in `Workspace.GatheringNodes`.
+- **Gathering Drop Rolling (`GatheringManager.luau`):**
+  - Replaced unweighted drop math with `GatheringConfig.RollHarvestResult(nodeType)`, accurately honoring `.Chance` odds across 1-Yr, 10-Yr, 100-Yr, and 1,000-Yr herbs.
+- **Sect Exchange Pavilion Sync (`VendorManager.luau` & `MarketController.luau`):**
+  - `VendorManager.luau` now supplies `Inventory = InventoryManager.GetInventory(player)` on `RequestMarketData` and `TransactionSuccess (Sell)`.
+  - `MarketController.luau` accepts both direct inventory tables and `{ Inventory = ... }` wrappers, immediately populating the Sell Loot grid and eliminating the "No tradeable loot" bug.
+
+### Fixed
+- **Bloodline Altar Remote Action Mismatches:** Aligned 9 client-server remote actions (`ExchangeSpins`, `Spin`, `Spin10x`, `ClaimRoll`, `DiscardRoll`, `GetState`, `StateUpdate`, `RollDecide`, `RollDiscarded`).
+- **`DecisionModal` Text Visibility Trap:** Fixed `LineageName` and `DecSummary` rendering behind the plate background by updating their `ZIndex` to 35 (above `DecPlate`'s `ZIndex = 32`).
+- **Gathering Server Thread Crash:** Added missing `local ItemConfig = require(...)` at line 18 of `GatheringManager.luau`, resolving runtime crashes during harvest completion.
+- **Gathering Progress Bar Freeze:** Added `ActionFailed` listener in `GatheringController.luau` so if a node is on cooldown or inventory is full, the `HARVESTING...` bar cancels immediately with a red toast instead of freezing at 100%.
+- **ProximityPrompt Multi-Part Disable Bug:** Replaced single-part prompt lookups with recursive `GetDescendants()` loops in `GatheringManager.luau`, ensuring all prompts on depleted models disable during cooldown and re-enable on respawn.
+- **Herb Stacking Quality Mismatch (`InventoryManager.luau`):** Implemented `effectiveQuality = quality or itemDef.Rarity or "Common"` and flexible quality matching, allowing harvested herbs to stack directly into existing stacks.

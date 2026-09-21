@@ -2,18 +2,19 @@
 
 > **Operational Task Tracker**  
 > **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
-> **Source of Truth:** Live Luau Codebase (`src/`)  
+> **Source of Truth:** Live Luau Codebase (`src/`) & Live Studio Place File  
 > **Active Phase:** Phase 2 — Architecture Cleanup & Anti-Pattern Purge  
-> **Roadmap Status:** Phase 1 Verified Closed (5/5) | Phase 2 Active
+> **Roadmap Status:** Phase 1 Closed | Phase 2 Active (In Progress)
 
 ---
 
 ## 🎯 Active Focus
 
-Execute **Phase 2: Codebase Cleanup & Unified Drawer Controller Wiring**:
-1. Complete wiring of docked drawer panels (`CharacterStatsController`, `BloodlineController`, embedded `CodexController`) to live server state without independent hotkeys or close buttons.
-2. Finalize server-authoritative fixes for herb gathering channeled hold delay, strict Spirit Grass matching, and single-kill Rogue Disciple quest progression.
-3. Complete memory leak audit across `characterConnections` and enforce `--!strict` typing.
+Execute remaining items of **Phase 2: Codebase Cleanup & Unified Drawer Controller Wiring**:
+1. Finalize **Codex Integration**: Complete `Page_Archives` topic switching and purge legacy `StarterGui.CodexGui` infinite yield.
+2. Complete docked master drawer integration for `CharacterStatsController` (`Page_Stats`).
+3. Complete memory leak audit across `characterConnections` in `CombatStateManager.luau`, `CultivationManager.luau`, and `SkillBarController.luau`.
+4. Enforce `--!strict` typing across shared configs in `src/ReplicatedStorage/Shared/Configs/`.
 
 ---
 
@@ -23,19 +24,39 @@ Execute **Phase 2: Codebase Cleanup & Unified Drawer Controller Wiring**:
 - [x] DataVersion 3 persistence with Samsara cycle tracking and Roman numeral title generator.
 - [x] Studio Monkey Verification: 9/9 server checks passed (collision groups, network ownership, anti-ragdoll states).
 - [x] Murim Spawn Dais pad fix (`CanCollide = true`, `Anchored = true`, `Neutral = true`).
-- [x] Network remote pruning: 16 legacy unused remotes purged; 16 active remotes typed with `--!strict`.
+- [x] Network remote pruning: 16 active remotes typed with `--!strict`.
 - [x] Mob roster standardization: 10 Humanoid R6 Cultivators configured with `SPAWNER_ALIAS_MAP`.
 
 ### Phase 2: Architecture Cleanup, Anti-Pattern Purge & UI Integration (ACTIVE)
 - [x] **Anti-Trip Physics Hardening:** Created `AntiTripServer` in `StarterCharacterScripts` with R6-safe pcall guard.
-- [x] **MainHub Master Drawer:** Scaffolding complete with CoreGui top-bar button, sharp Fondamento sidebar, and zero bottom-seam overscan.
-- [x] **Spirit Pouch Docking:** `Page_Inventory` docked, red `X` purged, pop-up tween removed, independent `I` keybind stripped.
-- [x] **Sect Pavilion Docking:** `Page_Faction` docked, red `X` purged, `M` keybind stripped, 24h stipend persistence verified.
-- [ ] **Bloodline Altar Wiring:** Resolve `Page_Bloodline` button interaction and `DecisionModal` gacha flow.
+- [x] **MainHub Master Drawer:** Top-bar button, sharp Fondamento sidebar, and zero bottom-seam overscan.
+- [x] **Spirit Pouch (Page_Inventory) Docking:** Cloned inventory panel into Master Drawer; disabled legacy standalone `SpiritPouchInventoryGui`.
+- [x] **Sect Pavilion (Page_Faction) Docking:** Cloned Sect Pavilion into `Page_Faction`; disabled legacy `SectPavilionGui`; 24h stipend verified.
+- [x] **Bloodline Altar & Gacha Engine Wiring:**
+  - Resolved 9 client-server remote action mismatches (`ExchangeSpins`, `Spin`, `Spin10x`, `ClaimRoll`, `DiscardRoll`, `GetState`, `StateUpdate`, `RollDecide`, `RollDiscarded`).
+  - Fixed `DecisionModal` text visibility (brought `LineageName` and `DecSummary` to `ZIndex = 35`).
+  - Expanded Meridian Storage Vault to 5 slots in `VaultCard` (Slots 1–2 free; Slots 3–5 locked behind Robux unlock flow).
+  - Built dynamic 35-card Gacha Roulette Reel in `ModalCard` with 3.2s exponential deceleration, rarity-tinted cards across all 12 lineages, near-miss suspense at Card 27, and golden impact flash.
+- [x] **Universal 4-Slot Alchemy Engine & Pouch Integration:**
+  - Overhauled all 13 formulas in `AlchemyConfig.luau` (4 utility + 9 Breakthrough Dans) to require strict 4-herb combinations.
+  - Expanded Cauldron slots in `AlchemyGui` to 4 slots (`Slot1`, `Slot2`, `Slot3`, `Slot4`) and corrected `Slot4.SlotHeader`.
+  - Rebuilt `RecipeScrollFrame` into an auto-scrolling catalog rendering all 13 formulas with celestial gold styling on Breakthrough Dans.
+  - Upgraded `HerbScrollFrame` to `AutomaticCanvasSize.Y` with `(0, 0)` auto-reset, removing the 9-slot ceiling.
+  - Non-selectively consolidated 100% of inventory Mats and Supplies by `ItemId` with combined stack counts, eliminating all duplicates while barring weapons/gear.
+  - Added multi-item stack safety validation in `AlchemyManager.luau` before deducting ingredients.
+- [x] **Gathering to Inventory Pipeline Fix:**
+  - Resolved server crash by importing missing `ItemConfig` require at line 18 of `GatheringManager.luau`.
+  - Decoupled `ResolveNode` from `activeNodes` cooldown state so nodes and configs resolve regardless of cooldown.
+  - Fixed prompt disabling/re-enabling across all 57 nodes in `Workspace.GatheringNodes`.
+  - Added `ActionFailed` fail-safe in `GatheringManager` and `GatheringController`, preventing progress bar freezing on depleted nodes.
+  - Expanded player inventory capacity from 60 to **100 slots** across `InventoryManager.luau`, `InventoryController.luau`, and `AlchemyController.luau`.
+- [x] **Sect Exchange Pavilion (Merchant Market):**
+  - Updated `MarketController.luau` to accept both raw inventory tables and `{ Inventory = ... }` payloads from `updateInventoryRemote`.
+  - Updated `VendorManager.luau` to send live inventory on `RequestMarketData` and `TransactionSuccess (Sell)`, eliminating the "No tradeable loot" bug.
 - [ ] **Codex Integration:** Finalize `Page_Archives` topic switching and purge legacy `StarterGui.CodexGui` infinite yield.
-- [ ] **Gathering Channeled Delay:** Verify server-side 1.8s hold duration in `GatheringManager.luau` and single-count quest tracking.
+- [ ] **CharacterStats Docking:** Dock `Page_Stats` into master drawer without standalone hotkey conflicts.
 - [ ] **Memory Leak & Connection Lifecycle Audit:**
-  - Audit all `characterConnections` across `CombatStateManager.luau`, `CultivationManager.luau`, and `SkillBarController.luau`.
+  - Audit `characterConnections` across `CombatStateManager.luau`, `CultivationManager.luau`, and `SkillBarController.luau`.
   - Audit cleanup routines on ProximityPrompts and temporary spatial queries.
 - [ ] **Strict Typing & Schema Safety:**
   - Apply `--!strict` typing to all configs in `src/ReplicatedStorage/Shared/Configs/`.

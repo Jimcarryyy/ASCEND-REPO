@@ -2,7 +2,7 @@
 
 > **Engineering Roadmap & Next Steps**  
 > **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
-> **Source of Truth:** Live Luau Codebase (`src/`)  
+> **Source of Truth:** Live Luau Codebase (`src/`) & Live Studio Place File  
 > **Active Phase:** Phase 2 — Architecture Cleanup & Anti-Pattern Purge
 
 ---
@@ -16,25 +16,29 @@
 │   16 typed remotes, 10 Humanoid R6 mob models and spawners.                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ [ACTIVE] PHASE 2: ARCHITECTURE CLEANUP & ANTI-PATTERN PURGE                 │
-│ - MainHub master drawer controller wiring (Bloodline, Stats, Codex)         │
-│ - Gathering channeled hold delay & strict quest progression validation      │
-│ - Memory leak audit (characterConnections & event listeners)                │
-│ - Circular dependency decoupling (cached getters across managers)           │
-│ - Strict typing (--!strict) across configs and remote handlers              │
+│ - [x] Bloodline Altar wiring, 5-slot vault, animated gacha roulette reel   │
+│ - [x] 4-slot alchemy overhaul, dynamic 13-recipe catalog, 100-slot inventory│
+│ - [x] Gathering pipeline decoupling, prompt lifecycle, and drop roll fix   │
+│ - [x] Sect Exchange Pavilion live sell inventory synchronization            │
+│ - [ ] Codex Integration (Page_Archives topic switching & CodexGui purge)   │
+│ - [ ] CharacterStats docking (Page_Stats master drawer wiring)              │
+│ - [ ] Memory leak audit (characterConnections & event listeners)            │
+│ - [ ] Strict typing (--!strict) across configs and remote handlers          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ [PENDING] PHASE 3: COMBAT KINEMATICS, MARTIAL CADENCE & TUNING             │
 │ - Heavy M1 slashes (0.50x / 0.32x playback, committed footwork)            │
 │ - Skill E overhaul (traveling projectile beam, weapon palette attunement)   │
 │ - Defensive VFX wiring (ActiveShield on T, ShieldBreakEffects on break)     │
 │ - Black-bordered white ribbon sword trails & Shunpo dash polish             │
+│ - Bloodline combat stat multipliers wiring (Damage, QiMax, Posture)        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ [CLOSED] PHASE 4: FLYING SWORD 3D FLIGHT ENGINE                             │
 │ - Completed Phase 8.4: 3D flight, realm speed scaling, 25 Qi/s drain,       │
 │   ground/obstacle clearance cushions, and auto-dismount.                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 5: UNIFIED GUI SYSTEMS & MODAL REFINEMENT                             │
-│ - Complete docked controller wiring (CharacterStats, Bloodline, Codex)      │
-│ - Connect Heavenly Treasury (Shop) & Celestial Updates to backend engines  │
+│ - Finalize docked controller wiring (CharacterStats, Codex)                 │
+│ - Connect Heavenly Treasury (Shop) & Developer Products (Vault slots 3-5)   │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 6: BEGINNER WALKTHROUGH & GUIDING SYSTEMS                             │
 │ - 3D guide lines and progressive quest markers                              │
@@ -47,6 +51,7 @@
 │ PHASE 8: COMPETITIVE SPARRING ARENA & LEADERBOARDS                          │
 │ - Ranked matchmaking queue and competitive honor exchange                   │
 │ - Sector 3 Elo rating persistence and spectator podium                      │
+│ - [NEEDS CONFIRMATION] Sect Leaderboard SurfaceGuis (LeaderboardManager)    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 9: MULTI-ZONE EXPANSION (ZONE 2 VERDANT BAMBOO VALLEY)               │
 │ - Zone 2 terrain integration, gathering nodes, and higher-order mobs        │

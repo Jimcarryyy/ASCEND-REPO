@@ -213,3 +213,34 @@ DataStores under key ASCEND_PlayerData_V3:
 
 
 ---
+
+---
+
+## 8. Phase 2.1 Alchemy & Breakthrough Dan Specification (Addendum)
+
+### 8.1 Universal 4-Slot Combination Cauldron (ADR-068)
+All alchemy recipes brewed at Master Shen's Eight Trigrams Cauldron (`Sect_AlchemyStation`) strictly require **4 ingredients** inserted into Cauldron Slots 1 through 4:
+
+#### The 9 Major Realm Breakthrough Dans:
+1. **Foundation Gathering Dan:** `SpiritGrass + SpiritGrass + CelestialDew + DemonBeastCore` (60 Qi, 65% Base Rate, 100 EXP)
+2. **Golden Core Dan:** `DragonBloodVine + GaleWindLotus + CelestialDew + DemonBeastCore` (150 Qi, 60% Base Rate, 200 EXP)
+3. **Nascent Soul Dan:** `GaleWindLotus + CelestialDew + CelestialDew + DemonBeastCore` (350 Qi, 55% Base Rate, 400 EXP)
+4. **Spirit Severing Dan:** `DragonBloodVine + DragonBloodVine + SpiritGrass + DemonBeastCore` (800 Qi, 50% Base Rate, 700 EXP)
+5. **Void Refining Dan:** `GaleWindLotus + GaleWindLotus + CelestialDew + DemonBeastCore` (1,800 Qi, 45% Base Rate, 1,200 EXP)
+6. **Body Integration Dan:** `DragonBloodVine + DragonBloodVine + GaleWindLotus + DemonBeastCore` (4,000 Qi, 40% Base Rate, 2,000 EXP)
+7. **Mahayana Dan:** `SpiritGrass + SpiritGrass + DragonBloodVine + DemonBeastCore` (9,000 Qi, 35% Base Rate, 3,500 EXP)
+8. **Tribulation Transcending Dan:** `GaleWindLotus + DragonBloodVine + CelestialDew + DemonBeastCore` (20,000 Qi, 30% Base Rate, 6,000 EXP)
+9. **Immortal Ascension Dan:** `SpiritGrass + DragonBloodVine + GaleWindLotus + DemonBeastCore` (50,000 Qi, 25% Base Rate, 12,000 EXP)
+
+#### Utility & Combat Pills:
+- **Physique Tempering Dan:** `DragonBloodVine + DragonBloodVine + SpiritGrass + CelestialDew` (25 Qi, 55% Base Rate, 25 EXP)
+- **Gale Wind Dan:** `GaleWindLotus + GaleWindLotus + SpiritGrass + CelestialDew` (30 Qi, 60% Base Rate, 30 EXP)
+- **Qi Gathering Dan:** `SpiritGrass + SpiritGrass + CelestialDew + GaleWindLotus` (35 Qi, 65% Base Rate, 35 EXP)
+- **Spirit Healing Dan:** `SpiritGrass + SpiritGrass + CelestialDew + CelestialDew` (20 Qi, 70% Base Rate, 20 EXP)
+
+### 8.2 Vintage Herb Age Scaling
+Higher vintage ingredients (`1-Yr`, `10-Yr`, `100-Yr`, `1,000-Yr`) provide additive success rate bonuses (up to +40%) and elevate crafted pill quality:
+- `1-Yr` Average $\rightarrow$ **Mortal Grade**
+- `10-Yr` Average $\rightarrow$ **Earth Grade** (+15% Success Rate)
+- `100-Yr` Average $\rightarrow$ **Supreme Grade** (+30% Success Rate)
+- `1,000-Yr` Average $\rightarrow$ **Transcendent Grade** (+40% Success Rate)
