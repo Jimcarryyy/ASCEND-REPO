@@ -23,11 +23,13 @@ https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/GAME_DESIGN.m
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/PROGRESSION_SPEC.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/README.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/ROBLOX_PERFORMANCE_RULES.md
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/SESSION_DIGEST.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/SESSION_END.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/SESSION_START.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/UI_UX_SPEC.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/raw_links.txt
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedFirst/LoadingScreen.client.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedFirst/LoadingScreen.meta.json
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/Shared/Configs/AlchemyConfig.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/Shared/Configs/AnimationConfig.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/Shared/Configs/BloodlineConfig.luau
@@ -63,10 +65,12 @@ https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ServerScriptSe
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ServerScriptService/Server/World/VendorManager.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterGui/MasterHUDGui/init.meta.json
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterCharacterScripts/Animate.client.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterCharacterScripts/AntiTripServer.server.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/ClientMain.client.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/Controllers/AlchemyController.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/Controllers/ArenaController.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/Controllers/BloodlineController.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/Controllers/BossHUDController.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/Controllers/CharacterStatsController.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
@@ -92,4 +96,3 @@ https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/DeWidth.client.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/UIStrokeResponsiveScaler.client.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src_file_list.txt
-git ls-files | ForEach-Object { "https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/$_" } | Out-File -Encoding utf8 raw_links.txt
