@@ -1066,17 +1066,10 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 	if not enabled or isMeditating or isBlocking or isCastingSkillQ or isExecutingSkillF or IsInCCState() then return end
 
 	if input.KeyCode == Enum.KeyCode.B then
-		local curQi = character and character:GetAttribute("Qi") or 0
-		local maxQi = character and character:GetAttribute("MaxQi") or 100
-		if curQi >= maxQi then
-			EmitToast("Initiating Cultivation Breakthrough...")
-		else
-			EmitToast(string.format("Breakthrough Failed: Qi not condensed (%s/%s)", tostring(math.floor(curQi)), tostring(math.floor(maxQi))))
-		end
+		-- Fire server directly so CultivationFeedbackGui (RejectionToast / ReadyPrompt) handles all visual feedback authoritatively
 		combatActionRemote:FireServer({ RequestBreakthrough = true })
 		return
 	end
-
 	if input.KeyCode == Enum.KeyCode.Q then
 		InputController.TriggerSkill("Q")
 		return

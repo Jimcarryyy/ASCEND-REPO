@@ -294,6 +294,27 @@ local function GetQiNodeMultiplier(character: Model): number
 	return 1.0
 end
 
+function CultivationManager.OnCultivationAction(player: Player, payload: any)
+	if type(payload) ~= "table" then return end
+	-- Remote action handler
+end
+
+function CultivationManager.OnCultivationAction(player: Player, payload: any)
+	if type(payload) ~= "table" then return end
+end
+
+function CultivationManager.SetPlayerData(player: Player, data: any)
+	if not data then return end
+	playerData[player] = data
+	local character = player.Character
+	local realmKey = data.Realm or "QiCondensation"
+	local order = data.Order or 1
+	if character then
+		ApplyRealmStats(player, character, realmKey, order)
+	end
+	CultivationManager.SyncClient(player)
+end
+
 function CultivationManager.Init()
 	local combatRemote = getCombatActionRemote()
 	local actionRemote = getCultivationActionRemote()
@@ -392,400 +413,12 @@ function CultivationManager.Init()
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
+	local pData = PlayerDataManager.GetPlayerData(player)
+	if not pData then return end
 	if not playerData[player] then
 		local startTarget = CultivationConfig.GetOrderTargetQi("QiCondensation", 1)
-		local startCap = CultivationConfig.GetOrderStartingMaxQi("QiCondensation", 1)
-		playerData[player] = {
-			Realm = "QiCondensation",
-			Order = 1,
-			CurrentQi = startCap,
-			CultivatedQi = startCap,
-			MaxQiGoal = startTarget,
-			IsMeditating = false,
-			IsTribulationActive = false,
-			TribulationWave = 0,
-			TotalWaves = 0,
-		}
-	end
-
-	if characterConnections[player] then
-		characterConnections[player]:Disconnect()
-		characterConnections[player] = nil
-	end
-
-	characterConnections[player] = player.CharacterAdded:Connect(function(character)
-		local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
-		if humanoid then
-			local pData = CultivationManager.GetPlayerData(player)
-			if pData then
-				local maxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
-				humanoid.MaxHealth = maxHp
-				humanoid.Health = maxHp
-				character:SetAttribute("MaxHealth", maxHp)
-				character:SetAttribute("Health", maxHp)
-				character:SetAttribute("IsMeditating", pData.IsMeditating)
-			end
-		end
-		CultivationManager.ApplyRealmStats(player)
-	end)
-end
-
-function CultivationManager.OnPlayerRemoving(player: Player)
-	if characterConnections[player] then
-		characterConnections[player]:Disconnect()
-		characterConnections[player] = nil
-	end
-	if tribulationThreads[player] then
-		task.cancel(tribulationThreads[player])
-		tribulationThreads[player] = nil
-	end
-	activeTribulationSessions[player] = nil
-	lastToggleTimestamp[player] = nil
-	playerData[player] = nil
-end
-
-function CultivationManager.GetPlayerData(player: Player): PlayerCultivationData?
-	local data = playerData[player]
-	if not data and player.Parent then
-		local rawRealm = player:GetAttribute("Realm")
-		local cleanRealm = if type(rawRealm) == "string" then rawRealm:gsub("%s*[-–].*", ""):gsub("%s+", "") else "QiCondensation"
-		local realmKey: any = if CultivationConfig[cleanRealm] then cleanRealm else "QiCondensation"
-		local order = (player:GetAttribute("Order") :: number?) or 1
-		local curQi = (player:GetAttribute("Qi") :: number?) or 200
-		local cultQi = (player:GetAttribute("CultivatedQi") :: number?) or (player:GetAttribute("MaxQi") :: number?) or curQi
-		CultivationManager.SetPlayerData(player, realmKey, curQi, order, cultQi)
-		data = playerData[player]
-	end
-	return data
-end
-
-function CultivationManager.AddInternalQi(player: Player, amount: number)
-	local pData = CultivationManager.GetPlayerData(player)
-	if not pData then return end
-
-	local maxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
-	pData.CultivatedQi = math.clamp(pData.CultivatedQi + amount, 0, maxQiGoal)
-	pData.CurrentQi = math.clamp(pData.CurrentQi + amount, 0, pData.CultivatedQi)
-
-	CultivationManager.SyncClient(player)
-end
-
-function CultivationManager.AddCultivatedQi(player: Player, amount: number)
-	CultivationManager.AddInternalQi(player, amount)
-end
-
-function CultivationManager.SetPlayerData(player: Player, realm: CultivationConfig.RealmTier, currentQi: number, order: number?, cultivatedQi: number?)
-	local orderNum = math.clamp(order or 1, 1, 9)
-	local targetGoal = CultivationConfig.GetOrderTargetQi(realm, orderNum)
-	local startingQi = CultivationConfig.GetOrderStartingMaxQi(realm, orderNum)
-	local savedCultivated = cultivatedQi or startingQi
-	local cultivatedCap = math.clamp(savedCultivated, startingQi, targetGoal)
-	local activeEnergy = math.clamp(currentQi or cultivatedCap, 0, cultivatedCap)
-
-	playerData[player] = {
-		Realm = realm or "QiCondensation",
-		Order = orderNum,
-		CurrentQi = activeEnergy,
-		CultivatedQi = cultivatedCap,
-		MaxQiGoal = targetGoal,
-		IsMeditating = false,
-		IsTribulationActive = false,
-		TribulationWave = 0,
-		TotalWaves = 0,
-	}
-
-	if player.Character then
-		CultivationManager.ApplyRealmStats(player)
-	end
-end
-
-function CultivationManager.ApplyRealmStats(player: Player)
-	local pData = CultivationManager.GetPlayerData(player)
-	if not pData then return end
-
-	local character = player.Character
-	if not character then return end
-
-	local maxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
-	local startingQi = CultivationConfig.GetOrderStartingMaxQi(pData.Realm, pData.Order)
-	pData.MaxQiGoal = maxQiGoal
-
-	pData.CultivatedQi = math.clamp(pData.CultivatedQi or startingQi, startingQi, maxQiGoal)
-	pData.CurrentQi = math.clamp(pData.CurrentQi or pData.CultivatedQi, 0, pData.CultivatedQi)
-
-	local maxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid.MaxHealth = maxHp
-		humanoid.Health = math.clamp(humanoid.Health, 1, maxHp)
-	end
-
-	local realmInfo = CultivationConfig[pData.Realm]
-	local realmText = if realmInfo then string.format("%s - Order %d", realmInfo.Name, pData.Order) else "Qi Condensation - Order 1"
-
-	character:SetAttribute("MaxHealth", maxHp)
-	character:SetAttribute("Health", if humanoid then humanoid.Health else maxHp)
-	character:SetAttribute("Realm", realmText)
-	character:SetAttribute("IsMeditating", pData.IsMeditating)
-	player:SetAttribute("Realm", realmText)
-	player:SetAttribute("Order", pData.Order)
-
-	CultivationManager.SyncClient(player)
-end
-
-function CultivationManager.ConsumeQi(player: Player, amount: number): boolean
-	local pData = CultivationManager.GetPlayerData(player)
-	if not pData then return false end
-
-	if pData.CurrentQi < amount then
-		return false
-	end
-
-	pData.CurrentQi = math.max(0, pData.CurrentQi - amount)
-	CultivationManager.SyncClient(player)
-	return true
-end
-
-function CultivationManager.ToggleMeditation(player: Player)
-	local pData = CultivationManager.GetPlayerData(player)
-	if not pData or pData.IsTribulationActive then return end
-
-	local character = player.Character
-	if not character then return end
-
-	if character:GetAttribute("IsFlying") == true then
-		return
-	end
-
-	local now = os.clock()
-	local lastTime = lastToggleTimestamp[player] or 0
-	if now - lastTime < 0.8 then return end
-	lastToggleTimestamp[player] = now
-
-	pData.IsMeditating = not pData.IsMeditating
-	local weaponMgr = getWeaponManager()
-
-	if pData.IsMeditating then
-		if weaponMgr and weaponMgr.SetWeaponState then
-			weaponMgr.SetWeaponState(player, "Back", true)
-		end
-		CultivationManager.StartGroundedMeditation(player, character, pData.Realm, false)
-	else
-		if weaponMgr and weaponMgr.SetWeaponState then
-			weaponMgr.SetWeaponState(player, "Back", true)
-		end
-		CultivationManager.StopGroundedMeditation(player, character)
-	end
-
-	character:SetAttribute("IsMeditating", pData.IsMeditating)
-	CultivationManager.SyncClient(player)
-end
-
-function CultivationManager.StartGroundedMeditation(player: Player, character: Model, realm: CultivationConfig.RealmTier, isBreakthrough: boolean)
-	CultivationManager.StopGroundedMeditation(player, character)
-
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if not hrp or not humanoid then return end
-
-	local pdm = getPlayerDataManager()
-	local bloodlineId = if pdm and pdm.GetBloodline then pdm.GetBloodline(player) else (player:GetAttribute("Bloodline") or "MortalSwordBone")
-	local bloodlineDef = BloodlineConfig.GetBloodline(bloodlineId)
-	local tier: BloodlineConfig.BloodlineTier = if bloodlineDef then bloodlineDef.Tier else "Common"
-	local templateName = TIER_TEMPLATE_MAP[tier] or "Tier1_Common"
-
-	local palette = BLOODLINE_AURA_PALETTES[bloodlineId]
-	if not palette then
-		local fallbackColor = if bloodlineDef and bloodlineDef.VisualArtifact then bloodlineDef.VisualArtifact.AuraColor else Color3.fromRGB(0, 220, 255)
-		palette = {
-			Gradient = ColorSequence.new(fallbackColor),
-			LightColor = fallbackColor,
-		}
-	end
-
-	-- Zero velocities and lock humanoid without anchoring BasePart
-	humanoid.WalkSpeed = 0
-	humanoid.JumpPower = 0
-	humanoid.AutoRotate = false
-	hrp.AssemblyLinearVelocity = Vector3.zero
-	hrp.AssemblyAngularVelocity = Vector3.zero
-	character:SetAttribute("IsMeditating", true)
-
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "QiMeditationHighlight"
-	highlight.Adornee = character
-	highlight.FillColor = palette.LightColor
-	highlight.FillTransparency = if isBreakthrough then 0.82 else 0.90
-	highlight.OutlineColor = palette.LightColor
-	highlight.OutlineTransparency = 0.25
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.Parent = character
-
-	local auraFolder = ReplicatedStorage:FindFirstChild("AuraTemplates") or Workspace:FindFirstChild("AuraTemplates")
-	local tierTemplate = auraFolder and auraFolder:FindFirstChild(templateName) :: Folder?
-
-	if tierTemplate then
-		local clonedAttachments: { [string]: Attachment } = {}
-		for _, child in ipairs(tierTemplate:GetChildren()) do
-			if child:IsA("Attachment") then
-				local attClone = child:Clone()
-				attClone.Name = "Aura_" .. child.Name
-				attClone.Parent = hrp
-				clonedAttachments[child.Name] = attClone
-
-				for _, desc in ipairs(attClone:GetDescendants()) do
-					if desc:IsA("ParticleEmitter") then
-						local origEmission = desc:GetAttribute("OriginalEmission") or desc.LightEmission
-						if origEmission == 0 then
-							desc.Color = ColorSequence.new(Color3.fromRGB(20, 20, 30))
-						elseif desc.Name == "Eye" then
-							desc.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
-						else
-							desc.Color = palette.Gradient
-						end
-						desc.Enabled = true
-					elseif desc:IsA("PointLight") then
-						desc.Color = palette.LightColor
-						desc.Enabled = true
-					end
-				end
-			end
-		end
-
-		local pillarBottomClone = clonedAttachments["PillarBottom"]
-		local pillarTopClone = clonedAttachments["PillarTop"]
-		if pillarBottomClone and pillarTopClone then
-			for _, desc in ipairs(pillarBottomClone:GetDescendants()) do
-				if desc:IsA("Beam") then
-					desc.Attachment0 = pillarBottomClone
-					desc.Attachment1 = pillarTopClone
-					desc.Color = palette.Gradient
-					desc.Enabled = true
-				end
-			end
-		end
-	end
-end
-
-function CultivationManager.StopGroundedMeditation(player: Player, character: Model)
-	for _, child in ipairs(character:GetChildren()) do
-		if child.Name == "QiMeditationHighlight" or child.Name == "QiMeditationAura" then
-			child:Destroy()
-		end
-	end
-
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if hrp then
-		for _, child in ipairs(hrp:GetChildren()) do
-			if child:IsA("Attachment") and (child.Name:match("^Aura_") or child.Name:match("^RootAttachment") or child.Name:match("^GroundAttachment")) then
-				child:Destroy()
-			end
-		end
-		hrp.AssemblyLinearVelocity = Vector3.zero
-		hrp.AssemblyAngularVelocity = Vector3.zero
-	end
-
-	character:SetAttribute("IsMeditating", false)
-
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		local inArena = character:GetAttribute("InArena") == true
-		humanoid.WalkSpeed = if inArena then 14.0 else 16.0
-		humanoid.JumpPower = 76.0
-		humanoid.AutoRotate = true
-	end
-end
-
-function CultivationManager.TriggerSamsaraRebirth(player: Player): boolean
-	local pData = CultivationManager.GetPlayerData(player)
-	if not pData then return false end
-
-	local updateRemote = getUpdateCultivationRemote()
-	if pData.Realm ~= "ImmortalAscension" or pData.Order < 9 then
-		if updateRemote then
-			updateRemote:FireClient(player, {
-				Action = "BreakthroughRejected",
-				Message = "Samsara Rebirth requires reaching the ultimate pinnacle: Immortal Ascension (Order 9)!",
-			})
-		end
-		return false
-	end
-
-	if pData.CultivatedQi < pData.MaxQiGoal then
-		if updateRemote then
-			updateRemote:FireClient(player, {
-				Action = "BreakthroughRejected",
-				Message = "Your Dantian must be 100% saturated with Immortal Qi to initiate Samsara Rebirth!",
-			})
-		end
-		return false
-	end
-
-	local character = player.Character
-	if character then
-		CultivationManager.StopGroundedMeditation(player, character)
-	end
-
-	local pdm = getPlayerDataManager()
-	local newCycle = if pdm and pdm.IncrementSamsara then pdm.IncrementSamsara(player) else 1
-	local roman = ToRoman(newCycle)
-	local fullTitle = string.format("[Samsara %s]", roman)
-
-	CultivationManager.SetPlayerData(player, "QiCondensation", 200, 1, 200)
-
-	if updateRemote then
-		updateRemote:FireClient(player, {
-			Action = "BreakthroughSuccess",
-			IsMajor = true,
-			Realm = "QiCondensation",
-			RealmName = string.format("SAMSARA REBIRTH %s", roman),
-			Order = 1,
-			HpGain = 0,
-			QiGain = 0,
-			PowerMultiplier = 1.0,
-		})
-	end
-
-	local combatRemote = getCombatActionRemote()
-	if combatRemote then
-		combatRemote:FireAllClients(player, "AscensionBurst", {
-			AuraColor = Color3.fromRGB(255, 220, 120),
-		})
-	end
-
-	BroadcastHeavenlyAnnouncement(string.format(
-		"[HEAVENLY SAMSARA] Cultivator %s reached the Ultimate Pinnacle and underwent Samsara Rebirth %s!",
-		player.DisplayName,
-		fullTitle
-	))
-
-	return true
-end
-
-function CultivationManager.AttemptBreakthrough(player: Player): boolean
-	local pData = CultivationManager.GetPlayerData(player)
-	if not pData or pData.IsTribulationActive then return false end
-
-	local updateRemote = getUpdateCultivationRemote()
-	if pData.CultivatedQi < pData.MaxQiGoal then
-		if updateRemote then
-			updateRemote:FireClient(player, {
-				Action = "BreakthroughRejected",
-				Message = "Keep cultivating! Your Qi isn't ready for breakthrough yet.",
-			})
-		end
-		return false
-	end
-
-	if pData.Order < 9 then
-		local oldMaxHp = CultivationConfig.GetOrderMaxHealth(pData.Realm, pData.Order)
-		local oldMaxQi = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
-
-		pData.Order += 1
-		local startingQi = CultivationConfig.GetOrderStartingMaxQi(pData.Realm, pData.Order)
-		pData.CultivatedQi = startingQi
-		pData.CurrentQi = startingQi
-
+-- OPTION A: KEEP YOUR QI! Never reset on breakthrough
+		pData.MaxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
 		CultivationManager.ApplyRealmStats(player)
 		CultivationManager.SyncClient(player)
 
@@ -844,10 +477,8 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 
 	pData.Realm = nextRealm
 	pData.Order = 1
-	local startingQi = CultivationConfig.GetOrderStartingMaxQi(nextRealm, 1)
-	pData.CultivatedQi = startingQi
-	pData.CurrentQi = startingQi
-
+-- OPTION A: KEEP YOUR QI! Never reset on breakthrough
+		pData.MaxQiGoal = CultivationConfig.GetOrderTargetQi(pData.Realm, pData.Order)
 	CultivationManager.ApplyRealmStats(player)
 	CultivationManager.SyncClient(player)
 
@@ -884,6 +515,12 @@ function CultivationManager.SyncClient(player: Player)
 		character:SetAttribute("Qi", pData.CurrentQi)
 		character:SetAttribute("MaxQi", pData.CultivatedQi)
 		character:SetAttribute("TargetQi", maxQiGoal)
+		character:SetAttribute("BreakthroughReady", pData.CultivatedQi >= maxQiGoal)
+		local rInfo = CultivationConfig[pData.Realm]
+		local pTier = if rInfo and rInfo.Tier then rInfo.Tier else 1
+		character:SetAttribute("Tier", pTier)
+		player:SetAttribute("Tier", pTier)
+		player:SetAttribute("BreakthroughReady", pData.CultivatedQi >= maxQiGoal)
 		character:SetAttribute("Realm", realmText)
 		character:SetAttribute("IsMeditating", pData.IsMeditating)
 	end

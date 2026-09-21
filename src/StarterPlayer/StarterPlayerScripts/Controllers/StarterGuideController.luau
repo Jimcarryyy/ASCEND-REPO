@@ -62,7 +62,7 @@ local TAB_DATA = {
 			{ key = "[C / B / V]", desc = "Dao Arts: Qi Meditation, Realm Breakthrough, Mount Flying Sword" },
 			{ key = "[Tab / I - Pouch]", desc = "Open Spirit Pouch inventory to inspect Dan pills, herbs, and equipment" },
 			{ key = "[G - Guide / M - Sect]", desc = "Toggle this Martial Guide manual (G) and Sect Pavilion duties (M)" },
-			{ key = "[P - Stats / U - Codex]", desc = "Open Authoritative Dao Stats (P) and Weapon Awakening Codex (U)" },
+			{ key = "[P - Stats]", desc = "Open Authoritative Dao Stats and Character Attributes (P)" },
 		}
 	},
 	[2] = {

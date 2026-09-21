@@ -348,15 +348,25 @@ function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: nu
 	local hCur = math.clamp(curHp or 0, 0, hMax)
 	local hRatio = math.clamp(hCur / hMax, 0, 1)
 
-	local qMax = math.max(1, maxQi or 100)
-	local qCur = math.clamp(curQi or 0, 0, qMax)
-	local qRatio = math.clamp(qCur / qMax, 0, 1)
-
 	if hpFill then TweenService:Create(hpFill, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play() end
 	if hpTextLabel then hpTextLabel.Text = string.format("%s / %s", FormatNum(hCur), FormatNum(hMax)) end
 
+	local char = LocalPlayer.Character
+	local cultivatedQi = char and (char:GetAttribute("MaxQi") :: number?) or LocalPlayer:GetAttribute("MaxQi") or curQi
+	local targetQi = char and (char:GetAttribute("TargetQi") :: number?) or LocalPlayer:GetAttribute("TargetQi") or 500
+	local isReady = char and (char:GetAttribute("BreakthroughReady") == true) or (cultivatedQi >= targetQi)
+	local dPct = if targetQi > 0 then math.floor(math.clamp(cultivatedQi / targetQi, 0, 1) * 100) else 0
+
+	local qRatio = if targetQi > 0 then math.clamp(cultivatedQi / targetQi, 0, 1) else 1
 	if qiFill then TweenService:Create(qiFill, INTENT_BAR_TWEEN, { Size = UDim2.new(qRatio, 0, 1, 0) }):Play() end
-	if qiTextLabel then qiTextLabel.Text = string.format("%s / %s", FormatNum(qCur), FormatNum(qMax)) end
+
+	if qiTextLabel then
+		if isReady then
+			qiTextLabel.Text = string.format("%s / %s [READY - PRESS B]", FormatNum(cultivatedQi), FormatNum(targetQi))
+		else
+			qiTextLabel.Text = string.format("%s / %s (%d%%)", FormatNum(cultivatedQi), FormatNum(targetQi), dPct)
+		end
+	end
 end
 
 function SkillBarController.UpdateCurrencies()
@@ -404,12 +414,18 @@ local function BindCharacter(newCharacter: Model)
 
 		local curQi = char:GetAttribute("Qi") or char:GetAttribute("CurrentQi") or LocalPlayer:GetAttribute("Qi") or 100
 		local maxQi = char:GetAttribute("MaxQi") or char:GetAttribute("MaxGoalQi") or LocalPlayer:GetAttribute("MaxQi") or 1000
+		local targetQi = char:GetAttribute("TargetQi") or 500
+		local isReady = (char:GetAttribute("BreakthroughReady") == true) or (maxQi >= targetQi)
+		local isMeditating = char:GetAttribute("IsMeditating") == true
 
 		SkillBarController.UpdateVitals(
 			tonumber(liveHp) or 100,
 			tonumber(liveMaxHp) or 100,
 			tonumber(curQi) or 100,
-			tonumber(maxQi) or 100
+			tonumber(maxQi) or 100,
+			tonumber(targetQi) or 500,
+			isReady,
+			isMeditating
 		)
 	end
 
@@ -440,6 +456,9 @@ local function BindCharacter(newCharacter: Model)
 	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("Qi"):Connect(checkVitals))
 	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("CurrentQi"):Connect(checkVitals))
 	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("MaxQi"):Connect(checkVitals))
+	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("TargetQi"):Connect(checkVitals))
+	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("BreakthroughReady"):Connect(checkVitals))
+	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("IsMeditating"):Connect(checkVitals))
 	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("SwordIntent"):Connect(checkIntent))
 
 	-- Rapid Sync Loop: Guarantees millions of HP are rendered within frames of revival

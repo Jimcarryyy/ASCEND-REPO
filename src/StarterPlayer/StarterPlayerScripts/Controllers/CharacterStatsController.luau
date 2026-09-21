@@ -85,9 +85,6 @@ local C_INA_TXT = Color3.fromRGB(180, 200, 220)
 local isInitialized = false
 
 local function FormatNum(num: number): string
-	if CultivationConfig and CultivationConfig.FormatNumber then
-		return CultivationConfig.FormatNumber(num)
-	end
 	if num >= 1000000 then
 		return string.format("%.2fM", num / 1000000)
 	elseif num >= 1000 then
@@ -402,7 +399,7 @@ function CharacterStatsController.Refresh()
 	if p3DescLabels["Row_6"] then
 		p3DescLabels["Row_6"].Text = if isSharpened
 			then string.format("Active (+10%% Crit • %dm %02ds Remaining)", minLeft, secLeft)
-			else "Inactive (Sharpen at Madame Tie's Anvil)"
+			else "Inactive (No Whetstone Buff Active)"
 	end
 
 	if confirmBtn then

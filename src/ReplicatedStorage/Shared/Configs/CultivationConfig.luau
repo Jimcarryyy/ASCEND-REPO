@@ -49,7 +49,7 @@ CultivationConfig.QiCondensation = {
 	Name = "Qi Condensation",
 	Tier = 1,
 	BaseMaxHealth = 1000,
-	BaseTargetQi = 1000,
+	BaseTargetQi = 500,
 	AuraColor = Color3.fromRGB(180, 240, 255),
 	HealthMultiplier = 1.0,
 	DamageMultiplier = 1.0,
@@ -67,7 +67,7 @@ CultivationConfig.FoundationEstablishment = {
 	Name = "Foundation Establishment",
 	Tier = 2,
 	BaseMaxHealth = 8000,
-	BaseTargetQi = 10000,
+	BaseTargetQi = 6000,
 	AuraColor = Color3.fromRGB(100, 220, 255),
 	HealthMultiplier = 5.0,
 	DamageMultiplier = 2.5,
@@ -230,8 +230,12 @@ function CultivationConfig.GetOrderTargetQi(realmTier: RealmTier, order: number)
 	if not realmInfo then return 1000 end
 
 	local clampedOrder = math.clamp(order, 1, 9)
-	local orderScale = math.pow(CultivationConfig.ORDER_TARGET_QI_EXPONENT, clampedOrder - 1)
-	return math.floor(realmInfo.BaseTargetQi * orderScale)
+	local cumTarget = 0
+	for o = 1, clampedOrder do
+		local delta = math.floor(realmInfo.BaseTargetQi * math.pow(CultivationConfig.ORDER_TARGET_QI_EXPONENT, o - 1))
+		cumTarget += delta
+	end
+	return cumTarget
 end
 
 function CultivationConfig.GetOrderStartingMaxQi(realmTier: RealmTier, order: number): number

@@ -1,3 +1,82 @@
+-- [FLOATING +QI MEDITATION NUMBER EFFECT]
+local function StartContinuousZoneMonitor()
+	task.spawn(function()
+		local realmColors = {
+			[1] = Color3.fromRGB(180, 240, 255),
+			[2] = Color3.fromRGB(120, 220, 255),
+			[3] = Color3.fromRGB(255, 215, 0),
+			[4] = Color3.fromRGB(200, 130, 255),
+			[5] = Color3.fromRGB(255, 100, 100),
+			[6] = Color3.fromRGB(110, 255, 190),
+			[7] = Color3.fromRGB(255, 160, 60),
+			[8] = Color3.fromRGB(255, 240, 140),
+			[9] = Color3.fromRGB(220, 110, 255),
+			[10] = Color3.fromRGB(255, 255, 255),
+		}
+
+		while true do
+			task.wait(0.3)
+			local p = game:GetService("Players").LocalPlayer
+			local char = p and p.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local qiNodes = Workspace:FindFirstChild("QiNodes")
+
+			local cultConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
+			local currentRealm = char and char:GetAttribute("Realm") or player:GetAttribute("Realm")
+			local playerTier = 1
+			if currentRealm and cultConfig and cultConfig[currentRealm] then
+				playerTier = cultConfig[currentRealm].Tier or 1
+			elseif player:GetAttribute("Tier") then
+				playerTier = player:GetAttribute("Tier")
+			end
+
+			local currentZone: BasePart? = nil
+			local closestDist = math.huge
+
+			if hrp and qiNodes then
+				for _, node in ipairs(qiNodes:GetChildren()) do
+					if node:IsA("BasePart") then
+						local dist = (hrp.Position - node.Position).Magnitude
+						local radius = math.max(node.Size.X, node.Size.Z) / 2 + 3
+						if dist <= radius and dist < closestDist then
+							currentZone = node
+							closestDist = dist
+						end
+					end
+				end
+			end
+
+			if masterGui then
+				zoneFrame = masterGui:FindFirstChild("ZoneFrame") :: Frame?
+				zoneTextLabel = zoneFrame and zoneFrame:FindFirstChildOfClass("TextLabel")
+			end
+
+			if zoneFrame and zoneTextLabel then
+				if currentZone then
+					local reqTier = (currentZone:GetAttribute("RequiredTier") or currentZone:GetAttribute("MinTier") or 1) :: number
+					local reqRealm = tostring(currentZone:GetAttribute("RequiredRealm") or "Spiritual Realm")
+					local nodeName = tostring(currentZone:GetAttribute("NodeName") or currentZone.Name)
+					local mult = (currentZone:GetAttribute("QiMultiplier") or 1.0) :: number
+
+					zoneFrame.Visible = true
+					zoneTextLabel.FontFace = Font.fromName("Fondamento", Enum.FontWeight.Bold)
+					zoneTextLabel.Font = Enum.Font.Fondamento
+
+					if playerTier < reqTier then
+						zoneTextLabel.Text = string.format("⚠️ %s [Requires Tier %d (%s) — Qi Ineffective (1.0x)]", nodeName, reqTier, reqRealm)
+						zoneTextLabel.TextColor3 = Color3.fromRGB(255, 75, 75)
+					else
+						zoneTextLabel.Text = string.format("✦ %s — %.1fx Qi SPEED ✦", nodeName, mult)
+						zoneTextLabel.TextColor3 = realmColors[reqTier] or Color3.fromRGB(255, 255, 255)
+					end
+				else
+					zoneFrame.Visible = false
+				end
+			end
+		end
+	end)
+end
+
 --!strict
 --[[
     CultivationController.luau
@@ -164,7 +243,8 @@ local function StopCameraShake()
 end
 
 local function HookStudioUI()
-	masterGui = (playerGui:FindFirstChild("MasterHUDGui") or playerGui:WaitForChild("MasterHUDGui", 6)) :: ScreenGui?
+
+	StartContinuousZoneMonitor()	masterGui = (playerGui:FindFirstChild("MasterHUDGui") or playerGui:WaitForChild("MasterHUDGui", 6)) :: ScreenGui?
 	if masterGui then
 		zoneFrame = masterGui:FindFirstChild("ZoneFrame") :: Frame?
 		if zoneFrame then
@@ -351,7 +431,7 @@ function CultivationController.StartMeditation(character: Model)
 
 	if zoneMonitorThread then task.cancel(zoneMonitorThread) end
 	zoneMonitorThread = task.spawn(function()
-		while isMeditating and character.Parent do
+		while character.Parent do
 			UpdateZoneBanner(character)
 			task.wait(0.35)
 		end
@@ -391,6 +471,9 @@ function CultivationController.Init()
 	local cultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
 	local cultivationActionRemote = RemoteEvents.GetRemote("CultivationAction")
 
+		-- Connect Qi Gain Particle Feedback
+	local lastTrackedMaxQi = 0
+	
 	cultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		if type(data) ~= "table" then return end
 		local character = player.Character

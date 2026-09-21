@@ -350,4 +350,11 @@ function SectManager.ProcessPromotion(player: Player)
 	})
 end
 
+function SectManager.GetContributionMultiplier(player: Player): number
+	local sectData = SectManager.GetSectData(player)
+	if not sectData then return 1.0 end
+	local rankInfo = SectConfig.Ranks[sectData.Rank]
+	return if rankInfo and rankInfo.ContributionMultiplier then rankInfo.ContributionMultiplier else 1.0
+end
+
 return SectManager

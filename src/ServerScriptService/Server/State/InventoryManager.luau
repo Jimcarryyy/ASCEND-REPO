@@ -153,6 +153,21 @@ function InventoryManager.UseItem(player: Player, slotIndex: number)
 	local itemDef = ItemConfig.GetItem(slot.ItemId)
 	if not itemDef then return end
 
+	local BREAKTHROUGH_DANS = {
+		FoundationGatheringDan = true,
+		GoldenCoreDan = true,
+		NascentSoulDan = true,
+		SpiritSeveringDan = true,
+		VoidRefiningDan = true,
+		BodyIntegrationDan = true,
+		MahayanaDan = true,
+		TribulationTranscendingDan = true,
+		ImmortalAscensionDan = true,
+	}
+	if BREAKTHROUGH_DANS[itemDef.Id] or (string.find(itemDef.Id, "Dan$") and string.find(itemDef.Description or "", "breakthrough")) then
+		return false, string.format("%s cannot be eaten raw! Reach Order 9, meditate (C), and press [B] to begin Heavenly Tribulation.", itemDef.Name)
+	end
+
 	local character = player.Character
 	if not character then return end
 
