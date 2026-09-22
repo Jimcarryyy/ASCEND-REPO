@@ -2,7 +2,16 @@
 --[[
     PlayerDataManager.luau
     Location: src/ServerScriptService/Server/State/PlayerDataManager.luau
-    Server-authoritative DataStore persistence manager for ASCEND.
+    Server-authoritative DataStore persistence manager for ASCEND:
+    - DataVersion 3 Persistence Pipeline with Legacy Test Sword Sanitizer
+    - Developer Exclusive Arsenal Engine (Auto-grants all present & future swords to Han_jueee only)
+    - Normal Player Grind Isolation (Regular players / alts only have MortalIronJian and must buy/earn swords one-by-one)
+    - Sword Bloodline Lineages, Meridian Storage Slots, Pity Counter & Spin Economy (Phase 5.2)
+    - Ultimate Pinnacle Samsara Rebirth Persistence & Celestial Footstep Trail / Aura Welder (Phase 5)
+    - Authoritative Direct Workspace.SpawnLocation Router
+    - Fixed WeldConstraint CFrame displacement bug in AttachBloodlineVisual
+    - Phase 2: RBXScriptConnection lifecycle cleanup & zero-delay stream-safe dais placement
+    - Daily Sect Stipend 24-hour persistence integration
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -87,6 +96,7 @@ local function IsDeveloper(player: Player): boolean
 	return false
 end
 
+-- Roman Numeral Generator for Samsara Prestige Titles
 local function ToRoman(num: number): string
 	local romanNumerals = {
 		{ 10, "X" }, { 9, "IX" }, { 5, "V" }, { 4, "IV" }, { 1, "I" }
@@ -103,6 +113,7 @@ local function ToRoman(num: number): string
 	return if result ~= "" then result else "I"
 end
 
+-- Legacy test swords to purge from regular players migrating from V2
 local LEGACY_TEST_SWORDS: { [string]: boolean } = {
 	["AzureCloudDiscipleJian"] = true,
 	["FlowingQiSpiritSword"] = true,
@@ -116,12 +127,12 @@ local playerDataStore: DataStore? = nil
 local isLoadedMap: { [Player]: boolean } = {}
 local isSavingMap: { [Player]: boolean } = {}
 
-local playerRawDataCache: { [Player]: any } = {}
 local playerAlchemyData: { [Player]: { Exp: number, Level: number } } = {}
 local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfig.DiscipleRank, ContributionPoints: number } } = {}
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
 
+-- Expanded Bloodline Session Cache: tracks active lineage, spins, unlocked meridian slots, and pity counters
 local playerBloodlines: {
 	[Player]: {
 		Current: string,
@@ -177,6 +188,10 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	LastStipendClaim = 0,
 }
 
+-- =============================================================================
+-- AUTHORITATIVE SPAWN ROUTER
+-- Guarantees the player lands squarely on Workspace.SpawnLocation
+-- =============================================================================
 local function GetPrimarySpawnLocation(): SpawnLocation?
 	local spawnLoc = Workspace:FindFirstChild("SpawnLocation")
 		or Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
@@ -201,6 +216,7 @@ local function RouteToSpawnDais(character: Model)
 	end
 end
 
+-- 3D Visual Artifact Welder for Bloodlines
 local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	local old = char:FindFirstChild("BloodlineArtifact")
 	if old then old:Destroy() end
@@ -243,6 +259,9 @@ local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	end
 end
 
+-- =============================================================================
+-- PHASE 5: CELESTIAL FOOTSTEP TRAIL & SAMSARA REBIRTH AURA WELDER
+-- =============================================================================
 local function AttachSamsaraCelestialAura(character: Model, cycle: number)
 	if cycle <= 0 then return end
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -314,11 +333,6 @@ local function AttachSamsaraCelestialAura(character: Model, cycle: number)
 			trail.Parent = footPart
 		end
 	end
-end
-
--- Exported GetPlayerData function
-function PlayerDataManager.GetPlayerData(player: Player): any
-	return playerRawDataCache[player]
 end
 
 function PlayerDataManager.Init()
@@ -401,12 +415,14 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end
 	end
 
+	local isMigratedFromV2 = false
 	if not loadedData then
 		pcall(function()
 			local v2Store = DataStoreService:GetDataStore("ASCEND_PlayerData_V2")
 			local oldResult = v2Store:GetAsync(dataKey)
 			if oldResult and type(oldResult) == "table" then
 				loadedData = oldResult
+				isMigratedFromV2 = true
 			end
 		end)
 	end
@@ -459,19 +475,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end
 	end
 
-	-- DEVELOPER AUTORECOVERY: Restore Han_jueee to Nascent Soul Order 5
-	if player.Name == "Han_jueee" and (not loadedData.Cultivation or loadedData.Cultivation.Realm == "QiCondensation" or loadedData.Cultivation.Realm == nil) then
-		loadedData.Cultivation = {
-			Realm = "NascentSoul",
-			Order = 5,
-			CurrentQi = 180000,
-			CultivatedQi = 180000,
-		}
-		print("[PlayerDataManager] Auto-restored developer Han_jueee to Nascent Soul (Order 5).")
-	end
-
 	isLoadedMap[player] = true
-	playerRawDataCache[player] = loadedData
 
 	playerAlchemyData[player] = {
 		Exp = loadedData.AlchemyExp or 0,
@@ -503,6 +507,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end
 	end
 
+	-- Hydrate Pity Progress
 	local loadedPity = loadedData.BloodlinePity or {}
 	local pityData = {
 		SpinsSinceLegendary = loadedPity.SpinsSinceLegendary or 0,
@@ -519,13 +524,12 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 
 	playerSamsaraData[player] = loadedData.SamsaraCycle or 0
 
-	local cData = loadedData.Cultivation or {}
 	CultivationManager.SetPlayerData(
 		player,
-		cData.Realm or "QiCondensation",
-		cData.CurrentQi or 200,
-		cData.Order or 1,
-		cData.CultivatedQi or 200
+		loadedData.Cultivation.Realm,
+		loadedData.Cultivation.CurrentQi,
+		loadedData.Cultivation.Order or 1,
+		loadedData.Cultivation.CultivatedQi
 	)
 
 	local normalizedInventory: { [number]: SavedInventorySlot } = {}
@@ -534,7 +538,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		for slotKey, slotData in pairs(loadedData.Inventory) do
 			local slotNum = tonumber(slotKey)
 			if slotNum and slotData and slotData.ItemId then
-				if not isDev and LEGACY_TEST_SWORDS[slotData.ItemId] then
+				if not isDev and isMigratedFromV2 and LEGACY_TEST_SWORDS[slotData.ItemId] then
 					continue
 				end
 
@@ -548,7 +552,9 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 
 	if isDev then
+		print(string.format("[PlayerDataManager] Developer detected (%s) — injecting full weapon arsenal.", player.Name))
 		local allItems = ItemConfig.GetAllItems()
+
 		for itemId, itemDef in pairs(allItems) do
 			if itemDef.Type == "Weapon" then
 				local alreadyOwned = false
@@ -600,7 +606,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 
 	-- Sync Attributes
-	local currentRealmText = tostring(cData.Realm or "QiCondensation")
 	player:SetAttribute("Sect", loadedData.Sect or "Azure Cloud Sect")
 	player:SetAttribute("SectRank", playerEconomyData[player].SectRank)
 	player:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
@@ -613,7 +618,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	player:SetAttribute("MythicPity", playerBloodlines[player].Pity.SpinsSinceMythic)
 	player:SetAttribute("SamsaraCycle", playerSamsaraData[player])
 	player:SetAttribute("LastStipendClaim", loadedData.LastStipendClaim or 0)
-	player:SetAttribute("Realm", currentRealmText)
 
 	if playerSamsaraData[player] > 0 then
 		player:SetAttribute("SamsaraTitle", string.format("[Samsara %s]", ToRoman(playerSamsaraData[player])))
@@ -625,7 +629,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		character:SetAttribute("SpiritStones", playerEconomyData[player].SpiritStones)
 		character:SetAttribute("ContributionPoints", playerEconomyData[player].ContributionPoints)
 		character:SetAttribute("Bloodline", player:GetAttribute("Bloodline"))
-		character:SetAttribute("Realm", currentRealmText)
 		local cycle = playerSamsaraData[player] or 0
 		character:SetAttribute("SamsaraCycle", cycle)
 		if cycle > 0 then
@@ -655,16 +658,15 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 	characterConnections[player] = player.CharacterAdded:Connect(bindChar)
 
-	-- Safe line 661 format string
 	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Samsara: %d, Bloodline: %s, Slots: %d).",
 		player.Name,
-		currentRealmText,
-		tonumber(cData.Order) or 1,
+		loadedData.Cultivation.Realm,
+		loadedData.Cultivation.Order or 1,
 		loadedData.SpiritStones or 250,
-		tostring(loadedData.SectRank or "OuterDisciple"),
-		playerSamsaraData[player] or 0,
-		tostring(playerBloodlines[player].Current or "MortalSwordBone"),
-		playerBloodlines[player].MaxSlots or 1
+		loadedData.SectRank or "OuterDisciple",
+		playerSamsaraData[player],
+		playerBloodlines[player].Current,
+		playerBloodlines[player].MaxSlots
 	))
 end
 
@@ -678,7 +680,6 @@ function PlayerDataManager.OnPlayerRemoving(player: Player)
 
 	task.delay(1.5, function()
 		isLoadedMap[player] = nil
-		playerRawDataCache[player] = nil
 		playerAlchemyData[player] = nil
 		playerEconomyData[player] = nil
 		playerGamepasses[player] = nil
@@ -786,6 +787,9 @@ function PlayerDataManager.GetAlchemyData(player: Player): (number, number)
 	return data.Exp, data.Level
 end
 
+-- =============================================================================
+-- PHASE 4 & 5.2: BLOODLINE ACCESSORS, MERIDIAN SLOTS & PITY ENGINE
+-- =============================================================================
 function PlayerDataManager.GetBloodline(player: Player): string
 	local data = playerBloodlines[player]
 	if not data then
@@ -845,6 +849,7 @@ function PlayerDataManager.AddBloodlineSpins(player: Player, amount: number): nu
 	return data.Spins
 end
 
+-- Meridian Vault Slots Management
 function PlayerDataManager.GetBloodlineSlots(player: Player): { [number]: string }
 	local data = playerBloodlines[player]
 	if not data then return { [1] = PlayerDataManager.GetBloodline(player) } end
@@ -890,6 +895,7 @@ function PlayerDataManager.EquipBloodlineFromSlot(player: Player, slotIndex: num
 	return true
 end
 
+-- Bad-Luck Pity Counter Management
 function PlayerDataManager.GetBloodlinePity(player: Player): { SpinsSinceLegendary: number, SpinsSinceMythic: number }
 	local data = playerBloodlines[player]
 	if not data then return { SpinsSinceLegendary = 0, SpinsSinceMythic = 0 } end
@@ -962,6 +968,9 @@ function PlayerDataManager.RollBloodline(player: Player): (string?, boolean)
 	return rolledId, true
 end
 
+-- =============================================================================
+-- PHASE 5: SAMSARA REBIRTH PRESTIGE ACCESSORS & ENGINE
+-- =============================================================================
 function PlayerDataManager.GetSamsaraCycle(player: Player): number
 	local cached = playerSamsaraData[player]
 	if cached ~= nil then return cached end
@@ -1036,6 +1045,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		end
 	end
 
+	-- Serialize Meridian Slots
 	local serializedSlots: { [string]: string } = {}
 	for slotIdx, bloodlineId in pairs(bData.Slots or {}) do
 		serializedSlots[tostring(slotIdx)] = bloodlineId

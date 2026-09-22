@@ -153,6 +153,7 @@ function InventoryManager.UseItem(player: Player, slotIndex: number)
 	local itemDef = ItemConfig.GetItem(slot.ItemId)
 	if not itemDef then return end
 
+	-- Phase 2.1: Guard Breakthrough Dans from raw consumption
 	local BREAKTHROUGH_DANS = {
 		FoundationGatheringDan = true,
 		GoldenCoreDan = true,
@@ -186,7 +187,8 @@ function InventoryManager.UseItem(player: Player, slotIndex: number)
 			local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 			local pData = CultivationManager.GetPlayerData(player)
 			if pData then
-				pData.CurrentQi = math.min(800, pData.CurrentQi + itemDef.Stats.QiGrant)
+				local maxCap = pData.CultivatedQi or 1000
+			pData.CurrentQi = math.min(maxCap, (pData.CurrentQi or 0) + itemDef.Stats.QiGrant)
 				CultivationManager.SyncClient(player)
 				used = true
 			end

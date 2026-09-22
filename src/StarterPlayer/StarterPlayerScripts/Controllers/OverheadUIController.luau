@@ -13,96 +13,9 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local Debris = game:GetService("Debris")
 
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
-
-
-local function FormatNum(num: number): string
-	if num >= 1000000 then
-		return string.format("%.1fM", num / 1000000)
-	elseif num >= 1000 then
-		return string.format("%.1fK", num / 1000)
-	else
-		return tostring(math.floor(num))
-	end
-end
-
-local function SpawnQiPopup(character: Model, delta: number)
-	local head = character:FindFirstChild("Head") :: BasePart?
-	if not head then return end
-
-	local rawRealm = character:GetAttribute("Realm") or "QiCondensation"
-	local info = CultivationConfig and (CultivationConfig :: any)[rawRealm]
-	local realmColor = if info and info.AuraColor then info.AuraColor else Color3.fromRGB(150, 240, 255)
-
-	-- Offset high above head so it clears the 2.8 stud Overhead titles completely
-	local randX = (math.random() - 0.5) * 2.2
-	local randZ = (math.random() - 0.5) * 2.2
-	local startOffset = Vector3.new(randX, 4.6, randZ)
-
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "QiPopupBillboard"
-	billboard.Adornee = head
-	billboard.Size = UDim2.new(0, 240, 0, 48)
-	billboard.StudsOffset = startOffset
-	billboard.AlwaysOnTop = true
-	billboard.MaxDistance = 110
-	billboard.Parent = head
-
-	-- PURE TEXTLABEL (Bigger & Bolder Fondamento)
-	local label = Instance.new("TextLabel")
-	label.Name = "QiGainLabel"
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Text = string.format("+%s Qi", FormatNum(delta))
-	label.FontFace = Font.fromName("Bangers", Enum.FontWeight.Bold)
-	label.Font = Enum.Font.BangersBangersBangers
-	label.TextSize = 28
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.TextXAlignment = Enum.TextXAlignment.Center
-	label.TextYAlignment = Enum.TextYAlignment.Center
-	label.Parent = billboard
-
-	local grad = Instance.new("UIGradient")
-	grad.Rotation = -35
-	grad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 255, 255)),
-		ColorSequenceKeypoint.new(0.45, realmColor),
-		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(255, 255, 255)),
-	})
-	grad.Parent = label
-
-	-- Thick, heavy outline for high visibility
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 1.0
-	stroke.Color = Color3.fromRGB(10, 15, 25)
-	stroke.Transparency = 0.05
-	stroke.Parent = label
-
-	local duration = 0.85
-	local riseTween = TweenService:Create(billboard, TweenInfo.new(duration, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-		StudsOffset = startOffset + Vector3.new(0, 2.4, 0)
-	})
-	local fadeTween = TweenService:Create(label, TweenInfo.new(duration * 0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-		TextTransparency = 1
-	})
-	local strokeFade = TweenService:Create(stroke, TweenInfo.new(duration * 0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-		Transparency = 1
-	})
-
-	riseTween:Play()
-	task.delay(duration * 0.45, function()
-		if label.Parent then
-			fadeTween:Play()
-			strokeFade:Play()
-		end
-	end)
-
-	Debris:AddItem(billboard, duration + 0.1)
-end
 
 local OverheadUIController = {}
 
@@ -288,19 +201,7 @@ local function AttachOverhead(character: Model, player: Player?)
 	targetPlayer:GetAttributeChangedSignal("SectRank"):Connect(syncTitles)
 	targetPlayer:GetAttributeChangedSignal("SamsaraCycle"):Connect(syncTitles)
 
-		syncTitles()
-
-	-- Live Meditation Qi Gain Listener
-	local lastMaxQi = character:GetAttribute("MaxQi") or 0
-	character:GetAttributeChangedSignal("MaxQi"):Connect(function()
-		local cur = (character:GetAttribute("MaxQi") :: number?) or 0
-		local delta = cur - lastMaxQi
-		lastMaxQi = cur
-		local isMeditating = (character:GetAttribute("IsMeditating") == true)
-		if isMeditating and delta > 0 then
-			SpawnQiPopup(character, delta)
-		end
-	end)
+	syncTitles()
 end
 
 local function OnPlayerAdded(player: Player)

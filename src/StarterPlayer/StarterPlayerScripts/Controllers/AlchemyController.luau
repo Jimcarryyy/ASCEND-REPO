@@ -118,12 +118,116 @@ local function EnsureUI(): boolean
 					table.insert(indices, selectedInventorySlots[s])
 				end
 			end
-			if #indices > 0 then
-				alchemyActionRemote:FireServer({
-					Action = "RefineManualCombination",
-					SelectedSlotIndices = indices,
-					FlamePrecision = 0.85,
-				})
+			if #indices == 4 then
+				-- Phase 2.4: Live Flame Timing Slider Minigame
+				local activeChar = localPlayer.Character
+				local minigameGui = (playerGui:FindFirstChild("AlchemyGui") or playerGui:FindFirstChildWhichIsA("ScreenGui")) :: ScreenGui?
+				if not minigameGui then return end
+
+				local existingSlider = minigameGui:FindFirstChild("FlameMinigameOverlay")
+				if existingSlider then existingSlider:Destroy() end
+
+				local overlay = Instance.new("Frame")
+				overlay.Name = "FlameMinigameOverlay"
+				overlay.Size = UDim2.new(0, 320, 0, 90)
+				overlay.Position = UDim2.new(0.5, -160, 0.72, 0)
+				overlay.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+				overlay.BorderSizePixel = 0
+				overlay.ZIndex = 80
+				overlay.Parent = minigameGui
+
+				local corner = Instance.new("UICorner")
+				corner.CornerRadius = UDim.new(0, 8)
+				corner.Parent = overlay
+
+				local stroke = Instance.new("UIStroke")
+				stroke.Color = Color3.fromRGB(255, 200, 80)
+				stroke.Thickness = 2
+				stroke.Parent = overlay
+
+				local title = Instance.new("TextLabel")
+				title.Size = UDim2.new(1, 0, 0, 24)
+				title.BackgroundTransparency = 1
+				title.Text = "HARMONIZE SPIRIT FLAME [CLICK / SPACE]"
+				title.Font = Enum.Font.GothamBold
+				title.TextSize = 12
+				title.TextColor3 = Color3.fromRGB(255, 220, 140)
+				title.ZIndex = 81
+				title.Parent = overlay
+
+				local track = Instance.new("Frame")
+				track.Size = UDim2.new(0.85, 0, 0, 16)
+				track.Position = UDim2.new(0.075, 0, 0.45, 0)
+				track.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+				track.BorderSizePixel = 0
+				track.ZIndex = 81
+				track.Parent = overlay
+
+				local zone = Instance.new("Frame")
+				zone.Size = UDim2.new(0.28, 0, 1, 0)
+				zone.Position = UDim2.new(0.36, 0, 0, 0)
+				zone.BackgroundColor3 = Color3.fromRGB(40, 190, 110)
+				zone.BorderSizePixel = 0
+				zone.ZIndex = 82
+				zone.Parent = track
+
+				local needle = Instance.new("Frame")
+				needle.Size = UDim2.new(0, 6, 1, 8)
+				needle.Position = UDim2.new(0.5, -3, 0, -4)
+				needle.BackgroundColor3 = Color3.fromRGB(255, 240, 100)
+				needle.BorderSizePixel = 0
+				needle.ZIndex = 83
+				needle.Parent = track
+
+				local RunService = game:GetService("RunService")
+				local UserInputService = game:GetService("UserInputService")
+				local startTime = os.clock()
+				local resolved = false
+				local conn: RBXScriptConnection? = nil
+				local inputConn: RBXScriptConnection? = nil
+
+				local function commitHarmonization()
+					if resolved then return end
+					resolved = true
+					if conn then conn:Disconnect() end
+					if inputConn then inputConn:Disconnect() end
+
+					local needleRatio = (needle.Position.X.Scale)
+					local distFromCenter = math.abs(needleRatio - 0.5)
+					local precision = math.clamp(1.0 - (distFromCenter * 2.3), 0.2, 1.0)
+
+					needle.BackgroundColor3 = if precision >= 0.80 then Color3.fromRGB(80, 255, 140) else Color3.fromRGB(255, 100, 100)
+					title.Text = string.format("PRECISION: %d%%", math.floor(precision * 100))
+
+					task.delay(0.45, function()
+						if overlay.Parent then overlay:Destroy() end
+					end)
+
+					alchemyActionRemote:FireServer({
+						Action = "RefineManualCombination",
+						SelectedSlotIndices = indices,
+						FlamePrecision = precision,
+					})
+				end
+
+				conn = RunService.RenderStepped:Connect(function()
+					if not overlay.Parent or resolved then return end
+					local elapsed = os.clock() - startTime
+					local alpha = (math.sin(elapsed * 4.2) + 1) / 2
+					needle.Position = UDim2.new(alpha, -3, 0, -4)
+				end)
+
+				inputConn = UserInputService.InputBegan:Connect(function(inp, gpe)
+					if gpe then return end
+					if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.KeyCode == Enum.KeyCode.Space then
+						commitHarmonization()
+					end
+				end)
+			else
+				local hud = require(StarterPlayer.StarterPlayerScripts.Controllers.HUDController)
+				if hud and hud.ShowNotification then
+					hud.ShowNotification("Select exactly 4 ingredients in the Cauldron to refine!")
+				end
 			end
 		end)
 	end

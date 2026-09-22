@@ -1,328 +1,127 @@
---!strict
---[[
-    CultivationController.luau
-    Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CultivationController.luau
-    Directly bound to MasterHUDGui.ZoneFrame and CultivationFeedbackGui.
-]]
+-- [DYNAMIC HUD ZONE FRAME & PRESSURE MONITOR]
+local function StartQiZoneMonitor()
+	task.spawn(function()
+		local realmColors = {
+			[1] = Color3.fromRGB(180, 240, 255),
+			[2] = Color3.fromRGB(120, 220, 255),
+			[3] = Color3.fromRGB(255, 215, 0),
+			[4] = Color3.fromRGB(200, 130, 255),
+			[5] = Color3.fromRGB(255, 100, 100),
+			[6] = Color3.fromRGB(110, 255, 190),
+			[7] = Color3.fromRGB(255, 160, 60),
+			[8] = Color3.fromRGB(255, 240, 140),
+			[9] = Color3.fromRGB(220, 110, 255),
+			[10] = Color3.fromRGB(255, 255, 255),
+		}
 
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local TweenService = game:GetService("TweenService")
-local SoundService = game:GetService("SoundService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Debris = game:GetService("Debris")
+		while true do
+			task.wait(0.3)
+			local char = localPlayer.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local qiNodes = Workspace:FindFirstChild("QiNodes")
 
-local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
-local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
-
-local CultivationController = {}
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
-local camera = Workspace.CurrentCamera
-
-local MEDITATION_SOUND_ID = "rbxassetid://124551555247426"
-local ASCENSION_CHIME_SFX = "rbxassetid://131237241"
-local REJECT_BUZZ_SFX = ""
-
-local meditationSound: Sound? = nil
-local isMeditating = false
-
--- HUD References
-local masterGui: ScreenGui?
-local zoneFrame: Frame?
-local zoneTextLabel: TextLabel?
-
--- CultivationFeedbackGui References
-local feedbackGui: ScreenGui?
-local ascensionModal: Frame?
-local modalMainFrame: Frame?
-local modalScale: UIScale?
-local headerTitle: TextLabel?
-local realmTitle: TextLabel?
-local hpPillText: TextLabel?
-local qiPillText: TextLabel?
-local multPillText: TextLabel?
-local confirmBtn: TextButton?
-local closeBtn: ImageButton?
-
-local readyPrompt: Frame?
-local readyScale: UIScale?
-local isReadyPromptActive = false
-
-local rejectToast: Frame?
-local rejectScale: UIScale?
-local rejectDesc: TextLabel?
-local rejectToastThread: thread? = nil
-
-local function FormatNumber(num: number): string
-	local formatted = tostring(math.floor(math.abs(num)))
-	local k
-	while true do
-		formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
-		if k == 0 then break end
-	end
-	return formatted
-end
-
-local function PlayUISound(soundId: string, volume: number?)
-	if soundId == "" then return end
-	local sound = Instance.new("Sound")
-	sound.SoundId = soundId
-	sound.Volume = volume or 0.6
-	sound.Parent = SoundService
-	sound:Play()
-	Debris:AddItem(sound, 3)
-end
-
--- Cylindrical Zone Detector
-local function GetCurrentQiZoneMultiplier(character: Model): (number, string?, boolean, string?, number?)
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not hrp then return 1.0, nil, false, nil, nil end
-
-	local qiNodesFolder = Workspace:FindFirstChild("QiNodes")
-	if not qiNodesFolder then return 1.0, nil, false, nil, nil end
-
-	local curRealm = character:GetAttribute("Realm") or player:GetAttribute("Realm") or "QiCondensation"
-	local realmInfo = CultivationConfig[curRealm]
-	local pTier = if realmInfo and realmInfo.Tier then realmInfo.Tier else 1
-
-	for _, nodePart in ipairs(qiNodesFolder:GetChildren()) do
-		if nodePart:IsA("BasePart") then
-			local flatDist = Vector3.new(hrp.Position.X - nodePart.Position.X, 0, hrp.Position.Z - nodePart.Position.Z).Magnitude
-			local flatRadius = math.max(nodePart.Size.X, nodePart.Size.Z) / 2 + 8
-			local vertDist = math.abs(hrp.Position.Y - nodePart.Position.Y)
-			local vertMax = (nodePart.Size.Y / 2) + 35
-
-			if flatDist <= flatRadius and vertDist <= vertMax then
-				local reqTier = tonumber(nodePart:GetAttribute("RequiredTier") or nodePart:GetAttribute("MinTier")) or 1
-				local reqRealm = tostring(nodePart:GetAttribute("RequiredRealm") or "Higher Realm")
-				local mult = tonumber(nodePart:GetAttribute("QiMultiplier")) or 2.0
-				local name = tostring(nodePart:GetAttribute("NodeName")) or nodePart.Name
-
-				if pTier < reqTier then
-					return 0, name, true, reqRealm, reqTier
-				end
-				return mult, name, false, reqRealm, reqTier
+			-- Resolve player tier authoritatively
+			local playerTier = 1
+			local cultConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
+			local currentRealm = char and char:GetAttribute("Realm") or localPlayer:GetAttribute("Realm")
+			if currentRealm and cultConfig and cultConfig[currentRealm] then
+				playerTier = cultConfig[currentRealm].Tier or 1
+			elseif localPlayer:GetAttribute("Tier") then
+				playerTier = localPlayer:GetAttribute("Tier")
 			end
-		end
-	end
 
-	return 1.0, nil, false, nil, nil
-end
+			-- Locate ZoneFrame in PlayerGui
+			local masterHud = playerGui:FindFirstChild("MasterHUDGui")
+			local zoneFrame = masterHud and masterHud:FindFirstChild("ZoneFrame") :: Frame?
+			local zoneLabel = zoneFrame and zoneFrame:FindFirstChildWhichIsA("TextLabel") :: TextLabel?
 
-local function UpdateZoneBanner(character: Model)
-	if not zoneFrame or not zoneTextLabel then return end
+			local currentZone: BasePart? = nil
+			local zoneDist = math.huge
 
-	local multiplier, nodeName, isRestricted, reqRealm, reqTier = GetCurrentQiZoneMultiplier(character)
-
-	zoneTextLabel.FontFace = Font.fromName("Fondamento", Enum.FontWeight.Bold)
-	zoneTextLabel.Font = Enum.Font.Fondamento
-
-	if isRestricted then
-		zoneFrame.Visible = true
-		zoneTextLabel.Text = string.format("⚠️ %s [REQUIRES TIER %d (%s) — QI BLOCKED (0.0x)]", (nodeName or "QI NODE"):upper(), reqTier or 1, (reqRealm or ""):upper())
-		zoneTextLabel.TextColor3 = Color3.fromRGB(255, 65, 65)
-	elseif isMeditating then
-		zoneFrame.Visible = true
-		if multiplier > 1.0 then
-			zoneTextLabel.Text = string.format("✦ %s - %.1fX SPEED (MEDITATING) ✦", (nodeName or "QI NODE"):upper(), multiplier)
-			zoneTextLabel.TextColor3 = Color3.fromRGB(255, 220, 80)
-		else
-			zoneTextLabel.Text = "MEDITATING - 1.0X SPEED"
-			zoneTextLabel.TextColor3 = Color3.fromRGB(200, 240, 255)
-		end
-	elseif multiplier > 1.0 then
-		zoneFrame.Visible = true
-		zoneTextLabel.Text = string.format("✦ %s - %.1fX SPEED ✦", (nodeName or "QI NODE"):upper(), multiplier)
-		zoneTextLabel.TextColor3 = Color3.fromRGB(150, 230, 255)
-	else
-		zoneFrame.Visible = false
-	end
-end
-
-local function HookStudioUI()
-	masterGui = (playerGui:FindFirstChild("MasterHUDGui") or playerGui:WaitForChild("MasterHUDGui", 6)) :: ScreenGui?
-	if masterGui then
-		zoneFrame = masterGui:FindFirstChild("ZoneFrame") :: Frame?
-		if zoneFrame then
-			zoneTextLabel = zoneFrame:FindFirstChildOfClass("TextLabel")
-			zoneFrame.Visible = false
-		end
-	end
-
-	feedbackGui = (playerGui:FindFirstChild("CultivationFeedbackGui") or playerGui:WaitForChild("CultivationFeedbackGui", 6)) :: ScreenGui?
-	if feedbackGui then
-		ascensionModal = feedbackGui:FindFirstChild("AscensionModal") :: Frame?
-		if ascensionModal then
-			modalMainFrame = ascensionModal:FindFirstChild("MainFrame") :: Frame?
-			if modalMainFrame then
-				modalScale = modalMainFrame:FindFirstChild("UIScale") :: UIScale?
-				local header = modalMainFrame:FindFirstChild("HeaderFrame")
-				if header then
-					headerTitle = header:FindFirstChild("TitleText") :: TextLabel?
-					closeBtn = header:FindFirstChild("CloseButton") :: ImageButton?
-				end
-
-				local content = modalMainFrame:FindFirstChild("ContentCard")
-				if content then
-					realmTitle = content:FindFirstChild("AscensionTitle") :: TextLabel?
-					local statList = content:FindFirstChild("StatList")
-					if statList then
-						local hpCard = statList:FindFirstChild("HpCard")
-						if hpCard then hpPillText = hpCard:FindFirstChild("StatValue") :: TextLabel? end
-
-						local qiCard = statList:FindFirstChild("QiCard")
-						if qiCard then qiPillText = qiCard:FindFirstChild("StatValue") :: TextLabel? end
-
-						local multCard = statList:FindFirstChild("MultCard")
-						if multCard then multPillText = multCard:FindFirstChild("StatValue") :: TextLabel? end
+			if hrp and qiNodes then
+				for _, node in ipairs(qiNodes:GetChildren()) do
+					if node:IsA("BasePart") then
+						local dist = (hrp.Position - node.Position).Magnitude
+						local radius = math.max(node.Size.X, node.Size.Z) / 2 + 3
+						if dist <= radius and dist < zoneDist then
+							currentZone = node
+							zoneDist = dist
+						end
 					end
-					confirmBtn = content:FindFirstChild("ConfirmButton") :: TextButton?
+				end
+			end
+
+			if zoneFrame and zoneLabel then
+				if currentZone then
+					local reqTier = (currentZone:GetAttribute("RequiredTier") or currentZone:GetAttribute("MinTier") or 1) :: number
+					local reqRealm = tostring(currentZone:GetAttribute("RequiredRealm") or "Spiritual Realm")
+					local nodeName = tostring(currentZone:GetAttribute("NodeName") or currentZone.Name)
+					local mult = (currentZone:GetAttribute("QiMultiplier") or 1.0) :: number
+
+					zoneFrame.Visible = true
+					zoneLabel.FontFace = Font.fromName("Fondamento", Enum.FontWeight.Bold)
+					zoneLabel.Font = Enum.Font.Fondamento
+
+					if playerTier < reqTier then
+						-- UNDER-LEVELED: WARNING MODE
+						zoneLabel.Text = string.format("⚠️ %s [Requires Tier %d (%s) — Qi Ineffective (1.0x)]", nodeName, reqTier, reqRealm)
+						zoneLabel.TextColor3 = Color3.fromRGB(255, 75, 75)
+					else
+						-- AUTHORIZED: ACTIVE MULTIPLIER MODE
+						zoneLabel.Text = string.format("✦ %s — %.1fx Qi SPEED ✦", nodeName, mult)
+						zoneLabel.TextColor3 = realmColors[reqTier] or Color3.fromRGB(255, 255, 255)
+					end
+				else
+					-- Outside all zones
+					zoneFrame.Visible = false
 				end
 			end
 		end
-
-		readyPrompt = feedbackGui:FindFirstChild("ReadyPrompt") :: Frame?
-		if readyPrompt then
-			readyScale = readyPrompt:FindFirstChild("UIScale") :: UIScale?
-			readyPrompt.Visible = false
-		end
-
-		rejectToast = feedbackGui:FindFirstChild("RejectionToast") :: Frame?
-		if rejectToast then
-			rejectScale = rejectToast:FindFirstChild("UIScale") :: UIScale?
-			local toastMain = rejectToast:FindFirstChild("MainFrame")
-			if toastMain then
-				rejectDesc = toastMain:FindFirstChild("ToastDesc") :: TextLabel?
-			end
-			rejectToast.Visible = false
-		end
-
-		if confirmBtn then confirmBtn.MouseButton1Click:Connect(CultivationController.HideAscensionModal) end
-		if closeBtn then closeBtn.MouseButton1Click:Connect(CultivationController.HideAscensionModal) end
-	end
-end
-
-function CultivationController.ShowAscensionModal(data: { [string]: any })
-	if not ascensionModal or not modalMainFrame or not modalScale then return end
-	local isMajor = (data.IsMajor == true)
-
-	if headerTitle then
-		headerTitle.Text = if isMajor then "HEAVENLY ASCENSION" else "ORDER ADVANCEMENT"
-	end
-
-	if realmTitle then
-		local rName = tostring(data.RealmName or data.Realm or "UNKNOWN"):upper()
-		realmTitle.Text = string.format("REACHED: %s — ORDER %d", rName, tonumber(data.Order or data.NewOrder) or 1)
-	end
-
-	if hpPillText then hpPillText.Text = string.format("+%s MAX HP", FormatNumber(data.HpGain or 0)) end
-	if qiPillText then qiPillText.Text = string.format("+%s MAX QI", FormatNumber(data.QiGain or 0)) end
-	if multPillText then multPillText.Text = string.format("%.2fX POWER", tonumber(data.PowerMultiplier) or 1.0) end
-
-	modalScale.Scale = 0.8
-	ascensionModal.Visible = true
-	PlayUISound(ASCENSION_CHIME_SFX, 0.8)
-	TweenService:Create(modalScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-end
-
-function CultivationController.HideAscensionModal()
-	if not ascensionModal or not modalScale then return end
-	local tween = TweenService:Create(modalScale, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.8 })
-	tween:Play()
-	tween.Completed:Connect(function()
-		ascensionModal.Visible = false
 	end)
 end
 
-function CultivationController.ShowRejectionToast(curQi: number, tgtQi: number, pct: number, customMessage: string?)
-	if not rejectToast or not rejectDesc or not rejectScale then return end
-	if rejectToastThread then task.cancel(rejectToastThread) end
-
-	rejectDesc.Text = customMessage or string.format("Current Qi: %s / %s (%d%%) • Meditate to absorb more Qi!", FormatNumber(curQi), FormatNumber(tgtQi), pct)
-	rejectScale.Scale = 0.8
-	rejectToast.Visible = true
-	PlayUISound(REJECT_BUZZ_SFX, 0.4)
-
-	TweenService:Create(rejectScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-
-	rejectToastThread = task.spawn(function()
-		task.wait(2.5)
-		local fade = TweenService:Create(rejectScale, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.8 })
-		fade:Play()
-		fade.Completed:Connect(function()
-			rejectToast.Visible = false
-		end)
-	end)
-end
-
-function CultivationController.StartMeditation(character: Model)
-	if isMeditating then return end
-	isMeditating = true
-
-	TweenService:Create(camera, TweenInfo.new(1.0, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), { FieldOfView = 65 }):Play()
-
-	if not meditationSound or meditationSound.Parent == nil then
-		meditationSound = Instance.new("Sound")
-		meditationSound.Name = "MeditationBGSound"
-		meditationSound.SoundId = MEDITATION_SOUND_ID
-		meditationSound.Looped = true
-		meditationSound.Volume = 0.5
-		meditationSound.Parent = SoundService
-	end
-	if meditationSound and not meditationSound.IsPlaying then meditationSound:Play() end
-end
-
-function CultivationController.StopMeditation(character: Model)
-	if not isMeditating then return end
-	isMeditating = false
-
-	if meditationSound and meditationSound.IsPlaying then
-		local fadeOut = TweenService:Create(meditationSound, TweenInfo.new(0.5), { Volume = 0 })
-		fadeOut:Play()
-		fadeOut.Completed:Connect(function()
-			if not isMeditating and meditationSound then
-				meditationSound:Stop()
-				meditationSound.Volume = 0.5
-			end
-		end)
-	end
-
-	TweenService:Create(camera, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = 70 }):Play()
-end
-
+-- [QI ZONE PROXIMITY & SPIRITUAL PRESSURE MONITOR]
 function CultivationController.Init()
 	HookStudioUI()
 
+	StartQiZoneMonitor()	SetupInnerDemonUI()
+
 	local cultivationRemote = RemoteEvents.GetRemote("UpdateCultivation")
+	local cultivationActionRemote = RemoteEvents.GetRemote("CultivationAction")
+
 	cultivationRemote.OnClientEvent:Connect(function(data: { [string]: any })
 		if type(data) ~= "table" then return end
 		local character = player.Character
 		if not character then return end
 
-		-- 1. Meditation Toggle
-		local newMeditating = (data.IsMeditating == true)
-		if newMeditating ~= isMeditating then
-			if newMeditating then
+		-- 1. Meditation Audio & FOV Toggle
+		local newMeditatingState = (data.IsMeditating == true)
+		if newMeditatingState ~= isMeditating then
+			if newMeditatingState then
 				CultivationController.StartMeditation(character)
 			else
 				CultivationController.StopMeditation(character)
 			end
 		end
 
-		-- 2. Ready Prompt
+		-- 2. Dantian Saturated [B] Keybind Prompt Toggle
 		if type(data.MaxQi) == "number" and type(data.TargetQi) == "number" then
 			local isSaturated = (data.MaxQi >= data.TargetQi)
 			if readyPrompt then
 				if isSaturated and not isReadyPromptActive then
 					isReadyPromptActive = true
+					readyPrompt.Position = UDim2.new(0.5, 0, 0.90, 0)
 					readyPrompt.Visible = true
-					if readyScale then
-						readyScale.Scale = 0.8
-						TweenService:Create(readyScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+					if tonumber(data.Order) == 9 then
+						readyPrompt.Text = "[B] INITIATE HEAVENLY TRIBULATION (Dan Required)"
+						readyPrompt.TextColor3 = Color3.fromRGB(255, 215, 0)
+					elseif readyPrompt:IsA("TextLabel") or readyPrompt:IsA("TextButton") then
+						readyPrompt.Text = "[B] BREAKTHROUGH READY"
+						readyPrompt.TextColor3 = Color3.fromRGB(255, 255, 255)
 					end
+					TweenService:Create(readyPrompt, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+						Position = UDim2.new(0.5, 0, 0.82, 0),
+					}):Play()
 				elseif not isSaturated and isReadyPromptActive then
 					isReadyPromptActive = false
 					readyPrompt.Visible = false
@@ -330,7 +129,7 @@ function CultivationController.Init()
 			end
 		end
 
-		-- 3. Breakthrough Rejected
+		-- 3. Breakthrough Rejection Event Handler
 		if data.Action == "BreakthroughRejected" then
 			local cur = tonumber(data.CurrentQi) or 0
 			local tgt = tonumber(data.TargetQi) or 1
@@ -338,24 +137,86 @@ function CultivationController.Init()
 			CultivationController.ShowRejectionToast(cur, tgt, pct, data.Message)
 		end
 
-		-- 4. Breakthrough Success
+		-- 4. Breakthrough Success / Ascension Event Handler
 		if data.Action == "BreakthroughSuccess" then
 			CultivationController.ShowAscensionModal(data)
 		end
 	end)
 
-	-- Continuous Zone Monitor Loop
-	task.spawn(function()
-		while true do
-			task.wait(0.3)
-			local char = player.Character
-			if char and char.Parent then
-				UpdateZoneBanner(char)
+	cultivationActionRemote.OnClientEvent:Connect(function(payload: any)
+		if type(payload) ~= "table" then return end
+
+		if payload.Action == "InnerDemonStart" then
+			StartCameraShake()
+			if vignetteFrame then
+				TweenService:Create(vignetteFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					ImageTransparency = 0.35,
+					ImageColor3 = payload.AuraColor or Color3.fromRGB(90, 0, 40),
+				}):Play()
+			end
+
+		elseif payload.Action == "FocusPulsePrompt" then
+			currentQteWave = payload.Wave
+			isQteActive = true
+			if qteContainer and pulseRing then
+				qteContainer.Visible = true
+				pulseRing.Size = UDim2.new(2.0, 0, 2.0, 0)
+				local win = payload.Window or 1.2
+				local tween = TweenService:Create(pulseRing, TweenInfo.new(win, Enum.EasingStyle.Linear), {
+					Size = UDim2.new(1.0, 0, 1.0, 0),
+				})
+				tween:Play()
+			end
+
+		elseif payload.Action == "InnerDemonBacklash" then
+			isQteActive = false
+			StopCameraShake()
+			if qteContainer then qteContainer.Visible = false end
+			if vignetteFrame then
+				vignetteFrame.ImageColor3 = Color3.fromRGB(255, 0, 0)
+				vignetteFrame.ImageTransparency = 0.1
+				TweenService:Create(vignetteFrame, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					ImageTransparency = 1.0,
+				}):Play()
+			end
+			CultivationController.ShowRejectionToast(0, 0, 0, payload.Message or "TRIBULATION BACKLASH: Qi Deviation!")
+
+		elseif payload.Action == "InnerDemonSuccess" then
+			isQteActive = false
+			StopCameraShake()
+			if qteContainer then qteContainer.Visible = false end
+			if vignetteFrame then
+				TweenService:Create(vignetteFrame, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					ImageTransparency = 1.0,
+				}):Play()
 			end
 		end
 	end)
 
-	print("[ASCEND] CultivationController Initialized Successfully.")
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if isQteActive and currentQteWave then
+			if input.KeyCode == Enum.KeyCode.Space or input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				isQteActive = false
+				if qteContainer then qteContainer.Visible = false end
+				cultivationActionRemote:FireServer({
+					Action = "FocusPulse",
+					Wave = currentQteWave,
+				})
+				return
+			end
+		end
+
+		if processed then return end
+	end)
+
+	RunService.Heartbeat:Connect(function()
+		local char = player.Character
+		if char and not isMeditating then
+			UpdateZoneBanner(char)
+		end
+	end)
+
+	print("[ASCEND] CultivationController Initialized (Inner Demon QTE & Rejection Feedback Active).")
 end
 
 return CultivationController

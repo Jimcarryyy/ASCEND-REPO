@@ -1,0 +1,3 @@
+--Hey zephu can you try and make every part that spins (this would include 1, beam of power, specs, eye, and up) attached
+--to huamnoid root join or what not so that whever someone does a emote like /e blade or smth it does flip out,
+--btw you can if you want lower the height of the beams or smth but idk cus theres been some pretty tall auras in the past.

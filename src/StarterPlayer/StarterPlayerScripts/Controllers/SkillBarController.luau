@@ -343,28 +343,27 @@ function SkillBarController.TriggerCooldown(slotName: string, duration: number?)
 	end)
 end
 
-function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: number, maxQi: number)
+function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: number, maxQi: number, targetQi: number?, isReady: boolean?, isMeditating: boolean?)
 	local hMax = math.max(1, maxHp or 100)
 	local hCur = math.clamp(curHp or 0, 0, hMax)
 	local hRatio = math.clamp(hCur / hMax, 0, 1)
 
+	local qMax = math.max(1, maxQi or 100)
+	local qCur = math.clamp(curQi or 0, 0, qMax)
+	local qRatio = math.clamp(qCur / qMax, 0, 1)
+
 	if hpFill then TweenService:Create(hpFill, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play() end
 	if hpTextLabel then hpTextLabel.Text = string.format("%s / %s", FormatNum(hCur), FormatNum(hMax)) end
 
-	local char = LocalPlayer.Character
-	local cultivatedQi = char and (char:GetAttribute("MaxQi") :: number?) or LocalPlayer:GetAttribute("MaxQi") or curQi
-	local targetQi = char and (char:GetAttribute("TargetQi") :: number?) or LocalPlayer:GetAttribute("TargetQi") or 500
-	local isReady = char and (char:GetAttribute("BreakthroughReady") == true) or (cultivatedQi >= targetQi)
-	local dPct = if targetQi > 0 then math.floor(math.clamp(cultivatedQi / targetQi, 0, 1) * 100) else 0
-
-	local qRatio = if targetQi > 0 then math.clamp(cultivatedQi / targetQi, 0, 1) else 1
 	if qiFill then TweenService:Create(qiFill, INTENT_BAR_TWEEN, { Size = UDim2.new(qRatio, 0, 1, 0) }):Play() end
-
 	if qiTextLabel then
 		if isReady then
-			qiTextLabel.Text = string.format("%s / %s [READY - PRESS B]", FormatNum(cultivatedQi), FormatNum(targetQi))
+			qiTextLabel.Text = string.format("%s / %s [READY - PRESS B]", FormatNum(qCur), FormatNum(qMax))
+		elseif isMeditating and targetQi and targetQi > 0 then
+			local dPct = math.floor(math.clamp(qMax / targetQi, 0, 1) * 100)
+			qiTextLabel.Text = string.format("%s / %s (Dantian: %d%%)", FormatNum(qCur), FormatNum(qMax), dPct)
 		else
-			qiTextLabel.Text = string.format("%s / %s (%d%%)", FormatNum(cultivatedQi), FormatNum(targetQi), dPct)
+			qiTextLabel.Text = string.format("%s / %s", FormatNum(qCur), FormatNum(qMax))
 		end
 	end
 end
