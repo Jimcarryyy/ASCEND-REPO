@@ -1,8 +1,10 @@
 --!strict
 --[[
     CultivationController.luau
+    Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CultivationController.luau
     Directly bound to MasterHUDGui.ZoneFrame and CultivationFeedbackGui.
     Fully verified Studio hierarchy bindings (RejectDesc, StatPills, ReadyTitles).
+    Live Floating +QI/sec Text: Rendered once per second during meditation.
 ]]
 
 local Players = game:GetService("Players")
@@ -75,6 +77,53 @@ local function PlayUISound(soundId: string, volume: number?)
 	sound.Parent = SoundService
 	sound:Play()
 	Debris:AddItem(sound, 3)
+end
+
+local function SpawnFloatingQiText(character: Model, amount: number)
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "FloatingQiGui"
+	billboard.Size = UDim2.new(0, 140, 0, 36)
+	billboard.StudsOffset = Vector3.new(0, 3.2, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = hrp
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.Fondamento
+	label.TextSize = 22
+	label.TextColor3 = Color3.fromRGB(80, 240, 255)
+	label.Text = string.format("+%d QI", amount)
+	label.Parent = billboard
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 35, 75)
+	stroke.Thickness = 2.0
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.Parent = label
+
+	billboard.Parent = hrp
+
+	local floatTween = TweenService:Create(billboard, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		StudsOffset = Vector3.new(0, 5.2, 0),
+	})
+	local fadeTween = TweenService:Create(label, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		TextTransparency = 1,
+	})
+	local strokeFade = TweenService:Create(stroke, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		Transparency = 1,
+	})
+
+	floatTween:Play()
+	fadeTween:Play()
+	strokeFade:Play()
+
+	floatTween.Completed:Connect(function()
+		billboard:Destroy()
+	end)
 end
 
 local function GetCurrentQiZoneMultiplier(character: Model): (number, string?, boolean, string?, number?)
@@ -352,6 +401,11 @@ function CultivationController.Init()
 		-- 4. Breakthrough Success
 		if data.Action == "BreakthroughSuccess" then
 			CultivationController.ShowAscensionModal(data)
+		end
+
+		-- 5. Live +QI/sec Floating Text During Meditation
+		if isMeditating and type(data.FloatingQiGain) == "number" and data.FloatingQiGain > 0 then
+			SpawnFloatingQiText(character, data.FloatingQiGain)
 		end
 	end)
 

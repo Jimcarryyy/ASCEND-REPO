@@ -5,6 +5,7 @@
     Fixes:
       - Removed hrp.Anchored = true/false: Eliminates the 'Network Ownership API cannot be called on Anchored parts' crash.
       - Freezes meditation via velocity zeroing, WalkSpeed, and JumpPower without anchoring the character.
+      - Live +QI/sec floating text: Derives exact whole-number Qi added every 1.0s from server passive loop.
 ]]
 
 local Players = game:GetService("Players")
@@ -167,6 +168,8 @@ local characterConnections: { [Player]: RBXScriptConnection } = {}
 local activeTribulationSessions: { [Player]: { CurrentWave: number, PulseReceived: boolean, PulseDeadline: number } } = {}
 local tribulationThreads: { [Player]: thread } = {}
 local lastToggleTimestamp: { [Player]: number } = {}
+local qiGainAccumulator: { [Player]: number } = {}
+local tickCounter: { [Player]: number } = {}
 
 local updateCultivationRemote: RemoteEvent? = nil
 local combatActionRemote: RemoteEvent? = nil
@@ -362,6 +365,8 @@ function CultivationManager.Init()
 								end
 							end
 
+							qiGainAccumulator[player] = 0
+							tickCounter[player] = 0
 							CultivationManager.SyncClient(player)
 						else
 							local sectMult = GetSectQiBuffMultiplier(player)
@@ -373,20 +378,41 @@ function CultivationManager.Init()
 								pData.CurrentQi = math.min(pData.CultivatedQi, pData.CurrentQi + qiGained)
 							end
 
+							local gainedThisTick = 0
 							if isMeditating and pData.CultivatedQi < pData.MaxQiGoal then
 								local realmInfo = CultivationConfig[pData.Realm]
 								local baseGather = if realmInfo and realmInfo.GatherRate then realmInfo.GatherRate else 20
 								local playerTier = if realmInfo and realmInfo.Tier then realmInfo.Tier else 1
-		local qiNodeMult = GetQiNodeMultiplier(character, playerTier)
-		local combinedMultiplier = math.clamp(qiNodeMult * sectMult * samsaraRefineMult, 1.0, 4.0)
-		local expansionRate = baseGather * combinedMultiplier
+								local qiNodeMult = GetQiNodeMultiplier(character, playerTier)
+								local combinedMultiplier = math.clamp(qiNodeMult * sectMult * samsaraRefineMult, 1.0, 4.0)
+								local expansionRate = baseGather * combinedMultiplier
+								local prevCultivated = pData.CultivatedQi
 								pData.CultivatedQi = math.min(pData.MaxQiGoal, pData.CultivatedQi + (expansionRate * 0.5))
+								gainedThisTick = math.max(0, pData.CultivatedQi - prevCultivated)
 							end
 
 							pData.CultivatedQi = math.clamp(pData.CultivatedQi, 0, pData.MaxQiGoal)
 							pData.CurrentQi = math.clamp(pData.CurrentQi, 0, pData.CultivatedQi)
 
-							CultivationManager.SyncClient(player)
+							local floatingQiToDisplay: number? = nil
+							if isMeditating then
+								qiGainAccumulator[player] = (qiGainAccumulator[player] or 0) + gainedThisTick
+								tickCounter[player] = ((tickCounter[player] or 0) + 1) % 2
+
+								-- Fires exactly once per second (every 2nd 0.5s tick)
+								if tickCounter[player] == 0 then
+									local secTotal = math.floor((qiGainAccumulator[player] or 0) + 0.5)
+									qiGainAccumulator[player] = 0
+									if secTotal > 0 then
+										floatingQiToDisplay = secTotal
+									end
+								end
+							else
+								qiGainAccumulator[player] = 0
+								tickCounter[player] = 0
+							end
+
+							CultivationManager.SyncClient(player, floatingQiToDisplay)
 						end
 					end
 				end
@@ -447,6 +473,8 @@ function CultivationManager.OnPlayerRemoving(player: Player)
 	end
 	activeTribulationSessions[player] = nil
 	lastToggleTimestamp[player] = nil
+	qiGainAccumulator[player] = nil
+	tickCounter[player] = nil
 	playerData[player] = nil
 end
 
@@ -830,9 +858,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		TribulationTranscending = "ImmortalAscension",
 	}
 
-	local nextRealm = nextRealmMap[pData.Realm]
-	if not nextRealm then return false end
-
 	local nextRealm = (nextRealmMap and nextRealmMap[pData.Realm]) or "SoulFormation"
 	if not nextRealm then return false end
 
@@ -926,9 +951,9 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		pData.IsTribulationActive = false
 
 		if survived and player.Parent and hum and hum.Health > 0 then
-	local invMgr = getInventoryManager()
-	if requiredDan and invMgr then
-				invMgr.RemoveItem(player, requiredDan.ItemId, 1)
+			local invMgrNow = getInventoryManager()
+			if requiredDan and invMgrNow then
+				invMgrNow.RemoveItem(player, requiredDan.ItemId, 1)
 			end
 			pData.Realm = nextRealm
 			pData.Order = 1
@@ -968,6 +993,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			end
 		end
 	end)
+
 	local realmName = CultivationConfig[nextRealm].Name
 	if updateRemote then
 		updateRemote:FireClient(player, {
@@ -986,7 +1012,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	return true
 end
 
-function CultivationManager.SyncClient(player: Player)
+function CultivationManager.SyncClient(player: Player, floatingQiGain: number?)
 	local pData = CultivationManager.GetPlayerData(player)
 	if not pData then return end
 
@@ -1016,6 +1042,7 @@ function CultivationManager.SyncClient(player: Player)
 			MaxQi = pData.CultivatedQi,
 			TargetQi = maxQiGoal,
 			IsMeditating = pData.IsMeditating,
+			FloatingQiGain = floatingQiGain,
 		})
 	end
 end
