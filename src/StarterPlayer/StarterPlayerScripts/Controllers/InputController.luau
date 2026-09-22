@@ -3,7 +3,7 @@
     InputController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InputController.luau
     Updates:
-      - Heavy M1 Execution: Enforces 0.55-0.75s lockout between swings (no spamming).
+      - Phase 4: Unified client attack lockout via FlyingSwordConfig.GetM1Timing(step).TotalLockout.
       - Strike Alignment: Rotates character to face aim vector on swing start (no body spinning).
       - 4-Way Camera-Relative Shunpo Dash.
       - A6 Unified WalkSpeed Governor.
@@ -686,12 +686,10 @@ function InputController.TriggerM1()
 	if (now - lastM1Press) > COMBO_TIMEOUT then m1ComboIndex = 1 end
 
 	local currentStep = m1ComboIndex
-	local animKey = "M1_" .. tostring(currentStep)
-	local swordCfg = AnimationConfig.FlyingSword :: any
-	local animDef = if swordCfg then swordCfg[animKey] else nil
+	local timing = FlyingSwordConfig.GetM1Timing(currentStep)
 
-	-- Heavy lockout prevents macro/spam clicks (commits to full swing duration)
-	currentAttackLockout = if animDef then (animDef.CastDuration * 0.90) else 0.55
+	-- Unified attack lockout derived from shared activeTime + recoveryTime
+	currentAttackLockout = timing.TotalLockout
 	m1ComboIndex = if m1ComboIndex >= 5 then 1 else m1ComboIndex + 1
 	lastM1Press = now
 

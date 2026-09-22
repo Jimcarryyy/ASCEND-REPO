@@ -4,6 +4,7 @@
     Location: src/ReplicatedStorage/Shared/Configs/Weapons/FlyingSwordConfig.luau
     Balance & Kinematic Configuration for Pure Sword Cultivator.
     Updates:
+      - Phase 4: Unified client/server M1 timing via GetM1Timing.
       - Heavy M1 Timings: Windup 0.18-0.26s, Cooldown 0.58-0.80s (prevents fast spamming).
       - Q Skill Knockback: Set to Vector3.zero (no enemy displacement).
 ]]
@@ -35,6 +36,12 @@ export type SkillDef = {
 	ActiveDuration: number,
 	Recovery: number,
 	DashDistance: number?,
+}
+
+export type StepTiming = {
+	ActiveTime: number,
+	RecoveryTime: number,
+	TotalLockout: number,
 }
 
 local FlyingSwordConfig = {
@@ -188,5 +195,20 @@ local FlyingSwordConfig = {
 		},
 	},
 }
+
+-- Shared authoritative formula for client lockout and server action windows
+function FlyingSwordConfig.GetM1Timing(stepIndex: number): StepTiming
+	local stepData = FlyingSwordConfig.M1Combo[stepIndex] or FlyingSwordConfig.M1Combo[1]
+	local duration = stepData.Cooldown or 0.58
+	local windupRatio = 0.45
+
+	local activeTime = duration * windupRatio
+	local recoveryTime = duration * (1.0 - windupRatio)
+	return {
+		ActiveTime = activeTime,
+		RecoveryTime = recoveryTime,
+		TotalLockout = activeTime + recoveryTime,
+	}
+end
 
 return FlyingSwordConfig

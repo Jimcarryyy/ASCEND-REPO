@@ -251,8 +251,35 @@ function ArenaManager.Init()
 					if hrp then
 						local dist = (hrp.Position - session.Center).Magnitude
 						if dist > (session.Radius + 2) then
-							local dir = (session.Center - hrp.Position).Unit
-							hrp.AssemblyLinearVelocity = dir * 35 + Vector3.new(0, 10, 0)
+							local flatDir = Vector3.new(session.Center.X - hrp.Position.X, 0, session.Center.Z - hrp.Position.Z)
+							local dir = if flatDir.Magnitude > 0.001 then flatDir.Unit else Vector3.new(0, 0, -1)
+
+							local rootAtt = hrp:FindFirstChild("RootAttachment") :: Attachment?
+							if not rootAtt then
+								rootAtt = Instance.new("Attachment")
+								rootAtt.Name = "RootAttachment"
+								rootAtt.Parent = hrp
+							end
+
+							local existingVel = hrp:FindFirstChild("ArenaBoundaryVel")
+							if existingVel then
+								existingVel:Destroy()
+							end
+
+							local reboundVel = Instance.new("LinearVelocity")
+							reboundVel.Name = "ArenaBoundaryVel"
+							reboundVel.Attachment0 = rootAtt
+							reboundVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+							reboundVel.MaxAxesForce = Vector3.new(250000, 5000, 250000)
+							reboundVel.VectorVelocity = dir * 20
+							reboundVel.RelativeTo = Enum.ActuatorRelativeTo.World
+							reboundVel.Parent = hrp
+
+							task.delay(0.15, function()
+								if reboundVel and reboundVel.Parent then
+									reboundVel:Destroy()
+								end
+							end)
 						end
 					end
 				end

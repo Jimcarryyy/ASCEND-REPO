@@ -3,6 +3,7 @@
     AnimationConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/AnimationConfig.luau
     Updates:
+      - Phase 3: Added WindupRatio, WindupMultiplier, and StrikeMultiplier for two-phase slash curves.
       - Heavy M1 Cadence: Playback speed slowed to 0.50x with 0.60s cast duration for weighted impacts.
       - 4-Way Directional Dash IDs registered.
 ]]
@@ -14,6 +15,9 @@ export type AnimDef = {
 	CastDuration: number,
 	WalkSpeedDampen: number?,
 	ChargeAnimationId: string?,
+	WindupRatio: number?,
+	WindupMultiplier: number?,
+	StrikeMultiplier: number?,
 }
 
 local AnimationConfig = {
@@ -46,12 +50,57 @@ local AnimationConfig = {
 	},
 
 	FlyingSword = {
-		-- Heavy Weighted 5-Hit M1 Combo (0.50x speed, 0.60s duration)
-		M1_1 = { AnimationId = "rbxassetid://129254042886405", Speed = 0.50, FadeTime = 0.08, CastDuration = 0.58, WalkSpeedDampen = 6 },
-		M1_2 = { AnimationId = "rbxassetid://78342794513338",  Speed = 0.50, FadeTime = 0.08, CastDuration = 0.56, WalkSpeedDampen = 6 },
-		M1_3 = { AnimationId = "rbxassetid://133701354257850", Speed = 0.48, FadeTime = 0.08, CastDuration = 0.60, WalkSpeedDampen = 6 },
-		M1_4 = { AnimationId = "rbxassetid://140582503077234", Speed = 0.48, FadeTime = 0.08, CastDuration = 0.62, WalkSpeedDampen = 6 },
-		M1_5 = { AnimationId = "rbxassetid://111677132360566", Speed = 0.42, FadeTime = 0.10, CastDuration = 0.82, WalkSpeedDampen = 4 },
+		-- Heavy Weighted 5-Hit M1 Combo with Two-Phase Windup (0.55x) -> Snap Strike (1.65x)
+		M1_1 = {
+			AnimationId = "rbxassetid://129254042886405",
+			Speed = 0.50,
+			FadeTime = 0.08,
+			CastDuration = 0.58,
+			WalkSpeedDampen = 6,
+			WindupRatio = 0.45,
+			WindupMultiplier = 0.55,
+			StrikeMultiplier = 1.65,
+		},
+		M1_2 = {
+			AnimationId = "rbxassetid://78342794513338",
+			Speed = 0.50,
+			FadeTime = 0.08,
+			CastDuration = 0.56,
+			WalkSpeedDampen = 6,
+			WindupRatio = 0.45,
+			WindupMultiplier = 0.55,
+			StrikeMultiplier = 1.65,
+		},
+		M1_3 = {
+			AnimationId = "rbxassetid://133701354257850",
+			Speed = 0.48,
+			FadeTime = 0.08,
+			CastDuration = 0.60,
+			WalkSpeedDampen = 6,
+			WindupRatio = 0.45,
+			WindupMultiplier = 0.55,
+			StrikeMultiplier = 1.65,
+		},
+		M1_4 = {
+			AnimationId = "rbxassetid://140582503077234",
+			Speed = 0.48,
+			FadeTime = 0.08,
+			CastDuration = 0.62,
+			WalkSpeedDampen = 6,
+			WindupRatio = 0.45,
+			WindupMultiplier = 0.55,
+			StrikeMultiplier = 1.65,
+		},
+		M1_5 = {
+			AnimationId = "rbxassetid://111677132360566",
+			Speed = 0.42,
+			FadeTime = 0.10,
+			CastDuration = 0.82,
+			WalkSpeedDampen = 4,
+			WindupRatio = 0.45,
+			WindupMultiplier = 0.50,
+			StrikeMultiplier = 1.65,
+		},
 
 		Block = { AnimationId = "rbxassetid://112773782841691", Speed = 1.0, FadeTime = 0.05, CastDuration = 9999, WalkSpeedDampen = 6 },
 		Parry = { AnimationId = "rbxassetid://5763723309", Speed = 1.6, FadeTime = 0.02, CastDuration = 0.28 },

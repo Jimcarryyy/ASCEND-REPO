@@ -3,6 +3,9 @@
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
     Updates:
+      - Phase 3: Two-Phase Slash Speed Curve (slow windup 0.55x -> fast strike commit 1.65x).
+        The windup duration is derived from animDef.CastDuration * animDef.WindupRatio, syncing
+        with the server's CombatStateManager active window.
       - 4-Way Dash with Shunpo Vanish/Reappear Effect (character disappears and snaps back).
       - M1 Body Twist Fix: Locks AutoRotate during attack so avatar never spins mid-slash.
       - A6 Attribute Governance for WalkSpeed.
@@ -705,7 +708,7 @@ function AnimationController.PerformDash(_dashStep: number?, overrideDir: Vector
 end
 
 -- =============================================================================
--- HEAVY M1 SWING EXECUTION WITH AUTOROTATE LOCK (ELIMINATES BODY SPIN)
+-- HEAVY M1 SWING EXECUTION WITH TWO-PHASE SPEED CURVE & AUTOROTATE LOCK
 -- =============================================================================
 function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: number?)
 	local character = player.Character
@@ -755,12 +758,25 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 	character:SetAttribute("AttackSpeedDampen", animDef.WalkSpeedDampen or 6.0)
 	character:SetAttribute("IsAttacking", true)
 
+	local windupSpeed = animDef.WindupMultiplier or 0.55
+	local strikeSpeed = animDef.StrikeMultiplier or 1.65
+	local windupRatio = animDef.WindupRatio or 0.45
+	local duration = animDef.CastDuration or 0.58
+	local windupDuration = duration * windupRatio
+
 	track.Priority = Enum.AnimationPriority.Action4
 	track.Looped = false
-	track:Play(animDef.FadeTime or 0.08, 1, animDef.Speed or 0.50)
+	track:Play(animDef.FadeTime or 0.08, 1, windupSpeed)
+	track:AdjustSpeed(windupSpeed)
 	activeAttackTrack = track
 
-	local duration = animDef.CastDuration or 0.58
+	-- Windup-then-Snap Transition: Accelerates at the exact instant server hitbox activates
+	task.delay(windupDuration, function()
+		if activeAttackTrack == track and track.IsPlaying then
+			track:AdjustSpeed(strikeSpeed)
+		end
+	end)
+
 	task.delay(duration, function()
 		if trail and activeAttackTrack == track then trail.Enabled = false end
 		if track and track.IsPlaying and activeAttackTrack == track then track:Stop(0.08) end

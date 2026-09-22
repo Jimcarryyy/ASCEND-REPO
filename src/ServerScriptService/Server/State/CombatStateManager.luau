@@ -9,6 +9,9 @@
       - B1 Active -> Recovery -> Idle state promotion timers.
       - B3 Staggered CC state support.
       - C4 workspace:GetServerTimeNow() parry sync.
+    Phase 3/4 Updates:
+      - Unified timing: Uses FlyingSwordConfig.GetM1Timing to calculate ActiveTime and RecoveryTime,
+        matching client InputController attack lockout to the exact millisecond.
 ]]
 
 local Players = game:GetService("Players")
@@ -487,9 +490,9 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	local recoveryTime = 0.14
 	if skillKey == "M1" then
 		local stepIdx = (payload and payload.ComboIndex) or 1
-		local stepData = FlyingSwordConfig.M1Combo[stepIdx] or FlyingSwordConfig.M1Combo[1]
-		activeTime = (stepData.CastDuration or 0.44) * 0.45
-		recoveryTime = (stepData.Recovery or 0.25) * 0.55
+		local timing = FlyingSwordConfig.GetM1Timing(stepIdx)
+		activeTime = timing.ActiveTime
+		recoveryTime = timing.RecoveryTime
 	elseif FlyingSwordConfig.Skills[skillKey] then
 		activeTime = (FlyingSwordConfig.Skills[skillKey].CastDuration or 0.50) * 0.5
 		recoveryTime = FlyingSwordConfig.Skills[skillKey].Recovery or 0.2
