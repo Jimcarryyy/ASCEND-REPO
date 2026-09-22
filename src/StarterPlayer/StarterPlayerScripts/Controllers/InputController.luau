@@ -1063,19 +1063,13 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	if not enabled or isMeditating or isBlocking or isCastingSkillQ or isExecutingSkillF or IsInCCState() then return end
-
+	-- B Key: Breakthrough Request (Allowed while meditating!)
 	if input.KeyCode == Enum.KeyCode.B then
-		local cultivatedQi = character and (character:GetAttribute("MaxQi") :: number?) or 0
-		local targetQi = character and (character:GetAttribute("TargetQi") :: number?) or 500
-		local isReady = character and (character:GetAttribute("BreakthroughReady") == true) or (cultivatedQi >= targetQi)
-		if not isReady then
-			EmitToast(string.format("Dantian not saturated (%s/%s Qi)", tostring(math.floor(cultivatedQi)), tostring(math.floor(targetQi))))
-			return
-		end
 		combatActionRemote:FireServer({ RequestBreakthrough = true })
 		return
 	end
+
+	if not enabled or isMeditating or isBlocking or isCastingSkillQ or isExecutingSkillF or IsInCCState() then return end
 
 	if input.KeyCode == Enum.KeyCode.Q then
 		InputController.TriggerSkill("Q")

@@ -350,8 +350,9 @@ function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: nu
 
 	local qMax = math.max(1, maxQi or 100)
 	local qCur = math.clamp(curQi or 0, 0, qMax)
+	-- Responsive Dantian Progress: fill represents CultivatedQi towards TargetQi
 	local qRatio = math.clamp(qCur / qMax, 0, 1)
-
+	
 	if hpFill then TweenService:Create(hpFill, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play() end
 	if hpTextLabel then hpTextLabel.Text = string.format("%s / %s", FormatNum(hCur), FormatNum(hMax)) end
 

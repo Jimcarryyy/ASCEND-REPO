@@ -833,10 +833,11 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	local nextRealm = nextRealmMap[pData.Realm]
 	if not nextRealm then return false end
 
-	local nextRealm = CultivationConfig.GetNextRealm(pData.Realm)
+	local nextRealm = (nextRealmMap and nextRealmMap[pData.Realm]) or "SoulFormation"
 	if not nextRealm then return false end
 
 	local requiredDan = REALM_BREAKTHROUGH_DAN[nextRealm]
+	local invMgr = getInventoryManager()
 	if requiredDan and invMgr then
 		if not invMgr.HasItem(player, requiredDan.ItemId, 1) then
 			if updateRemote then
@@ -925,7 +926,8 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 		pData.IsTribulationActive = false
 
 		if survived and player.Parent and hum and hum.Health > 0 then
-			if requiredDan and invMgr then
+	local invMgr = getInventoryManager()
+	if requiredDan and invMgr then
 				invMgr.RemoveItem(player, requiredDan.ItemId, 1)
 			end
 			pData.Realm = nextRealm
@@ -933,7 +935,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			pData.CultivatedQi = 0
 			pData.CurrentQi = 0
 			CultivationManager.ApplyRealmStats(player)
-			PlayerDataManager.SetPlayerData(player, pData)
+			getPlayerDataManager().SetPlayerData(player, pData)
 			CultivationManager.SyncClient(player)
 
 			if updateRemote then
@@ -955,7 +957,7 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 			end
 		else
 			pData.CultivatedQi = math.floor((pData.CultivatedQi or 0) * 0.5)
-			PlayerDataManager.SetPlayerData(player, pData)
+			getPlayerDataManager().SetPlayerData(player, pData)
 			CultivationManager.SyncClient(player)
 
 			if updateRemote then
