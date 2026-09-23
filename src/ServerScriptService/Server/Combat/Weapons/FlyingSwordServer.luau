@@ -2,64 +2,74 @@
 --[[
     FlyingSwordServer.luau
     Location: src/ServerScriptService/Server/Combat/Weapons/FlyingSwordServer.luau
-    Phase 1 Updates:
-      - Q Skill Knockback: Zero knockback on both melee slash and waves (does not push enemies).
-      - B2 Hitbox Timing Overhaul: Configured Windup delay + ActiveDuration sampling loop.
-      - C5 Payload Sanitization: NaN/infinite vector validation on AimDirection.
-      - Spatial Flash-Step Blink for F Ultimate with 2-stage damage.
+    Updates:
+      - Phase 5.4: Reads Skill Q hitbox size and Skill F domain radius directly from FlyingSwordConfig
+        instead of hardcoded inline overrides.
+      - E Skill Piercing Void Thrust: High-velocity swept thrust with target penetration.
+      - F Skill 100-Slash Domain: High-velocity blink and omnidirectional slice domain.
+      - Q Skill: ZERO knockback (slices in-place without pushing targets away).
 ]]
 
-local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ServerScriptService = game:GetService("ServerScriptService")
 local RunService = game:GetService("RunService")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
+local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
+
 local HitboxManager = require(ServerScriptService.Server.Combat.HitboxManager)
-local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
-local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
-local MobAIManager = require(ServerScriptService.Server.Combat.MobAIManager)
+local ArenaManager = require(ServerScriptService.Server.Combat.ArenaManager)
 
 local FlyingSwordServer = {}
-local playerCombos: { [Player]: { Step: number, LastTime: number } } = {}
 
-local function GetEquippedWeaponBaseDamage(player: Player): number
-	local weaponId = WeaponManager.GetEquippedWeapon(player)
-	local itemDef = ItemConfig.GetItem(weaponId)
-	local baseDamage = if itemDef and itemDef.Stats and itemDef.Stats.Damage then itemDef.Stats.Damage else 15
-	local samsaraCycle = player:GetAttribute("SamsaraCycle") or 0
-	local samsaraBonus = math.min(0.20, samsaraCycle * 0.05)
-	return math.round(baseDamage * (1.0 + samsaraBonus))
+type ComboTracker = {
+	Step: number,
+	LastTime: number,
+}
+
+local playerCombos: { [Player]: ComboTracker } = {}
+
+local cultivationManagerRef: any = nil
+local function getCultivationManager(): any
+	if not cultivationManagerRef then
+		cultivationManagerRef = require(ServerScriptService.Server.Cultivation.CultivationManager)
+	end
+	return cultivationManagerRef
 end
 
-local function ResolveAimDirection(payload: any?, fallback: Vector3): Vector3
-	if payload and typeof(payload.AimDirection) == "Vector3" then
-		local dir = payload.AimDirection
+local function ResolveAimDirection(hrp: BasePart, requestedAimDir: Vector3?): Vector3
+	if requestedAimDir and typeof(requestedAimDir) == "Vector3" then
+		local dir = requestedAimDir
 		if dir.X == dir.X and dir.Y == dir.Y and dir.Z == dir.Z and dir.Magnitude > 0.001 then
 			return dir.Unit
 		end
 	end
-	return fallback
+	return hrp.CFrame.LookVector
 end
 
-local function SetCharacterCloak(character: Model, invisible: boolean)
-	for _, part in ipairs(character:GetDescendants()) do
-		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-			part.Transparency = if invisible then 1 else 0
-		elseif part:IsA("Decal") then
-			part.Transparency = if invisible then 1 else 0
-		end
-	end
+local function GetEquippedWeaponBaseDamage(player: Player): number
+	local character = player.Character
+	local weaponId = if character then (character:GetAttribute("EquippedWeapon") :: string?) else nil
+	if not weaponId or weaponId == "" then return 15 end
+
+	local itemDef = ItemConfig.GetItem(weaponId)
+	local baseDmg = (itemDef and itemDef.Stats and itemDef.Stats.Damage) or 15
+
+	local samsaraCycle = (character and character:GetAttribute("SamsaraCycle"))
+		or player:GetAttribute("SamsaraCycle")
+		or 0
+	local cycleBonus = 1.0 + math.min(0.20, (tonumber(samsaraCycle) or 0) * 0.05)
+
+	return math.floor(baseDmg * cycleBonus)
 end
 
 function FlyingSwordServer.StartChargeF(player: Player)
 	local character = player.Character
-	if not character then return end
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local hum = character:FindFirstChildOfClass("Humanoid")
-	if not hrp or not hum or hum.Health <= 0 then return end
+	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return end
 
 	local currentY = math.clamp(hrp.AssemblyLinearVelocity.Y, -2, 2)
 	hrp.AssemblyLinearVelocity = Vector3.new(0, currentY, 0)
@@ -67,355 +77,339 @@ function FlyingSwordServer.StartChargeF(player: Player)
 
 	character:SetAttribute("IsChargingF", true)
 	character:SetAttribute("IsAttacking", true)
-	hum.WalkSpeed = 0
 end
 
-function FlyingSwordServer.ExecuteSpatialBlink(player: Player, charForward: Vector3, travelDistance: number)
+function FlyingSwordServer.ExecuteSpatialBlink(player: Player, aimDirection: Vector3, distance: number): Vector3
 	local character = player.Character
-	if not character then return end
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local hum = character:FindFirstChildOfClass("Humanoid")
-	if not hrp or not hum or hum.Health <= 0 then return end
+	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return Vector3.zero end
 
 	character:SetAttribute("IsChargingF", false)
 	character:SetAttribute("IsBlinking", true)
 
-	SetCharacterCloak(character, true)
-
+	local targetDist = distance or 32.0
 	local rayParams = RaycastParams.new()
 	rayParams.FilterType = Enum.RaycastFilterType.Exclude
 	rayParams.FilterDescendantsInstances = { character }
-	local rayResult = workspace:Raycast(hrp.Position, charForward * travelDistance, rayParams)
-	local targetPos = if rayResult then rayResult.Position - (charForward * 2) else hrp.Position + (charForward * travelDistance)
+
+	local wallRay = Workspace:Raycast(hrp.Position, aimDirection * targetDist, rayParams)
+	local actualDist = if wallRay then math.max(4, wallRay.Distance - 2) else targetDist
+	local destination = hrp.Position + aimDirection * actualDist
 
 	task.delay(0.35, function()
-		if not hrp or not hrp.Parent then return end
+		if character and character.Parent and hrp and hrp.Parent then
+			hrp.AssemblyLinearVelocity = Vector3.zero
+			hrp.AssemblyAngularVelocity = Vector3.zero
+			character:SetAttribute("IsBlinking", false)
+			character:SetAttribute("IsAttacking", false)
 
-		hrp.CFrame = CFrame.lookAt(targetPos, targetPos + charForward)
-		hrp.AssemblyLinearVelocity = Vector3.zero
-		hrp.AssemblyAngularVelocity = Vector3.zero
-
-		SetCharacterCloak(character, false)
-		character:SetAttribute("IsBlinking", false)
-		character:SetAttribute("IsAttacking", false)
-
-		local remoteFolder = ReplicatedStorage:FindFirstChild("Shared") and ReplicatedStorage.Shared:FindFirstChild("Network")
-		local RemoteEventsMod = remoteFolder and require(remoteFolder:FindFirstChild("RemoteEvents"))
-		local combatActionRemote = RemoteEventsMod and RemoteEventsMod.GetRemote("CombatAction")
-		if combatActionRemote then
-			combatActionRemote:FireClient(player, player, "F_Finished", {})
+			local combatRemote = RemoteEvents.GetRemote("CombatAction")
+			if combatRemote then
+				combatRemote:FireClient(player, player, "F_Finished", {})
+			end
 		end
 	end)
+
+	return destination
 end
 
-function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, payload: any?): any?
-	local pData = CultivationManager.GetPlayerData(player)
-	if pData and pData.IsMeditating then return payload end
-
+function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, payload: any?): any
 	local character = player.Character
-	if not character then return payload end
-
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local hrp = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then return payload end
 
-	local inArena = (character:GetAttribute("InArena") == true)
-	local hits: { HitboxManager.HitResult } = {}
-	local damage = 0
-	local wasParried = false
-	local wasBlocked = false
-	local wasGuardBroken = false
-	local isCrit = false
+	local cultMgr = getCultivationManager()
+	local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
 
-	if skillKey == "StartChargeF" then
-		FlyingSwordServer.StartChargeF(player)
-		return payload
+	local now = os.clock()
+	local comboData = playerCombos[player]
+	if not comboData then
+		comboData = { Step = 1, LastTime = now }
+		playerCombos[player] = comboData
 	end
 
 	if skillKey == "M1" then
-		hits, damage, wasParried, wasBlocked, wasGuardBroken, isCrit = FlyingSwordServer.ExecuteM1Combo(player, hrp, inArena, payload)
-	else
-		hits, damage, wasParried, wasBlocked, wasGuardBroken, isCrit = FlyingSwordServer.ExecuteSkill(player, skillKey, hrp, inArena, payload)
-	end
+		local requestedStep = (payload and payload.ComboIndex) or 1
+		comboData.Step = requestedStep
+		comboData.LastTime = now
 
-	payload = payload or {}
-	payload.WeaponType = "FlyingSword"
-	payload.CalculatedDamage = damage
+		local currentStepData = FlyingSwordConfig.M1Combo[requestedStep] or FlyingSwordConfig.M1Combo[1]
+		local aimDirection = ResolveAimDirection(hrp, payload and payload.AimDirection)
+		local flatAim = Vector3.new(aimDirection.X, 0, aimDirection.Z).Unit
 
-	if hits and #hits > 0 then
-		payload.HasHit = true
-		payload.HitCount = #hits
-		payload.Damage = damage
-		payload.IsCrit = isCrit
-		payload.WasParried = wasParried
-		payload.WasBlocked = wasBlocked
-		payload.WasGuardBroken = wasGuardBroken
-		payload.TargetPosition = hits[1].HitPart.Position
-		payload.Hits = hits
-	else
-		payload.HasHit = false
-		payload.HitCount = 0
-		payload.Damage = 0
-		payload.IsCrit = false
-		payload.WasParried = false
-		payload.WasBlocked = false
-		payload.WasGuardBroken = false
-		payload.TargetPosition = nil
-		payload.Hits = {}
-	end
+		local inArena = (character:GetAttribute("InArena") == true) or (character:GetAttribute("InSparringRing") == true)
+		local critRoll = math.random()
+		local isCrit = if requestedStep == 5 then true else (critRoll <= 0.20)
+		local critMult = if isCrit then 1.75 else 1.0
 
-	return payload
-end
-
-function FlyingSwordServer.ExecuteM1Combo(player: Player, hrp: BasePart, inArena: boolean, payload: any?): ({ HitboxManager.HitResult }, number, boolean, boolean, boolean, boolean)
-	local now = os.clock()
-	local comboData = playerCombos[player] or { Step = 1, LastTime = 0 }
-
-	if now - comboData.LastTime > 1.3 then
-		comboData.Step = 1
-	end
-
-	local currentStepData = FlyingSwordConfig.M1Combo[comboData.Step]
-	if not currentStepData then
-		comboData.Step = 1
-		currentStepData = FlyingSwordConfig.M1Combo[1]
-	end
-
-	local isCrit = (comboData.Step == 5) or (math.random(1, 100) <= 20)
-	local critMult = if isCrit then 1.75 else 1.0
-
-	local finalDamage = 0
-	if inArena then
-		finalDamage = math.floor(currentStepData.ArenaDamage * critMult)
-	else
-		local pData = CultivationManager.GetPlayerData(player)
-		local powerMult = if pData then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
-		local weaponBaseDmg = GetEquippedWeaponBaseDamage(player)
-		finalDamage = math.floor((weaponBaseDmg + currentStepData.Damage) * powerMult * critMult)
-	end
-
-	local aimDir = ResolveAimDirection(payload, hrp.CFrame.LookVector)
-	local flatAimDir = Vector3.new(aimDir.X, 0, aimDir.Z).Unit
-	local orientationCFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatAimDir)
-	local hitboxCFrame = orientationCFrame * CFrame.new(currentStepData.Offset)
-
-	local hits = HitboxManager.CastCompensatedBox(hrp.Parent :: Model, hitboxCFrame, currentStepData.Range)
-
-	local anyParried = false
-	local anyBlocked = false
-	local anyGuardBroken = false
-
-	for _, hit in ipairs(hits) do
-		local ok, res = pcall(function()
-			return HitboxManager.ApplyCombatResolution(player, hit, finalDamage, currentStepData.PostureDamage, currentStepData.Knockback)
-		end)
-
-		if ok and res then
-			if res.WasParried then anyParried = true end
-			if res.WasBlocked then anyBlocked = true end
-			if res.WasGuardBroken then anyGuardBroken = true end
+		local finalDamage = 0
+		if inArena then
+			finalDamage = math.floor(currentStepData.ArenaDamage * critMult)
 		else
-			local victimHum = hit.Character and hit.Character:FindFirstChildOfClass("Humanoid")
-			if victimHum then victimHum:TakeDamage(finalDamage) end
+			local powerMult = if pData then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
+			local weaponBaseDmg = GetEquippedWeaponBaseDamage(player)
+			finalDamage = math.floor((weaponBaseDmg + currentStepData.Damage) * powerMult * critMult)
 		end
 
-		if hit.Character then
-			MobAIManager.RecordDamage(hit.Character, player)
-		end
-	end
+		local offsetPosition = hrp.Position + (flatAim * math.abs(currentStepData.Offset.Z)) + Vector3.new(0, currentStepData.Offset.Y, 0)
+		local hitboxCF = CFrame.lookAt(offsetPosition, offsetPosition + flatAim)
+		local filter = { character, Workspace.Terrain }
 
-	comboData.Step = if comboData.Step >= 5 then 1 else comboData.Step + 1
-	comboData.LastTime = now
-	playerCombos[player] = comboData
+		local hitResult = HitboxManager.CastCompensatedBox(hitboxCF, currentStepData.Range, filter)
+		local hasHit = false
+		local targetPos: Vector3? = nil
 
-	return hits, finalDamage, anyParried, anyBlocked, anyGuardBroken, isCrit
-end
+		if hitResult and hitResult.Humanoid and hitResult.Humanoid.Health > 0 then
+			hasHit = true
+			targetPos = hitResult.HitPart.Position
 
-function FlyingSwordServer.ExecuteSkill(player: Player, skillKey: string, hrp: BasePart, inArena: boolean, payload: any?): ({ HitboxManager.HitResult }, number, boolean, boolean, boolean, boolean)
-	local skillData = FlyingSwordConfig.Skills[skillKey]
-	if not skillData then return {}, 0, false, false, false, false end
+			local knockbackDir = flatAim
+			local knockbackVector = knockbackDir * math.abs(currentStepData.Knockback.Z)
 
-	local isCrit = (math.random(1, 100) <= 25)
-	local critMult = if isCrit then 1.75 else 1.0
+			local res = HitboxManager.ApplyCombatResolution(
+				player,
+				hitResult,
+				finalDamage,
+				currentStepData.PostureDamage,
+				knockbackVector,
+				character
+			)
 
-	local finalDamage = 0
-	if inArena then
-		finalDamage = math.floor(skillData.ArenaDamage * critMult)
-	else
-		local pData = CultivationManager.GetPlayerData(player)
-		local powerMult = if pData then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
-		local weaponBaseDmg = GetEquippedWeaponBaseDamage(player)
-		finalDamage = math.floor((weaponBaseDmg + skillData.Damage) * powerMult * critMult)
-	end
-
-	local aimDir = ResolveAimDirection(payload, hrp.CFrame.LookVector)
-	local flatAimDir = Vector3.new(aimDir.X, 0, aimDir.Z).Unit
-
-	local hits: { HitboxManager.HitResult } = {}
-	local anyParried = false
-	local anyBlocked = false
-	local anyGuardBroken = false
-	local char = hrp.Parent :: Model
-
-	if skillKey == "Q" then
-		-- Q Skill: Slices in place with ZERO knockback (does not push enemies)
-		local torsoOrigin = hrp.Position + Vector3.new(0, -0.40, 0)
-		local orientationCFrame = CFrame.lookAt(torsoOrigin, torsoOrigin + flatAimDir)
-		local hitCharacters: { [Model]: boolean } = {}
-
-		local meleeBox = orientationCFrame * CFrame.new(0, 0, -3.5)
-		local meleeHits = HitboxManager.CastCompensatedBox(char, meleeBox, Vector3.new(12, 4, 7))
-		local meleeDmg = math.floor(finalDamage * 0.40)
-
-		for _, hit in ipairs(meleeHits) do
-			if not hitCharacters[hit.Character] then
-				hitCharacters[hit.Character] = true
-				table.insert(hits, hit)
-
-				local ok, res = pcall(function()
-					return HitboxManager.ApplyCombatResolution(player, hit, meleeDmg, skillData.PostureDamage * 0.4, Vector3.zero)
-				end)
-				if ok and res then
-					if res.WasParried then anyParried = true end
-					if res.WasBlocked then anyBlocked = true end
-					if res.WasGuardBroken then anyGuardBroken = true end
-				end
-				if hit.Character then MobAIManager.RecordDamage(hit.Character, player) end
-			end
+			return {
+				HasHit = true,
+				Damage = finalDamage,
+				IsCrit = isCrit,
+				WasBlocked = res.WasBlocked,
+				WasParried = res.WasParried,
+				WasGuardBroken = res.WasGuardBroken,
+				TargetPosition = targetPos,
+				AttackerCFrame = hrp.CFrame,
+				Hits = { { Character = hitResult.Character } },
+			}
 		end
 
-		local waveDmg = math.floor(finalDamage * 0.25)
-		local waveLifetime = 36 / 70
+		return {
+			HasHit = false,
+			Damage = finalDamage,
+			IsCrit = isCrit,
+			AttackerCFrame = hrp.CFrame,
+		}
+
+	elseif skillKey == "Q" then
+		local aimDirection = ResolveAimDirection(hrp, payload and payload.AimDirection)
+		local flatAim = Vector3.new(aimDirection.X, 0, aimDirection.Z).Unit
+		local qSkill = FlyingSwordConfig.Skills.Q
+
+		local inArena = (character:GetAttribute("InArena") == true) or (character:GetAttribute("InSparringRing") == true)
+		local critRoll = math.random()
+		local isCrit = (critRoll <= 0.25)
+		local critMult = if isCrit then 1.75 else 1.0
+
+		local rawDmg = if inArena then qSkill.ArenaDamage else qSkill.Damage
+		local powerMult = if (not inArena and pData) then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
+		local weaponBase = if not inArena then GetEquippedWeaponBaseDamage(player) else 0
+		local totalSkillDamage = math.floor((weaponBase + rawDmg) * powerMult * critMult)
+
+		local waveDamage = math.max(1, math.floor(totalSkillDamage / 3))
+		local wavePosture = math.max(1, math.floor(qSkill.PostureDamage / 3))
+
+		local meleeHitboxCF = CFrame.lookAt(hrp.Position + flatAim * 4.0, hrp.Position + flatAim * 5.0)
+		local qRange = qSkill.Range or Vector3.new(12, 5, 8)
+		local meleeHits = HitboxManager.CastCompensatedBox(meleeHitboxCF, qRange, { character, Workspace.Terrain })
+
+		if meleeHits and meleeHits.Humanoid and meleeHits.Humanoid.Health > 0 then
+			HitboxManager.ApplyCombatResolution(
+				player,
+				meleeHits,
+				waveDamage,
+				wavePosture,
+				Vector3.zero,
+				character
+			)
+		end
+
 		for waveIdx = 1, 3 do
 			task.delay((waveIdx - 1) * 0.08, function()
-				local startPos = torsoOrigin + flatAimDir * (1.8 + waveIdx * 0.4)
+				if not character.Parent or not hrp.Parent then return end
+				local hitLogged = false
+				local waveOrigin = hrp.Position + flatAim * (2.0 + waveIdx * 1.5)
+				local waveCF = CFrame.lookAt(waveOrigin, waveOrigin + flatAim)
+
+				local currentCF = waveCF
 				local elapsed = 0
+				local lifetime = 36 / 70
 
 				local conn: RBXScriptConnection?
 				conn = RunService.Heartbeat:Connect(function(dt)
 					elapsed += dt
-					local currPos = startPos + flatAimDir * (70 * elapsed)
-					local currCF = CFrame.lookAt(currPos, currPos + flatAimDir)
+					local nextPos = currentCF.Position + flatAim * (70 * dt)
+					currentCF = CFrame.new(nextPos) * (currentCF - currentCF.Position)
 
-					local waveHits = HitboxManager.CastCompensatedBox(char, currCF, Vector3.new(16, 4.5, 10))
-					for _, hit in ipairs(waveHits) do
-						local ok, res = pcall(function()
-							-- ZERO KNOCKBACK on wave projectiles
-							return HitboxManager.ApplyCombatResolution(player, hit, waveDmg, skillData.PostureDamage * 0.25, Vector3.zero)
-						end)
-						if ok and res then
-							if res.WasParried then anyParried = true end
-							if res.WasBlocked then anyBlocked = true end
-							if res.WasGuardBroken then anyGuardBroken = true end
+					if not hitLogged then
+						local hit = HitboxManager.CastCompensatedBox(currentCF, Vector3.new(9, 3, 9), { character, Workspace.Terrain })
+						if hit and hit.Humanoid and hit.Humanoid.Health > 0 then
+							hitLogged = true
+							HitboxManager.ApplyCombatResolution(
+								player,
+								hit,
+								waveDamage,
+								wavePosture,
+								Vector3.zero,
+								character
+							)
 						end
-						if hit.Character then MobAIManager.RecordDamage(hit.Character, player) end
 					end
 
-					if elapsed >= waveLifetime and conn then
-						conn:Disconnect()
+					if elapsed >= lifetime or hitLogged then
+						if conn then conn:Disconnect() end
 					end
 				end)
 			end)
 		end
 
+		return {
+			HasHit = true,
+			Damage = totalSkillDamage,
+			IsCrit = isCrit,
+			AimDirection = flatAim,
+			AttackerCFrame = hrp.CFrame,
+		}
+
+	elseif skillKey == "E" then
+		local aimDirection = ResolveAimDirection(hrp, payload and payload.AimDirection)
+		local flatAim = Vector3.new(aimDirection.X, 0, aimDirection.Z).Unit
+		local eSkill = FlyingSwordConfig.Skills.E
+
+		local inArena = (character:GetAttribute("InArena") == true) or (character:GetAttribute("InSparringRing") == true)
+		local critRoll = math.random()
+		local isCrit = (critRoll <= 0.25)
+		local critMult = if isCrit then 1.75 else 1.0
+
+		local rawDmg = if inArena then eSkill.ArenaDamage else eSkill.Damage
+		local powerMult = if (not inArena and pData) then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
+		local weaponBase = if not inArena then GetEquippedWeaponBaseDamage(player) else 0
+		local finalDamage = math.floor((weaponBase + rawDmg) * powerMult * critMult)
+
+		local eRange = eSkill.Range or Vector3.new(5, 5, 12)
+		local offsetPos = hrp.Position + flatAim * 6.5
+		local thrustCF = CFrame.lookAt(offsetPos, offsetPos + flatAim)
+
+		local hitResult = HitboxManager.CastCompensatedBox(thrustCF, eRange, { character, Workspace.Terrain })
+		if hitResult and hitResult.Humanoid and hitResult.Humanoid.Health > 0 then
+			local knockback = flatAim * math.abs(eSkill.Knockback.Z)
+			local res = HitboxManager.ApplyCombatResolution(
+				player,
+				hitResult,
+				finalDamage,
+				eSkill.PostureDamage,
+				knockback,
+				character
+			)
+			return {
+				HasHit = true,
+				Damage = finalDamage,
+				IsCrit = isCrit,
+				WasBlocked = res.WasBlocked,
+				WasParried = res.WasParried,
+				WasGuardBroken = res.WasGuardBroken,
+				TargetPosition = hitResult.HitPart.Position,
+				AttackerCFrame = hrp.CFrame,
+				Hits = { { Character = hitResult.Character } },
+			}
+		end
+
+		return {
+			HasHit = false,
+			Damage = finalDamage,
+			IsCrit = isCrit,
+			AttackerCFrame = hrp.CFrame,
+		}
+
 	elseif skillKey == "F" then
-		local travelDist = skillData.DashDistance or 32.0
+		local aimDirection = ResolveAimDirection(hrp, payload and payload.AimDirection)
+		local flatAim = Vector3.new(aimDirection.X, 0, aimDirection.Z).Unit
+		local fSkill = FlyingSwordConfig.Skills.F
 
-		FlyingSwordServer.ExecuteSpatialBlink(player, flatAimDir, travelDist)
+		local inArena = (character:GetAttribute("InArena") == true) or (character:GetAttribute("InSparringRing") == true)
+		local critRoll = math.random()
+		local isCrit = (critRoll <= 0.30)
+		local critMult = if isCrit then 1.75 else 1.0
 
-		local domainCenter = hrp.Position + flatAimDir * (travelDist * 0.5)
-		local shredRadius = 18.0
-		local tickDmg = math.floor(finalDamage * 0.15)
-		local hitCooldowns: { [Model]: number } = {}
-		local shredDuration = 0.45
-		local elapsed = 0
+		local rawDmg = if inArena then fSkill.ArenaDamage else fSkill.Damage
+		local powerMult = if (not inArena and pData) then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
+		local weaponBase = if not inArena then GetEquippedWeaponBaseDamage(player) else 0
+		local totalDamage = math.floor((weaponBase + rawDmg) * powerMult * critMult)
 
-		local conn: RBXScriptConnection?
-		conn = RunService.Heartbeat:Connect(function(dt)
-			elapsed += dt
-			local nowClock = os.clock()
+		local domainCenter = if payload and payload.Origin then payload.Origin else (hrp.Position + flatAim * 14.0)
 
-			local overlap = OverlapParams.new()
-			overlap.FilterType = Enum.RaycastFilterType.Exclude
-			overlap.FilterDescendantsInstances = { char }
+		local shredRadius = if fSkill.Range then (fSkill.Range.X / 2) else 18.0
+		local sliceTickDamage = math.max(1, math.floor(totalDamage * 0.12))
+		local finalBurstDamage = math.max(1, math.floor(totalDamage * 0.40))
 
-			local partsInSphere = workspace:GetPartBoundsInRadius(domainCenter, shredRadius, overlap)
-			for _, part in ipairs(partsInSphere) do
-				local targetModel = part:FindFirstAncestorOfClass("Model")
-				local targetHum = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
+		local victimTracker: { [Humanoid]: boolean } = {}
+		local hitsList: { { Character: Model } } = {}
 
-				if targetHum and targetModel ~= char and targetHum.Health > 0 then
-					if not hitCooldowns[targetModel] or (nowClock - hitCooldowns[targetModel]) >= 0.10 then
-						hitCooldowns[targetModel] = nowClock
+		local overlap = OverlapParams.new()
+		overlap.FilterType = Enum.RaycastFilterType.Exclude
+		overlap.FilterDescendantsInstances = { character, Workspace.Terrain }
 
-						local fakeHit: HitboxManager.HitResult = {
-							HitPart = part,
-							Character = targetModel,
-							Humanoid = targetHum,
-							TargetPlayer = Players:GetPlayerFromCharacter(targetModel),
-						}
-						table.insert(hits, fakeHit)
-
-						pcall(function()
-							return HitboxManager.ApplyCombatResolution(player, fakeHit, tickDmg, skillData.PostureDamage * 0.15, Vector3.zero)
-						end)
-						MobAIManager.RecordDamage(targetModel, player)
+		task.spawn(function()
+			for tickIdx = 1, 5 do
+				task.wait(0.08)
+				local parts = Workspace:GetPartBoundsInRadius(domainCenter, shredRadius, overlap)
+				for _, p in ipairs(parts) do
+					local m = p:FindFirstAncestorOfClass("Model")
+					local hum = m and m:FindFirstChildOfClass("Humanoid")
+					local root = m and m:FindFirstChild("HumanoidRootPart") :: BasePart?
+					if m and hum and hum.Health > 0 and root and m ~= character then
+						if not victimTracker[hum] then
+							victimTracker[hum] = true
+							table.insert(hitsList, { Character = m })
+						end
+						HitboxManager.ApplyCombatResolution(
+							player,
+							{ Character = m, Humanoid = hum, HitPart = root, TargetPlayer = Players:GetPlayerFromCharacter(m) },
+							sliceTickDamage,
+							math.floor(fSkill.PostureDamage * 0.15),
+							Vector3.zero,
+							character
+						)
 					end
 				end
 			end
 
-			if elapsed >= shredDuration and conn then
-				conn:Disconnect()
-			end
-		end)
-
-		task.delay(0.40, function()
-			local finishDmg = math.floor(finalDamage * 0.60)
-			local finishBox = CFrame.lookAt(domainCenter, domainCenter + flatAimDir)
-			local finishHits = HitboxManager.CastCompensatedBox(char, finishBox, Vector3.new(24, 12, 24))
-
-			for _, hit in ipairs(finishHits) do
-				table.insert(hits, hit)
-				local ok, res = pcall(function()
-					return HitboxManager.ApplyCombatResolution(
-						player, 
-						hit, 
-						finishDmg, 
-						skillData.PostureDamage * 0.60, 
-						skillData.Knockback
+			task.wait(0.12)
+			local finisherParts = Workspace:GetPartBoundsInRadius(domainCenter, shredRadius + 2.0, overlap)
+			for _, p in ipairs(finisherParts) do
+				local m = p:FindFirstAncestorOfClass("Model")
+				local hum = m and m:FindFirstChildOfClass("Humanoid")
+				local root = m and m:FindFirstChild("HumanoidRootPart") :: BasePart?
+				if m and hum and hum.Health > 0 and root and m ~= character then
+					local toCenter = (root.Position - domainCenter)
+					local knockbackDir = if toCenter.Magnitude > 0.1 then toCenter.Unit else flatAim
+					HitboxManager.ApplyCombatResolution(
+						player,
+						{ Character = m, Humanoid = hum, HitPart = root, TargetPlayer = Players:GetPlayerFromCharacter(m) },
+						finalBurstDamage,
+						math.floor(fSkill.PostureDamage * 0.50),
+						knockbackDir * math.abs(fSkill.Knockback.Z),
+						character
 					)
-				end)
-				if ok and res then
-					if res.WasParried then anyParried = true end
-					if res.WasBlocked then anyBlocked = true end
-					if res.WasGuardBroken then anyGuardBroken = true end
 				end
-				if hit.Character then MobAIManager.RecordDamage(hit.Character, player) end
 			end
 		end)
 
-	else
-		-- Skill E (Piercing Void Thrust)
-		local torsoOrigin = hrp.Position + Vector3.new(0, -0.40, 0)
-		local orientationCFrame = CFrame.lookAt(torsoOrigin, torsoOrigin + flatAimDir)
-		local hitboxCFrame = orientationCFrame * CFrame.new(skillData.Offset)
-
-		if finalDamage > 0 then
-			hits = HitboxManager.CastCompensatedBox(char, hitboxCFrame, skillData.Range)
-			for _, hit in ipairs(hits) do
-				local ok, res = pcall(function()
-					return HitboxManager.ApplyCombatResolution(player, hit, finalDamage, skillData.PostureDamage, skillData.Knockback)
-				end)
-				if ok and res then
-					if res.WasParried then anyParried = true end
-					if res.WasBlocked then anyBlocked = true end
-					if res.WasGuardBroken then anyGuardBroken = true end
-				end
-				if hit.Character then MobAIManager.RecordDamage(hit.Character, player) end
-			end
-		end
+		return {
+			HasHit = true,
+			Damage = totalDamage,
+			IsCrit = isCrit,
+			Origin = domainCenter,
+			AttackerCFrame = hrp.CFrame,
+			Hits = hitsList,
+		}
 	end
 
-	return hits, finalDamage, anyParried, anyBlocked, anyGuardBroken, isCrit
+	return payload
 end
 
 return FlyingSwordServer

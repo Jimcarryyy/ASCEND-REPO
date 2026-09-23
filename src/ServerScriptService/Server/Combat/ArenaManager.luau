@@ -6,7 +6,7 @@
     - Retired the 2-pad physical bottleneck in favor of On-Demand Sparring Challenges
     - Spawns dynamic 50-stud circular Qi Rings anywhere in the world
     - Non-lethal concession resolution (clamped at 1 HP, no deaths, full HP restoration)
-    - Dynamic Sect Safe Zone Peace detection
+    - Dynamic Sect Safe Zone Peace detection (tightened to 55 studs to prevent mob safe-zoning)
     - Reward distribution (Contribution Points & Spirit Stones)
 ]]
 
@@ -76,7 +76,8 @@ function ArenaManager.IsInSafeZone(position: Vector3): boolean
 		end
 	end
 
-	return (position - sectOrigin).Magnitude <= 350
+	-- Phase 5.3: Dedicated Pavilion boundary only (55 studs around dais), preventing world mob spawns from being safe-zoned
+	return (position - sectOrigin).Magnitude <= 55
 end
 
 function ArenaManager.AreDueling(p1: Player?, p2: Player?): boolean

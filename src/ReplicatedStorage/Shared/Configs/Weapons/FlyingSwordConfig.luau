@@ -4,8 +4,11 @@
     Location: src/ReplicatedStorage/Shared/Configs/Weapons/FlyingSwordConfig.luau
     Balance & Kinematic Configuration for Pure Sword Cultivator.
     Updates:
+      - Phase 5.4: Pacing & Cooldown Rebalance:
+        Q (Sword Tempest): 6.5s
+        E (Piercing Void Thrust): 7.5s
+        F (100-Slash Domain): 14.0s
       - Phase 4: Unified client/server M1 timing via GetM1Timing.
-      - Heavy M1 Timings: Windup 0.18-0.26s, Cooldown 0.58-0.80s (prevents fast spamming).
       - Q Skill Knockback: Set to Vector3.zero (no enemy displacement).
 ]]
 
@@ -45,7 +48,6 @@ export type StepTiming = {
 }
 
 local FlyingSwordConfig = {
-	-- Heavier, deliberate M1 Combo timings matching the 0.50x slowed animation speed
 	M1Combo = {
 		[1] = {
 			Damage = 26,
@@ -110,7 +112,6 @@ local FlyingSwordConfig = {
 	},
 
 	Skills = {
-		-- Q Skill: ZERO knockback (slices on contact without pushing enemies away)
 		Q = {
 			Name = "Sword Tempest",
 			Damage = 60,
@@ -118,7 +119,7 @@ local FlyingSwordConfig = {
 			PostureDamage = 30,
 			Range = Vector3.new(12, 5, 8),
 			Offset = Vector3.new(0, 0, -4),
-			Cooldown = 3.5,
+			Cooldown = 6.5,
 			QiCostPercent = 0.12,
 			Knockback = Vector3.zero,
 			Windup = 0.10,
@@ -132,7 +133,7 @@ local FlyingSwordConfig = {
 			PostureDamage = 45,
 			Range = Vector3.new(5, 5, 12),
 			Offset = Vector3.new(0, 0, -5),
-			Cooldown = 3.0,
+			Cooldown = 7.5,
 			QiCostPercent = 0.15,
 			Knockback = Vector3.new(0, 0, -14),
 			Windup = 0.06,
@@ -146,7 +147,7 @@ local FlyingSwordConfig = {
 			PostureDamage = 70,
 			Range = Vector3.new(24, 12, 24),
 			Offset = Vector3.new(0, 0, 0),
-			Cooldown = 5.5,
+			Cooldown = 14.0,
 			QiCostPercent = 0.20,
 			Knockback = Vector3.new(0, 0, -22),
 			Windup = 0.12,
@@ -196,7 +197,6 @@ local FlyingSwordConfig = {
 	},
 }
 
--- Shared authoritative formula for client lockout and server action windows
 function FlyingSwordConfig.GetM1Timing(stepIndex: number): StepTiming
 	local stepData = FlyingSwordConfig.M1Combo[stepIndex] or FlyingSwordConfig.M1Combo[1]
 	local duration = stepData.Cooldown or 0.58

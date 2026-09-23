@@ -3,8 +3,9 @@
     InputController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InputController.luau
     Updates:
+      - Phase 5.4: Unifies all skill cooldown lookups directly from FlyingSwordConfig (Q 6.5s, E 7.5s, F 14.0s).
+      - Phase 5.2: Strike Alignment Singularity Protection (prevents pitch-based camera/character flipping).
       - Phase 4: Unified client attack lockout via FlyingSwordConfig.GetM1Timing(step).TotalLockout.
-      - Strike Alignment: Rotates character to face aim vector on swing start (no body spinning).
       - 4-Way Camera-Relative Shunpo Dash.
       - A6 Unified WalkSpeed Governor.
 ]]
@@ -693,14 +694,16 @@ function InputController.TriggerM1()
 	m1ComboIndex = if m1ComboIndex >= 5 then 1 else m1ComboIndex + 1
 	lastM1Press = now
 
-	-- ALIGN FACING TO STRIKE: Snaps character facing to strike aim before swing starts
+	-- ALIGN FACING TO STRIKE: Snaps character facing to horizontal aim without gymbal singularity
 	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if hrp then
 		local cam = Workspace.CurrentCamera
 		local camLook = if cam then cam.CFrame.LookVector else hrp.CFrame.LookVector
-		local flatLook = Vector3.new(camLook.X, 0, camLook.Z).Unit
-		if flatLook.Magnitude > 0.01 then
-			hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatLook)
+		if math.abs(camLook.Y) <= 0.96 then
+			local flatLook = Vector3.new(camLook.X, 0, camLook.Z)
+			if flatLook.Magnitude > 0.05 then
+				hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatLook.Unit)
+			end
 		end
 	end
 
@@ -738,7 +741,7 @@ function InputController.TriggerSkill(skillKey: string)
 	end
 
 	local now = Workspace:GetServerTimeNow()
-	local cd = if skillKey == "Q" then 3.5 else (if skillKey == "F" then 5.5 else (skillData and skillData.Cooldown or 2.0))
+	local cd = if skillData and skillData.Cooldown then skillData.Cooldown else 6.5
 
 	if skillKey == "Q" then
 		if isCastingSkillQ or (now - lastSkillQTime) < cd then return end
@@ -809,7 +812,7 @@ local function TriggerUltimateF()
 	if not hrp or not hum or hum.Health <= 0 then return end
 
 	local now = Workspace:GetServerTimeNow()
-	local cd = FlyingSwordConfig.Skills.F.Cooldown or 5.5
+	local cd = (FlyingSwordConfig.Skills.F and FlyingSwordConfig.Skills.F.Cooldown) or 14.0
 	if (now - lastSkillFTime) < cd then return end
 
 	local curQi = character:GetAttribute("Qi") or 0

@@ -3,10 +3,11 @@
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
     Updates:
+      - Hit Reaction Animation Completely Removed: Eliminates animation-induced ground collapse/ragdoll.
+        Damage feedback is delivered purely through camera shake, red flash, and audio.
+      - Phase 5.1: M1 Forward Step & Anticipation Lunge.
       - Phase 3: Two-Phase Slash Speed Curve (slow windup 0.55x -> fast strike commit 1.65x).
-        The windup duration is derived from animDef.CastDuration * animDef.WindupRatio, syncing
-        with the server's CombatStateManager active window.
-      - 4-Way Dash with Shunpo Vanish/Reappear Effect (character disappears and snaps back).
+      - 4-Way Dash with Shunpo Vanish/Reappear Effect.
       - M1 Body Twist Fix: Locks AutoRotate during attack so avatar never spins mid-slash.
       - A6 Attribute Governance for WalkSpeed.
 ]]
@@ -510,41 +511,12 @@ function AnimationController.PlayEquipAnimation(isEquipping: boolean)
 	track:Play(0.15, 1, 1.0)
 end
 
-function AnimationController.PlayHitReaction(reactionType: string?)
-	local character = player.Character
-	if not character then return end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
-	if not humanoid or not animator or humanoid.Health <= 0 then return end
-
-	local moveCfg = AnimationConfig.Movement :: any
-	local trackKey: string
-	local animId: string
-	local priority = Enum.AnimationPriority.Action3
-
-	if reactionType == "Parryed" then
-		trackKey = "Hit_Parryed"
-		animId = moveCfg.Parryed or "rbxassetid://121973766317438"
-		priority = Enum.AnimationPriority.Action4
-	else
-		local pick = math.random(1, 2)
-		trackKey = "HitReaction_" .. tostring(pick)
-		animId = if pick == 1 then moveCfg.HitReaction1 else moveCfg.HitReaction2
-	end
-
-	if not animId or animId == "" then return end
-
-	local track = loadedTracks[trackKey]
-	if not track or track.Parent == nil then
-		local animInstance = Instance.new("Animation")
-		animInstance.AnimationId = animId
-		track = animator:LoadAnimation(animInstance)
-		track.Priority = priority
-		track.Looped = false
-		loadedTracks[trackKey] = track
-	end
-
-	track:Play(0.04, 1, 1.1)
+-- =============================================================================
+-- HIT REACTION: REMOVED TO PREVENT ANIMATION-INDUCED RAGDOLL / FALLDOWN
+-- =============================================================================
+function AnimationController.PlayHitReaction(_reactionType: string?)
+	-- Intentionally disabled: visual damage feedback is delivered cleanly via
+	-- screen flash, camera impact shake, and floating damage numbers.
 end
 
 -- =============================================================================
@@ -708,7 +680,7 @@ function AnimationController.PerformDash(_dashStep: number?, overrideDir: Vector
 end
 
 -- =============================================================================
--- HEAVY M1 SWING EXECUTION WITH TWO-PHASE SPEED CURVE & AUTOROTATE LOCK
+-- HEAVY M1 SWING EXECUTION WITH FORWARD LUNGE & TWO-PHASE SPEED CURVE
 -- =============================================================================
 function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: number?)
 	local character = player.Character
@@ -770,10 +742,53 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 	track:AdjustSpeed(windupSpeed)
 	activeAttackTrack = track
 
-	-- Windup-then-Snap Transition: Accelerates at the exact instant server hitbox activates
+	-- Windup-then-Snap Transition: Accelerates and steps forward at the exact instant the strike commits
 	task.delay(windupDuration, function()
-		if activeAttackTrack == track and track.IsPlaying then
+		if activeAttackTrack == track and track.IsPlaying and hrp.Parent then
 			track:AdjustSpeed(strikeSpeed)
+
+			-- FORWARD LUNGE: Steps forward in the attack direction with anticipation
+			local stepDir = Vector3.new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z).Unit
+			local rayParams = RaycastParams.new()
+			rayParams.FilterType = Enum.RaycastFilterType.Exclude
+			rayParams.FilterDescendantsInstances = { character }
+			local hitWall = Workspace:Raycast(hrp.Position, stepDir * 2.5, rayParams)
+
+			if not hitWall then
+				local rootAtt = hrp:FindFirstChild("RootAttachment") :: Attachment?
+				if not rootAtt then
+					rootAtt = Instance.new("Attachment")
+					rootAtt.Name = "RootAttachment"
+					rootAtt.Parent = hrp
+				end
+
+				local existingStep = hrp:FindFirstChild("M1StepVelocity")
+				if existingStep then existingStep:Destroy() end
+
+				local isFinisher = (stepNum >= 5)
+				local stepSpeed = if isFinisher then 36.0 else 24.0
+				local stepDuration = if isFinisher then 0.14 else 0.11
+
+				local stepVel = Instance.new("LinearVelocity")
+				stepVel.Name = "M1StepVelocity"
+				stepVel.Attachment0 = rootAtt
+				stepVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+				stepVel.MaxAxesForce = Vector3.new(350000, 5000, 350000)
+				stepVel.VectorVelocity = stepDir * stepSpeed
+				stepVel.RelativeTo = Enum.ActuatorRelativeTo.World
+				stepVel.Parent = hrp
+
+				local stepTween = TweenService:Create(
+					stepVel,
+					TweenInfo.new(stepDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ VectorVelocity = Vector3.zero }
+				)
+				stepTween:Play()
+				stepTween.Completed:Connect(function()
+					if stepVel and stepVel.Parent then stepVel:Destroy() end
+				end)
+				Debris:AddItem(stepVel, stepDuration + 0.05)
+			end
 		end
 	end)
 

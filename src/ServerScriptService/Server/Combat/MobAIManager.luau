@@ -2,9 +2,12 @@
 --[[
     MobAIManager.luau
     Location: src/ServerScriptService/Server/Combat/MobAIManager.luau
-    - E1 & E2 Combat AI pipeline with 0.22s telegraph glint
-    - Hardened OnMobDied with IsDead guard (zero duplicate reward multipliers)
-    - Advances Sect Sparring Duty strictly ONCE (1 count per kill)
+    Updates:
+      - Phase 5.3: Dispatches 'MobAttackHit' to victim client so mob attacks trigger camera shake,
+        red hit flash, hit reactions, and impact audio.
+      - E1 & E2 Combat AI pipeline with 0.22s telegraph glint
+      - Hardened OnMobDied with IsDead guard (zero duplicate reward multipliers)
+      - Advances Sect Sparring Duty strictly ONCE (1 count per kill)
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -226,7 +229,6 @@ local function SpawnMobTelegraph(model: Model, duration: number)
 end
 
 local function OnMobDied(mob: ActiveMob)
-	-- Guard against duplicate death executions on the same mob
 	if (mob :: any).IsDead then return end
 	(mob :: any).IsDead = true
 
@@ -261,7 +263,6 @@ local function OnMobDied(mob: ActiveMob)
 			CultivationManager.AddInternalQi(killer, qiReward)
 		end
 
-		-- Advance Sect Sparring Duty STRICTLY ONCE with 1 count
 		pcall(function()
 			SectManager.AddQuestProgress(killer, "DefeatMob", "RogueDisciple", 1)
 		end)
@@ -648,7 +649,6 @@ local function StepAI()
 							local strikeDist = (targetHrp.Position - rootPart.Position).Magnitude
 							if strikeDist > (config.AttackRange + 3.5) then return end
 
-							local flatForward = Vector3.new(targetHrp.Position.X - rootPos.X, 0, targetHrp.Position.Z - rootPos.Z).Unit
 							local fakeHit: HitboxManager.HitResult = {
 								Character = targetChar,
 								Humanoid = targetHum,
@@ -659,10 +659,25 @@ local function StepAI()
 							local knockbackVector = Vector3.new(0, 0, 14)
 							local res = HitboxManager.ApplyCombatResolution(nil, fakeHit, config.BaseDamage, 20, knockbackVector, mob.Model)
 
-							if res and res.WasParried then
-								if #mob.AttackTracks > 0 then
-									local t = mob.AttackTracks[currentStep] or mob.AttackTracks[1]
-									if t and t.IsPlaying then t:Stop(0.05) end
+							if res then
+								if res.WasParried then
+									if #mob.AttackTracks > 0 then
+										local t = mob.AttackTracks[currentStep] or mob.AttackTracks[1]
+										if t and t.IsPlaying then t:Stop(0.05) end
+									end
+								elseif res.DamageApplied > 0 and targetPlayer then
+									-- Phase 5.3: Dispatches hit feedback to the victim client
+									if combatActionRemote then
+										combatActionRemote:FireClient(targetPlayer, nil, "MobAttackHit", {
+											HasHit = true,
+											Damage = res.DamageApplied,
+											IsCrit = false,
+											WasBlocked = res.WasBlocked,
+											WasGuardBroken = res.WasGuardBroken,
+											TargetPosition = targetHrp.Position,
+											Hits = { { Character = targetChar } },
+										})
+									end
 								end
 							end
 						end)

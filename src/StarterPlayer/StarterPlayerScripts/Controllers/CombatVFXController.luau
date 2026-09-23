@@ -7,7 +7,8 @@
       2. Pure Damage Numbers: Retro Press Start 2P / Arcade font (Pure White for normal, Vivid Gold for crit).
          Zero words ("CRIT!", "PARRY!", "GUARD BROKEN!", "INTENT"), zero icons.
       3. Slash VFX with Procedural Slashmark Fallback.
-      4. Camera Impact Shudder & Screen Hit Flash on Damage Received.
+      4. Camera Impact Shudder & Screen Hit Flash on Damage Received (Full Player & Mob Support).
+         Animation-induced flinches removed to prevent character collapse/ragdoll.
       5. Parry Clashes, Block Sparks & Blade Impact Audio (Full Mob & Player Support).
       6. Heavenly Tribulation Lightning Bolts, Ground Telegraphs & Ascension Light Pillars.
       7. Interactive Martial Trees: Pure High-Frequency Shudder & Fluttering Leaves.
@@ -204,22 +205,12 @@ function CombatVFXController.CheckAndTriggerNearbyTrees(strikePos: Vector3, radi
 end
 
 -- =============================================================================
--- DAMAGE FEEDBACK & RED HIT FLASH
+-- DAMAGE FEEDBACK: CAMERA SHAKE & RED FLASH (ANIMATION COLLAPSE REMOVED)
 -- =============================================================================
 function CombatVFXController.OnLocalPlayerDamaged(damage: number, isCrit: boolean)
 	CombatVFXController.AddCameraShake(if isCrit then 1.1 else 0.85)
 
-	local controllers = player.PlayerScripts:FindFirstChild("Controllers")
-	if controllers then
-		local animCtrl = controllers:FindFirstChild("AnimationController")
-		if animCtrl then
-			local req = require(animCtrl) :: any
-			if req and req.PlayHitReaction then
-				req.PlayHitReaction(nil)
-			end
-		end
-	end
-
+	-- Hit reaction animation disabled to eliminate animation-induced ragdoll/falldown
 	if camera then
 		task.spawn(function()
 			local origFOV = camera.FieldOfView
@@ -651,7 +642,8 @@ function CombatVFXController.Init()
 			CombatVFXController.CheckAndTriggerNearbyTrees(spherePos, 32)
 		end
 
-		if type(payload) == "table" and payload.HasHit == true and payload.TargetPosition ~= nil then
+		-- Supports both player and mob hits (MobAttackHit)
+		if (skillKey == "MobAttackHit" or (type(payload) == "table" and payload.HasHit == true and payload.TargetPosition ~= nil)) then
 			local targetPos: Vector3 = payload.TargetPosition
 			local hitOrientation = if hrp then hrp.CFrame else (payload.AttackerCFrame or nil)
 
@@ -673,16 +665,6 @@ function CombatVFXController.Init()
 			if payload.WasParried then
 				CombatVFXController.SpawnParryClash(targetPos)
 				CombatVFXController.SpawnDamageNumber(targetPos, 0, false)
-				if attacker == player then
-					local controllers = player.PlayerScripts:FindFirstChild("Controllers")
-					if controllers then
-						local animCtrl = controllers:FindFirstChild("AnimationController")
-						if animCtrl then
-							local req = require(animCtrl) :: any
-							if req and req.PlayHitReaction then req.PlayHitReaction("Parryed") end
-						end
-					end
-				end
 			elseif payload.WasGuardBroken then
 				Play3DSound(PARRY_CLASH_SOUND_ID, targetPos, 1.0)
 				if isVictim or isLocal or isNearby then
@@ -693,17 +675,6 @@ function CombatVFXController.Init()
 				end
 				if payload.Damage and payload.Damage > 0 then
 					CombatVFXController.SpawnDamageNumber(targetPos, payload.Damage, true)
-				end
-				local victimChar = payload.VictimCharacter
-				if victimChar == player.Character then
-					local controllers = player.PlayerScripts:FindFirstChild("Controllers")
-					if controllers then
-						local animCtrl = controllers:FindFirstChild("AnimationController")
-						if animCtrl then
-							local req = require(animCtrl) :: any
-							if req and req.PlayHitReaction then req.PlayHitReaction("Parryed") end
-						end
-					end
 				end
 			elseif payload.WasBlocked then
 				Play3DSound(PARRY_CLASH_SOUND_ID, targetPos, 0.8)
@@ -809,8 +780,8 @@ function CombatVFXController.SpawnParryClash(position: Vector3)
 	local pe = Instance.new("ParticleEmitter")
 	pe.Texture = "rbxassetid://242200234"
 	pe.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 200)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 140, 0)),
+		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 255, 200)),
+		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(255, 140, 0)),
 	})
 	pe.Size = NumberSequence.new(0.6, 0)
 	pe.Lifetime = NumberRange.new(0.15, 0.3)

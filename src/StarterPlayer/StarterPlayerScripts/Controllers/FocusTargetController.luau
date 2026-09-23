@@ -2,8 +2,10 @@
 --[[
     FocusTargetController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/FocusTargetController.luau
-    Handles:
-      - Azure Reticle & Upper-Body Focus Targeting (Bound to MMB / Z).
+    Updates:
+      - Keybind updated to ALT (LeftAlt / RightAlt) to toggle target focus reticle and HUD.
+      - Replaced 1-frame hard CFrame snaps with smooth Lerp interpolation.
+      - Added auto-disengagement when target is out of range (>65 studs) or obstructed.
       - Sets Character attribute 'IsFocusMode' for unified facing coordination (A2).
       - Top-Center Target Lock-On / Boss Frame (HP, Posture / Guard Break Gauge, Distance).
 ]]
@@ -19,6 +21,7 @@ local camera = Workspace.CurrentCamera
 
 local isFocusActive = false
 local currentTarget: Model? = nil
+local MAX_LOCK_DISTANCE = 65.0
 
 local focusReticleGui: ScreenGui?
 local reticleImage: ImageLabel?
@@ -157,14 +160,13 @@ local function CreateReticleAndHUD()
 	Instance.new("UICorner", targetPostureFill).CornerRadius = UDim.new(0, 2)
 end
 
--- Searches both Players and Workspace.MobSpawns / ActiveMobs
 local function FindBestTarget(): Model?
 	local myChar = player.Character
 	local myHrp = if myChar then myChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 	if not myHrp then return nil end
 
 	local bestTarget: Model? = nil
-	local bestDist = 65
+	local bestDist = MAX_LOCK_DISTANCE
 
 	local potentialTargets: { Instance } = {}
 	for _, obj in ipairs(Workspace:GetChildren()) do
@@ -200,7 +202,7 @@ local function FindBestTarget(): Model?
 	return bestTarget
 end
 
-local function UpdateTargetHUD(dt: number)
+local function UpdateTargetHUD(_dt: number)
 	if not isFocusActive or not currentTarget or not currentTarget.Parent then
 		if targetCard and targetCard.Visible then
 			targetCard.Visible = false
@@ -244,9 +246,10 @@ end
 function FocusTargetController.Init()
 	CreateReticleAndHUD()
 
+	-- Dedicated ALT key toggle (LeftAlt or RightAlt)
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 		if gameProcessed then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton3 or input.KeyCode == Enum.KeyCode.Z then
+		if input.KeyCode == Enum.KeyCode.LeftAlt or input.KeyCode == Enum.KeyCode.RightAlt then
 			FocusTargetController.ToggleFocus()
 		end
 	end)
@@ -263,32 +266,40 @@ function FocusTargetController.Init()
 		local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if not hrp then return end
 
-		-- Do not fight active dashes or blink abilities
 		if character:GetAttribute("IsDashing") == true or character:GetAttribute("IsBlinking") == true then
 			return
 		end
 
 		if currentTarget and currentTarget.Parent then
 			local targetHrp = currentTarget:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if targetHrp then
-				local dir = (targetHrp.Position - hrp.Position)
-				local flatLook = Vector3.new(dir.X, 0, dir.Z).Unit
-				if flatLook.Magnitude > 0.1 then
-					hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatLook)
-				end
+			local targetHum = currentTarget:FindFirstChildOfClass("Humanoid")
+
+			if not targetHrp or not targetHum or targetHum.Health <= 0 then
+				FocusTargetController.SetFocus(false)
+				return
+			end
+
+			local dist = (targetHrp.Position - hrp.Position).Magnitude
+			if dist > MAX_LOCK_DISTANCE then
+				FocusTargetController.SetFocus(false)
+				return
+			end
+
+			local dir = (targetHrp.Position - hrp.Position)
+			local flatLook = Vector3.new(dir.X, 0, dir.Z)
+			if flatLook.Magnitude > 0.1 then
+				local targetCF = CFrame.lookAt(hrp.Position, hrp.Position + flatLook.Unit)
+				hrp.CFrame = hrp.CFrame:Lerp(targetCF, math.clamp(dt * 14.0, 0, 1))
 			end
 		else
-			local lookVec = camera.CFrame.LookVector
-			local flatLook = Vector3.new(lookVec.X, 0, lookVec.Z).Unit
-			if flatLook.Magnitude > 0.1 then
-				hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatLook)
-			end
+			FocusTargetController.SetFocus(false)
+			return
 		end
 
 		UpdateTargetHUD(dt)
 	end)
 
-	print("[ASCEND] FocusTargetController Initialized (A2 Unified Facing Coordination Active).")
+	print("[ASCEND] FocusTargetController Initialized (ALT Keybind Active).")
 end
 
 function FocusTargetController.ToggleFocus()
@@ -298,6 +309,10 @@ end
 function FocusTargetController.SetFocus(active: boolean)
 	isFocusActive = active
 	currentTarget = if isFocusActive then FindBestTarget() else nil
+
+	if isFocusActive and not currentTarget then
+		isFocusActive = false
+	end
 
 	local character = player.Character
 	if character then
