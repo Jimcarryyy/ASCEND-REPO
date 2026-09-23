@@ -8,6 +8,9 @@
         parry, and dodge mob attacks through the unified combat pipeline.
       - Parrying a mob stuns the beast for 1.2s and restores Qi to the player.
       - A1: Victim knockback routed to owning client with zero Freefall Y launch.
+    Bugfix:
+      - Overloaded CastCompensatedBox to accept both (cframe, size, ignoreList) and (attacker, cframe, size, ignoreList).
+      - Populates dual-interface fields on results table for single and multi-hit callers.
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -62,15 +65,38 @@ function HitboxManager.Init()
 end
 
 function HitboxManager.CastCompensatedBox(
-	attacker: Model,
-	cframe: CFrame,
-	size: Vector3,
-	ignoreList: { Instance }?
-): { HitResult }
+	arg1: any,
+	arg2: any,
+	arg3: any,
+	arg4: any?
+): any
+	local attacker: Model?
+	local cframe: CFrame
+	local size: Vector3
+	local ignoreList: { Instance }?
+
+	-- Dynamic parameter overload resolution
+	if typeof(arg1) == "CFrame" then
+		-- Called as: CastCompensatedBox(cframe, size, ignoreList)
+		cframe = arg1
+		size = arg2
+		ignoreList = arg3
+		attacker = if ignoreList and #ignoreList > 0 and ignoreList[1]:IsA("Model") then ignoreList[1] else nil
+	else
+		-- Called as: CastCompensatedBox(attacker, cframe, size, ignoreList)
+		attacker = arg1
+		cframe = arg2
+		size = arg3
+		ignoreList = arg4
+	end
+
 	local overlapParams = OverlapParams.new()
 	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 
-	local filterInstances: { Instance } = { attacker }
+	local filterInstances: { Instance } = {}
+	if attacker then
+		table.insert(filterInstances, attacker)
+	end
 	if ignoreList then
 		for _, inst in ipairs(ignoreList) do
 			table.insert(filterInstances, inst)
@@ -80,7 +106,7 @@ function HitboxManager.CastCompensatedBox(
 
 	local partsInBox = Workspace:GetPartBoundsInBox(cframe, size, overlapParams)
 	local hitCharacters: { [Model]: boolean } = {}
-	local results: { HitResult } = {}
+	local results: any = {}
 
 	for _, part in ipairs(partsInBox) do
 		local model = part:FindFirstAncestorOfClass("Model")
@@ -99,6 +125,15 @@ function HitboxManager.CastCompensatedBox(
 		end
 	end
 
+	-- Dual-interface compatibility: Supports array indexing (#results, results[1])
+	-- and single HitResult access (results.Humanoid, results.Character, etc.)
+	if results[1] then
+		results.Character = results[1].Character
+		results.Humanoid = results[1].Humanoid
+		results.HitPart = results[1].HitPart
+		results.TargetPlayer = results[1].TargetPlayer
+	end
+
 	return results
 end
 
@@ -106,8 +141,7 @@ end
 -- E1 & E2 FIX: SUPPORTS BOTH PLAYERS AND MOB ATTACKERS IN COMBAT RESOLUTION
 -- =============================================================================
 function HitboxManager.ApplyCombatResolution(
-	attackerPlayer: Player?,
-	targetResult: HitResult,
+	attackerPlayer: Player?,	targetResult: HitResult,
 	rawDamage: number,
 	postureDamage: number,
 	knockbackVector: Vector3?,

@@ -3,6 +3,7 @@
     FlyingSwordServer.luau
     Location: src/ServerScriptService/Server/Combat/Weapons/FlyingSwordServer.luau
     Updates:
+      - Pass character as attacker to CastCompensatedBox across all attack steps.
       - Phase 5.4: Reads Skill Q hitbox size and Skill F domain radius directly from FlyingSwordConfig
         instead of hardcoded inline overrides.
       - E Skill Piercing Void Thrust: High-velocity swept thrust with target penetration.
@@ -155,7 +156,7 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 		local hitboxCF = CFrame.lookAt(offsetPosition, offsetPosition + flatAim)
 		local filter = { character, Workspace.Terrain }
 
-		local hitResult = HitboxManager.CastCompensatedBox(hitboxCF, currentStepData.Range, filter)
+		local hitResult = HitboxManager.CastCompensatedBox(character, hitboxCF, currentStepData.Range, filter)
 		local hasHit = false
 		local targetPos: Vector3? = nil
 
@@ -215,7 +216,7 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 
 		local meleeHitboxCF = CFrame.lookAt(hrp.Position + flatAim * 4.0, hrp.Position + flatAim * 5.0)
 		local qRange = qSkill.Range or Vector3.new(12, 5, 8)
-		local meleeHits = HitboxManager.CastCompensatedBox(meleeHitboxCF, qRange, { character, Workspace.Terrain })
+		local meleeHits = HitboxManager.CastCompensatedBox(character, meleeHitboxCF, qRange, { character, Workspace.Terrain })
 
 		if meleeHits and meleeHits.Humanoid and meleeHits.Humanoid.Health > 0 then
 			HitboxManager.ApplyCombatResolution(
@@ -246,7 +247,7 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 					currentCF = CFrame.new(nextPos) * (currentCF - currentCF.Position)
 
 					if not hitLogged then
-						local hit = HitboxManager.CastCompensatedBox(currentCF, Vector3.new(9, 3, 9), { character, Workspace.Terrain })
+						local hit = HitboxManager.CastCompensatedBox(character, currentCF, Vector3.new(9, 3, 9), { character, Workspace.Terrain })
 						if hit and hit.Humanoid and hit.Humanoid.Health > 0 then
 							hitLogged = true
 							HitboxManager.ApplyCombatResolution(
@@ -294,7 +295,7 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 		local offsetPos = hrp.Position + flatAim * 6.5
 		local thrustCF = CFrame.lookAt(offsetPos, offsetPos + flatAim)
 
-		local hitResult = HitboxManager.CastCompensatedBox(thrustCF, eRange, { character, Workspace.Terrain })
+		local hitResult = HitboxManager.CastCompensatedBox(character, thrustCF, eRange, { character, Workspace.Terrain })
 		if hitResult and hitResult.Humanoid and hitResult.Humanoid.Health > 0 then
 			local knockback = flatAim * math.abs(eSkill.Knockback.Z)
 			local res = HitboxManager.ApplyCombatResolution(
