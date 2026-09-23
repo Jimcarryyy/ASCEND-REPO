@@ -3,11 +3,9 @@
 > **Engineering Roadmap & Next Steps**  
 > **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
 > **Source of Truth:** Live Luau Codebase (`src/`) & Live Studio Place File  
-> **Active Phase:** Phase 2 — Architecture Cleanup & Anti-Pattern Purge
+> **Active Priority:** Option A — Combat Kinematics & Codebase Polish
 
----
-
-## 🗺️ 11-Phase Production Roadmap
+---\n\n## 🗺️ 11-Phase Production Roadmap
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -15,43 +13,47 @@
 │ - Studio Monkey Verify 9/9 checks, DataStore V3, Murim spawn dais,         │
 │   16 typed remotes, 10 Humanoid R6 mob models and spawners.                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ [ACTIVE] PHASE 2: ARCHITECTURE CLEANUP & ANTI-PATTERN PURGE                 │
-│ - [x] Bloodline Altar wiring, 5-slot vault, animated gacha roulette reel   │
-│ - [x] 4-slot alchemy overhaul, dynamic 13-recipe catalog, 100-slot inventory│
-│ - [x] Gathering pipeline decoupling, prompt lifecycle, and drop roll fix   │
-│ - [x] Sect Exchange Pavilion live sell inventory synchronization            │
-│ - [ ] Codex Integration (Page_Archives topic switching & CodexGui purge)   │
-│ - [ ] CharacterStats docking (Page_Stats master drawer wiring)              │
-│ - [ ] Memory leak audit (characterConnections & event listeners)            │
-│ - [ ] Strict typing (--!strict) across configs and remote handlers          │
+│ [ACTIVE] OPTION A: COMBAT KINEMATICS, REBOUND & BUG POLISH                  │
+│ - [x] InputController tail replacement & end-statement balance              │
+│ - [x] ArenaManager LinearVelocity capped decay rebound                      │
+│ - [x] M1 two-phase slash speed curve & FlyingSwordConfig.GetM1Timing        │
+│ - [x] AnimationController grounded forward attack lunge                     │
+│ - [x] Avatar hit reaction animations completely purged                      │
+│ - [x] ALT focus keybind re-map & MusicController combat threat purge        │
+│ - [ ] Server remote listeners for C meditation & B breakthrough             │
+│ - [ ] HitboxManager CastCompensatedBox parameter alignment                  │
+│ - [ ] ArenaManager safe-zone radius fix to unblock mob spawners             │
+│ - [ ] MobAIManager hit event dispatch to victim client                      │
+│ - [ ] SkillBarController Qi bar fill ratio (qCur / qMax) fix                │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ [PENDING] PHASE 3: COMBAT KINEMATICS, MARTIAL CADENCE & TUNING             │
-│ - Heavy M1 slashes (0.50x / 0.32x playback, committed footwork)            │
+│ [PENDING] PHASE 2 (CULTIVATION): ORDER 9 GATE & TRIBULATION (DEFERRED)      │
+│ - Order 9 breakthrough gate enforcement & Tribulation lightning waves       │
+│ - Breakthrough Dan preservation on tribulation failure with 50% Qi penalty  │
+│ - Interactive flame-timing slider minigame (Option B)                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [PENDING] PHASE 3: COMBAT CADENCE, BALANCING & DEFENSIVE TUNING             │
+│ - Skill cooldown rebalance (Q: 6.5s, E: 7.5s, F: 14.0s) verification       │
 │ - Skill E overhaul (traveling projectile beam, weapon palette attunement)   │
 │ - Defensive VFX wiring (ActiveShield on T, ShieldBreakEffects on break)     │
 │ - Black-bordered white ribbon sword trails & Shunpo dash polish             │
-│ - Bloodline combat stat multipliers wiring (Damage, QiMax, Posture)        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ [CLOSED] PHASE 4: FLYING SWORD 3D FLIGHT ENGINE                             │
-│ - Completed Phase 8.4: 3D flight, realm speed scaling, 25 Qi/s drain,       │
-│   ground/obstacle clearance cushions, and auto-dismount.                    │
+│ - 3D flight, realm speed scaling, 25 Qi/s drain, clearance cushions.       │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 5: UNIFIED GUI SYSTEMS & MODAL REFINEMENT                             │
-│ - Finalize docked controller wiring (CharacterStats, Codex)                 │
-│ - Connect Heavenly Treasury (Shop) & Developer Products (Vault slots 3-5)   │
+│ PHASE 5: UNIFIED GUI SYSTEMS & MASTER DRAWER DOCKING                        │
+│ - Complete CharacterStats (Page_Stats) & Codex (Page_Archives) docking      │
+│ - Purge legacy CodexGui infinite yield                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 6: BEGINNER WALKTHROUGH & GUIDING SYSTEMS                             │
-│ - 3D guide lines and progressive quest markers                              │
-│ - Elder Qing introductory walkthrough flow                                  │
+│ - 3D guide lines and Elder Qing introductory walkthrough flow               │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 7: SECT DUTIES, PROFESSIONS & ECONOMY EXPANSION                       │
+│ PHASE 7: SECT DUTIES & ECONOMY EXPANSION                                    │
+│ - Sword Altar Communion gacha integration (Madame Tie forge purged)         │
 │ - Dynamic notice board duties (D, C, B, A ranks)                            │
-│ - Blacksmith +10 weapon visual auras & interactive alchemy minigame        │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 8: COMPETITIVE SPARRING ARENA & LEADERBOARDS                          │
-│ - Ranked matchmaking queue and competitive honor exchange                   │
+│ PHASE 8: ON-DEMAND SPARRING ARENA & LEADERBOARDS                            │
+│ - 35-stud proximity sparring challenge & 50-stud dynamic Qi ring            │
 │ - Sector 3 Elo rating persistence and spectator podium                      │
-│ - [NEEDS CONFIRMATION] Sect Leaderboard SurfaceGuis (LeaderboardManager)    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 9: MULTI-ZONE EXPANSION (ZONE 2 VERDANT BAMBOO VALLEY)               │
 │ - Zone 2 terrain integration, gathering nodes, and higher-order mobs        │

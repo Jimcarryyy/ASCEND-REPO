@@ -766,3 +766,37 @@ This document records historical feature additions, engine enhancements, balance
 - **Gathering Progress Bar Freeze:** Added `ActionFailed` listener in `GatheringController.luau` so if a node is on cooldown or inventory is full, the `HARVESTING...` bar cancels immediately with a red toast instead of freezing at 100%.
 - **ProximityPrompt Multi-Part Disable Bug:** Replaced single-part prompt lookups with recursive `GetDescendants()` loops in `GatheringManager.luau`, ensuring all prompts on depleted models disable during cooldown and re-enable on respawn.
 - **Herb Stacking Quality Mismatch (`InventoryManager.luau`):** Implemented `effectiveQuality = quality or itemDef.Rarity or "Common"` and flexible quality matching, allowing harvested herbs to stack directly into existing stacks.
+
+## [Phase 8.6 — Cultivation Loop Restoration & World Qi Anchoring] — 2026-09-21 (backfilled from Session Digest #unknown)
+
+### Added
+- **World Qi Node Generation (`Workspace.QiNodes`):** Generated all 10 realm Qi nodes with `Fondamento` Bold typography, rotated `UIGradient` fills, and transparent background containers.
+
+### Changed
+- **Pure Phase 1 Cultivation Reset Loop:** Completely discarded the cumulative expanding-cap model; restored pure Phase 1 per-order reset loop with Tier 1 `BaseTargetQi` set to 500 (~25s for Order 1).
+- **Hard Qi Target Cap:** Hard-capped Qi accumulation at 100% of `TargetQi` with zero automatic overflow into subsequent orders.
+- **Character Stats Display Cleanliness:** Replaced purged "Madame Tie's Anvil" text with "No Whetstone Buff Active" in `CharacterStatsController.luau`.
+- **Starter Guide Keybinds:** Replaced obsolete `[P - Stats / U - Codex]` keybind text with `[P - Stats]` in `StarterGuideController.luau`.
+- **Cultivation Audio Polish:** Set `REJECT_BUZZ_SFX = ""` (muted audio) in `CultivationController.luau`.
+
+### Fixed
+- **Cleaned Dead Calls:** Removed orphaned `CultivationConfig.FormatNumber` call in `CharacterStatsController.luau`.
+- **Argon Sync Recovery:** Executed Git rollback to prior stable commit in VS Code following Argon synchronization conflicts.
+
+---
+
+## [Phase 8.7 — Combat Kinematics Hardening, Arena Decoupling & Control Polish] — 2026-09-23 (backfilled from Session Digest #<>)
+
+### Added
+- **Two-Phase M1 Kinematics (Rollout Phase 3 & 4):** Integrated two-phase M1 slash speed curve, deriving client and server attack timings from `FlyingSwordConfig.GetM1Timing`.
+- **M1 Forward Attack Lunge (Rollout Phase 5.1):** Added grounded forward momentum lunge on M1 swings at `windupDuration` in `AnimationController.luau`.
+- **Arena Boundary Decaying Velocity (Rollout Phase 1):** Replaced raw `AssemblyLinearVelocity` rebound force with capped, decaying `LinearVelocity` in `ArenaManager.luau`.
+
+### Changed
+- **Hit Reaction Animation Purge:** Completely dropped avatar hit reaction animations (`HitReaction1`, `HitReaction2`) across `AnimationController.luau` and `CombatVFXController.luau` to prevent knockdown/stumble states and maintain combat responsiveness.
+- **Target Focus Keybind Re-map:** Re-bound target focus lock from `Z` / `MouseButton3` exclusively to `ALT` (`LeftAlt` / `RightAlt`).
+- **Music Controller Threat Decoupling:** Completely removed combat engagement music triggers and proximity threat volume swelling from `MusicController.luau`.
+
+### Fixed
+- **Input Controller Syntax Repair:** Applied complete tail replacement in `InputController.luau`, fixing unbalanced `end` statements around `OnInputBegan` and `OnInputEnded`.
+- **Studio Codebase Baseline Restoration:** Pulled stable Studio baseline into VS Code via Argon client priority.
