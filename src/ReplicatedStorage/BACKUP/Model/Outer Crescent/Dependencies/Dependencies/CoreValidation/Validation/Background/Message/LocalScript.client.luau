@@ -1,0 +1,1 @@
+script.Parent.Text=[[Model corruption detected. Critical model dependencies are not installed. To resolve:  Copy the code below (Ctrl+C), open the Roblox Studio Command Bar (Script > Command), paste the script, Ensure playtesting is stopped (Shift+F5), and press the 'Run' button to run.<br /> (Error: 502)]]

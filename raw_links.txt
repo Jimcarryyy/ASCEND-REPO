@@ -7,9 +7,6 @@ https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.ai/NEXT_STEPS.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.ai/PROJECT_STATUS.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.gitignore
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/.vscode/settings.json
-https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/00-project-context.mdc
-https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/10-vfx-environment.mdc
-https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/ASCEND.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/Ascend.project.json
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/README.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/cursorignore

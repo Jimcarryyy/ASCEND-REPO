@@ -1,0 +1,1 @@
+script.Parent.Size = UDim2.new(0, 430, 0, 281)

@@ -12,6 +12,7 @@
     - Fixed WeldConstraint CFrame displacement bug in AttachBloodlineVisual
     - Phase 2: RBXScriptConnection lifecycle cleanup & zero-delay stream-safe dais placement
     - Daily Sect Stipend 24-hour persistence integration
+    - Sword Dao System Phase 1: Cultivation.SwordDao persistence, legacy-to-Thunder migration, and validated setter
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -24,6 +25,7 @@ local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationCo
 local SectConfig = require(ReplicatedStorage.Shared.Configs.SectConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local BloodlineConfig = require(ReplicatedStorage.Shared.Configs.BloodlineConfig)
+local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 local CultivationManager = require(ServerScriptService.Server.Cultivation.CultivationManager)
 local InventoryManager = require(ServerScriptService.Server.State.InventoryManager)
@@ -54,6 +56,7 @@ export type SavedPlayerData = {
 		Order: number?,
 		CurrentQi: number,
 		CultivatedQi: number?,
+		SwordDao: string?, -- Phase 1: "Thunder" | "Fire" (extensible to future Daos)
 	},
 	EquippedWeapon: string,
 	Inventory: { [string]: SavedInventorySlot },
@@ -144,6 +147,7 @@ local playerBloodlines: {
 } = {}
 
 local playerSamsaraData: { [Player]: number } = {}
+local playerSwordDao: { [Player]: string? } = {}
 local characterConnections: { [Player]: RBXScriptConnection } = {}
 
 local sectManagerRef: any = nil
@@ -161,6 +165,7 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 		Order = 1,
 		CurrentQi = 200,
 		CultivatedQi = 200,
+		SwordDao = nil, -- Brand-new character: left nil to trigger selection UI in Phase 6
 	},
 	EquippedWeapon = "MortalIronJian",
 	Inventory = {
@@ -428,7 +433,8 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 
 	if not loadedData then
-		print(string.format("[PlayerDataManager] Creating brand new profile for %s.", player.Name))
+		-- BRAND-NEW CHARACTER: SwordDao is left nil to trigger selection in Phase 6
+		print(string.format("[PlayerDataManager] Creating brand new profile for %s (New Player Onboarding).", player.Name))
 		loadedData = {
 			Version = CURRENT_VERSION,
 			Cultivation = {
@@ -436,6 +442,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 				Order = DEFAULT_PLAYER_DATA.Cultivation.Order or 1,
 				CurrentQi = DEFAULT_PLAYER_DATA.Cultivation.CurrentQi,
 				CultivatedQi = DEFAULT_PLAYER_DATA.Cultivation.CultivatedQi or 200,
+				SwordDao = nil,
 			},
 			EquippedWeapon = defaultEquipped,
 			Inventory = {
@@ -463,9 +470,28 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			LastStipendClaim = 0,
 		}
 	else
+		-- RETURNING PLAYER (Existing save)
 		if not loadedData.Version or loadedData.Version < CURRENT_VERSION then
 			print(string.format("[PlayerDataManager] Migrating %s data to Version 3 schema.", player.Name))
 			loadedData.Version = CURRENT_VERSION
+		end
+
+		-- CRITICAL MIGRATION RULE: Legacy save migration for returning players
+		-- If an existing save has prior cultivation data but SwordDao is missing/nil,
+		-- automatically set it to "Thunder" silently with no prompt.
+		if loadedData.Cultivation then
+			if loadedData.Cultivation.SwordDao == nil then
+				loadedData.Cultivation.SwordDao = "Thunder"
+				print(string.format("[PlayerDataManager] [LEGACY-MIGRATION] Auto-migrated returning player %s Cultivation.SwordDao -> 'Thunder'.", player.Name))
+			end
+		else
+			loadedData.Cultivation = {
+				Realm = "QiCondensation",
+				Order = 1,
+				CurrentQi = 200,
+				CultivatedQi = 200,
+				SwordDao = "Thunder",
+			}
 		end
 
 		local eq = tostring(loadedData.EquippedWeapon or "")
@@ -476,6 +502,10 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 
 	isLoadedMap[player] = true
+
+	-- Cache Sword Dao
+	local initialDao = if loadedData.Cultivation then loadedData.Cultivation.SwordDao else nil
+	playerSwordDao[player] = initialDao
 
 	playerAlchemyData[player] = {
 		Exp = loadedData.AlchemyExp or 0,
@@ -618,6 +648,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	player:SetAttribute("MythicPity", playerBloodlines[player].Pity.SpinsSinceMythic)
 	player:SetAttribute("SamsaraCycle", playerSamsaraData[player])
 	player:SetAttribute("LastStipendClaim", loadedData.LastStipendClaim or 0)
+	player:SetAttribute("SwordDao", initialDao)
 
 	if playerSamsaraData[player] > 0 then
 		player:SetAttribute("SamsaraTitle", string.format("[Samsara %s]", ToRoman(playerSamsaraData[player])))
@@ -635,6 +666,8 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			character:SetAttribute("SamsaraTitle", string.format("[Samsara %s]", ToRoman(cycle)))
 			AttachSamsaraCelestialAura(character, cycle)
 		end
+
+		character:SetAttribute("SwordDao", playerSwordDao[player])
 
 		RouteToSpawnDais(character)
 
@@ -658,10 +691,11 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 	characterConnections[player] = player.CharacterAdded:Connect(bindChar)
 
-	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Stones: %d, Rank: %s, Samsara: %d, Bloodline: %s, Slots: %d).",
+	print(string.format("[PlayerDataManager] Successfully loaded data for %s (Realm: %s, Order: %d, Dao: %s, Stones: %d, Rank: %s, Samsara: %d, Bloodline: %s, Slots: %d).",
 		player.Name,
 		loadedData.Cultivation.Realm,
 		loadedData.Cultivation.Order or 1,
+		tostring(initialDao),
 		loadedData.SpiritStones or 250,
 		loadedData.SectRank or "OuterDisciple",
 		playerSamsaraData[player],
@@ -686,6 +720,7 @@ function PlayerDataManager.OnPlayerRemoving(player: Player)
 		playerSkinData[player] = nil
 		playerBloodlines[player] = nil
 		playerSamsaraData[player] = nil
+		playerSwordDao[player] = nil
 	end)
 end
 
@@ -785,6 +820,74 @@ function PlayerDataManager.GetAlchemyData(player: Player): (number, number)
 	local data = playerAlchemyData[player]
 	if not data then return 0, 1 end
 	return data.Exp, data.Level
+end
+
+-- =============================================================================
+-- SWORD DAO ACCESSORS & VALIDATED SETTER (Phase 1)
+-- =============================================================================
+function PlayerDataManager.GetSwordDao(player: Player): string?
+	local cached = playerSwordDao[player]
+	if cached ~= nil then return cached end
+	local attr = player:GetAttribute("SwordDao")
+	return if type(attr) == "string" then attr else nil
+end
+
+function PlayerDataManager.SetSwordDao(player: Player, daoId: string): (boolean, string?)
+	if type(daoId) ~= "string" then
+		return false, "Sword Dao identifier must be a string."
+	end
+
+	-- Dynamic validation against FlyingSwordConfig.Daos registry
+	local configDaos = (FlyingSwordConfig :: any).Daos
+	local isValidDao = false
+	if type(configDaos) == "table" then
+		isValidDao = (configDaos[daoId] ~= nil)
+	else
+		-- Fallback prior to Phase 2 registry restructure
+		isValidDao = (daoId == "Thunder" or daoId == "Fire")
+	end
+
+	if not isValidDao then
+		return false, string.format("Invalid Sword Dao: '%s'", tostring(daoId))
+	end
+
+	local currentDao = playerSwordDao[player]
+
+	if currentDao == nil then
+		-- FIRST CHOICE (FREE): Genuinely new player onboarding
+		playerSwordDao[player] = daoId
+		player:SetAttribute("SwordDao", daoId)
+		if player.Character then
+			player.Character:SetAttribute("SwordDao", daoId)
+		end
+		PlayerDataManager.SaveData(player)
+		print(string.format("[PlayerDataManager] Player %s attuned to Sword Dao: %s (First Choice)", player.Name, daoId))
+		return true, nil
+	end
+
+	-- If already attuned to the requested Dao
+	if currentDao == daoId then
+		return false, "Already attuned to this Sword Dao."
+	end
+
+	-- RESPEC PATH: Requires consuming a DaoReversalToken from inventory
+	if not InventoryManager.HasItem(player, "DaoReversalToken", 1) then
+		return false, "Respec rejected: Requires a Dao Reversal Token."
+	end
+
+	local removed = InventoryManager.RemoveItem(player, "DaoReversalToken", 1)
+	if not removed then
+		return false, "Failed to consume Dao Reversal Token from inventory."
+	end
+
+	playerSwordDao[player] = daoId
+	player:SetAttribute("SwordDao", daoId)
+	if player.Character then
+		player.Character:SetAttribute("SwordDao", daoId)
+	end
+	PlayerDataManager.SaveData(player)
+	print(string.format("[PlayerDataManager] Player %s respec'd Sword Dao -> %s (DaoReversalToken consumed)", player.Name, daoId))
+	return true, nil
 end
 
 -- =============================================================================
@@ -1058,6 +1161,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 			Order = cultivation.Order,
 			CurrentQi = cultivation.CurrentQi,
 			CultivatedQi = cultivation.CultivatedQi,
+			SwordDao = PlayerDataManager.GetSwordDao(player),
 		},
 		EquippedWeapon = equippedWeapon,
 		Inventory = serializedInventory,
@@ -1093,7 +1197,13 @@ function PlayerDataManager.SaveData(player: Player): boolean
 
 		if success then
 			saveSuccess = true
-			print(string.format("[PlayerDataManager] Successfully saved data for %s (Equipped: %s, Samsara: %d, Lineage: %s).", player.Name, equippedWeapon, samsaraCycle, bData.Current))
+			print(string.format("[PlayerDataManager] Successfully saved data for %s (Equipped: %s, Dao: %s, Samsara: %d, Lineage: %s).",
+				player.Name,
+				equippedWeapon,
+				tostring(dataToSave.Cultivation.SwordDao),
+				samsaraCycle,
+				bData.Current
+			))
 			break
 		else
 			warn(string.format("[PlayerDataManager] SetAsync attempt %d failed for %s: %s", attempt, player.Name, tostring(err)))
