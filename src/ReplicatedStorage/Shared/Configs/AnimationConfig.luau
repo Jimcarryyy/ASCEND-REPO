@@ -6,6 +6,7 @@
       - Phase 3: Added WindupRatio, WindupMultiplier, and StrikeMultiplier for two-phase slash curves.
       - Heavy M1 Cadence: Playback speed slowed to 0.50x with 0.60s cast duration for weighted impacts.
       - 4-Way Directional Dash IDs registered.
+      - Added SwordRun animation ID (99873197987148) for running with sword equipped.
 ]]
 
 export type AnimDef = {
@@ -25,6 +26,7 @@ local AnimationConfig = {
 		Idle = "rbxassetid://133864540288517",
 		Walk = "rbxassetid://74349935296328",
 		Run = "rbxassetid://75558265748203",
+		SwordRun = "rbxassetid://99873197987148",
 		Land = "rbxassetid://86689000393753",
 		Jump = "rbxassetid://115002701112708",
 		Fall = "rbxassetid://105371732122929",

@@ -9,9 +9,11 @@
       - E Skill Piercing Void Thrust: High-velocity swept thrust with target penetration.
       - F Skill 100-Slash Domain: High-velocity blink and omnidirectional slice domain.
       - Q Skill: ZERO knockback (slices in-place without pushing targets away).
+      - Added missing Players service import resolving nil indexing in Skill F.
 ]]
 
 local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")

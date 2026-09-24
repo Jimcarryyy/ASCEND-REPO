@@ -4,8 +4,9 @@
     Location: src/StarterPlayer/StarterCharacterScripts/Animate.client.luau
     Master R6 Movement Animation & Audio Sync Engine for ASCEND.
     Features:
-      - Sluggish Weighted Locomotion: 0.70x running playback speed for long, graceful strides.
-      - Upper-Body Idle Layering: Torso, arms, and blade maintain steady Idle posture while moving.
+      - Dual-State Running Engine: Normal running (without sword) vs SwordRun (holding sword, ID: 99873197987148).
+      - Synced Locomotion Pacing: Both normal run and sword run play at 0.70x playback speed for weighted wuxia strides.
+      - Upper-Body Idle Layering: Torso, arms, and blade maintain steady posture while moving unarmed.
       - Synced 0.70x footstep audio cadence.
       - 76 JumpPower with instant takeoff.
 ]]
@@ -156,14 +157,22 @@ local function GetLocomotionTrack(animName: string, animId: string, priority: En
 	return nil
 end
 
-local trackIdle  = GetLocomotionTrack("Idle", moveCfg.Idle, Enum.AnimationPriority.Idle, true)
-local trackWalk  = GetLocomotionTrack("Walk", moveCfg.Walk, Enum.AnimationPriority.Movement, true)
-local trackRun   = GetLocomotionTrack("Run", moveCfg.Run, Enum.AnimationPriority.Movement, true)
-local trackJump  = GetLocomotionTrack("Jump", moveCfg.Jump, Enum.AnimationPriority.Action2, false)
-local trackFall  = GetLocomotionTrack("Fall", moveCfg.Fall, Enum.AnimationPriority.Action2, true)
-local trackLand  = GetLocomotionTrack("Land", moveCfg.Land, Enum.AnimationPriority.Action2, false)
-local trackClimb = GetLocomotionTrack("Climb", moveCfg.Climb, Enum.AnimationPriority.Movement, true)
-local trackSwim  = GetLocomotionTrack("Swim", moveCfg.Swim, Enum.AnimationPriority.Movement, true)
+local trackIdle     = GetLocomotionTrack("Idle", moveCfg.Idle, Enum.AnimationPriority.Idle, true)
+local trackWalk     = GetLocomotionTrack("Walk", moveCfg.Walk, Enum.AnimationPriority.Movement, true)
+local trackRun      = GetLocomotionTrack("Run", moveCfg.Run, Enum.AnimationPriority.Movement, true)
+local trackSwordRun = GetLocomotionTrack("SwordRun", (moveCfg :: any).SwordRun or "rbxassetid://99873197987148", Enum.AnimationPriority.Movement, true)
+local trackJump     = GetLocomotionTrack("Jump", moveCfg.Jump, Enum.AnimationPriority.Action2, false)
+local trackFall     = GetLocomotionTrack("Fall", moveCfg.Fall, Enum.AnimationPriority.Action2, true)
+local trackLand     = GetLocomotionTrack("Land", moveCfg.Land, Enum.AnimationPriority.Action2, false)
+local trackClimb    = GetLocomotionTrack("Climb", moveCfg.Climb, Enum.AnimationPriority.Movement, true)
+local trackSwim     = GetLocomotionTrack("Swim", moveCfg.Swim, Enum.AnimationPriority.Movement, true)
+
+-- Helper to determine if the player is actively holding their sword in hand
+local function IsHoldingSword(): boolean
+	local hasSword = Character:FindFirstChild("EquippedSword") ~= nil
+	local isDrawn = Character:GetAttribute("IsWeaponDrawn")
+	return hasSword and (isDrawn == true or (isDrawn == nil and Character:GetAttribute("EquippedWeapon") ~= nil))
+end
 
 local function SetLocomotionState(newState: string)
 	if currentLocomotionState == newState then return end
@@ -173,6 +182,7 @@ local function SetLocomotionState(newState: string)
 
 	if newState == "Walk" then targetTrack = trackWalk
 	elseif newState == "Run" then targetTrack = trackRun
+	elseif newState == "SwordRun" then targetTrack = trackSwordRun
 	elseif newState == "Jump" then targetTrack = trackJump
 	elseif newState == "Fall" then targetTrack = trackFall
 	elseif newState == "Land" then targetTrack = trackLand
@@ -193,6 +203,9 @@ local function SetLocomotionState(newState: string)
 			targetTrack:Play(0.05, 1, 1.30)
 		elseif newState == "Run" then
 			-- Sluggish, weighted wuxia stride pacing (0.70x)
+			targetTrack:Play(0.12, 1, 0.70)
+		elseif newState == "SwordRun" then
+			-- Matched to normal running pacing (0.70x) for smooth, weighted strides
 			targetTrack:Play(0.12, 1, 0.70)
 		else
 			targetTrack:Play(0.1)
@@ -316,7 +329,11 @@ Humanoid.StateChanged:Connect(function(_, newState)
 			if Character:GetAttribute("IsFlying") == true then return end
 			if Humanoid.MoveDirection.Magnitude > 0.05 then
 				local isSprinting = Humanoid.WalkSpeed > 18
-				SetLocomotionState(if isSprinting then "Run" else "Walk")
+				if isSprinting then
+					SetLocomotionState(if IsHoldingSword() then "SwordRun" else "Run")
+				else
+					SetLocomotionState("Walk")
+				end
 			else
 				SetLocomotionState("Idle")
 			end
@@ -336,7 +353,7 @@ Humanoid.StateChanged:Connect(function(_, newState)
 	end
 end)
 
--- Continuous Locomotion & Upper-Body Idle Layering Loop
+-- Continuous Locomotion Loop
 RunService.RenderStepped:Connect(function()
 	if not Character.Parent or not Humanoid.Parent or not RootPart or not Torso then return end
 
@@ -380,7 +397,7 @@ RunService.RenderStepped:Connect(function()
 		local isSprinting = Humanoid.WalkSpeed > 18
 
 		if isSprinting then
-			SetLocomotionState("Run")
+			SetLocomotionState(if IsHoldingSword() then "SwordRun" else "Run")
 			if customWalkSound.IsPlaying then customWalkSound:Stop() end
 			PlayActiveRunAudio()
 		else
@@ -391,8 +408,8 @@ RunService.RenderStepped:Connect(function()
 			if not customWalkSound.IsPlaying then customWalkSound:Play() end
 		end
 
-		-- UPPER-BODY IDLE PRESERVATION: Arms and blade stay steady while legs run
-		if not isAttacking and rightShoulder and leftShoulder and neck then
+		-- UPPER-BODY IDLE PRESERVATION: Only apply for unarmed run / walk so custom SwordRun pose can animate freely
+		if not isAttacking and currentLocomotionState ~= "SwordRun" and rightShoulder and leftShoulder and neck then
 			rightShoulder.Transform = cachedIdleRShoulder
 			leftShoulder.Transform = cachedIdleLShoulder
 			neck.Transform = cachedIdleNeck
