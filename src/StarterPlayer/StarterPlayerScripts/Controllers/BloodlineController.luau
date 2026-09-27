@@ -3,10 +3,11 @@
     BloodlineController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/BloodlineController.luau
     Client UI controller bound to MainHubGui.MenuBackdrop.PageContainer.Page_Bloodline:
-    - Auto-syncs live slot data upon opening (Slot 2 shows real Nine Nether Sovereign)
+    - Auto-syncs live slot data upon opening
     - DecisionModal integration (Equip Active, Save to Vault, Discard +100)
     - 1X and 10X Awakening Rituals with server roll response
-    - Real-time Pity meters (Legendary 0/30 & Mythic 0/100) and Spirit Stones tribute
+    - 7-Tier Palette Support: Mortal, Common, Spiritual, Earth, Heaven, Legendary, Mythic
+    - Formats Passives directly from BloodlineConfig
 ]]
 
 local Players = game:GetService("Players")
@@ -51,6 +52,26 @@ local buttonConnections: { RBXScriptConnection } = {}
 local lastSyncData: any = nil
 local isInitialized = false
 
+local TIER_COLORS = {
+	Mortal    = Color3.fromRGB(160, 165, 175),
+	Common    = Color3.fromRGB(150, 205, 180),
+	Spiritual = Color3.fromRGB(50, 215, 150),
+	Earth     = Color3.fromRGB(235, 180, 25),
+	Heaven    = Color3.fromRGB(215, 45, 85),
+	Legendary = Color3.fromRGB(245, 195, 35),
+	Mythic    = Color3.fromRGB(255, 235, 120),
+}
+
+local TIER_BG_COLORS = {
+	Mortal    = Color3.fromRGB(24, 25, 28),
+	Common    = Color3.fromRGB(20, 28, 25),
+	Spiritual = Color3.fromRGB(14, 32, 24),
+	Earth     = Color3.fromRGB(34, 28, 12),
+	Heaven    = Color3.fromRGB(36, 14, 20),
+	Legendary = Color3.fromRGB(42, 32, 10),
+	Mythic    = Color3.fromRGB(45, 38, 14),
+}
+
 local PANEL_CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
 local function PlayPanelClickSFX()
 	local sound = Instance.new("Sound")
@@ -67,6 +88,46 @@ local function ClearButtonConnections()
 		conn:Disconnect()
 	end
 	table.clear(buttonConnections)
+end
+
+local function FormatPassives(passives: BloodlineConfig.BloodlinePassives?): string
+	if not passives then return "Standard Dao Flow" end
+	local mods = {}
+	if passives.DamageMultiplier and passives.DamageMultiplier > 1 then
+		table.insert(mods, string.format("+%d%% Damage", math.round((passives.DamageMultiplier - 1) * 100)))
+	end
+	if passives.HealthMultiplier and passives.HealthMultiplier > 1 then
+		table.insert(mods, string.format("+%d%% Max HP", math.round((passives.HealthMultiplier - 1) * 100)))
+	end
+	if passives.MaxQiMultiplier and passives.MaxQiMultiplier > 1 then
+		table.insert(mods, string.format("+%d%% Max Qi", math.round((passives.MaxQiMultiplier - 1) * 100)))
+	end
+	if passives.QiGatherMultiplier and passives.QiGatherMultiplier > 1 then
+		table.insert(mods, string.format("+%d%% Qi Gather", math.round((passives.QiGatherMultiplier - 1) * 100)))
+	end
+	if passives.PostureDamageMultiplier and passives.PostureDamageMultiplier > 1 then
+		table.insert(mods, string.format("+%d%% Posture Dmg", math.round((passives.PostureDamageMultiplier - 1) * 100)))
+	end
+	if passives.CritChance and passives.CritChance > 0 then
+		table.insert(mods, string.format("+%d%% Crit", math.round(passives.CritChance * 100)))
+	end
+	if passives.CooldownReduction and passives.CooldownReduction > 0 then
+		table.insert(mods, string.format("-%d%% Cooldown", math.round(passives.CooldownReduction * 100)))
+	end
+	if passives.LifestealPercent and passives.LifestealPercent > 0 then
+		table.insert(mods, string.format("+%d%% Lifesteal", math.round(passives.LifestealPercent * 100)))
+	end
+	if passives.GuardPierce and passives.GuardPierce > 0 then
+		table.insert(mods, string.format("+%d%% Guard Pierce", math.round(passives.GuardPierce * 100)))
+	end
+	if passives.SpeedMultiplier and passives.SpeedMultiplier > 1 then
+		table.insert(mods, string.format("+%d%% Speed", math.round((passives.SpeedMultiplier - 1) * 100)))
+	end
+	if passives.DashDistanceMultiplier and passives.DashDistanceMultiplier > 1 then
+		table.insert(mods, string.format("+%d%% Dash Dist", math.round((passives.DashDistanceMultiplier - 1) * 100)))
+	end
+
+	return if #mods > 0 then table.concat(mods, " • ") else "Base Attributes • Standard Dao Flow"
 end
 
 local function EnsureUI(): boolean
@@ -124,7 +185,6 @@ local function EnsureUI(): boolean
 		beadsLabel = altarCard:FindFirstChild("BeadsLabel", true) :: TextLabel?
 	end
 
-	-- Map Meridian Vault Slots
 	table.clear(slotRows)
 	if vaultCard then
 		for idx = 1, 5 do
@@ -137,7 +197,6 @@ local function EnsureUI(): boolean
 		end
 	end
 
-	-- Connect Actions (Strictly Once)
 	ClearButtonConnections()
 
 	if pityCard then
@@ -195,7 +254,6 @@ local function EnsureUI(): boolean
 		end
 	end
 
-	-- Wire DecisionModal Action Buttons
 	if decisionModal then
 		local card = decisionModal:FindFirstChild("ModalCard") or decisionModal
 		local claimActiveBtn = card:FindFirstChild("ClaimActiveBtn", true) :: TextButton?
@@ -245,60 +303,33 @@ end
 function BloodlineController.Render()
 	if not EnsureUI() or not page then return end
 
-	-- 1. Active Lineage Card
 	local activeId = (lastSyncData and (lastSyncData.BloodlineId or lastSyncData.Bloodline)) or player:GetAttribute("Bloodline") or "MortalSwordBone"
-	local def = BloodlineConfig.GetBloodline(activeId) or {
-		Name = "Mortal Sword Bone",
-		Tier = "Mortal",
-		Description = "Standard mortal meridian alignment. No elemental Dao affinities active.",
-	}
+	local def = BloodlineConfig.GetBloodline(activeId) or BloodlineConfig.GetBloodline("MortalSwordBone")
 
-	local TIER_COLORS = {
-		Mortal = Color3.fromRGB(140, 140, 150),
-		Earth = Color3.fromRGB(40, 140, 220),
-		Heaven = Color3.fromRGB(160, 60, 220),
-		Legendary = Color3.fromRGB(240, 160, 20),
-		Mythic = Color3.fromRGB(230, 30, 70),
-	}
+	local tierColor = if def then (TIER_COLORS[def.Tier] or TIER_COLORS.Mortal) else TIER_COLORS.Mortal
 
-	local tierColor = TIER_COLORS[def.Tier] or TIER_COLORS.Mortal
-
-	if tierBadgeLabel then
+	if tierBadgeLabel and def then
 		tierBadgeLabel.Text = string.upper(def.Tier)
 		tierBadgeLabel.TextColor3 = tierColor
 	end
 
-	if lineageNameLabel then
+	if lineageNameLabel and def then
 		lineageNameLabel.Text = string.upper(def.Name)
 		lineageNameLabel.TextColor3 = tierColor
 	end
 
-	if statModifiersLabel then
-		local mods = {}
-		if def.StatMultipliers then
-			if def.StatMultipliers.Damage and def.StatMultipliers.Damage > 1 then
-				table.insert(mods, string.format("+%d%% Damage", math.round((def.StatMultipliers.Damage - 1) * 100)))
-			end
-			if def.StatMultipliers.QiMax and def.StatMultipliers.QiMax > 1 then
-				table.insert(mods, string.format("+%d%% Max Qi", math.round((def.StatMultipliers.QiMax - 1) * 100)))
-			end
-			if def.StatMultipliers.Speed and def.StatMultipliers.Speed > 1 then
-				table.insert(mods, string.format("+%d%% Speed", math.round((def.StatMultipliers.Speed - 1) * 100)))
-			end
-		end
-		statModifiersLabel.Text = if #mods > 0 then table.concat(mods, " • ") else "Base Attributes • Standard Dao Flow"
+	if statModifiersLabel and def then
+		statModifiersLabel.Text = FormatPassives(def.Passives)
 	end
 
-	if passiveSummaryLabel then
-		local pList = def.PassiveEffects or {}
-		passiveSummaryLabel.Text = if #pList > 0 then "Passive: " .. table.concat(pList, ", ") else "No Passive Resonances"
+	if passiveSummaryLabel and def then
+		passiveSummaryLabel.Text = if def.Tier == "Mortal" then "Mundane Lineage (Unawakened)" else "Awakened Sovereign Roots"
 	end
 
-	if descriptionLabel then
-		descriptionLabel.Text = def.Description or "Channel celestial intent through the altar to awaken sovereign bloodlines."
+	if descriptionLabel and def then
+		descriptionLabel.Text = def.Description
 	end
 
-	-- 2. Pity Meters
 	local pity = (lastSyncData and lastSyncData.Pity) or {}
 	local legPity = pity.SpinsSinceLegendary or player:GetAttribute("LegendaryPity") or 0
 	local mytPity = pity.SpinsSinceMythic or player:GetAttribute("MythicPity") or 0
@@ -315,23 +346,19 @@ function BloodlineController.Render()
 		mythicCountLabel.Text = string.format("%d/100", mytPity)
 	end
 
-	-- 3. Live Currencies
-	local stones = (lastSyncData and lastSyncData.SpiritStones) or player:GetAttribute("SpiritStones") or 0
-	local spins = (lastSyncData and lastSyncData.Spins) or player:GetAttribute("BloodlineSpins") or 0
+	local stones = (lastSyncData and lastSyncData.RemainingStones) or (lastSyncData and lastSyncData.SpiritStones) or player:GetAttribute("SpiritStones") or 0
+	local spins = (lastSyncData and lastSyncData.RemainingSpins) or (lastSyncData and lastSyncData.Spins) or player:GetAttribute("BloodlineSpins") or 0
 
 	if stonesLabel then stonesLabel.Text = string.format("Spirit Stones: %d", stones) end
 	if beadsLabel then beadsLabel.Text = string.format("BEADS: %d", spins) end
 
-	-- 4. Meridian Vault Slots (Renders Real Stored Bloodlines)
 	local slots = (lastSyncData and lastSyncData.Slots) or {}
-
 	local maxSlots = (lastSyncData and (lastSyncData.MaxSlots or (lastSyncData.Data and lastSyncData.Data.MaxSlots))) or player:GetAttribute("MaxBloodlineSlots") or 2
 
 	for idx = 1, 5 do
 		local sData = slotRows[idx]
 		if sData and sData.Label and sData.Btn then
 			if idx > maxSlots then
-				-- Locked Slot: Requires Robux Unlock
 				sData.Label.Text = string.format("SLOT %d: [LOCKED] Ancestral Meridian", idx)
 				sData.Label.TextColor3 = Color3.fromRGB(150, 70, 70)
 
@@ -340,7 +367,6 @@ function BloodlineController.Render()
 				sData.Btn.TextColor3 = Color3.fromRGB(240, 180, 180)
 				sData.Btn.AutoButtonColor = true
 			else
-				-- Unlocked Slot (Slots 1 & 2 or purchased)
 				local storedId = slots[idx] or slots[tostring(idx)]
 
 				if idx == 1 and (not storedId or storedId == "") then
@@ -350,7 +376,7 @@ function BloodlineController.Render()
 				if storedId and storedId ~= "" then
 					local sDef = BloodlineConfig.GetBloodline(storedId)
 					local name = sDef and sDef.Name or storedId
-					local sTier = sDef and sDef.Tier or "Common"
+					local sTier = sDef and sDef.Tier or "Mortal"
 					local isEquipped = (storedId == activeId)
 
 					sData.Label.Text = string.format("SLOT %d: [%s] %s", idx, string.upper(sTier), name)
@@ -396,28 +422,6 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 	local saveBtn = card:FindFirstChild("SaveSlotBtn", true) :: TextButton?
 	local discardBtn = card:FindFirstChild("DiscardBtn", true) :: TextButton?
 
-	local TIER_COLORS = {
-		Mortal = Color3.fromRGB(150, 150, 160),
-		Common = Color3.fromRGB(150, 150, 160),
-		Earth = Color3.fromRGB(45, 145, 230),
-		Rare = Color3.fromRGB(45, 145, 230),
-		Heaven = Color3.fromRGB(165, 75, 235),
-		Legendary = Color3.fromRGB(245, 175, 30),
-		Legend = Color3.fromRGB(245, 175, 30),
-		Mythic = Color3.fromRGB(235, 40, 80),
-	}
-
-	local TIER_BG_COLORS = {
-		Common = Color3.fromRGB(22, 22, 28),
-		Mortal = Color3.fromRGB(22, 22, 28),
-		Rare = Color3.fromRGB(16, 26, 42),
-		Earth = Color3.fromRGB(16, 26, 42),
-		Legendary = Color3.fromRGB(36, 28, 14),
-		Legend = Color3.fromRGB(36, 28, 14),
-		Mythic = Color3.fromRGB(38, 14, 20),
-	}
-
-	-- Initial Spin State Setup
 	decisionModal.Visible = true
 	if decTitle then decTitle.Text = "COMMUNING WITH ANCESTRAL MERIDIANS..." end
 	if plate then plate.Visible = false end
@@ -425,7 +429,6 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 	if saveBtn then saveBtn.Visible = false end
 	if discardBtn then discardBtn.Visible = false end
 
-	-- Animate Modal Entrance
 	card.Size = UDim2.new(0, 520, 0, 390)
 	TweenService:Create(card, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 		Size = UDim2.new(0, 560, 0, 430)
@@ -439,35 +442,28 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 		return
 	end
 
-	-- Clear Previous Reel Cards
 	for _, child in ipairs(track:GetChildren()) do
 		if child:IsA("GuiObject") then
 			child:Destroy()
 		end
 	end
 
-	-- Flatten the BloodlineConfig dictionary into an indexed array
-	local allRaw = BloodlineConfig.GetAllBloodlines and BloodlineConfig.GetAllBloodlines() or {}
+	local allRaw = BloodlineConfig.GetAllBloodlines()
 	local bloodlinePool = {}
 	local highTierPool = {}
 
 	for _, bDef in pairs(allRaw) do
 		if typeof(bDef) == "table" and bDef.Name then
 			table.insert(bloodlinePool, bDef)
-			if bDef.Tier == "Mythic" or bDef.Tier == "Legendary" or bDef.Tier == "Legend" then
+			if bDef.Tier == "Mythic" or bDef.Tier == "Legendary" then
 				table.insert(highTierPool, bDef)
 			end
 		end
 	end
 
-	if #bloodlinePool == 0 then
-		table.insert(bloodlinePool, def)
-	end
-	if #highTierPool == 0 then
-		table.insert(highTierPool, def)
-	end
+	if #bloodlinePool == 0 then table.insert(bloodlinePool, def) end
+	if #highTierPool == 0 then table.insert(highTierPool, def) end
 
-	-- Build 35 Reel Cards with Winner at Index 28
 	local totalCards = 35
 	local targetIndex = 28
 	local cardWidth = 88
@@ -478,21 +474,18 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 	for i = 1, totalCards do
 		local cDef = nil
 		if i == targetIndex then
-			-- The True Server Outcome
 			cDef = def
 		elseif i == (targetIndex - 1) and math.random() < 0.65 then
-			-- 65% Near-Miss Teaser: High-Tier Mythic/Legend right before the winner!
 			cDef = highTierPool[math.random(1, #highTierPool)]
 		else
-			-- Weighted organic random pull from all 12 bloodlines
 			cDef = bloodlinePool[math.random(1, #bloodlinePool)]
 		end
 
 		if not cDef then cDef = def end
 
-		local tierName = cDef.Tier or "Common"
-		local tColor = TIER_COLORS[tierName] or TIER_COLORS.Common
-		local bgColor = TIER_BG_COLORS[tierName] or TIER_BG_COLORS.Common
+		local tierName = cDef.Tier or "Mortal"
+		local tColor = TIER_COLORS[tierName] or TIER_COLORS.Mortal
+		local bgColor = TIER_BG_COLORS[tierName] or TIER_BG_COLORS.Mortal
 
 		local cFrame = Instance.new("Frame")
 		cFrame.Name = "Card_" .. i
@@ -536,14 +529,12 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 		end
 	end
 
-	-- Center Math & Exponential Deceleration Tween
 	local centerViewportX = viewport.AbsoluteSize.X > 0 and (viewport.AbsoluteSize.X / 2) or ((560 - 32) / 2)
 	local winnerCardCenterX = (targetIndex - 1) * step + (cardWidth / 2)
 	local targetTrackX = centerViewportX - winnerCardCenterX + math.random(-6, 6)
 
 	track.Position = UDim2.new(0, 0, 0, 0)
 
-	-- Rapid sound ticks that decelerate alongside the wheel
 	local spinDuration = 3.2
 	task.spawn(function()
 		local elapsed = 0
@@ -552,7 +543,7 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 			local progress = elapsed / spinDuration
 			local interval = 0.035 + (progress ^ 2.2) * 0.35
 			task.wait(interval)
-			elapsed += interval
+			elaps += interval
 		end
 	end)
 
@@ -565,7 +556,6 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 	spinTween.Completed:Connect(function()
 		PlayPanelClickSFX()
 
-		-- Winner Impact Flash
 		if winnerCard then
 			local wStroke = winnerCard:FindFirstChild("Stroke") :: UIStroke?
 			if wStroke then
@@ -582,7 +572,6 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 			decTitle.Text = "ANCESTRAL LINEAGE AWAKENED!"
 		end
 
-		-- Populate DecPlate Text
 		if plate then
 			local lName = plate:FindFirstChild("LineageName") or plate:FindFirstChildWhichIsA("TextLabel") :: TextLabel?
 			if lName then
@@ -592,18 +581,12 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 
 			local sLbl = (plate:FindFirstChild("DecSummary", true) or plate:FindFirstChild("StatModifiers", true)) :: TextLabel?
 			if sLbl then
-				local mods = {}
-				if def.StatMultipliers then
-					if def.StatMultipliers.Damage then table.insert(mods, string.format("+%d%% Damage", math.round((def.StatMultipliers.Damage - 1) * 100))) end
-					if def.StatMultipliers.QiMax then table.insert(mods, string.format("+%d%% Max Qi", math.round((def.StatMultipliers.QiMax - 1) * 100))) end
-				end
-				sLbl.Text = table.concat(mods, " • ") .. "\n" .. (def.Description or "")
+				sLbl.Text = FormatPassives(def.Passives) .. "\n" .. def.Description
 			end
 
 			plate.Visible = true
 		end
 
-		-- Reveal Buttons with punchy Back-out scale tween
 		for _, b in ipairs({claimBtn, saveBtn, discardBtn}) do
 			if b then
 				b.Visible = true
@@ -654,7 +637,7 @@ function BloodlineController.Init()
 	player:GetAttributeChangedSignal("MythicPity"):Connect(BloodlineController.Render)
 	player:GetAttributeChangedSignal("SpiritStones"):Connect(BloodlineController.Render)
 
-	print("[ASCEND] BloodlineController Initialized & Connected to MainHub.")
+	print("[ASCEND] BloodlineController Initialized & Connected to MainHub (7-Tier UI Bound).")
 end
 
 return BloodlineController

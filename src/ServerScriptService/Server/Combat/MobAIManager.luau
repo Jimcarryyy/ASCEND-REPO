@@ -666,7 +666,6 @@ local function StepAI()
 										if t and t.IsPlaying then t:Stop(0.05) end
 									end
 								elseif res.DamageApplied > 0 and targetPlayer then
-									-- Phase 5.3: Dispatches hit feedback to the victim client
 									if combatActionRemote then
 										combatActionRemote:FireClient(targetPlayer, nil, "MobAttackHit", {
 											HasHit = true,

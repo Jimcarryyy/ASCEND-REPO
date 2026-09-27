@@ -3,10 +3,10 @@
     BloodlineManager.luau
     Location: src/ServerScriptService/Server/State/BloodlineManager.luau
     Server-authoritative Bloodline manager:
-    - 12-Lineage Gacha with Bad-Luck Pity (Guaranteed Legendary @ 30, Mythic @ 100)
+    - 7-Tier Lineage Gacha with Bad-Luck Pity (Guaranteed Legendary @ 30, Mythic @ 100)
     - Keep or Discard Decision Pipeline (Refunds unrefined stones on discard)
     - Meridian Vault Slots (Store, swap, and unlock multiple lineages)
-    - Dynamic Floating 3D Relic Welder with Sacred Aura Lighting & Particle Motes
+    - Resilient 3D Relic Welder: Supports Models, single MeshParts, R6 & R15 rigs
 ]]
 
 local Players = game:GetService("Players")
@@ -22,10 +22,13 @@ local BloodlineManager = {}
 local bloodlineRemote: RemoteEvent
 
 local TIER_RANK: { [BloodlineConfig.BloodlineTier]: number } = {
-	Common = 1,
-	Rare = 2,
-	Legendary = 3,
-	Mythic = 4,
+	Mortal = 1,
+	Common = 2,
+	Spiritual = 3,
+	Earth = 4,
+	Heaven = 5,
+	Legendary = 6,
+	Mythic = 7,
 }
 
 local LEGENDARY_PITY_THRESHOLD = 30
@@ -33,28 +36,25 @@ local MYTHIC_PITY_THRESHOLD = 100
 local DISCARD_REFUND_STONES = 100
 local SLOT_3_STONE_COST = 25000
 
--- In-memory pending roll storage for the Keep/Discard decision
 local pendingRolls: { [Player]: BloodlineConfig.BloodlineDefinition } = {}
 
--- All relics float around the cultivator with calibrated air gaps
+-- Calibrated back offsets for each visual artifact
 local ARTIFACT_OFFSETS: { [string]: CFrame } = {
-	-- Floating Top-Left Shoulder Orbs (Clean clearance, ear/shoulder level)
-	JadeLotusOrb = CFrame.new(-1.65, 2.25, 0.10),
-	CosmicVoidSphere = CFrame.new(-1.65, 2.25, 0.10),
+	-- Tiers 1–4: Spiritual Orbs (Clean upper-back float)
+	MortalSpineBone = CFrame.new(0, 0.45, 1.15),
+	WindCrestFeather = CFrame.new(0, 0.45, 1.15),
+	VanguardIronGorget = CFrame.new(0, 0.45, 1.15),
+	LotusBackRelic = CFrame.new(0, 0.45, 1.15),
+	MistVeilShoulder = CFrame.new(0, 0.45, 1.15),
+	TremorGildedBracer = CFrame.new(0, 0.45, 1.15),
+	ThunderRuneBackplate = CFrame.new(0, 0.45, 1.15),
 
-	-- Floating Back Halos & Wings (Clean air gap behind UpperTorso)
-	AsuraBloodWheelHalo = CFrame.new(0, 0.45, 1.25),
-	EightBladeCelestialHalo = CFrame.new(0, 0.50, 1.20),
-	GlacialPhoenixCrest = CFrame.new(0, 0.45, 1.15),
-	NineNetherSoulHalo = CFrame.new(0, 0.45, 1.25),
-	PrimordialDragonWings = CFrame.new(0, 0.38, 0.95),
-	ThunderSpineNeedles = CFrame.new(0, 0.30, 0.85),
-
-	-- Placeholders
-	IronRootCore = CFrame.new(0, 0.20, -0.75),
-	SteelMeridianGlow = CFrame.new(0.85, 0.30, 0.20),
-	WindGaleAnklets = CFrame.new(0, -0.40, 0.30),
-	AzureDragonBracer = CFrame.new(1.65, 2.25, 0.10),
+	-- Tiers 5–7: 6-Pointed Sword Halos & Arrays (Floating upright behind torso)
+	DemonHeartCrown = CFrame.new(0, 0.50, 1.25),
+	FrostChasmHorns = CFrame.new(0, 0.50, 1.25),
+	SolarHaloRing = CFrame.new(0, 0.50, 1.25),
+	AsuraSpikePauldrons = CFrame.new(0, 0.50, 1.25),
+	PrimordialFloatingSwords = CFrame.new(0, 0.40, 1.20),
 }
 
 local function deductSpins(player: Player, count: number): boolean
@@ -88,70 +88,105 @@ local function attachVisualArtifact(character: Model, artifactMeshName: string?,
 
 	if not artifactMeshName or artifactMeshName == "" then return end
 
+	-- R6 uses "Torso", R15 uses "UpperTorso"
 	local upperTorso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") :: BasePart?
 	if not upperTorso then return end
 
 	local RS = ReplicatedStorage
 	local bloodlineFolder = RS:FindFirstChild("Bloodlines")
-		or (RS:FindFirstChild("Assets") and RS.Assets:FindFirstChild("Bloodlines"))
-	local modelPrefab = bloodlineFolder and bloodlineFolder:FindFirstChild(artifactMeshName) :: Model?
-
-	if modelPrefab then
-		local clone = modelPrefab:Clone()
-		clone.Name = "BloodlineArtifact"
-		local primary = clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart")
-		if primary then
-			for _, desc in ipairs(clone:GetDescendants()) do
-				if desc:IsA("BasePart") then
-					desc.Anchored = false
-					desc.CanCollide = false
-					desc.Massless = true
-				end
-			end
-
-			local offset = ARTIFACT_OFFSETS[artifactMeshName] or CFrame.new(0, 0.45, 1.20)
-			primary.CFrame = upperTorso.CFrame * offset
-
-			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = upperTorso
-			weld.Part1 = primary
-			weld.Parent = primary
-
-			if auraColor then
-				local light = Instance.new("PointLight")
-				light.Name = "AuraLight"
-				light.Color = auraColor
-				light.Range = 8
-				light.Brightness = 2.0
-				light.Parent = primary
-
-				local particles = Instance.new("ParticleEmitter")
-				particles.Name = "AuraParticles"
-				particles.LightEmission = 1
-				particles.Color = ColorSequence.new(auraColor)
-				particles.Size = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 0.15),
-					NumberSequenceKeypoint.new(0.5, 0.35),
-					NumberSequenceKeypoint.new(1, 0),
-				})
-				particles.Transparency = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 0.8),
-					NumberSequenceKeypoint.new(0.5, 0.3),
-					NumberSequenceKeypoint.new(1, 1),
-				})
-				particles.Rate = 12
-				particles.Lifetime = NumberRange.new(1.2, 2.0)
-				particles.Speed = NumberRange.new(1, 2)
-				particles.SpreadAngle = Vector2.new(30, 30)
-				particles.Acceleration = Vector3.new(0, 1.5, 0)
-				particles.Parent = primary
-			end
-		end
-		clone.Parent = character
+		or RS:FindFirstChild("Bloodline")
+		or (RS:FindFirstChild("Assets") and (RS.Assets:FindFirstChild("Bloodlines") or RS.Assets:FindFirstChild("Bloodline")))
+	
+	if not bloodlineFolder then
+		warn("[BloodlineManager] ReplicatedStorage.Bloodlines folder not found!")
+		return
 	end
+
+	local prefab = bloodlineFolder:FindFirstChild(artifactMeshName)
+	if not prefab then
+		warn(string.format("[BloodlineManager] 3D Model '%s' missing from ReplicatedStorage.Bloodlines!", artifactMeshName))
+		return
+	end
+
+	local clone = prefab:Clone()
+	clone.Name = "BloodlineArtifact"
+
+	local primary: BasePart? = nil
+	if clone:IsA("Model") then
+		primary = clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart", true)
+		if not clone.PrimaryPart and primary then
+			clone.PrimaryPart = primary
+		end
+	elseif clone:IsA("BasePart") then
+		primary = clone
+	end
+
+	if not primary then
+		warn(string.format("[BloodlineManager] Artifact '%s' has no BasePart or MeshPart to weld!", artifactMeshName))
+		clone:Destroy()
+		return
+	end
+
+	for _, desc in ipairs(clone:GetDescendants()) do
+		if desc:IsA("BasePart") then
+			desc.Anchored = false
+			desc.CanCollide = false
+			desc.Massless = true
+		end
+	end
+	if clone:IsA("BasePart") then
+		clone.Anchored = false
+		clone.CanCollide = false
+		clone.Massless = true
+	end
+
+	local offset = ARTIFACT_OFFSETS[artifactMeshName] or CFrame.new(0, 0.45, 1.20)
+	primary.CFrame = upperTorso.CFrame * offset
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = upperTorso
+	weld.Part1 = primary
+	weld.Parent = primary
+
+	if auraColor then
+		local light = primary:FindFirstChild("AuraLight") :: PointLight?
+		if not light then
+			light = Instance.new("PointLight")
+			light.Name = "AuraLight"
+			light.Parent = primary
+		end
+		light.Color = auraColor
+		light.Range = 8
+		light.Brightness = 2.0
+
+		local particles = primary:FindFirstChild("AuraParticles") :: ParticleEmitter?
+		if not particles then
+			particles = Instance.new("ParticleEmitter")
+			particles.Name = "AuraParticles"
+			particles.Parent = primary
+		end
+		particles.LightEmission = 1
+		particles.Color = ColorSequence.new(auraColor)
+		particles.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.15),
+			NumberSequenceKeypoint.new(0.5, 0.35),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+		particles.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.8),
+			NumberSequenceKeypoint.new(0.5, 0.3),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		particles.Rate = 12
+		particles.Lifetime = NumberRange.new(1.2, 2.0)
+		particles.Speed = NumberRange.new(1, 2)
+		particles.SpreadAngle = Vector2.new(30, 30)
+		particles.Acceleration = Vector3.new(0, 1.5, 0)
+	end
+
+	clone.Parent = character
 end
 
--- Full State Sync: includes active bloodline, slots, pity counters, and pending rolls
 local function sendState(player: Player)
 	local bloodlineId = PlayerDataManager.GetBloodline(player) or "MortalSwordBone"
 	local def = BloodlineConfig.GetBloodline(bloodlineId)
@@ -163,8 +198,8 @@ local function sendState(player: Player)
 	bloodlineRemote:FireClient(player, {
 		Action = "StateUpdate",
 		BloodlineId = bloodlineId,
-		DisplayName = def and def.Name or "Mortal Sword Meridians",
-		Rarity = def and def.Tier or "Common",
+		DisplayName = def and def.Name or "Mortal Sword Bone",
+		Rarity = def and def.Tier or "Mortal",
 		Description = def and def.Description or "Base physical meridians. Awaken at the altar to inherit ancestral arts.",
 		Passives = def and def.Passives or {},
 		RemainingSpins = PlayerDataManager.GetBloodlineSpins(player),
@@ -183,7 +218,6 @@ local function sendState(player: Player)
 	})
 end
 
--- Pity-Enforced Single Roll Resolution
 local function rollSingleWithPity(player: Player): (string, BloodlineConfig.BloodlineDefinition)
 	local pity = PlayerDataManager.IncrementBloodlinePity(player)
 	local forcedTier: BloodlineConfig.BloodlineTier? = nil
@@ -209,7 +243,6 @@ local function rollSingleWithPity(player: Player): (string, BloodlineConfig.Bloo
 
 	local rolledDef = BloodlineConfig.GetBloodline(rolledId) or BloodlineConfig.GetBloodline("MortalSwordBone") :: BloodlineConfig.BloodlineDefinition
 
-	-- Reset pity when a tier is hit
 	if rolledDef.Tier == "Mythic" then
 		PlayerDataManager.ResetBloodlinePity(player, "Mythic")
 	elseif rolledDef.Tier == "Legendary" then
@@ -219,7 +252,6 @@ local function rollSingleWithPity(player: Player): (string, BloodlineConfig.Bloo
 	return rolledId, rolledDef
 end
 
--- Single Spin
 function BloodlineManager.ProcessSpin(player: Player)
 	local success = deductSpins(player, 1)
 	if not success then
@@ -249,7 +281,6 @@ function BloodlineManager.ProcessSpin(player: Player)
 	})
 end
 
--- 10x Ritual Spin
 function BloodlineManager.Process10xSpin(player: Player)
 	local success = deductSpins(player, 10)
 	if not success then
@@ -292,7 +323,6 @@ function BloodlineManager.Process10xSpin(player: Player)
 	end
 end
 
--- Decision: Claim / Equip Pending Roll
 function BloodlineManager.ClaimRoll(player: Player, targetSlot: number?)
 	local pending = pendingRolls[player]
 	if not pending then
@@ -320,7 +350,6 @@ function BloodlineManager.ClaimRoll(player: Player, targetSlot: number?)
 	print(string.format("[BloodlineManager] %s claimed %s into Meridian Slot %d.", player.Name, pending.Name, slotIdx))
 end
 
--- Decision: Discard Pending Roll (Refunds unrefined stones)
 function BloodlineManager.DiscardRoll(player: Player)
 	local pending = pendingRolls[player]
 	if not pending then return end
@@ -337,7 +366,6 @@ function BloodlineManager.DiscardRoll(player: Player)
 	print(string.format("[BloodlineManager] %s discarded roll and reclaimed %d Spirit Stones.", player.Name, DISCARD_REFUND_STONES))
 end
 
--- Meridian Slot Management: Equip From Slot
 function BloodlineManager.EquipSlot(player: Player, slotIndex: number)
 	local maxSlots = PlayerDataManager.GetMaxBloodlineSlots(player)
 	if slotIndex < 1 or slotIndex > maxSlots then return end
@@ -360,13 +388,11 @@ function BloodlineManager.EquipSlot(player: Player, slotIndex: number)
 	print(string.format("[BloodlineManager] %s switched active lineage to Slot %d (%s).", player.Name, slotIndex, activeId))
 end
 
--- Meridian Slot Management: Unlock Higher Slots
 function BloodlineManager.UnlockSlot(player: Player, slotIndex: number)
 	local currentMax = PlayerDataManager.GetMaxBloodlineSlots(player)
 	if slotIndex ~= currentMax + 1 or slotIndex > 5 then return end
 
 	if slotIndex == 2 then
-		-- Slot 2 Requirement: Reach Foundation Establishment
 		local cultivation = CultivationManager.GetPlayerData(player)
 		local realm = cultivation and cultivation.Realm or "QiCondensation"
 		if realm == "QiCondensation" then
@@ -379,7 +405,6 @@ function BloodlineManager.UnlockSlot(player: Player, slotIndex: number)
 		PlayerDataManager.SetMaxBloodlineSlots(player, 2)
 
 	elseif slotIndex == 3 then
-		-- Slot 3 Requirement: 25,000 Spirit Stones
 		local currentStones = PlayerDataManager.GetSpiritStones(player)
 		if currentStones < SLOT_3_STONE_COST then
 			bloodlineRemote:FireClient(player, {
@@ -396,7 +421,6 @@ function BloodlineManager.UnlockSlot(player: Player, slotIndex: number)
 	print(string.format("[BloodlineManager] %s successfully unlocked Meridian Slot %d!", player.Name, slotIndex))
 end
 
--- Currency Exchange
 function BloodlineManager.ExchangeSpins(player: Player, amount: number?)
 	local count = math.clamp(math.floor(tonumber(amount) or 1), 1, 10)
 	local cost = count * 500
@@ -464,7 +488,7 @@ function BloodlineManager.Init()
 		pendingRolls[player] = nil
 	end)
 
-	print("[BloodlineManager] Master Gacha, Pity & Meridian Vault Server Engine Initialized.")
+	print("[BloodlineManager] Master Gacha, Pity & Meridian Vault Server Engine Initialized (7-Tier Compatible).")
 end
 
 return BloodlineManager

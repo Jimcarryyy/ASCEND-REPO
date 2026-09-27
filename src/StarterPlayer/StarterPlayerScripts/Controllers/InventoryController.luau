@@ -9,6 +9,7 @@
     - Instant scroll snap to top on tab/category/search switches
     - 2D High-Resolution Weapon Showcase for all 8 Sword Tiers
     - Server-synchronized with InventoryManager via UpdateInventory remote
+    - Performance Fix: Suppresses synchronous RenderGrid rebuilds while inventory is closed.
 ]]
 
 local Players = game:GetService("Players")
@@ -386,7 +387,7 @@ function InventoryController.Init()
 		end)
 	end
 
-	-- 2. Server Inventory Event Listener
+	-- 2. Server Inventory Event Listener (Performance Optimized: only rebuild DOM if UI is open)
 	updateInventoryRemote.OnClientEvent:Connect(function(newInventory: any)
 		inventoryCache = {}
 		if newInventory and type(newInventory) == "table" then
@@ -397,7 +398,9 @@ function InventoryController.Init()
 				end
 			end
 		end
-		InventoryController.RenderGrid()
+		if isOpen then
+			InventoryController.RenderGrid()
+		end
 	end)
 
 	-- 3. Initial Server Sync Request

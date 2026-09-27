@@ -5,12 +5,16 @@
     Directly binds to:
       1. MasterHUDGui.ToastContainer.ToastLabel with Generation-ID anti-race protection
       2. KillRewardGui.KillBanner (Dynamic Spirit Stones, Qi & Item Drops on Mob Defeats)
+    Updates:
+      - Preloads victory chime SFX and reuses persistent sound instance to eliminate audio fetch stalls.
+      - Fixed syntax typo in ShowMobKillBanner parameter list.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
+local ContentProvider = game:GetService("ContentProvider")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
@@ -23,6 +27,7 @@ local TWEEN_FADE_IN = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDire
 local TWEEN_FADE_OUT = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 local VICTORY_CHIME_SFX = "rbxassetid://131237241"
+local victorySoundInstance: Sound? = nil
 
 -- Toast References
 local masterGui: ScreenGui?
@@ -51,6 +56,12 @@ local function FormatNumber(num: number): string
 end
 
 local function PlayUISound(soundId: string, volume: number?)
+	if soundId == VICTORY_CHIME_SFX and victorySoundInstance then
+		victorySoundInstance.Volume = volume or 1.0
+		victorySoundInstance:Play()
+		return
+	end
+
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
 	sound.Volume = volume or 1.0
@@ -212,6 +223,20 @@ end
 
 function HUDController.Init()
 	HUDController.HookStudioUI()
+
+	-- Preload victory sound asset once at startup to prevent play stalls
+	local sound = Instance.new("Sound")
+	sound.Name = "PreloadedVictoryChime"
+	sound.SoundId = VICTORY_CHIME_SFX
+	sound.Volume = 0.85
+	sound.Parent = SoundService
+	victorySoundInstance = sound
+
+	task.spawn(function()
+		pcall(function()
+			ContentProvider:PreloadAsync({ sound })
+		end)
+	end)
 
 	local gatherRemote = RemoteEvents.GetRemote("GatheringAction") :: RemoteEvent?
 	if gatherRemote then
