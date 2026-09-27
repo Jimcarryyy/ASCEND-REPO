@@ -709,3 +709,23 @@ This document records structural architectural decisions, design paradigms, secu
   1. Expanded `MAX_SLOTS` from 60 to **100 slots** across `InventoryManager.luau`, `InventoryController.luau`, and `AlchemyController.luau`.
   2. Implemented flexible quality matching in `InventoryManager.AddItem` so gathered herbs stack into existing stacks regardless of omitted quality parameters, while populating new slots with `effectiveQuality = itemDef.Rarity or "Common"`.
 * **Consequences:** Immediately provides 40+ free inventory slots, completely resolving harvest addition failures and bag overflow lockouts.
+
+### ADR-082: ASCEND Combat V1 Scope Lock — Single Kit (Thunder) Focus
+* **Date:** 2026-09-28 (backfilled from Session Digest #<<N>>)
+* **Status:** Accepted [DEV-CONFIRMED]
+* **Context:** A proposed multi-Dao launch (Thunder and Fire simultaneously) introduced high scope inflation, balance risks, and required building net-new status effect runners and selection UI from scratch.
+* **Decision:**
+  1. V1 ships exactly ONE polished combat kit (Thunder, unnamed to the player).
+  2. Fire Sword Dao content, Dao selection UI, and Robux `DaoReversalToken` items are explicitly deferred to post-V1.
+  3. Talent/mastery node UI is explicitly deferred to post-V1 because zero node-graph UI precedents exist in `src/`.
+  4. Horizontal depth for V1 is locked to: (a) sword-variant flat passives per equipped blade, and (b) milestone-tied skill upgrades unlocked via realm breakthroughs.
+  5. The underlying architecture is shaped to be extensible (data-driven Daos table wrapper, generic status-effect table in `HitboxManager`) without exposing multi-Dao features to players in V1.
+
+### ADR-083: Bloodline 3D Visual Architecture — Orbs vs. Sword Halos
+* **Date:** 2026-09-28 (backfilled from Session Digest #<<N>>)
+* **Status:** Accepted [DEV-CONFIRMED]
+* **Context:** Bloodline 3D models previously used fragmented attachment sockets (Head, RightUpperArm, RightLowerArm, UpperTorso), causing asset clipping with hats and limbs.
+* **Decision:**
+  1. Standardized visual artifact design across 7 tiers: Tiers 1–4 (Mortal, Common, Spiritual, Earth) use floating Spiritual Orbs; Tiers 5–7 (Heaven, Legendary, Mythic) use 6-pointed Sword Halos / Back Arrays.
+  2. Standardized all visual artifact attachments to `UpperTorso` (or `Torso` in R6) mounted behind the back (`Vector3.new(0, 0.4, 0.95)` offset in `PlayerDataManager.luau`), eliminating limb and head accessory clipping.
+  3. Approved authoritative model names in `ReplicatedStorage.Bloodlines`: `MortalSpineBone`, `WindCrestFeather`, `VanguardIronGorget`, `LotusBackRelic`, `MistVeilShoulder`, `TremorGildedBracer`, `ThunderRuneBackplate`, `DemonHeartCrown`, `FrostChasmHorns`, `SolarHaloRing`, `AsuraSpikePauldrons`, `PrimordialFloatingSwords`.

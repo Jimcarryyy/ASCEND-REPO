@@ -244,3 +244,22 @@ Higher vintage ingredients (`1-Yr`, `10-Yr`, `100-Yr`, `1,000-Yr`) provide addit
 - `10-Yr` Average $\rightarrow$ **Earth Grade** (+15% Success Rate)
 - `100-Yr` Average $\rightarrow$ **Supreme Grade** (+30% Success Rate)
 - `1,000-Yr` Average $\rightarrow$ **Transcendent Grade** (+40% Success Rate)
+
+---
+
+## Appendix A: Cultivation Progression Canon Alignment (2026-09-28)
+*Reconciled against live Luau implementation in `CultivationConfig.luau:38–165`.*
+
+### 1. Canonical Power Multiplier Formula
+$$\text{PowerMultiplier}(\text{realm}, \text{order}) = \text{DamageMultiplier}_{\text{realm}} \times (1.0 + (\text{order} - 1) \times 0.05)$$
+- **Immortal Ascension (Tier 10) Base Multiplier:** **`2,000.0x`** *(Corrects obsolete spec documentation claim of 100,000x)*.
+- **Immortal Ascension Order 9 Multiplier:** **`2,800.0x`** ($2000.0 \times 1.40$) *(Corrects obsolete spec documentation claim of 220,000x)*.
+
+### 2. Canonical Health & Qi Baseline Values
+- **Golden Core (Tier 3) Base Max HP:** **`30,000`** *(Corrects previous spec table listing of 75,000)*.
+- **Immortal Ascension (Tier 10) Base Max HP:** **`80,000,000`** *(Corrects previous spec table listing of 100,000,000)*.
+- **Health Scaling Curve:** Linear additive per order: $\text{BaseMaxHealth} \times (1.0 + (\text{order} - 1) \times 0.05)$.
+- **Target Qi Scaling Curve:** Exponential per order: $\lfloor \text{BaseTargetQi} \times 1.45^{(\text{order} - 1)} \rfloor$.
+
+### 3. Arena Damage Normalization
+- Inside 50-stud Sparring Rings (`ArenaManager.luau`), cultivation power multipliers and weapon base damage are bypassed (`PowerMultiplier = 1.0`). Combat resolution evaluates fixed `ArenaDamage` stats to ensure competitive integrity across realm disparities.

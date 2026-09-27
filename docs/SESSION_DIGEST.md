@@ -58,3 +58,5 @@ STEP 5: OUTPUT IN BATCHES
 - Batch 2: the docs/ files.
 - Wait for me to say CONTINUE between batches.
 - End with a one-line list of files updated and files skipped.
+
+ADDITIONALLY, MAKE SURE TO ONLY TO EITHER COMPLETE REPLACEMENT OR ADDITIVE UPDATE WHERE I directly add the update at the end of the specific docs

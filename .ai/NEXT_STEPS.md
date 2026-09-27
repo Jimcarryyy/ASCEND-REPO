@@ -3,39 +3,28 @@
 > **Engineering Roadmap & Next Steps**  
 > **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
 > **Source of Truth:** Live Luau Codebase (`src/`) & Live Studio Place File  
-> **Active Priority:** Option A — Combat Kinematics & Codebase Polish
+> **Active Priority:** ASCEND Combat V1 — Single-Kit Implementation & Architecture Dao-Shaping
 
----\n\n## 🗺️ 11-Phase Production Roadmap
+---
+
+## 🗺️ Master Production Roadmap
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ [CLOSED] PHASE 1: CORE FOUNDATIONS & VERIFICATION PASS                      │
-│ - Studio Monkey Verify 9/9 checks, DataStore V3, Murim spawn dais,         │
-│   16 typed remotes, 10 Humanoid R6 mob models and spawners.                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ [ACTIVE] OPTION A: COMBAT KINEMATICS, REBOUND & BUG POLISH                  │
-│ - [x] InputController tail replacement & end-statement balance              │
-│ - [x] ArenaManager LinearVelocity capped decay rebound                      │
-│ - [x] M1 two-phase slash speed curve & FlyingSwordConfig.GetM1Timing        │
-│ - [x] AnimationController grounded forward attack lunge                     │
-│ - [x] Avatar hit reaction animations completely purged                      │
-│ - [x] ALT focus keybind re-map & MusicController combat threat purge        │
-│ - [ ] Server remote listeners for C meditation & B breakthrough             │
-│ - [ ] HitboxManager CastCompensatedBox parameter alignment                  │
-│ - [ ] ArenaManager safe-zone radius fix to unblock mob spawners             │
-│ - [ ] MobAIManager hit event dispatch to victim client                      │
-│ - [ ] SkillBarController Qi bar fill ratio (qCur / qMax) fix                │
+│ [ACTIVE] COMBAT V1: SINGLE-KIT HARDENING & DAO-SHAPED ARCHITECTURE          │
+│ - Phase 1: Timing Fix (ActiveDuration replacement in CombatStateManager)    │
+│ - Phase 2: Server-Authoritative Sword Intent (+25/hit, -8.0/s decay)        │
+│ - Phase 3: Architecture Dao-Shaping (Daos wrapper, status table skeleton)   │
+│ - Phase 4: VFX Dispatch Refactor (Lookup table in CombatVFXController)      │
+│ - Phase 5: Posture Wiring (Server attribute sync & local PostureBarFrame)   │
+│ - Phase 6: Horizontal Depth (Sword passives 6a & Milestone upgrades 6b)     │
+│ - Phase 7: QA & Tuning Pass (Single-kit TTK and posture pacing)             │
+│ - Phase 8: Docs Pass (COMBAT_SPEC.md sync & DAO_SYSTEM.md interface spec)   │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ [PENDING] PHASE 2 (CULTIVATION): ORDER 9 GATE & TRIBULATION (DEFERRED)      │
 │ - Order 9 breakthrough gate enforcement & Tribulation lightning waves       │
 │ - Breakthrough Dan preservation on tribulation failure with 50% Qi penalty  │
 │ - Interactive flame-timing slider minigame (Option B)                       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ [PENDING] PHASE 3: COMBAT CADENCE, BALANCING & DEFENSIVE TUNING             │
-│ - Skill cooldown rebalance (Q: 6.5s, E: 7.5s, F: 14.0s) verification       │
-│ - Skill E overhaul (traveling projectile beam, weapon palette attunement)   │
-│ - Defensive VFX wiring (ActiveShield on T, ShieldBreakEffects on break)     │
-│ - Black-bordered white ribbon sword trails & Shunpo dash polish             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ [CLOSED] PHASE 4: FLYING SWORD 3D FLIGHT ENGINE                             │
 │ - 3D flight, realm speed scaling, 25 Qi/s drain, clearance cushions.       │
@@ -62,7 +51,8 @@
 │ - Immortal Ascension Order 9 reset gate to QC Order 1                       │
 │ - Permanent perks: +30% Qi refining, +5% sword damage cap, [Samsara I] title│
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 11: PRODUCTION PROFILING & LAUNCH HARDENING                           │
-│ - Memory profiling under docs/ROBLOX_PERFORMANCE_RULES.md                   │
-│ - Mobile touch layout ergonomics and low-end device optimization            │
+│ [POST-V1] SWORD DAO EXPANSION: FIRE DAO & RESPEC ENGINE                     │
+│ - Fire Sword Dao kit (Solar Crucible, Cinderbrand Thrust, Comet Slam)       │
+│ - Blazeburn status-effect runner & Posture-freeze debuffs                   │
+│ - Registry-driven Dao Selection GUI & DaoReversalToken Robux item           │
 └─────────────────────────────────────────────────────────────────────────────┘

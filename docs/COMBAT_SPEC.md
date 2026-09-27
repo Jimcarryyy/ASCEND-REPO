@@ -341,3 +341,35 @@ SwordFlightRemote	Client
 ↔
 ↔
  Server	{ Action = "Mount" | "Dismount", Velocity = Vector3? }	Synchronizes flight mount transitions and velocity.
+
+ ---
+
+## Appendix A: Combat V1 Canonical Alignment & Corrections (2026-09-28)
+*Reconciled against live Luau implementation in `FlyingSwordConfig.luau`, `CombatStateManager.luau`, and `InputController.luau`.*
+
+### 1. F-Key Skill Slot Canonization
+- **Canonical Identity:** Slot 3 Offensive Ultimate (**"100-Slash Domain"**).
+- **Superseded Documentation:** Legacy documentation terms ("Falling Sky Slam", "Magma Cleave", "Heavy Slam") are obsolete and officially deprecated. In Combat V1, the F key executes a 32-stud spatial blink slash followed by an omnidirectional 100-slash domain detonation.
+
+### 2. Live Combat Skill Statistics (Thunder Baseline)
+| Skill Key | Name | Damage (Open / Arena) | Posture Damage | Cooldown | Qi Cost % | Active Duration | Recovery Duration | Knockback Vector |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Q** | Sword Tempest | 60 / 40 | 30 | 6.5s | 12% | 0.35s | 0.15s | `Vector3.zero` (In-place slice) |
+| **E** | Piercing Void Thrust | 75 / 50 | 45 | 7.5s | 15% | 0.14s | 0.20s | `Vector3.new(0, 0, -14)` |
+| **F** | 100-Slash Domain | 135 / 85 | 70 | 14.0s | 20% | 0.22s | 0.30s | `Vector3.new(0, 0, -22)` |
+| **Shift** | Qi Dash | — | — | 2.2s | 0% | — | — | Directional camera lunge |
+
+### 3. Verified Locomotion Speeds (`InputController.luau:80–87`)
+- **Open World:** Base Walk = `16.0 studs/s`, Sprint Toggle = `36.0 studs/s` *(Corrects previous spec claim of 24 studs/s)*.
+- **Sparring Arena:** Base Walk = `14.0 studs/s`, Sprint Toggle = `30.0 studs/s` *(Corrects previous spec claim of 20 studs/s)*.
+
+### 4. Dual-State Locomotion Engine (`Animate.client.luau`)
+- **Unarmed / Sheathed:** Standard R6 locomotion loop.
+- **Sword Drawn:** Activates dedicated sword-in-hand running animation (`rbxassetid://99873197987148`) locked to **`0.70x` playback speed** to synchronize stride length with standard weighted locomotion and footstep audio cadence.
+
+### 5. Defensive & Posture Mechanics (`HitboxManager.luau` & `FlyingSwordConfig.luau`)
+- **Max Posture:** `100` points.
+- **Normal Block Mitigation:** `70%` (`0.70`) incoming damage reduction.
+- **Perfect Parry Window:** `0.22s` frontal arc (`dot >= -0.25`); negates 100% damage, stuns attacker for `1.20s`, and restores `+8%` Cultivated Qi.
+- **Guard Break:** Depleting posture inflicts a `2.0s` stun and `+35%` damage vulnerability.
+- **Posture Regeneration:** `22 pts/s` following a `1.25s` delay post-engagement.

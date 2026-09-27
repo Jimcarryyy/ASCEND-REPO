@@ -800,3 +800,17 @@ This document records historical feature additions, engine enhancements, balance
 ### Fixed
 - **Input Controller Syntax Repair:** Applied complete tail replacement in `InputController.luau`, fixing unbalanced `end` statements around `OnInputBegan` and `OnInputEnded`.
 - **Studio Codebase Baseline Restoration:** Pulled stable Studio baseline into VS Code via Argon client priority.
+
+## [Unreleased] — 2026-09-28 (backfilled from Session Digest #<<N>>)
+
+### Added
+- **Dual-State Running Engine (`AnimationConfig.luau` & `Animate.client.luau`):** Integrated dedicated sword-wielding run animation (`rbxassetid://99873197987148`) playing when character has a sword drawn in hand, while preserving standard running when unarmed or sheathed [DEV-CONFIRMED].
+- **Locomotion Pacing Synchronization (`Animate.client.luau`):** Synchronized `SwordRun` playback speed to `0.70x` to match standard weighted running stride pacing and footstep audio cadence [DEV-CONFIRMED].
+- **Bloodline 3D Model Architecture (`BloodlineConfig.luau`):** Standardized 12-lineage visual manifest: Tiers 1–4 are Spiritual Orbs, Tiers 5–7 are 6-pointed Sword Halos / Arrays, all anchored to `UpperTorso` back mounts (`Vector3.new(0, 0.4, 0.95)`) [DEV-CONFIRMED].
+
+### Fixed
+- **Skill F Nil Player Indexing (`FlyingSwordServer.luau:372, 393`):** Imported missing `local Players = game:GetService("Players")`, resolving `attempt to index nil with 'GetPlayerFromCharacter'` during Skill F domain slice execution [DEV-CONFIRMED].
+- **HUDController Typo Fix (`HUDController.luau:150`):** Removed stray word in `ShowMobKillBanner(payload)` signature that broke controller loading and dependent `GatheringController.luau:23` [DEV-CONFIRMED].
+- **Mob Physics Void Fall Fix (`MobAIManager.luau:191`):** Removed unintended `CanCollide = false` loop on unanchored dying mob descendants that caused mob corpses to fall through terrain into the void [DEV-CONFIRMED].
+- **Bloodline Gacha & Pity Tier Resolution (`BloodlineManager.luau`):** Extended `TIER_RANK` to cover all 7 tiers (`Mortal` through `Mythic`) and updated artifact offset lookups [VERIFIED].
+- **Bloodline UI Passive Display (`BloodlineController.luau:263, 527`):** Corrected data lookup from `def.StatMultipliers` to `def.Passives`, restoring live stat formatting on cards [VERIFIED].
