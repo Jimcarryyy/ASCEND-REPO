@@ -38,7 +38,7 @@ local AnimationConfig = {
 		Equip = "rbxassetid://102430137097013",
 		Unequip = "rbxassetid://96702609673197",
 
-		Dash_W = "rbxassetid://137006811308011",
+		Dash_W = "rbxassetid://118004062849712",
 		Dash_S = "rbxassetid://108645166188876",
 		Dash_A = "rbxassetid://73026743327917",
 		Dash_D = "rbxassetid://128283257723015",

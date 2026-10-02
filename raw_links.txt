@@ -16,6 +16,7 @@ https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/ASSET_MANIFES
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/CODEBASE_CLEANUP_GUIDE.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/CODE_DEPENDENCY_GUIDE.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/COMBAT_SPEC.md
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/DAO_SYSTEM.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/GAME_DESIGN.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/PROGRESSION_SPEC.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/README.md
