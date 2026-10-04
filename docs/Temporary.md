@@ -2,6 +2,7 @@
 
 ## Feature Track Overview
 - [ ] **MON: Monster Core** (Humanoid Decoupling & MonsterUtil Architecture)
+- [ ] **ANIM: Monster Animations** (Animation Loader & Procedural Fallbacks)
 - [ ] **MOB: The 5 Mobs** (Beast AI Patterns, Posture, and Spawners)
 - [ ] **BOSS: Bosses & World Chest** (Boss Ability Framework, 3 Boss Encounters, Loot Chest)
 - [ ] **NPC: NPCs & Bounties** (Sect Dispatchers, Zone Bounties, Hub Facility Prompts)
@@ -14,13 +15,23 @@
 
 | Status | Phase ID | Goal | Files Touched |
 | :---: | :--- | :--- | :--- |
-| [ ] | **`MON-0`** | **Decision Gate:** MonsterUtil abstraction strategy (Attribute-first, optional Humanoid fallback). | *None (Design Decision)* |
+| [x] | **`MON-0`** | **Decision Gate:** CLOSED. Monsters are Humanoid-free. AnimationController hosts Animator; state/health stored via attributes. | *None (Architectural Decision)* |
 | [ ] | **`MON-1`** | Fix quest kill-tracking bug: replace hardcoded `"RogueDisciple"` with dynamic `mob.Id`. | `src/ServerScriptService/Server/Combat/MobAIManager.luau` |
-| [ ] | **`MON-2`** | Create `MonsterUtil.luau` standalone utility module. | `src/ReplicatedStorage/Shared/Utils/MonsterUtil.luau` *(New)* |
-| [ ] | **`MON-3`** | Route player hit detection, damage application, and parry stun through `MonsterUtil`. | `src/ServerScriptService/Server/Combat/HitboxManager.luau` |
-| [ ] | **`MON-4`** | Route spawning, health tracking, death events, and loot drops through `MonsterUtil`. | `src/ServerScriptService/Server/Combat/MobAIManager.luau` |
-| [ ] | **`MON-5`** | Abstract locomotion layer (`MoveTo` and `WalkSpeed` behind a generic driver interface). | `src/ServerScriptService/Server/Combat/MobAIManager.luau` |
-| [ ] | **`MON-6`** | Update client consumers: ALT lock-on reticle, screen boss health bar, overhead billboard bar. | `src/StarterPlayer/StarterPlayerScripts/Controllers/FocusTargetController.luau`<br>`src/StarterPlayer/StarterPlayerScripts/Controllers/BossHUDController.luau`<br>`src/ServerScriptService/Server/Combat/MobAIManager.luau` |
+| [ ] | **`MON-2`** | Create `MonsterUtil.luau` standalone foundation module (attribute-first reading, damage, death, state). | `src/ReplicatedStorage/Shared/Utils/MonsterUtil.luau` *(New)* |
+| [ ] | **`MON-3`** | Route player hit detection, damage application, and parry stun through `MonsterUtil`. Notify mob on hit. | `src/ServerScriptService/Server/Combat/HitboxManager.luau` |
+| [ ] | **`MON-4`** | `MobAIManager` spawn contract: validate `char1` PrimaryPart and `AnimationController`, get-or-create `Animator`, dynamic spawn height from extents, missing `Head` fallback, move models from staging to `ReplicatedStorage.MobModels`. | `src/ServerScriptService/Server/Combat/MobAIManager.luau` |
+| [ ] | **`MON-5`** | **Locomotion Layer & Facing Offset:** Implement Option A (unanchored + `SetNetworkOwner(nil)` + `LinearVelocity`/`AlignOrientation`), verify mesh facing axis, and implement `FacingOffset`. | `src/ServerScriptService/Server/Combat/MobAIManager.luau` |
+| [ ] | **`MON-6`** | Update client consumers: ALT lock-on reticle, screen boss health bar, overhead billboard bar using model attributes, dynamic height offsets for health UI and telegraph glints. | `src/StarterPlayer/StarterPlayerScripts/Controllers/FocusTargetController.luau`<br>`src/StarterPlayer/StarterPlayerScripts/Controllers/BossHUDController.luau`<br>`src/ServerScriptService/Server/Combat/MobAIManager.luau` |
+
+---
+
+## Feature ANIM: Monster Animations
+
+| Status | Phase ID | Goal | Files Touched |
+| :---: | :--- | :--- | :--- |
+| [ ] | **`ANIM-0`** | Investigation & Asset Audit: Locate/confirm animation asset IDs for quadrupeds. | *None (Audit / Asset Sourcing)* |
+| [ ] | **`ANIM-1`** | Create `MonsterAnimLoader.luau`: get-or-create Animator under AnimationController, play by name, sync walk speed, provide procedural body motion fallback when animations are missing. | `src/ReplicatedStorage/Shared/Utils/MonsterAnimLoader.luau` *(New)* |
+| [ ] | **`ANIM-2`** | Developer Authoring: Author/test one shared quadruped animation set (idle, walk, run, hit, stagger, death, attack windup) across the shared 24-bone rigs. | *Studio Animation Track Task* |
 
 ---
 
@@ -28,15 +39,15 @@
 
 | Status | Phase ID | Goal | Files Touched |
 | :---: | :--- | :--- | :--- |
-| [ ] | **`MOB-1`** | Extend `MobConfig.luau` schema (`AIPattern`, model key, optional fields) without breaking 10 existing mobs. | `src/ReplicatedStorage/Shared/Configs/MobConfig.luau` |
-| [ ] | **`MOB-2`** | Implement mob posture/poise damage deduction in combat resolution. | `src/ServerScriptService/Server/Combat/HitboxManager.luau`<br>`src/ServerScriptService/Server/Combat/MobAIManager.luau` |
-| [ ] | **`MOB-3`** | AI pattern framework: build behavior dispatcher inside `StepAI`. | `src/ServerScriptService/Server/Combat/MobAIManager.luau`<br>`src/ServerScriptService/Server/Combat/MobPatterns/` *(New)* |
+| [ ] | **`MOB-1`** | Extend `MobConfig.luau` schema (`AIPattern`, `Animations`, `BodyRadius`, `FacingOffset`) without altering existing 10 mobs. | `src/ReplicatedStorage/Shared/Configs/MobConfig.luau` |
+| [ ] | **`MOB-2`** | Implement mob posture/poise damage deduction and guard break in combat resolution. | `src/ServerScriptService/Server/Combat/HitboxManager.luau`<br>`src/ServerScriptService/Server/Combat/MobAIManager.luau` |
+| [ ] | **`MOB-3`** | AI pattern framework: build behavior dispatcher inside `StepAI` with attack/reaction helpers (windup, flinch, stagger, death collapse). | `src/ServerScriptService/Server/Combat/MobAIManager.luau`<br>`src/ServerScriptService/Server/Combat/MobPatterns/` *(New)* |
 | [ ] | **`MOB-4a`** | **Iron-Tusk Spirit Boar:** Config entry, linear charge brute pattern, and spawner alias. | `MobConfig.luau`<br>`MobAIManager.luau` |
 | [ ] | **`MOB-4b`** | **Wilderness Spirit Wolf:** Config entry, orbiting pack hunter / pounce pattern, and spawner alias. | `MobConfig.luau`<br>`MobAIManager.luau` |
 | [ ] | **`MOB-4c`** | **Magma Hound:** Config entry, fast flanking zig-zag pattern, and spawner alias. | `MobConfig.luau`<br>`MobAIManager.luau` |
 | [ ] | **`MOB-4d`** | **Obsidian Lava-Boar:** Config entry, armored charge, poise immunity, and ground hazard pattern. | `MobConfig.luau`<br>`MobAIManager.luau` |
 | [ ] | **`MOB-4e`** | **Frost-Fang Wolf:** Config entry, frost pounce pattern, and spawner alias. | `MobConfig.luau`<br>`MobAIManager.luau` |
-| [ ] | **`MOB-5`** | Implement Frost-Fang Wolf combat debuffs (stamina drain and posture recovery delay on players). | `src/ServerScriptService/Server/State/CombatStateManager.luau` |
+| [ ] | **`MOB-5`** | Implement Frost-Fang Wolf player debuffs (stamina drain and posture recovery delay). | `src/ServerScriptService/Server/State/CombatStateManager.luau` |
 
 ---
 
@@ -78,7 +89,7 @@
 
 | Status | Phase ID | Goal | Files Touched |
 | :---: | :--- | :--- | :--- |
-| [ ] | **`BLD-0`** | **Decision Gate:** Replace legacy 7-tier gacha with 5-tier sword bloodlines vs mapping existing saves. | *None (Design Decision)* |
+| [ ] | **`BLD-0`** | **Decision Gate:** Overhaul existing 7-tier gacha to 5-tier sword bloodlines vs mapping existing saves. | *None (Design Decision)* |
 | [ ] | **`BLD-1`** | Config schema update and 3D visual attachment (offset `CFrame.new(-1.5, 2.2, 0.2)` on torso). | `src/ReplicatedStorage/Shared/Configs/BloodlineConfig.luau`<br>`src/ServerScriptService/Server/State/BloodlineManager.luau` |
 | [ ] | **`BLD-2`** | Passive stat wiring (posture recovery rate, dash leap distance, maximum posture gauge). | `src/ServerScriptService/Server/State/CombatStateManager.luau`<br>`src/ServerScriptService/Server/State/PlayerDataManager.luau` |
 | [ ] | **`BLD-3`** | Combat resolution passives (critical damage, bonus damage vs guard-broken, i-frame extensions, void echoes). | `src/ServerScriptService/Server/Combat/HitboxManager.luau` |
