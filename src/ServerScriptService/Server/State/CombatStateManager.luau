@@ -2,16 +2,10 @@
 --[[
     CombatStateManager.luau
     Location: src/ServerScriptService/Server/State/CombatStateManager.luau
-    Phase 1 Updates:
-      - A6: Removed redundant server-side WalkSpeed writes. The server exclusively sets
-        attributes (CCState, InCombat), allowing the client WalkSpeed Governor to enforce
-        smooth transitions with zero physics contention.
-      - B1 Active -> Recovery -> Idle state promotion timers.
-      - B3 Staggered CC state support.
-      - C4 workspace:GetServerTimeNow() parry sync.
-    Phase 3/4 Updates:
-      - Unified timing: Uses FlyingSwordConfig.GetM1Timing to calculate ActiveTime and RecoveryTime,
-        matching client InputController attack lockout to the exact millisecond.
+    Updates:
+      - Continuous Moving M1: Server-authoritative step sequence with 2.20s finisher recovery lockout.
+      - Full combo reset on Dash, CC, Death, and Sheath.
+      - Posture regen, parry latency compensation, and decoupled WalkSpeed attributes preserved.
 ]]
 
 local Players = game:GetService("Players")
@@ -42,6 +36,8 @@ export type PlayerCombatState = {
 	Cooldowns: { [string]: number },
 	ActiveStrike: { SkillKey: string, StartTime: number }?,
 	LastReplicatedPosture: number,
+	M1Step: number,
+	LastM1Time: number,
 }
 
 local CombatStateManager = {}
@@ -96,6 +92,7 @@ function CombatStateManager.Init()
 		if payload.ToggleSheath then
 			local WeaponManager = getWeaponManager()
 			WeaponManager.ToggleSheath(player)
+			CombatStateManager.ResetM1Combo(player)
 			return
 		end
 
@@ -128,7 +125,7 @@ function CombatStateManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatStateManager Initialized (A6 Server Decoupled & B1/B3 Active).")
+	print("[ASCEND] CombatStateManager Initialized (A6 Server Decoupled & Fast M1 Active).")
 end
 
 function CombatStateManager.OnPlayerAdded(player: Player)
@@ -148,6 +145,8 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 		Cooldowns = {},
 		ActiveStrike = nil,
 		LastReplicatedPosture = FlyingSwordConfig.Posture.MaxPosture,
+		M1Step = 0,
+		LastM1Time = 0,
 	}
 
 	if characterConnections[player] then
@@ -169,6 +168,8 @@ function CombatStateManager.OnPlayerAdded(player: Player)
 			state.IFrameEndTime = 0
 			state.InCombatEndTime = 0
 			state.ActiveStrike = nil
+			state.M1Step = 0
+			state.LastM1Time = 0
 		end
 		character:SetAttribute("InCombat", false)
 		character:SetAttribute("CCState", "None")
@@ -197,6 +198,14 @@ function CombatStateManager.GetState(player: Player): PlayerCombatState?
 	return state
 end
 
+function CombatStateManager.ResetM1Combo(player: Player)
+	local state = playerStates[player]
+	if state then
+		state.M1Step = 0
+		state.LastM1Time = 0
+	end
+end
+
 function CombatStateManager.UpdateHeartbeat(dt: number)
 	local now = Workspace:GetServerTimeNow()
 
@@ -217,7 +226,7 @@ function CombatStateManager.UpdateHeartbeat(dt: number)
 			state.ActionState = "Idle"
 		end
 
-		if state.ActiveStrike and (now - state.ActiveStrike.StartTime) > 0.35 then
+		if state.ActiveStrike and (now - state.ActiveStrike.StartTime) > 0.25 then
 			state.ActiveStrike = nil
 		end
 
@@ -261,9 +270,6 @@ function CombatStateManager.IsInCombat(player: Player): boolean
 	return (state ~= nil) and (Workspace:GetServerTimeNow() < state.InCombatEndTime)
 end
 
--- =============================================================================
--- A6 FIX: ATTRIBUTE-ONLY CC APPLICATION (CLIENT GOVERNOR ENFORCES WALKSPEED)
--- =============================================================================
 function CombatStateManager.ApplyCC(player: Player, ccType: CCState, duration: number): boolean
 	local state = playerStates[player]
 	if not state then return false end
@@ -277,6 +283,8 @@ function CombatStateManager.ApplyCC(player: Player, ccType: CCState, duration: n
 	state.ActiveStrike = nil
 	state.ActionState = "Idle"
 	state.CCState = ccType
+	state.M1Step = 0
+	state.LastM1Time = 0
 
 	local char = player.Character
 	if char then
@@ -374,17 +382,22 @@ end
 
 function CombatStateManager.ExecuteDash(player: Player, payload: any)
 	local state = playerStates[player]
-	if not state then return end
+	if not state or state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" then
+		return
+	end
 
 	local now = Workspace:GetServerTimeNow()
-	if state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" then return end
-
 	local lastDash = state.Cooldowns["Shift"] or 0
 	if (now - lastDash) < FlyingSwordConfig.Skills.Shift.Cooldown then return end
 
 	state.Cooldowns["Shift"] = now
 	state.ActionState = "Dashing"
 	state.IFrameEndTime = now + FlyingSwordConfig.CC.IFrameDuration
+
+	if FlyingSwordConfig.DASH_CANCELS_M1 then
+		state.M1Step = 0
+		state.LastM1Time = 0
+	end
 
 	task.delay(0.30, function()
 		if state.ActionState == "Dashing" then
@@ -397,9 +410,9 @@ end
 
 function CombatStateManager.HandleStartChargeF(player: Player): boolean
 	local state = playerStates[player]
-	if not state then return false end
-
-	if state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" then return false end
+	if not state or state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" then
+		return false
+	end
 
 	local cultMgr = getCultivationManager()
 	local pData = if cultMgr then cultMgr.GetPlayerData(player) else nil
@@ -430,7 +443,9 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return false end
 
-	if state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" then return false end
+	if state.CCState == "Stunned" or state.CCState == "GuardBroken" or state.CCState == "Staggered" then
+		return false
+	end
 
 	if skillKey == "F" and state.ActionState == "ChargingF" then
 		-- Allowed
@@ -446,18 +461,35 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	end
 
 	local now = Workspace:GetServerTimeNow()
+	local targetStep = 1
 
-	local cdDuration = 0.28
 	if skillKey == "M1" then
-		local stepIdx = (payload and payload.ComboIndex) or 1
-		local stepData = FlyingSwordConfig.M1Combo[stepIdx] or FlyingSwordConfig.M1Combo[1]
-		cdDuration = (stepData.Cooldown or 0.38) * 0.72
-	elseif FlyingSwordConfig.Skills[skillKey] then
-		cdDuration = FlyingSwordConfig.Skills[skillKey].Cooldown or 1.0
-	end
+		local timeSinceLastM1 = now - (state.LastM1Time or 0)
+		local lastStep = state.M1Step or 0
 
-	local lastUsed = state.Cooldowns[skillKey] or 0
-	if (now - lastUsed) < cdDuration then return false end
+		-- Finisher recovery lockout check on server
+		if lastStep == 5 then
+			local finisherCd = (FlyingSwordConfig.M1Combo[5] and FlyingSwordConfig.M1Combo[5].Cooldown or 2.20) * 0.72
+			if timeSinceLastM1 < finisherCd then
+				return false
+			else
+				targetStep = 1
+			end
+		elseif timeSinceLastM1 <= (FlyingSwordConfig.SERVER_COMBO_TIMEOUT or 1.2) and lastStep >= 1 and lastStep < 5 then
+			targetStep = lastStep + 1
+		else
+			targetStep = 1
+		end
+
+		local stepData = FlyingSwordConfig.M1Combo[targetStep] or FlyingSwordConfig.M1Combo[1]
+		local cdDuration = (stepData.Cooldown or 0.30) * 0.72
+		local lastUsed = state.Cooldowns["M1"] or 0
+		if (now - lastUsed) < cdDuration then return false end
+	elseif FlyingSwordConfig.Skills[skillKey] then
+		local cdDuration = FlyingSwordConfig.Skills[skillKey].Cooldown or 1.0
+		local lastUsed = state.Cooldowns[skillKey] or 0
+		if (now - lastUsed) < cdDuration then return false end
+	end
 
 	local WeaponManager = getWeaponManager()
 	if WeaponManager.GetWeaponState(player) == "Back" then
@@ -480,17 +512,21 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 		end
 	end
 
+	if skillKey == "M1" then
+		state.M1Step = targetStep
+		state.LastM1Time = now
+	end
+
 	state.Cooldowns[skillKey] = now
 	state.ActiveStrike = { SkillKey = skillKey, StartTime = now }
 	state.ActionState = "Active"
 
 	CombatStateManager.TagInCombat(player)
 
-	local activeTime = 0.18
-	local recoveryTime = 0.14
+	local activeTime = 0.24
+	local recoveryTime = 0.06
 	if skillKey == "M1" then
-		local stepIdx = (payload and payload.ComboIndex) or 1
-		local timing = FlyingSwordConfig.GetM1Timing(stepIdx)
+		local timing = FlyingSwordConfig.GetM1Timing(targetStep)
 		activeTime = timing.ActiveTime
 		recoveryTime = timing.RecoveryTime
 	elseif FlyingSwordConfig.Skills[skillKey] then
@@ -501,10 +537,20 @@ function CombatStateManager.HandleSkillRequest(player: Player, skillKey: string,
 	state.ActiveEndTime = now + activeTime
 	state.RecoveryEndTime = now + activeTime + recoveryTime
 
-	local FlyingSwordServer = getFlyingSwordServer()
-	payload = FlyingSwordServer.ExecuteAttack(player, skillKey, payload)
+	local attackPayload = payload
+	if skillKey == "M1" then
+		if typeof(payload) == "table" then
+			attackPayload = table.clone(payload)
+			attackPayload.ComboIndex = targetStep
+		else
+			attackPayload = { ComboIndex = targetStep }
+		end
+	end
 
-	combatActionRemote:FireAllClients(player, skillKey, payload)
+	local FlyingSwordServer = getFlyingSwordServer()
+	attackPayload = FlyingSwordServer.ExecuteAttack(player, skillKey, attackPayload)
+
+	combatActionRemote:FireAllClients(player, skillKey, attackPayload)
 
 	return true
 end

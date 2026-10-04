@@ -3,13 +3,9 @@
     FlyingSwordConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/Weapons/FlyingSwordConfig.luau
     Balance & Kinematic Configuration for Pure Sword Cultivator.
-    Updates:
-      - Phase 5.4: Pacing & Cooldown Rebalance:
-        Q (Sword Tempest): 6.5s
-        E (Piercing Void Thrust): 7.5s
-        F (100-Slash Domain): 14.0s
-      - Phase 4: Unified client/server M1 timing via GetM1Timing.
-      - Q Skill Knockback: Set to Vector3.zero (no enemy displacement).
+    Phase 3 Additions:
+      - M1_TURN_TIME (0.05s smooth aim turn)
+      - SPEED_RAMP_DURATION (0.18s post-chain walkspeed ramp)
 ]]
 
 export type ComboStep = {
@@ -48,6 +44,18 @@ export type StepTiming = {
 }
 
 local FlyingSwordConfig = {
+	SERVER_COMBO_TIMEOUT = 1.2,
+	DASH_CANCELS_M1 = true,
+
+	-- Phase 2 & 3 Kinematic Constants
+	BUFFER_FRACTION     = 0.35,  -- Last 35% of attack lockout permits queuing next strike
+	CHAIN_END_DELAY     = 0.15,  -- Delay after swing duration before resetting attack state
+	ANIM_SPEED_MIN      = 0.6,   -- Lower bound for dynamic playback speed clamping
+	ANIM_SPEED_MAX      = 2.5,   -- Upper bound for dynamic playback speed clamping
+	M1_CROSSFADE        = 0.06,  -- Seamless cross-fade time between combo swings
+	M1_TURN_TIME        = 0.05,  -- Smooth turn duration toward aim direction
+	SPEED_RAMP_DURATION = 0.18,  -- Post-chain speed ramp duration back to base/sprint speed
+
 	M1Combo = {
 		[1] = {
 			Damage = 26,
@@ -56,10 +64,10 @@ local FlyingSwordConfig = {
 			Range = Vector3.new(5.4, 4.5, 6.2),
 			Offset = Vector3.new(0, 0, -3.2),
 			Knockback = Vector3.new(0, 0, -4),
-			Windup = 0.18,
-			ActiveDuration = 0.18,
-			Recovery = 0.22,
-			Cooldown = 0.58,
+			Windup = 0.06,
+			ActiveDuration = 0.24,
+			Recovery = 0.06,
+			Cooldown = 0.30,
 		},
 		[2] = {
 			Damage = 28,
@@ -68,10 +76,10 @@ local FlyingSwordConfig = {
 			Range = Vector3.new(5.6, 4.5, 6.4),
 			Offset = Vector3.new(0, 0, -3.2),
 			Knockback = Vector3.new(0, 0, -5),
-			Windup = 0.18,
-			ActiveDuration = 0.18,
-			Recovery = 0.20,
-			Cooldown = 0.56,
+			Windup = 0.06,
+			ActiveDuration = 0.24,
+			Recovery = 0.06,
+			Cooldown = 0.30,
 		},
 		[3] = {
 			Damage = 32,
@@ -80,10 +88,10 @@ local FlyingSwordConfig = {
 			Range = Vector3.new(6.0, 5.0, 6.6),
 			Offset = Vector3.new(0, 0, -3.4),
 			Knockback = Vector3.new(0, 0, -6),
-			Windup = 0.20,
-			ActiveDuration = 0.20,
-			Recovery = 0.20,
-			Cooldown = 0.60,
+			Windup = 0.06,
+			ActiveDuration = 0.24,
+			Recovery = 0.06,
+			Cooldown = 0.30,
 		},
 		[4] = {
 			Damage = 36,
@@ -92,10 +100,10 @@ local FlyingSwordConfig = {
 			Range = Vector3.new(6.4, 5.0, 7.0),
 			Offset = Vector3.new(0, 0, -3.5),
 			Knockback = Vector3.new(0, 0, -8),
-			Windup = 0.20,
-			ActiveDuration = 0.22,
-			Recovery = 0.20,
-			Cooldown = 0.62,
+			Windup = 0.06,
+			ActiveDuration = 0.24,
+			Recovery = 0.06,
+			Cooldown = 0.30,
 		},
 		[5] = {
 			Damage = 52,
@@ -104,10 +112,10 @@ local FlyingSwordConfig = {
 			Range = Vector3.new(7.5, 6.0, 8.5),
 			Offset = Vector3.new(0, 0, -4.0),
 			Knockback = Vector3.new(0, 0, -18),
-			Windup = 0.26,
-			ActiveDuration = 0.26,
-			Recovery = 0.30,
-			Cooldown = 0.82,
+			Windup = 0.10,
+			ActiveDuration = 0.40,
+			Recovery = 1.80,
+			Cooldown = 2.20,
 		},
 	},
 
@@ -199,15 +207,14 @@ local FlyingSwordConfig = {
 
 function FlyingSwordConfig.GetM1Timing(stepIndex: number): StepTiming
 	local stepData = FlyingSwordConfig.M1Combo[stepIndex] or FlyingSwordConfig.M1Combo[1]
-	local duration = stepData.Cooldown or 0.58
-	local windupRatio = 0.45
-
-	local activeTime = duration * windupRatio
-	local recoveryTime = duration * (1.0 - windupRatio)
+	local duration = stepData.Cooldown or 0.30
+	local isFinisher = (stepIndex == 5)
+	local activeTime = if isFinisher then 0.40 else 0.24
+	local recoveryTime = duration - activeTime
 	return {
 		ActiveTime = activeTime,
 		RecoveryTime = recoveryTime,
-		TotalLockout = activeTime + recoveryTime,
+		TotalLockout = duration,
 	}
 end
 

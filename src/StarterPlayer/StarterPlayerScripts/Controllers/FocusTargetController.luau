@@ -8,6 +8,7 @@
       - Added auto-disengagement when target is out of range (>65 studs) or obstructed.
       - Sets Character attribute 'IsFocusMode' for unified facing coordination (A2).
       - Top-Center Target Lock-On / Boss Frame (HP, Posture / Guard Break Gauge, Distance).
+      - Phase 3: Public getters IsFocusActive() and GetLockedTarget() added for hybrid facing.
 ]]
 
 local Players = game:GetService("Players")
@@ -246,7 +247,6 @@ end
 function FocusTargetController.Init()
 	CreateReticleAndHUD()
 
-	-- Dedicated ALT key toggle (LeftAlt or RightAlt)
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 		if gameProcessed then return end
 		if input.KeyCode == Enum.KeyCode.LeftAlt or input.KeyCode == Enum.KeyCode.RightAlt then
@@ -328,6 +328,23 @@ function FocusTargetController.SetFocus(active: boolean)
 	end
 
 	UserInputService.MouseBehavior = if isFocusActive then Enum.MouseBehavior.LockCenter else Enum.MouseBehavior.Default
+end
+
+-- =============================================================================
+-- PHASE 3 GETTERS FOR HYBRID FACING & ATTACK TARGETING
+-- =============================================================================
+function FocusTargetController.IsFocusActive(): boolean
+	return isFocusActive and currentTarget ~= nil and currentTarget.Parent ~= nil
+end
+
+function FocusTargetController.GetLockedTarget(): (Model?, Vector3?)
+	if isFocusActive and currentTarget and currentTarget.Parent then
+		local targetHrp = currentTarget:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if targetHrp then
+			return currentTarget, targetHrp.Position
+		end
+	end
+	return nil, nil
 end
 
 return FocusTargetController

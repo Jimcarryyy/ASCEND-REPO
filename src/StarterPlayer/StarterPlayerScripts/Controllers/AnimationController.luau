@@ -2,14 +2,11 @@
 --[[
     AnimationController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/AnimationController.luau
-    Updates:
-      - Hit Reaction Animation Completely Removed: Eliminates animation-induced ground collapse/ragdoll.
-        Damage feedback is delivered purely through camera shake, red flash, and audio.
-      - Phase 5.1: M1 Forward Step & Anticipation Lunge.
-      - Phase 3: Two-Phase Slash Speed Curve (slow windup 0.55x -> fast strike commit 1.65x).
-      - 4-Way Dash with Shunpo Vanish/Reappear Effect.
-      - M1 Body Twist Fix: Locks AutoRotate during attack so avatar never spins mid-slash.
-      - A6 Attribute Governance for WalkSpeed.
+    Phase 3 Updates:
+      - Integrated with InputController.SetLocalAttacking() for client-only speed dampening.
+      - Maintains humanoid.AutoRotate = false across active M1 chains to lock facing toward aim vector
+        while strafing with WASD.
+      - Restores humanoid.AutoRotate = true when chain finishes or when canceled via CancelCurrentSwing().
 ]]
 
 local Players = game:GetService("Players")
@@ -22,6 +19,7 @@ local Debris = game:GetService("Debris")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local AnimationConfig = require(ReplicatedStorage.Shared.Configs.AnimationConfig)
+local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.FlyingSwordConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 
 local AnimationController = {}
@@ -34,6 +32,10 @@ local activeAttackTrack: AnimationTrack? = nil
 local blockTrack: AnimationTrack? = nil
 local flightTrack: AnimationTrack? = nil
 local animPlayedConn: RBXScriptConnection? = nil
+
+-- Phase 2 & 3 State
+local currentSwingToken = 0
+local printedTrackLengths: { [string]: boolean } = {}
 
 local SWORD_SLASH_SOUND_ID = "rbxassetid://79218449800283"
 local DASH_SOUND_ID        = "rbxasset://sounds/swordlunge.wav"
@@ -93,7 +95,6 @@ function AnimationController.EmitSwordSlash(character: Model)
 	end
 end
 
--- Shunpo Disappear/Reappear Helper
 local function SetCharacterVanish(character: Model, vanish: boolean)
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -213,10 +214,7 @@ local function BindFlightListener(character: Model)
 		local isFlying = character:GetAttribute("IsFlying") == true
 
 		if isFlying then
-			if activeAttackTrack and activeAttackTrack.IsPlaying then
-				activeAttackTrack:Stop(0.05)
-				activeAttackTrack = nil
-			end
+			AnimationController.CancelCurrentSwing()
 			if blockTrack and blockTrack.IsPlaying then
 				blockTrack:Stop(0.05)
 				blockTrack = nil
@@ -285,6 +283,14 @@ function AnimationController.Init()
 		character:SetAttribute("IsDashing", false)
 		BindFlightListener(character)
 		BindSoundGovernor(character)
+
+		local hum = character:WaitForChild("Humanoid", 10) :: Humanoid?
+		if hum then
+			hum.Died:Connect(function()
+				AnimationController.CancelCurrentSwing()
+				AnimationController.ClearLoadedTracks()
+			end)
+		end
 	end)
 
 	if player.Character then
@@ -312,10 +318,7 @@ function AnimationController.Init()
 			isCurrentlyMeditating = newMeditatingState
 
 			if isCurrentlyMeditating then
-				if activeAttackTrack and activeAttackTrack.IsPlaying then
-					activeAttackTrack:Stop(0.05)
-					activeAttackTrack = nil
-				end
+				AnimationController.CancelCurrentSwing()
 
 				if not meditationTrack or meditationTrack.Parent == nil then
 					local animInstance = Instance.new("Animation")
@@ -356,21 +359,13 @@ function AnimationController.Init()
 
 	updateSkillStateRemote.OnClientEvent:Connect(function(weaponType: string)
 		currentWeapon = weaponType
+		AnimationController.CancelCurrentSwing()
 		AnimationController.ClearLoadedTracks()
 	end)
 
 	combatActionRemote.OnClientEvent:Connect(function(target: Player, skillKey: string, payload: any?)
 		if target == player and skillKey == "StatusEffect" then
-			if activeAttackTrack and activeAttackTrack.IsPlaying then
-				activeAttackTrack:Stop(0.04)
-				activeAttackTrack = nil
-			end
-			if player.Character then
-				player.Character:SetAttribute("IsAttacking", false)
-				player.Character:SetAttribute("AttackSpeedDampen", nil)
-				local hum = player.Character:FindFirstChildOfClass("Humanoid")
-				if hum then hum.AutoRotate = true end
-			end
+			AnimationController.CancelCurrentSwing()
 
 			local effectType = payload and payload.Effect
 			local duration = payload and payload.Duration or 0.5
@@ -388,10 +383,41 @@ function AnimationController.Init()
 		end
 	end)
 
-	print("[ASCEND] AnimationController Initialized (Shunpo Vanish Dash & M1 AutoRotate Fix Active).")
+	print("[ASCEND] AnimationController Initialized (Phase 3 Hybrid Facing & Movement Active).")
+end
+
+-- =============================================================================
+-- SWING INTERRUPTION CLEANUP (TOKEN-INVALIDATING)
+-- =============================================================================
+function AnimationController.CancelCurrentSwing()
+	currentSwingToken += 1
+	local crossfade = FlyingSwordConfig.M1_CROSSFADE or 0.06
+
+	if activeAttackTrack and activeAttackTrack.IsPlaying then
+		activeAttackTrack:Stop(crossfade)
+	end
+	activeAttackTrack = nil
+
+	local character = player.Character
+	if character then
+		character:SetAttribute("IsAttacking", false)
+		character:SetAttribute("AttackSpeedDampen", nil)
+		local hum = character:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Parent then
+			hum.AutoRotate = true
+		end
+		local sword = character:FindFirstChild("EquippedSword")
+		local trail = if sword then sword:FindFirstChildOfClass("Trail") else nil
+		if trail then trail.Enabled = false end
+	end
+
+	-- Notify InputController to clear local attack governor
+	local InputController = require(script.Parent.InputController)
+	InputController.SetLocalAttacking(false)
 end
 
 function AnimationController.ClearLoadedTracks()
+	AnimationController.CancelCurrentSwing()
 	for _, track in pairs(loadedTracks) do
 		pcall(function()
 			track:Stop(0.05)
@@ -416,6 +442,8 @@ function AnimationController.ClearLoadedTracks()
 end
 
 function AnimationController.StartBlock()
+	AnimationController.CancelCurrentSwing()
+
 	local character = player.Character
 	if not character then return end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -454,6 +482,8 @@ function AnimationController.StopBlock()
 end
 
 function AnimationController.PlayStunAnimation(duration: number)
+	AnimationController.CancelCurrentSwing()
+
 	local character = player.Character
 	if not character then return end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -481,6 +511,8 @@ function AnimationController.PlayStunAnimation(duration: number)
 end
 
 function AnimationController.PlayEquipAnimation(isEquipping: boolean)
+	AnimationController.CancelCurrentSwing()
+
 	local character = player.Character
 	if not character then return end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -511,18 +543,13 @@ function AnimationController.PlayEquipAnimation(isEquipping: boolean)
 	track:Play(0.15, 1, 1.0)
 end
 
--- =============================================================================
--- HIT REACTION: REMOVED TO PREVENT ANIMATION-INDUCED RAGDOLL / FALLDOWN
--- =============================================================================
 function AnimationController.PlayHitReaction(_reactionType: string?)
-	-- Intentionally disabled: visual damage feedback is delivered cleanly via
-	-- screen flash, camera impact shake, and floating damage numbers.
+	-- Disabled to prevent ground ragdoll / collapse glitches
 end
 
--- =============================================================================
--- 4-WAY DASH WITH SHUNPO VANISH & REAPPEAR REFINEMENT
--- =============================================================================
 function AnimationController.PerformDash(_dashStep: number?, overrideDir: Vector3?, overrideDirCode: string?)
+	AnimationController.CancelCurrentSwing()
+
 	local character = player.Character
 	if not character then return end
 
@@ -594,7 +621,6 @@ function AnimationController.PerformDash(_dashStep: number?, overrideDir: Vector
 	SpawnDashAfterimage(character)
 	TriggerDashCameraFX()
 
-	-- SHUNPO VANISH: Character dissolves into spectral blur
 	SetCharacterVanish(character, true)
 	track:Play(0.02, 1, 1.30)
 
@@ -643,7 +669,6 @@ function AnimationController.PerformDash(_dashStep: number?, overrideDir: Vector
 		end
 	end)
 
-	-- SHUNPO REAPPEAR & SNAP BRAKE
 	task.delay(DASH_DURATION * 0.40, function()
 		if linearVel and linearVel.Parent then
 			local snapDecay = TweenService:Create(
@@ -657,7 +682,6 @@ function AnimationController.PerformDash(_dashStep: number?, overrideDir: Vector
 				if dashOrientation and dashOrientation.Parent then dashOrientation:Destroy() end
 				if track and track.IsPlaying then track:Stop(0.08) end
 
-				-- Instant snap back to full visibility at destination
 				SetCharacterVanish(character, false)
 				SpawnDashAfterimage(character)
 
@@ -680,7 +704,7 @@ function AnimationController.PerformDash(_dashStep: number?, overrideDir: Vector
 end
 
 -- =============================================================================
--- HEAVY M1 SWING EXECUTION WITH FORWARD LUNGE & TWO-PHASE SPEED CURVE
+-- PHASE 3 M1 PLAYBACK: HYBRID FACING LOCK & CLIENT MOVEMENT GOVERNOR
 -- =============================================================================
 function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: number?)
 	local character = player.Character
@@ -704,8 +728,12 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 	local animDef = weaponConfig[animKey] or weaponConfig[skillKey]
 	if not animDef or animDef.AnimationId == "" then return end
 
+	currentSwingToken += 1
+	local thisToken = currentSwingToken
+
+	local crossfade = FlyingSwordConfig.M1_CROSSFADE or 0.06
 	if activeAttackTrack and activeAttackTrack.IsPlaying then
-		activeAttackTrack:Stop(0.04)
+		activeAttackTrack:Stop(crossfade)
 	end
 
 	local trackKey = currentWeapon .. "_" .. animKey
@@ -717,6 +745,25 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 		loadedTracks[trackKey] = track
 	end
 
+	if not printedTrackLengths[animKey] then
+		printedTrackLengths[animKey] = true
+		print(string.format("[AnimationController] Track [%s] Asset Length: %.4fs", animKey, track.Length))
+	end
+
+	local duration = animDef.CastDuration or 0.34
+	local rawLength = if track.Length > 0 then track.Length else duration
+	local computedSpeed = rawLength / duration
+
+	local minSpeed = FlyingSwordConfig.ANIM_SPEED_MIN or 0.6
+	local maxSpeed = FlyingSwordConfig.ANIM_SPEED_MAX or 2.5
+	local clampedSpeed = math.clamp(computedSpeed, minSpeed, maxSpeed)
+
+	if (computedSpeed < minSpeed or computedSpeed > maxSpeed) and not printedTrackLengths[animKey .. "_warn"] then
+		printedTrackLengths[animKey .. "_warn"] = true
+		warn(string.format("[AnimationController] [%s] Playback speed %.2fx was clamped to %.2fx (Length: %.4fs, Duration: %.2fs)",
+			animKey, computedSpeed, clampedSpeed, rawLength, duration))
+	end
+
 	PlayLocalSFX(SWORD_SLASH_SOUND_ID, 0.95)
 	AnimationController.EmitSwordSlash(character)
 
@@ -724,84 +771,36 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 	local trail = if equippedSword then equippedSword:FindFirstChildOfClass("Trail") else nil
 	if trail then trail.Enabled = true end
 
-	-- AUTOROTATE LOCK: Prevents character from spinning its body mid-slash
+	-- Hybrid Facing: Lock AutoRotate false so body keeps facing aim direction while strafing with WASD
 	humanoid.AutoRotate = false
 
-	character:SetAttribute("AttackSpeedDampen", animDef.WalkSpeedDampen or 6.0)
-	character:SetAttribute("IsAttacking", true)
-
-	local windupSpeed = animDef.WindupMultiplier or 0.55
-	local strikeSpeed = animDef.StrikeMultiplier or 1.65
-	local windupRatio = animDef.WindupRatio or 0.45
-	local duration = animDef.CastDuration or 0.58
-	local windupDuration = duration * windupRatio
+	-- Activate client-only attack movement governor
+	local InputController = require(script.Parent.InputController)
+	InputController.SetLocalAttacking(true, animDef.WalkSpeedDampen or 11.5)
 
 	track.Priority = Enum.AnimationPriority.Action4
 	track.Looped = false
-	track:Play(animDef.FadeTime or 0.08, 1, windupSpeed)
-	track:AdjustSpeed(windupSpeed)
+	track:Play(crossfade, 1, clampedSpeed)
 	activeAttackTrack = track
 
-	-- Windup-then-Snap Transition: Accelerates and steps forward at the exact instant the strike commits
-	task.delay(windupDuration, function()
-		if activeAttackTrack == track and track.IsPlaying and hrp.Parent then
-			track:AdjustSpeed(strikeSpeed)
-
-			-- FORWARD LUNGE: Steps forward in the attack direction with anticipation
-			local stepDir = Vector3.new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z).Unit
-			local rayParams = RaycastParams.new()
-			rayParams.FilterType = Enum.RaycastFilterType.Exclude
-			rayParams.FilterDescendantsInstances = { character }
-			local hitWall = Workspace:Raycast(hrp.Position, stepDir * 2.5, rayParams)
-
-			if not hitWall then
-				local rootAtt = hrp:FindFirstChild("RootAttachment") :: Attachment?
-				if not rootAtt then
-					rootAtt = Instance.new("Attachment")
-					rootAtt.Name = "RootAttachment"
-					rootAtt.Parent = hrp
-				end
-
-				local existingStep = hrp:FindFirstChild("M1StepVelocity")
-				if existingStep then existingStep:Destroy() end
-
-				local isFinisher = (stepNum >= 5)
-				local stepSpeed = if isFinisher then 36.0 else 24.0
-				local stepDuration = if isFinisher then 0.14 else 0.11
-
-				local stepVel = Instance.new("LinearVelocity")
-				stepVel.Name = "M1StepVelocity"
-				stepVel.Attachment0 = rootAtt
-				stepVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
-				stepVel.MaxAxesForce = Vector3.new(350000, 5000, 350000)
-				stepVel.VectorVelocity = stepDir * stepSpeed
-				stepVel.RelativeTo = Enum.ActuatorRelativeTo.World
-				stepVel.Parent = hrp
-
-				local stepTween = TweenService:Create(
-					stepVel,
-					TweenInfo.new(stepDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-					{ VectorVelocity = Vector3.zero }
-				)
-				stepTween:Play()
-				stepTween.Completed:Connect(function()
-					if stepVel and stepVel.Parent then stepVel:Destroy() end
-				end)
-				Debris:AddItem(stepVel, stepDuration + 0.05)
-			end
-		end
-	end)
-
+	local chainEndDelay = FlyingSwordConfig.CHAIN_END_DELAY or 0.15
 	task.delay(duration, function()
+		if thisToken ~= currentSwingToken then return end
 		if trail and activeAttackTrack == track then trail.Enabled = false end
-		if track and track.IsPlaying and activeAttackTrack == track then track:Stop(0.08) end
-		if activeAttackTrack == track then
-			character:SetAttribute("IsAttacking", false)
-			character:SetAttribute("AttackSpeedDampen", nil)
+		if track and track.IsPlaying and activeAttackTrack == track then track:Stop(crossfade) end
+
+		task.delay(chainEndDelay, function()
+			if thisToken ~= currentSwingToken then return end
+			if activeAttackTrack == track then
+				activeAttackTrack = nil
+			end
+
+			-- Chain ended: restore AutoRotate and ramp speed back up
+			InputController.SetLocalAttacking(false)
 			if humanoid and humanoid.Parent then
 				humanoid.AutoRotate = true
 			end
-		end
+		end)
 	end)
 end
 

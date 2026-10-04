@@ -1,56 +1,64 @@
-# ASCEND — Active Task: Combat V1 Implementation (Final Phase Plan v3)
+# ASCEND — Active Task: Combat V1 Implementation & Kinematic Overhaul
 
 > **Operational Task Tracker**  
 > **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
 > **Source of Truth:** Live Luau Codebase (`src/`) & Live Studio Place File  
-> **Active Priority:** ASCEND Combat V1 — Single-Kit Hardening & Architecture Dao-Shaping  
-> **Governing Decision:** Ship ONE polished combat kit (Thunder, unnamed). Dao selection UI, respec tokens, Fire content, and talent trees are deferred to post-V1. Depth comes from sword passives (6a) and milestone skill upgrades (6b).
+> **Active Priority:** ASCEND Combat V1 — Continuous Sword Chain, Locomotion Dampening & Kinematic Leap  
+> **Governing Decisions:** ADR-065 (Avatar Scale 1.15/0.90), ADR-066 (2.20s Finisher Lockout Loop), ADR-067 (11.5 studs/s Dampened WalkSpeed), ADR-068 (10-Jian Non-Elemental Roster).
 
 ---
 
-## 🎯 Active Focus: Phase 1 — Timing Fix
-Replace the broken `CastDuration * 0.5` fallback in `src/ServerScriptService/Server/State/CombatStateManager.luau` with explicit `ActiveDuration` from `FlyingSwordConfig.Skills`.
+## 🎯 Active Focus: Phase 4 — Dash as a Leap (Kinematics & Landing Detection)
+Replace the 125 studs/s horizontal burst with an aerial martial leap (~55 studs/s horizontal, ~35 studs/s vertical, ~0.36s airtime), sync server i-frames to 0.30s, and ensure dash cancels M1 attacks cleanly.
 
 ---
 
-## 📋 V1 Implementation Roadmap & Checklist
+## 📋 V1 Combat Overhaul Implementation Checklist
 
-### Phase 1: Timing Fix (ACTIVE)
-- [ ] Replace `CastDuration` fallback in `CombatStateManager.luau:407–419` with `FlyingSwordConfig.Skills[skillKey].ActiveDuration or 0.20`.
-- [x] Verify `Windup` usage: confirmed unconsumed by `InputController.luau` and `FlyingSwordServer.luau` [DEV-CONFIRMED].
-- [ ] Acceptance Test: Verify server logs show distinct active-hit windows (`Q = 0.35s`, `E = 0.14s`, `F = 0.22s`) instead of defaulting to `0.25s`.
+### Phase 0: Verification & Baseline Audit [COMPLETE]
+- [x] Full audit of combat files against raw GitHub links [DEV-CONFIRMED].
+- [x] Identified `DeWidth.client.luau` R6 failure and resolved with `ScaleTo(1.15)` in `AntiTripServer.server.luau` [DEV-CONFIRMED].
+- [x] Discovered server `IsAttacking = false` replication conflict on `RecoveryEndTime` [DEV-CONFIRMED].
+- [x] Verified `FlyingSwordServer.luau` crits are random math rolls and Sword Intent is client-only [DEV-CONFIRMED].
 
-### Phase 2: Server-Authoritative Sword Intent
-- [ ] Implement server-side Intent number in `CombatStateManager.luau` / `HitboxManager.luau`.
-- [ ] Increment +25 Intent on server-confirmed landed strikes (`HitboxManager`).
-- [ ] Implement server decay: -8.0/s starting 2.5s after last landed hit.
-- [ ] Replicate via character attribute `SwordIntent` to drive `SkillBarController.luau`'s existing `IntentBarFrame`.
-- [ ] Purge client-side prediction in `SkillBarController.luau` to eliminate desync.
-- [ ] Resolve Open Decision: Option A (holds at 100%, no trigger) vs Option B (universal bonus damage).
+### Phase 1: M1 Timing & Server-Authoritative Combo [COMPLETE / PENDING FULL-FILE COMMIT]
+- [x] Replace broken `CastDuration * 0.5` fallback with live `ActiveDuration` in `CombatStateManager.luau` [DEV-CONFIRMED].
+- [x] Implement server-authoritative `M1Step` and `LastM1Time` tracking in `CombatStateManager.luau` [PROPOSED].
+- [x] Reset M1 combo sequence on Death, CC, Sheath, and Dash [PROPOSED].
+- [x] Enforce 2.20s finisher lockout on Step 5 on server and client [DEV-CONFIRMED].
 
-### Phase 3: Architecture Dao-Shaping
-- [ ] Wrap `FlyingSwordConfig.Skills` into `FlyingSwordConfig.Daos.Thunder.Skills` with empty placeholders for `VFXPalette`, `IntentPayoff`, and `BaseAttributes`.
-- [ ] Update confirmed call sites across `CombatStateManager.luau`, `FlyingSwordServer.luau`, and `InputController.luau`.
-- [ ] Add generic `ActiveStatusEffects` table and runner skeleton to `HitboxManager.luau` (no active status effects in V1).
-- [ ] Set `DEFAULT_PLAYER_DATA.Cultivation.SwordDao = "Thunder"` in `PlayerDataManager.luau`.
+### Phase 2: M1 Animation, Lunge Removal, Swing Token & Input Buffering [COMPLETE / PENDING FULL-FILE COMMIT]
+- [x] Remove 0.55× windup speed curve; play at dynamic `track.Length / CastDuration` clamped to `[0.6, 2.5]` [PROPOSED].
+- [x] Standardize 0.06s cross-fading between swings [PROPOSED].
+- [x] Completely delete `M1StepVelocity` forward physics lunge [PROPOSED].
+- [x] Implement single-buffered input queuing via `BUFFER_FRACTION = 0.35` [PROPOSED].
+- [x] Implement swing token architecture (`currentSwingToken`) to eliminate stale `task.delay` race conditions [PROPOSED].
+- [x] Implement `CancelCurrentSwing()` for instant interruption on Block, Dash, Stun, Sheath, and Death [PROPOSED].
 
-### Phase 4: VFX Dispatch Refactor
-- [ ] Refactor `CombatVFXController.luau` skill branching to a `SkillVFXHandlers` lookup table.
-- [ ] Keep `ItemConfig.GetWeaponPalette` color sourcing intact (flag for post-V1 Dao color decision).
+### Phase 3: Movement Governor & Hybrid Facing [COMPLETE / PENDING FULL-FILE COMMIT]
+- [x] Decouple client movement governor from server `IsAttacking` attribute [DEV-CONFIRMED].
+- [x] Enforce controlled attack movement speed at `11.5 studs/s` (`math.min(baseSpeed, 11.5)`) [DEV-CONFIRMED].
+- [x] Implement post-chain smooth speed ramp up over `0.18s` (`SPEED_RAMP_DURATION`) [PROPOSED].
+- [x] Implement 0.05s hybrid facing turn (`M1_TURN_TIME`) and lock `AutoRotate = false` during swings for circle-strafing [PROPOSED].
+- [x] Integrate `Alt` target focus lock-on aim vectors via `FocusTargetController` getters [PROPOSED].
 
-### Phase 5: Posture Wiring & Local Bar
-- [ ] 5a: Verify and ensure `character:SetAttribute("Posture", ...)` is written in `HitboxManager.luau` on hit/regen, and `MaxPosture = 100` on spawn.
-- [ ] 5b: Add local `PostureBarFrame` to `MasterHUDGui.VitalsContainer` and bind in `SkillBarController.luau`.
-- [ ] 5c: QA parry window (0.22s), guard-break stun (2.0s), and posture regen delay (1.25s).
+### Phase 4: Dash as a Leap (ACTIVE NEXT STEP)
+- [ ] Replace 125 studs/s linear burst with a 4-way aerial leap arc (~55 horizontal, ~35 vertical, ~0.36s airtime) [PROPOSED].
+- [ ] Implement ground raycast/state landing detection to end dash state cleanly without air/floor jamming [PROPOSED].
+- [ ] Sync server i-frame duration from 0.24s to ~0.30s to match leap airtime [PROPOSED].
+- [ ] Connect `DASH_CANCELS_M1 = true` to abort active M1 swings and reset combo on dash [PROPOSED].
+- [ ] Ensure server transitions `ActionState` from `"Dashing"` to `"Idle"` cleanly upon landing [PROPOSED].
 
-### Phase 6: Horizontal Depth Pass
-- [ ] 6a: Add flat `Passive` modifiers to 8 sword tiers in `ItemConfig.luau`, render in `InventoryController.luau`, and hook into `FlyingSwordServer.luau`.
-- [ ] 6b: Add `SkillUnlock_Pill` to `AscensionModal` in `CultivationController.luau` and wire milestone stat/cooldown bumps upon breakthrough.
+### Phase 5: Server Hardening & Defense Tuning
+- [ ] Reduce `ClashWindow` from 0.18s to 0.10s and add `CLASH_COOLDOWN_PER_PLAYER = 0.6s` to prevent clash loops [PROPOSED].
+- [ ] Scale M1 posture damage by `M1_POSTURE_SCALE = 0.5` to preserve guard pacing against faster combo [PROPOSED].
+- [ ] Add `BLOCK_REPRESS_COOLDOWN = 0.45s` for Perfect Parry window to prevent block spam [PROPOSED].
+- [ ] Add log-only aim deviation checks (`AIM_MAX_DEVIATION_DEG = 100`) and packet rate sanity [PROPOSED].
 
-### Phase 7 & 8: QA, Tuning & Documentation
-- [ ] TTK sanity testing on single kit with corrected timing.
-- [ ] Update `COMBAT_SPEC.md` with true code values (2,800x cap, 36/30 sprint, Q/E/F timings).
-- [ ] Author `DAO_SYSTEM.md` as an architecture interface contract for future Daos.
+### Phase 6: Balance Metrics & Documentation Parity
+- [ ] Compute Before vs. After balance metrics (hits/sec, DPS, mob TTK) and add `M1_DAMAGE_SCALE = 1.0` multiplier [PROPOSED].
+- [ ] Bring `docs/COMBAT_SPEC.md` into 100% parity with live code constants [PROPOSED].
+- [ ] Finalize `.ai/CHANGELOG.md` and `.ai/DECISIONS.md` [PROPOSED].
 
 ---
 

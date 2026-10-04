@@ -814,3 +814,31 @@ This document records historical feature additions, engine enhancements, balance
 - **Mob Physics Void Fall Fix (`MobAIManager.luau:191`):** Removed unintended `CanCollide = false` loop on unanchored dying mob descendants that caused mob corpses to fall through terrain into the void [DEV-CONFIRMED].
 - **Bloodline Gacha & Pity Tier Resolution (`BloodlineManager.luau`):** Extended `TIER_RANK` to cover all 7 tiers (`Mortal` through `Mythic`) and updated artifact offset lookups [VERIFIED].
 - **Bloodline UI Passive Display (`BloodlineController.luau:263, 527`):** Corrected data lookup from `def.StatMultipliers` to `def.Passives`, restoring live stat formatting on cards [VERIFIED].
+
+## [Combat Overhaul & R6 Heroic Scaling] — 2026-10-04 (backfilled from Session Digest #N)
+
+### Added
+- **R6 Heroic Proportional Scaling (`AntiTripServer.server.luau`):**
+  - Implemented server-authoritative avatar scaling using `character:ScaleTo(1.15)` (15% larger than standard R6, ~5.75 studs tall) [DEV-CONFIRMED].
+  - Scaled down Head visual mesh by `0.90` and adjusted neck Motor6D C1 offset to `-0.45 * BODY_SCALE` for balanced anime/Xianxia proportions [DEV-CONFIRMED].
+  - Proportionally scaled all attached head accessories and hair handles to eliminate oversized chibi head ratios [DEV-CONFIRMED].
+
+### Changed
+- **M1 Attack Chain & Finisher Recovery Lockout:**
+  - Established a 5-hit sequential M1 combo with a mandatory **2.20s recovery lockout** after the 5th strike before the combo loop restarts at Hit 1, eliminating infinite attack spam [DEV-CONFIRMED].
+  - Retained natural martial windup (~0.30s cadence for hits 1–4, ~0.50s for hit 5) to eliminate robotic/exploitative pacing [DEV-CONFIRMED].
+  - Reset combo back to Hit 1 if the player pauses for $> 1.2\text{s}$ mid-combo [DEV-CONFIRMED].
+- **Combat Locomotion Dampening:**
+  - Implemented a movement dampening cap of **11.5 studs/s** while attacking (`math.min(baseSpeed, 11.5)`), ensuring players visibly slow down during swings but never halt completely [DEV-CONFIRMED].
+- **Client-Authoritative Movement Governor Decoupling:**
+  - Completely decoupled the client walkspeed governor in `InputController.luau` from the server-replicated `IsAttacking` attribute, permanently eliminating walkspeed stutter and sprint-flickering mid-combo [DEV-CONFIRMED].
+- **Weapon Progression Roster Rebalancing:**
+  - Scoped the core weapon progression to **10 strictly non-elemental Jian swords** with dedicated scabbards, capped at **Legendary** tier (omitting Mythic, Immortal, and Celestial tiers) [DEV-CONFIRMED].
+
+### Fixed
+- **R6 Avatar Width Scale Bug (`DeWidth.client.luau`):**
+  - Identified that `BodyWidthScale` NumberValues have no effect on R6 humanoid rigs in Roblox; resolved via `Model:ScaleTo()` in `AntiTripServer.server.luau` [VERIFIED].
+- **Server Attribute Collision on WalkSpeed:**
+  - Resolved mid-combo speed jumps caused by `CombatStateManager.luau` replicating `IsAttacking = false` on `RecoveryEndTime` while the client was executing subsequent chained swings [VERIFIED].
+- **Sword Intent Spending Misconception:**
+  - Verified that crits in `FlyingSwordServer.luau` are determined by random math rolls and do not consume Sword Intent on the server; Sword Intent remains client-side [VERIFIED].

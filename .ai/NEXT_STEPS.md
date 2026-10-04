@@ -3,7 +3,7 @@
 > **Engineering Roadmap & Next Steps**  
 > **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
 > **Source of Truth:** Live Luau Codebase (`src/`) & Live Studio Place File  
-> **Active Priority:** ASCEND Combat V1 — Single-Kit Implementation & Architecture Dao-Shaping
+> **Active Priority:** ASCEND Combat V1 — Kinematic Overhaul & Single-Kit Hardening
 
 ---
 
@@ -11,15 +11,14 @@
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ [ACTIVE] COMBAT V1: SINGLE-KIT HARDENING & DAO-SHAPED ARCHITECTURE          │
-│ - Phase 1: Timing Fix (ActiveDuration replacement in CombatStateManager)    │
-│ - Phase 2: Server-Authoritative Sword Intent (+25/hit, -8.0/s decay)        │
-│ - Phase 3: Architecture Dao-Shaping (Daos wrapper, status table skeleton)   │
-│ - Phase 4: VFX Dispatch Refactor (Lookup table in CombatVFXController)      │
-│ - Phase 5: Posture Wiring (Server attribute sync & local PostureBarFrame)   │
-│ - Phase 6: Horizontal Depth (Sword passives 6a & Milestone upgrades 6b)     │
-│ - Phase 7: QA & Tuning Pass (Single-kit TTK and posture pacing)             │
-│ - Phase 8: Docs Pass (COMBAT_SPEC.md sync & DAO_SYSTEM.md interface spec)   │
+│ [ACTIVE] COMBAT V1: KINEMATIC OVERHAUL & SINGLE-KIT HARDENING               │
+│ - [x] Phase 0: Baseline Verification & Discrepancy Audit [COMPLETE]         │
+│ - [x] Phase 1: M1 Timing, Finisher Lockout (2.20s) & Server Combo [PENDING] │
+│ - [x] Phase 2: M1 Animation, Lunge Removal, Token & Buffer [PENDING]        │
+│ - [x] Phase 3: Movement Governor (11.5 studs/s) & Hybrid Facing [PENDING]   │
+│ - [ ] Phase 4: Dash as a Leap (Air arc, landing check, i-frames) [ACTIVE]   │
+│ - [ ] Phase 5: Server Hardening (Clash cooldown, 0.5x posture scale, parry) │
+│ - [ ] Phase 6: Balance Metrics & COMBAT_SPEC.md Sync                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ [PENDING] PHASE 2 (CULTIVATION): ORDER 9 GATE & TRIBULATION (DEFERRED)      │
 │ - Order 9 breakthrough gate enforcement & Tribulation lightning waves       │
