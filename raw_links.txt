@@ -28,6 +28,68 @@ https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/docs/UI_UX_SPEC.md
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/raw_links.txt
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedFirst/LoadingScreen.client.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedFirst/LoadingScreen.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Demon slayer kit/Slayer mark/2/Head/LightConfig/EasyConfiguration.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Demon slayer kit/Slayer mark/2/Head/LightConfig/EasyConfiguration.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Demon slayer kit/Slayer mark/2/Head/LightConfig/Type.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Demon slayer kit/Slayer mark/2/Head/LightConfig/Type.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Demon slayer kit/Slayer mark/2/Head/LightConfig/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Demon slayer kit/Slayer mark/2/Head/LightConfig/init.server.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Demon slayer kit/Slayer mark/2/Head/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Demon slayer kit/Slayer mark/2/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Demon slayer kit/Slayer mark/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/Background/Error/LocalScript.client.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/Background/Error/LocalScript.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/Background/Error/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/Background/LocalScript.client.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/Background/LocalScript.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/Background/Message/LocalScript.client.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/Background/Message/LocalScript.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/Background/Message/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/Background/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/TextBox/Check.client.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/TextBox/Check.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/TextBox/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/TextButton/LocalScript.client.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/TextButton/LocalScript.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/TextButton/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/Validation/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/Dependencies/CoreValidation/init.server.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/Dependencies/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/Outer Crescent/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Model/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/AlchemyConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/AnimationConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/CultivationConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/GatheringConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/HUDSkinConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/InventoryConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/ItemConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/MobConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/MonetizationConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/RarityConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/SectConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/UIAssets.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Configs/Weapons/FlyingSwordConfig.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Old swords (IGNORE)/Shared/Network/RemoteEvents.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Rig/Animate.client.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BACKUP/Rig/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Please read.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Please read.server.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/1/Script to make it spin.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/1/Script to make it spin.server.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/1/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/BEAM OF POWER/Script to make it spin.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/BEAM OF POWER/Script to make it spin.server.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/BEAM OF POWER/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/SPECS/Script to make it spin.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/SPECS/Script to make it spin.server.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/SPECS/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/up/Script to make it spin.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/up/Script to make it spin.server.luau
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/Torso/up/init.meta.json
+https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/BloodlineAuraBackup/Tier4 Aura/init.meta.json
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/Shared/Configs/AlchemyConfig.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/Shared/Configs/AnimationConfig.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/ReplicatedStorage/Shared/Configs/BloodlineConfig.luau
@@ -94,4 +156,3 @@ https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/DeWidth.client.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src/StarterPlayer/StarterPlayerScripts/UIStrokeResponsiveScaler.client.luau
 https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/src_file_list.txt
-git ls-files | ForEach-Object { "https://raw.githubusercontent.com/Jimcarryyy/ASCEND-REPO/main/$_" } | Out-File -Encoding utf8 raw_links.txt
