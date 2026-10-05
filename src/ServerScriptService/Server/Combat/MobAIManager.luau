@@ -3,11 +3,13 @@
     MobAIManager.luau
     Location: src/ServerScriptService/Server/Combat/MobAIManager.luau
     Updates:
-      - Phase 5.3: Dispatches 'MobAttackHit' to victim client so mob attacks trigger camera shake,
-        red hit flash, hit reactions, and impact audio.
-      - E1 & E2 Combat AI pipeline with 0.22s telegraph glint
-      - Hardened OnMobDied with IsDead guard (zero duplicate reward multipliers)
-      - Advances Sect Sparring Duty strictly ONCE (1 count per kill)
+      - Monster Core: Dynamic ground placement based on model extents (replaces hardcoded 3.5).
+      - Humanoid-Free Spawn Contract: Supports char1 PrimaryPart skinned meshes.
+      - Model attributes (IsMonster, Health, MaxHealth, Posture, MaxPosture) initialize and replicate.
+      - Health UI dynamic offset scale for large beasts.
+      - Telegraph glint scales dynamically to front of beast.
+      - Animator resolves under AnimationController when Humanoid is absent.
+      - Dynamic mob.Id quest progression.
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -33,6 +35,8 @@ local combatActionRemote: RemoteEvent
 local SPAWNER_ALIAS_MAP: { [string]: string } = {
 	["RogueDisciples"] = "RogueDisciple",
 	["BossFallenSwordGenius"] = "Boss_FallenSwordGenius",
+	["Spawner_IronTuskBoar"] = "IronTuskBoar",
+	["Iron-Tusk Spirit Boar"] = "IronTuskBoar",
 }
 
 type MobState = "Patrol" | "Chase" | "Attack" | "Leash"
@@ -40,7 +44,7 @@ type MobState = "Patrol" | "Chase" | "Attack" | "Leash"
 type ActiveMob = {
 	Id: string,
 	Model: Model,
-	Humanoid: Humanoid,
+	Humanoid: Humanoid?,
 	RootPart: BasePart,
 	Config: any,
 	AnchorPart: BasePart?,
@@ -63,6 +67,7 @@ type ActiveMob = {
 	RunTrack: AnimationTrack?,
 	AttackTracks: { AnimationTrack },
 	IsDead: boolean?,
+	IsMonster: boolean?,
 }
 
 local activeMobs: { ActiveMob } = {}
@@ -153,10 +158,14 @@ local function CreateHealthUI(model: Model, displayName: string?): (BillboardGui
 	local head = model:FindFirstChild("Head") or model.PrimaryPart
 	if not head then return nil, nil end
 
+	local extents = model:GetExtentsSize()
+	local isMonster = model:GetAttribute("IsMonster") == true
+	local yOffset = if isMonster then (extents.Y * 0.5) + 1.8 else 2.8
+
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "MobHealthUI"
 	bb.Size = UDim2.new(0, 130, 0, 26)
-	bb.StudsOffset = Vector3.new(0, 2.8, 0)
+	bb.StudsOffset = Vector3.new(0, yOffset, 0)
 	bb.AlwaysOnTop = true
 	bb.MaxDistance = 65
 	bb.Parent = head
@@ -204,11 +213,16 @@ local function SpawnMobTelegraph(model: Model, duration: number)
 	local head = model:FindFirstChild("Head") or model.PrimaryPart
 	if not head then return end
 
+	local extents = model:GetExtentsSize()
+	local isMonster = model:GetAttribute("IsMonster") == true
+	local yOffset = if isMonster then (extents.Y * 0.45) else 0.6
+	local zOffset = if isMonster then -(extents.Z * 0.45) else -0.6
+
 	local flashPart = Instance.new("Part")
 	flashPart.Name = "TelegraphGlint"
 	flashPart.Shape = Enum.PartType.Ball
 	flashPart.Size = Vector3.new(1.2, 1.2, 1.2)
-	flashPart.CFrame = head.CFrame * CFrame.new(0, 0.6, -0.6)
+	flashPart.CFrame = head.CFrame * CFrame.new(0, yOffset, zOffset)
 	flashPart.Color = Color3.fromRGB(255, 30, 30)
 	flashPart.Material = Enum.Material.Neon
 	flashPart.Transparency = 0.2
@@ -264,7 +278,7 @@ local function OnMobDied(mob: ActiveMob)
 		end
 
 		pcall(function()
-			SectManager.AddQuestProgress(killer, "DefeatMob", "RogueDisciple", 1)
+			SectManager.AddQuestProgress(killer, "DefeatMob", mob.Id, 1)
 		end)
 
 		local awardedDrops: { { Name: string, Count: number } } = {}
@@ -323,24 +337,32 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	local targetX = anchorPart.Position.X + math.cos(angle) * dist
 	local targetZ = anchorPart.Position.Z + math.sin(angle) * dist
 
-	local rayOrigin = Vector3.new(targetX, anchorPart.Position.Y + 30, targetZ)
-	local rayParams = RaycastParams.new()
-	rayParams.FilterType = Enum.RaycastFilterType.Include
-	rayParams.FilterDescendantsInstances = { Workspace }
-	rayParams.IgnoreWater = true
-	local hit = Workspace:Raycast(rayOrigin, Vector3.new(0, -60, 0), rayParams)
-	local spawnY = if hit then hit.Position.Y + 3.5 else anchorPart.Position.Y + 3.5
-	local finalSpawnPos = Vector3.new(targetX, spawnY, targetZ)
-
 	local model: Model? = nil
 	local mobFolder = ReplicatedStorage:FindFirstChild("MobModels")
-	local template = mobFolder and (mobFolder:FindFirstChild(resolvedMobId) or mobFolder:FindFirstChild(mobId))
+	local template = mobFolder and (
+		mobFolder:FindFirstChild(resolvedMobId)
+		or mobFolder:FindFirstChild(mobId)
+		or (config.DisplayName and mobFolder:FindFirstChild(config.DisplayName))
+		or (config.Name and mobFolder:FindFirstChild(config.Name))
+	)
 
 	if template and template:IsA("Model") then
 		model = template:Clone()
 	else
 		return nil
 	end
+
+	local extents = model:GetExtentsSize()
+	local halfHeight = math.max(1.8, extents.Y * 0.5)
+
+	local rayOrigin = Vector3.new(targetX, anchorPart.Position.Y + 30, targetZ)
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Include
+	rayParams.FilterDescendantsInstances = { Workspace }
+	rayParams.IgnoreWater = true
+	local hit = Workspace:Raycast(rayOrigin, Vector3.new(0, -60, 0), rayParams)
+	local spawnY = if hit then hit.Position.Y + halfHeight else anchorPart.Position.Y + halfHeight
+	local finalSpawnPos = Vector3.new(targetX, spawnY, targetZ)
 
 	model:PivotTo(CFrame.new(finalSpawnPos))
 
@@ -359,68 +381,94 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 	end
 
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
-	local rootPart = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local rootPart = model.PrimaryPart
+		or (model:FindFirstChild("HumanoidRootPart") :: BasePart?)
+		or (model:FindFirstChild("char1") :: BasePart?)
 
-	if not humanoid or not rootPart then
+	if not rootPart then
 		model:Destroy()
 		return nil
 	end
+	model.PrimaryPart = rootPart
 
 	pcall(function()
 		rootPart:SetNetworkOwner(nil)
 	end)
 
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+	local isMonster = false
+	if humanoid then
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
 
-	humanoid.MaxHealth = config.MaxHealth
-	humanoid.Health = config.MaxHealth
-	humanoid.WalkSpeed = config.WalkSpeed
+		humanoid.MaxHealth = config.MaxHealth
+		humanoid.Health = config.MaxHealth
+		humanoid.WalkSpeed = config.WalkSpeed
+	else
+		isMonster = true
+		model:SetAttribute("IsMonster", true)
+		model:SetAttribute("Health", config.MaxHealth)
+		model:SetAttribute("MaxHealth", config.MaxHealth)
+		model:SetAttribute("WalkSpeed", config.WalkSpeed)
+		model:SetAttribute("Posture", 100)
+		model:SetAttribute("MaxPosture", 100)
+		if config.IsBoss then
+			model:SetAttribute("IsBoss", true)
+		end
+	end
 
 	local healthGui, healthBar = CreateHealthUI(model, config.DisplayName or config.Name or resolvedMobId)
 
-	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+	local animController = model:FindFirstChildOfClass("AnimationController")
+	local animator: Animator? = nil
+	if humanoid then
+		animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+	elseif animController then
+		animator = animController:FindFirstChildOfClass("Animator") or Instance.new("Animator", animController)
+	end
+
 	local walkTrack: AnimationTrack? = nil
 	local runTrack: AnimationTrack? = nil
 	local attackTracks: { AnimationTrack } = {}
 
-	local walkAnimId = AnimationConfig.Movement and (AnimationConfig.Movement :: any).Walk
-	if walkAnimId and walkAnimId ~= "" then
-		pcall(function()
-			local animObj = Instance.new("Animation")
-			animObj.AnimationId = walkAnimId
-			walkTrack = animator:LoadAnimation(animObj)
-			walkTrack.Looped = true
-			walkTrack.Priority = Enum.AnimationPriority.Movement
-		end)
-	end
+	if animator then
+		local walkAnimId = AnimationConfig.Movement and (AnimationConfig.Movement :: any).Walk
+		if walkAnimId and walkAnimId ~= "" then
+			pcall(function()
+				local animObj = Instance.new("Animation")
+				animObj.AnimationId = walkAnimId
+				walkTrack = animator:LoadAnimation(animObj)
+				walkTrack.Looped = true
+				walkTrack.Priority = Enum.AnimationPriority.Movement
+			end)
+		end
 
-	local runAnimId = AnimationConfig.Movement and (AnimationConfig.Movement :: any).Run
-	if runAnimId and runAnimId ~= "" then
-		pcall(function()
-			local animObj = Instance.new("Animation")
-			animObj.AnimationId = runAnimId
-			runTrack = animator:LoadAnimation(animObj)
-			runTrack.Looped = true
-			runTrack.Priority = Enum.AnimationPriority.Movement
-		end)
-	end
+		local runAnimId = AnimationConfig.Movement and (AnimationConfig.Movement :: any).Run
+		if runAnimId and runAnimId ~= "" then
+			pcall(function()
+				local animObj = Instance.new("Animation")
+				animObj.AnimationId = runAnimId
+				runTrack = animator:LoadAnimation(animObj)
+				runTrack.Looped = true
+				runTrack.Priority = Enum.AnimationPriority.Movement
+			end)
+		end
 
-	local swordCfg = AnimationConfig.FlyingSword :: any
-	if swordCfg then
-		for step = 1, 5 do
-			local stepDef = swordCfg["M1_" .. tostring(step)]
-			if stepDef and stepDef.AnimationId and stepDef.AnimationId ~= "" then
-				pcall(function()
-					local animObj = Instance.new("Animation")
-					animObj.AnimationId = stepDef.AnimationId
-					local track = animator:LoadAnimation(animObj)
-					track.Looped = false
-					track.Priority = Enum.AnimationPriority.Action4
-					table.insert(attackTracks, track)
-				end)
+		local swordCfg = AnimationConfig.FlyingSword :: any
+		if swordCfg and not isMonster then
+			for step = 1, 5 do
+				local stepDef = swordCfg["M1_" .. tostring(step)]
+				if stepDef and stepDef.AnimationId and stepDef.AnimationId ~= "" then
+					pcall(function()
+						local animObj = Instance.new("Animation")
+						animObj.AnimationId = stepDef.AnimationId
+						local track = animator:LoadAnimation(animObj)
+						track.Looped = false
+						track.Priority = Enum.AnimationPriority.Action4
+						table.insert(attackTracks, track)
+					end)
+				end
 			end
 		end
 	end
@@ -451,20 +499,34 @@ function MobAIManager.SpawnMob(mobId: string, anchorPart: BasePart, spawnRadius:
 		RunTrack = runTrack,
 		AttackTracks = attackTracks,
 		IsDead = false,
+		IsMonster = isMonster,
 	}
 
 	table.insert(activeMobs, mob)
 
-	humanoid.HealthChanged:Connect(function(newHealth)
-		if healthBar then
-			local pct = math.clamp(newHealth / config.MaxHealth, 0, 1)
-			healthBar.Size = UDim2.new(pct, 0, 1, 0)
-		end
-	end)
+	if humanoid then
+		humanoid.HealthChanged:Connect(function(newHealth)
+			if healthBar then
+				local pct = math.clamp(newHealth / config.MaxHealth, 0, 1)
+				healthBar.Size = UDim2.new(pct, 0, 1, 0)
+			end
+		end)
 
-	humanoid.Died:Connect(function()
-		OnMobDied(mob)
-	end)
+		humanoid.Died:Connect(function()
+			OnMobDied(mob)
+		end)
+	else
+		model:GetAttributeChangedSignal("Health"):Connect(function()
+			local currentHp = tonumber(model:GetAttribute("Health")) or 0
+			if healthBar then
+				local pct = math.clamp(currentHp / config.MaxHealth, 0, 1)
+				healthBar.Size = UDim2.new(pct, 0, 1, 0)
+			end
+			if currentHp <= 0 then
+				OnMobDied(mob)
+			end
+		end)
+	end
 
 	return model
 end
@@ -477,6 +539,12 @@ function MobAIManager.RecordDamage(mobModel: Model, attacker: Player)
 			if mob.State == "Patrol" then
 				mob.TargetPlayer = attacker
 				mob.State = "Chase"
+			end
+			if mob.IsMonster then
+				local hp = tonumber(mobModel:GetAttribute("Health")) or 0
+				if hp <= 0 then
+					OnMobDied(mob)
+				end
 			end
 			break
 		end
@@ -493,7 +561,8 @@ local function GetFlockSeparationVector(currentMob: ActiveMob): Vector3
 	local SEPARATION_RADIUS = 5.5
 
 	for _, other in ipairs(activeMobs) do
-		if other ~= currentMob and other.RootPart and other.RootPart.Parent and other.Humanoid.Health > 0 then
+		local otherAlive = if other.Humanoid then (other.Humanoid.Health > 0) else ((tonumber(other.Model:GetAttribute("Health")) or 0) > 0)
+		if other ~= currentMob and other.RootPart and other.RootPart.Parent and otherAlive then
 			local delta = currentPos - other.RootPart.Position
 			local dist = delta.Magnitude
 			if dist > 0.001 and dist < SEPARATION_RADIUS then
@@ -524,12 +593,13 @@ local function StepAI()
 		local config = mob.Config
 		local anchor = mob.AnchorPart
 
-		if not rootPart or not rootPart.Parent or not humanoid or humanoid.Health <= 0 then
+		local isAlive = if humanoid then (humanoid.Health > 0) else ((tonumber(mob.Model:GetAttribute("Health")) or 0) > 0)
+		if not rootPart or not rootPart.Parent or not isAlive then
 			continue
 		end
 
 		if mob.Model:GetAttribute("IsStunned") == true then
-			humanoid.WalkSpeed = 0
+			if humanoid then humanoid.WalkSpeed = 0 end
 			continue
 		end
 
@@ -552,7 +622,8 @@ local function StepAI()
 			if mob.RunTrack then
 				if isPhysicallyMoving and not mob.RunTrack.IsPlaying then
 					mob.RunTrack:Play(0.15)
-					mob.RunTrack:AdjustSpeed(math.clamp(humanoid.WalkSpeed / 20, 0.9, 1.4))
+					local speedMult = if humanoid then humanoid.WalkSpeed / 20 else 1.0
+					mob.RunTrack:AdjustSpeed(math.clamp(speedMult, 0.9, 1.4))
 				elseif not isPhysicallyMoving and mob.RunTrack.IsPlaying then
 					mob.RunTrack:Stop(0.15)
 				end
@@ -562,7 +633,8 @@ local function StepAI()
 			if mob.WalkTrack then
 				if isPhysicallyMoving and not mob.WalkTrack.IsPlaying then
 					mob.WalkTrack:Play(0.15)
-					mob.WalkTrack:AdjustSpeed(math.clamp(humanoid.WalkSpeed / 14, 0.85, 1.3))
+					local speedMult = if humanoid then humanoid.WalkSpeed / 14 else 1.0
+					mob.WalkTrack:AdjustSpeed(math.clamp(speedMult, 0.85, 1.3))
 				elseif not isPhysicallyMoving and mob.WalkTrack.IsPlaying then
 					mob.WalkTrack:Stop(0.15)
 				end
@@ -573,7 +645,7 @@ local function StepAI()
 		end
 
 		if state == "Patrol" then
-			humanoid.WalkSpeed = config.WalkSpeed * 0.65
+			if humanoid then humanoid.WalkSpeed = config.WalkSpeed * 0.65 end
 			local candidates = GetNearbyPlayers(rootPos, config.AggroRadius or 24)
 			if #candidates > 0 then
 				mob.TargetPlayer = candidates[1]
@@ -584,12 +656,14 @@ local function StepAI()
 					local angle = math.random() * math.pi * 2
 					local dist = math.random() * (mob.SpawnRadius * 0.7)
 					mob.PatrolTarget = anchorPos + Vector3.new(math.cos(angle) * dist, 0, math.sin(angle) * dist)
-					humanoid:MoveTo(mob.PatrolTarget)
+					if humanoid then
+						humanoid:MoveTo(mob.PatrolTarget)
+					end
 				end
 			end
 
 		elseif state == "Chase" then
-			humanoid.WalkSpeed = config.WalkSpeed * 1.15
+			if humanoid then humanoid.WalkSpeed = config.WalkSpeed * 1.15 end
 
 			local target = mob.TargetPlayer
 			local targetChar = target and target.Character
@@ -612,7 +686,9 @@ local function StepAI()
 					local separation = GetFlockSeparationVector(mob)
 					local destination = targetHrp.Position + surroundOffset + separation
 
-					humanoid:MoveTo(destination)
+					if humanoid then
+						humanoid:MoveTo(destination)
+					end
 				end
 			else
 				mob.TargetPlayer = nil
@@ -690,9 +766,14 @@ local function StepAI()
 			end
 
 		elseif state == "Leash" then
-			humanoid.WalkSpeed = config.WalkSpeed * 1.5
-			humanoid:MoveTo(anchorPos)
-			humanoid.Health = math.min(humanoid.Health + 20, config.MaxHealth)
+			if humanoid then
+				humanoid.WalkSpeed = config.WalkSpeed * 1.5
+				humanoid:MoveTo(anchorPos)
+				humanoid.Health = math.min(humanoid.Health + 20, config.MaxHealth)
+			else
+				local curHp = tonumber(mob.Model:GetAttribute("Health")) or 0
+				mob.Model:SetAttribute("Health", math.min(curHp + 20, config.MaxHealth))
+			end
 
 			if (rootPos - anchorPos).Magnitude <= 5 then
 				mob.State = "Patrol"
@@ -747,7 +828,7 @@ function MobAIManager.Init()
 		end
 	end)
 
-	print("[ASCEND] MobAIManager Initialized (Single-Count Quest Progression Active).")
+	print("[ASCEND] MobAIManager Initialized (Monster Core Active).")
 end
 
 return MobAIManager
