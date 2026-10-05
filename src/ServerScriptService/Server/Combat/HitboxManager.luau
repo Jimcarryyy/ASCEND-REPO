@@ -11,11 +11,6 @@
     Bugfix:
       - Overloaded CastCompensatedBox to accept both (cframe, size, ignoreList) and (attacker, cframe, size, ignoreList).
       - Populates dual-interface fields on results table for single and multi-hit callers.
-    Monster Core Updates:
-      - HitResult.Humanoid is optional (supports Humanoid-free char1 skinned monsters).
-      - CastCompensatedBox recognizes models with IsMonster == true and Health > 0.
-      - ApplyCombatResolution routes damage to Health attribute when Humanoid is nil.
-      - Resilient parry stun when mob Humanoid is nil.
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -30,7 +25,7 @@ local CombatStateManager = require(ServerScriptService.Server.State.CombatStateM
 
 export type HitResult = {
 	Character: Model,
-	Humanoid: Humanoid?,
+	Humanoid: Humanoid,
 	HitPart: BasePart,
 	TargetPlayer: Player?,
 }
@@ -117,12 +112,7 @@ function HitboxManager.CastCompensatedBox(
 		local model = part:FindFirstAncestorOfClass("Model")
 		if model and not hitCharacters[model] and model ~= attacker then
 			local humanoid = model:FindFirstChildOfClass("Humanoid")
-			local isMonster = model:GetAttribute("IsMonster") == true
-			local monsterHp = tonumber(model:GetAttribute("Health")) or 0
-
-			local isAlive = (humanoid and humanoid.Health > 0) or (isMonster and monsterHp > 0)
-
-			if isAlive then
+			if humanoid and humanoid.Health > 0 then
 				hitCharacters[model] = true
 				local targetPlayer = Players:GetPlayerFromCharacter(model)
 				table.insert(results, {
@@ -151,8 +141,7 @@ end
 -- E1 & E2 FIX: SUPPORTS BOTH PLAYERS AND MOB ATTACKERS IN COMBAT RESOLUTION
 -- =============================================================================
 function HitboxManager.ApplyCombatResolution(
-	attackerPlayer: Player?,
-	targetResult: HitResult,
+	attackerPlayer: Player?,	targetResult: HitResult,
 	rawDamage: number,
 	postureDamage: number,
 	knockbackVector: Vector3?,
@@ -162,7 +151,7 @@ function HitboxManager.ApplyCombatResolution(
 
 	local targetChar = targetResult.Character
 	local humanoid = targetResult.Humanoid
-	local targetHrp = (targetChar:FindFirstChild("HumanoidRootPart") or targetChar.PrimaryPart) :: BasePart?
+	local targetHrp = targetChar:FindFirstChild("HumanoidRootPart") :: BasePart?
 
 	local attackerChar = if attackerCharOverride then attackerCharOverride else (if attackerPlayer then attackerPlayer.Character else nil)
 	local attackerHrp = if attackerChar then (attackerChar:FindFirstChild("HumanoidRootPart") or attackerChar.PrimaryPart) :: BasePart? else nil
@@ -178,15 +167,11 @@ function HitboxManager.ApplyCombatResolution(
 		local areDueling = (attackerPlayer and targetPlayer) and arenaMgr and arenaMgr.AreDueling(attackerPlayer, targetPlayer)
 
 		if areDueling then
-			local currentHp = if humanoid then humanoid.Health else (tonumber(targetChar:GetAttribute("Health")) or 0)
+			local currentHp = humanoid.Health
 			local prospectiveHp = currentHp - rawDamage
 
 			if prospectiveHp <= 1 then
-				if humanoid then
-					humanoid.Health = 1
-				else
-					targetChar:SetAttribute("Health", 1)
-				end
+				humanoid.Health = 1
 				local session = arenaMgr.GetActiveDuel(attackerPlayer)
 				if session and session.IsActive then
 					arenaMgr.EndOnDemandDuel(session, attackerPlayer, "Sparring Knockdown Concession")
@@ -236,13 +221,7 @@ function HitboxManager.ApplyCombatResolution(
 					end
 				end
 
-				if humanoid then
-					humanoid:TakeDamage(penalizedDamage)
-				else
-					local cur = tonumber(targetChar:GetAttribute("Health")) or 0
-					targetChar:SetAttribute("Health", math.max(0, cur - penalizedDamage))
-				end
-
+				humanoid:TakeDamage(penalizedDamage)
 				return {
 					WasParried = false,
 					WasBlocked = false,
@@ -325,12 +304,6 @@ function HitboxManager.ApplyCombatResolution(
 								mobHum.WalkSpeed = prevSpeed
 							end
 						end)
-					else
-						task.delay(FlyingSwordConfig.Posture.ParryStunDuration, function()
-							if attackerChar and attackerChar.Parent then
-								attackerChar:SetAttribute("IsStunned", false)
-							end
-						end)
 					end
 				end
 
@@ -385,14 +358,7 @@ function HitboxManager.ApplyCombatResolution(
 
 	-- E. Apply Damage & Tag Combat
 	if finalDamage > 0 then
-		if humanoid then
-			humanoid:TakeDamage(finalDamage)
-		elseif targetChar:GetAttribute("IsMonster") == true then
-			local curHp = tonumber(targetChar:GetAttribute("Health")) or 0
-			local newHp = math.max(0, curHp - finalDamage)
-			targetChar:SetAttribute("Health", newHp)
-		end
-
+		humanoid:TakeDamage(finalDamage)
 		if attackerPlayer then
 			CombatStateManager.TagInCombat(attackerPlayer)
 		end

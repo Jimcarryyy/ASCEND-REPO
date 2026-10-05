@@ -2,10 +2,10 @@
 --[[
     MobConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/MobConfig.luau
-    Shared configuration dictionary for mob definitions, zone assignments, stats, and drop tables.
+    Authoritative enemy templates, zone distribution, combat stats,
+    and 4-tier wilderness drops (including graded beast cores for Alchemy).
+    100% Pure Humanoid Cultivator roster (Beasts purged).
 ]]
-
-local MobConfig = {}
 
 export type MobDropItem = {
 	ItemId: string,
@@ -31,23 +31,28 @@ export type MobDefinition = {
 	DropTable: { MobDropItem },
 }
 
+local MobConfig = {}
+
 local MOBS: { [string]: MobDefinition } = {
+	-- =========================================================================
+	-- TIER 1: OUTER DISCIPLE GROUNDS (Qi Condensation)
+	-- =========================================================================
 	["RogueDisciple"] = {
 		Id = "RogueDisciple",
 		Name = "Rogue Initiate",
 		DisplayName = "Rogue Initiate",
-		MaxHealth = 80,
-		BaseDamage = 12,
+		MaxHealth = 350,
+		BaseDamage = 25,
 		WalkSpeed = 14,
 		AttackRange = 5.0,
-		AttackCooldown = 1.8,
-		AggroRadius = 30,
-		RespawnTime = 15,
-		BaseSpiritStones = 12,
-		BaseQiReward = 30,
+		AttackCooldown = 1.6,
+		AggroRadius = 24,
+		RespawnTime = 12,
+		BaseSpiritStones = 15,
+		BaseQiReward = 40,
 		DropTable = {
 			{ ItemId = "SpiritGrass_1Yr", Chance = 0.60, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "DemonBeastCore", Chance = 0.35, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "SpiritHealingDan", Chance = 0.15, MinCount = 1, MaxCount = 1 },
 		},
 	},
 
@@ -55,37 +60,40 @@ local MOBS: { [string]: MobDefinition } = {
 		Id = "BanditCultivator",
 		Name = "Bandit Cultivator",
 		DisplayName = "Bandit Cultivator",
-		MaxHealth = 120,
-		BaseDamage = 18,
-		WalkSpeed = 13,
+		MaxHealth = 550,
+		BaseDamage = 40,
+		WalkSpeed = 16,
 		AttackRange = 5.5,
-		AttackCooldown = 2.0,
+		AttackCooldown = 1.4,
 		AggroRadius = 28,
-		RespawnTime = 20,
-		BaseSpiritStones = 18,
-		BaseQiReward = 45,
+		RespawnTime = 15,
+		BaseSpiritStones = 25,
+		BaseQiReward = 65,
 		DropTable = {
-			{ ItemId = "SpiritGrass_1Yr", Chance = 0.70, MinCount = 1, MaxCount = 3 },
-			{ ItemId = "DemonBeastCore", Chance = 0.40, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "SpiritGrass_1Yr", Chance = 0.70, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DemonBeastCore", Chance = 0.50, MinCount = 1, MaxCount = 2 },
 		},
 	},
 
+	-- =========================================================================
+	-- TIER 2: MISTY BAMBOO WILDERNESS (Foundation Establishment)
+	-- =========================================================================
 	["CorruptedIronGuard"] = {
 		Id = "CorruptedIronGuard",
 		Name = "Corrupted Iron Guard",
 		DisplayName = "Corrupted Iron Guard",
-		MaxHealth = 250,
-		BaseDamage = 32,
-		WalkSpeed = 11,
+		MaxHealth = 8000,
+		BaseDamage = 280,
+		WalkSpeed = 13,
 		AttackRange = 6.0,
-		AttackCooldown = 2.2,
-		AggroRadius = 25,
-		RespawnTime = 30,
-		BaseSpiritStones = 35,
-		BaseQiReward = 90,
+		AttackCooldown = 1.8,
+		AggroRadius = 28,
+		RespawnTime = 25,
+		BaseSpiritStones = 200,
+		BaseQiReward = 500,
 		DropTable = {
-			{ ItemId = "SpiritGrass_10Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.30, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "SpiritGrass_10Yr", Chance = 0.70, MinCount = 2, MaxCount = 3 },
+			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.65, MinCount = 1, MaxCount = 2 },
 		},
 	},
 
@@ -93,94 +101,40 @@ local MOBS: { [string]: MobDefinition } = {
 		Id = "GhostBladeMarauder",
 		Name = "Ghost Blade Marauder",
 		DisplayName = "Ghost Blade Marauder",
-		MaxHealth = 180,
-		BaseDamage = 45,
-		WalkSpeed = 16,
-		AttackRange = 5.0,
+		MaxHealth = 12000,
+		BaseDamage = 380,
+		WalkSpeed = 17,
+		AttackRange = 6.0,
 		AttackCooldown = 1.4,
-		AggroRadius = 35,
+		AggroRadius = 32,
 		RespawnTime = 25,
-		BaseSpiritStones = 40,
-		BaseQiReward = 110,
+		BaseSpiritStones = 220,
+		BaseQiReward = 550,
 		DropTable = {
-			{ ItemId = "SpiritGrass_10Yr", Chance = 0.55, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "DragonBloodVine_10Yr", Chance = 0.25, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "DragonBloodVine_10Yr", Chance = 0.60, MinCount = 1, MaxCount = 3 },
+			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.60, MinCount = 1, MaxCount = 2 },
 		},
 	},
 
+	-- =========================================================================
+	-- TIER 3: GOLDEN CORE
+	-- =========================================================================
 	["BloodShadowAssassin"] = {
 		Id = "BloodShadowAssassin",
 		Name = "Blood Shadow Assassin",
 		DisplayName = "Blood Shadow Assassin",
-		MaxHealth = 350,
-		BaseDamage = 70,
-		WalkSpeed = 17,
+		MaxHealth = 2500,
+		BaseDamage = 120,
+		WalkSpeed = 19,
 		AttackRange = 5.0,
 		AttackCooldown = 1.2,
-		AggroRadius = 40,
-		RespawnTime = 45,
-		BaseSpiritStones = 75,
-		BaseQiReward = 220,
+		AggroRadius = 32,
+		RespawnTime = 20,
+		BaseSpiritStones = 120,
+		BaseQiReward = 280,
 		DropTable = {
-			{ ItemId = "SpiritGrass_10Yr", Chance = 0.80, MinCount = 2, MaxCount = 4 },
-			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
-		},
-	},
-
-	["FallenInnerProdigy"] = {
-		Id = "FallenInnerProdigy",
-		Name = "Fallen Inner Prodigy",
-		DisplayName = "Fallen Inner Prodigy",
-		MaxHealth = 600,
-		BaseDamage = 110,
-		WalkSpeed = 15,
-		AttackRange = 6.0,
-		AttackCooldown = 1.5,
-		AggroRadius = 45,
-		RespawnTime = 60,
-		BaseSpiritStones = 140,
-		BaseQiReward = 450,
-		DropTable = {
-			{ ItemId = "SpiritGrass_100Yr", Chance = 0.40, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "DemonBeastCore_100Yr", Chance = 0.25, MinCount = 1, MaxCount = 1 },
-		},
-	},
-
-	["FrostPeakApostle"] = {
-		Id = "FrostPeakApostle",
-		Name = "Frost Peak Apostle",
-		DisplayName = "Frost Peak Apostle",
-		MaxHealth = 1000,
-		BaseDamage = 160,
-		WalkSpeed = 14,
-		AttackRange = 6.0,
-		AttackCooldown = 1.6,
-		AggroRadius = 45,
-		RespawnTime = 90,
-		BaseSpiritStones = 250,
-		BaseQiReward = 850,
-		DropTable = {
-			{ ItemId = "GaleWindLotus_100Yr", Chance = 0.35, MinCount = 1, MaxCount = 1 },
-			{ ItemId = "DemonBeastCore_100Yr", Chance = 0.35, MinCount = 1, MaxCount = 2 },
-		},
-	},
-
-	["VoidPhantomSwordmaster"] = {
-		Id = "VoidPhantomSwordmaster",
-		Name = "Void Phantom Swordmaster",
-		DisplayName = "Void Phantom Swordmaster",
-		MaxHealth = 1600,
-		BaseDamage = 240,
-		WalkSpeed = 18,
-		AttackRange = 7.0,
-		AttackCooldown = 1.1,
-		AggroRadius = 50,
-		RespawnTime = 120,
-		BaseSpiritStones = 450,
-		BaseQiReward = 1600,
-		DropTable = {
-			{ ItemId = "DemonBeastCore_100Yr", Chance = 0.60, MinCount = 2, MaxCount = 3 },
-			{ ItemId = "DragonBloodVine_100Yr", Chance = 0.30, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "DragonBloodVine_10Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DemonBeastCore_10Yr", Chance = 0.45, MinCount = 1, MaxCount = 1 },
 		},
 	},
 
@@ -188,62 +142,110 @@ local MOBS: { [string]: MobDefinition } = {
 		Id = "Boss_FallenSwordGenius",
 		Name = "Sword Fiend Patriarch",
 		DisplayName = "Sword Fiend Patriarch",
-		MaxHealth = 2500,
-		BaseDamage = 120,
-		WalkSpeed = 16,
+		MaxHealth = 2500000,
+		BaseDamage = 25000,
+		WalkSpeed = 20,
 		AttackRange = 8.0,
 		AttackCooldown = 1.0,
 		AggroRadius = 60,
-		RespawnTime = 300,
-		BaseSpiritStones = 500,
-		BaseQiReward = 2000,
+		RespawnTime = 180,
+		BaseSpiritStones = 15000,
+		BaseQiReward = 45000,
 		IsBoss = true,
 		DropTable = {
-			{ ItemId = "DemonBeastCore_10Yr", Chance = 1.00, MinCount = 2, MaxCount = 4 },
-			{ ItemId = "DemonBeastCore_1000Yr", Chance = 0.20, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "DemonBeastCore_1000Yr", Chance = 0.90, MinCount = 5, MaxCount = 10 },
+			{ ItemId = "SpiritGrass_1000Yr", Chance = 0.70, MinCount = 1, MaxCount = 2 },
 		},
 	},
 
+	-- =========================================================================
+	-- TIER 4: NASCENT SOUL
+	-- =========================================================================
+	["FallenInnerProdigy"] = {
+		Id = "FallenInnerProdigy",
+		Name = "Fallen Inner Prodigy",
+		DisplayName = "Fallen Inner Prodigy",
+		MaxHealth = 65000,
+		BaseDamage = 1200,
+		WalkSpeed = 17,
+		AttackRange = 6.0,
+		AttackCooldown = 1.3,
+		AggroRadius = 40,
+		RespawnTime = 45,
+		BaseSpiritStones = 800,
+		BaseQiReward = 2200,
+		DropTable = {
+			{ ItemId = "SpiritGrass_100Yr", Chance = 0.55, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DemonBeastCore_100Yr", Chance = 0.75, MinCount = 2, MaxCount = 4 },
+		},
+	},
+
+	-- =========================================================================
+	-- TIER 5: SPIRIT SEVERING
+	-- =========================================================================
+	["FrostPeakApostle"] = {
+		Id = "FrostPeakApostle",
+		Name = "Frost Peak Apostle",
+		DisplayName = "Frost Peak Apostle",
+		MaxHealth = 180000,
+		BaseDamage = 3200,
+		WalkSpeed = 18,
+		AttackRange = 6.5,
+		AttackCooldown = 1.2,
+		AggroRadius = 42,
+		RespawnTime = 50,
+		BaseSpiritStones = 1400,
+		BaseQiReward = 3800,
+		DropTable = {
+			{ ItemId = "GaleWindLotus_100Yr", Chance = 0.65, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DemonBeastCore_100Yr", Chance = 0.80, MinCount = 2, MaxCount = 4 },
+		},
+	},
+
+	-- =========================================================================
+	-- TIER 6: VOID REFINING
+	-- =========================================================================
+	["VoidPhantomSwordmaster"] = {
+		Id = "VoidPhantomSwordmaster",
+		Name = "Void Phantom Swordmaster",
+		DisplayName = "Void Phantom Swordmaster",
+		MaxHealth = 450000,
+		BaseDamage = 6500,
+		WalkSpeed = 20,
+		AttackRange = 7.5,
+		AttackCooldown = 1.1,
+		AggroRadius = 50,
+		RespawnTime = 60,
+		BaseSpiritStones = 2000,
+		BaseQiReward = 5000,
+		DropTable = {
+			{ ItemId = "DemonBeastCore_100Yr", Chance = 1.0, MinCount = 5, MaxCount = 10 },
+			{ ItemId = "DragonBloodVine_100Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
+		},
+	},
+
+	-- =========================================================================
+	-- TIER 8-10: MAHAYANA / TRANSGENDENT WORLD BOSS
+	-- =========================================================================
 	["AsuraSwordSovereign"] = {
 		Id = "AsuraSwordSovereign",
 		Name = "Asura Sword Sovereign",
 		DisplayName = "Asura Sword Sovereign",
-		MaxHealth = 12000,
-		BaseDamage = 480,
-		WalkSpeed = 19,
-		AttackRange = 10.0,
-		AttackCooldown = 0.8,
-		AggroRadius = 80,
-		RespawnTime = 900,
-		BaseSpiritStones = 3000,
-		BaseQiReward = 10000,
+		MaxHealth = 25000000,
+		BaseDamage = 200000,
+		WalkSpeed = 22,
+		AttackRange = 9.0,
+		AttackCooldown = 0.9,
+		AggroRadius = 75,
+		RespawnTime = 300,
+		BaseSpiritStones = 50000,
+		BaseQiReward = 150000,
 		IsBoss = true,
 		DropTable = {
-			{ ItemId = "DemonBeastCore_1000Yr", Chance = 1.00, MinCount = 1, MaxCount = 3 },
-			{ ItemId = "DragonBloodVine_1000Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "GaleWindLotus_1000Yr", Chance = 0.50, MinCount = 1, MaxCount = 2 },
-		},
-	},
-
-	-- =========================================================================
-	-- 3D MONSTERS & BEASTS
-	-- =========================================================================
-	["IronTuskBoar"] = {
-		Id = "IronTuskBoar",
-		Name = "Iron-Tusk Spirit Boar",
-		DisplayName = "Iron-Tusk Spirit Boar",
-		MaxHealth = 1200,
-		BaseDamage = 45,
-		WalkSpeed = 16,
-		AttackRange = 6.0,
-		AttackCooldown = 1.8,
-		AggroRadius = 30,
-		RespawnTime = 15,
-		BaseSpiritStones = 35,
-		BaseQiReward = 85,
-		DropTable = {
-			{ ItemId = "SpiritGrass_1Yr", Chance = 0.75, MinCount = 1, MaxCount = 3 },
-			{ ItemId = "DemonBeastCore", Chance = 0.60, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DemonBeastCore_1000Yr", Chance = 1.0, MinCount = 15, MaxCount = 30 },
+			{ ItemId = "SpiritGrass_1000Yr", Chance = 0.80, MinCount = 1, MaxCount = 3 },
+			{ ItemId = "DragonBloodVine_1000Yr", Chance = 0.80, MinCount = 1, MaxCount = 3 },
+			{ ItemId = "GaleWindLotus_1000Yr", Chance = 0.80, MinCount = 1, MaxCount = 3 },
 		},
 	},
 }
@@ -252,10 +254,24 @@ function MobConfig.GetMob(mobId: string): MobDefinition?
 	return MOBS[mobId]
 end
 
-function MobConfig.GetMobConfig(mobId: string): MobDefinition?
-	return MOBS[mobId]
+function MobConfig.GetAllMobs(): { [string]: MobDefinition }
+	return MOBS
 end
 
-MobConfig.Mobs = MOBS
+function MobConfig.RollDropTable(mobId: string): { { ItemId: string, Count: number } }
+	local def = MOBS[mobId]
+	if not def then return {} end
+
+	local dropped: { { ItemId: string, Count: number } } = {}
+
+	for _, entry in ipairs(def.DropTable) do
+		if math.random() <= entry.Chance then
+			local count = math.random(entry.MinCount, entry.MaxCount)
+			table.insert(dropped, { ItemId = entry.ItemId, Count = count })
+		end
+	end
+
+	return dropped
+end
 
 return MobConfig
