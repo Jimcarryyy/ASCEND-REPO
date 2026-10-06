@@ -1,14 +1,5 @@
 --!strict
---[[
-    WeaponManager.luau
-    Location: src/ServerScriptService/Server/Combat/WeaponManager.luau
-    Server-authoritative weapon lifecycle manager:
-      - Classic Upper Back Sword Sheath Mount (CFrame 0, 0.35, 0.68, 135 deg).
-      - Replaces LeftFootAttachment for flight mounting.
-      - RigidConstraint + AnimationConstraint flight mounting.
-      - Hides combat sword during flight to eliminate visual clutter.
-      - Dynamic Realm-Scaled Flight Speed & In-Combat Mount Gate.
-]]
+--[[\n    WeaponManager.luau\n    Location: src/ServerScriptService/Server/Combat/WeaponManager.luau\n    Server-authoritative weapon lifecycle manager:\n      - Classic Upper Back Sword Sheath Mount (CFrame 0, 0.35, 0.68, 135 deg).\n      - Dual NewWeapons / Weapons lookup pipeline with normalized string matching.\n      - Preservation of AnimationConstraint on weapon models.\n      - Replaces LeftFootAttachment for flight mounting.\n      - RigidConstraint + AnimationConstraint flight mounting.\n      - Hides combat sword during flight to eliminate visual clutter.\n      - Dynamic Realm-Scaled Flight Speed & In-Combat Mount Gate.\n]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -48,9 +39,9 @@ local function Play3DWeaponSound(character: Model, soundId: string)
 	Debris:AddItem(sound, 2.0)
 end
 
-local function ClearExistingConstraints(part: Instance)
+local function ClearExistingGripConstraints(part: Instance)
 	for _, desc in ipairs(part:GetDescendants()) do
-		if desc:IsA("Constraint") then
+		if desc.Name == "WeaponGripConstraint" or desc:IsA("RigidConstraint") or desc:IsA("WeldConstraint") then
 			desc:Destroy()
 		end
 	end
@@ -83,7 +74,7 @@ local function SnapToHand(character: Model, swordMesh: MeshPart)
 	swordMesh.CanCollide = false
 	swordMesh.Massless = true
 
-	ClearExistingConstraints(swordMesh)
+	ClearExistingGripConstraints(swordMesh)
 
 	local constraint = Instance.new("RigidConstraint")
 	constraint.Name = "WeaponGripConstraint"
@@ -119,7 +110,7 @@ local function SnapToBack(character: Model, swordMesh: MeshPart)
 	swordMesh.CanCollide = false
 	swordMesh.Massless = true
 
-	ClearExistingConstraints(swordMesh)
+	ClearExistingGripConstraints(swordMesh)
 
 	local constraint = Instance.new("RigidConstraint")
 	constraint.Name = "WeaponGripConstraint"
@@ -128,34 +119,59 @@ local function SnapToBack(character: Model, swordMesh: MeshPart)
 	constraint.Parent = swordMesh
 end
 
+local function NormalizeWeaponKey(name: string): string
+	return name:gsub("^%d+%.%s*", ""):gsub("[%s%-_.]+", ""):lower()
+end
+
+local function InspectWeaponCandidate(candidate: Instance): (Instance?, MeshPart?)
+	if candidate:IsA("MeshPart") then
+		return candidate, candidate
+	elseif candidate:IsA("Model") then
+		local mesh = candidate:FindFirstChildWhichIsA("MeshPart", true)
+		if mesh then return candidate, mesh end
+	end
+	return nil, nil
+end
+
 local function FindCombatWeaponTemplate(weaponId: string): (Instance?, MeshPart?)
 	local weaponsFolder = ReplicatedStorage:FindFirstChild("Weapons") :: Folder?
-	if weaponsFolder then
-		local exact = weaponsFolder:FindFirstChild(weaponId)
+	if not weaponsFolder then return nil, nil end
+
+	local searchFolders: { Folder } = {}
+	local newWeapons = weaponsFolder:FindFirstChild("NewWeapons") :: Folder?
+	if newWeapons and newWeapons:IsA("Folder") then
+		table.insert(searchFolders, newWeapons)
+	end
+	table.insert(searchFolders, weaponsFolder)
+
+	-- 1. Exact Name match across search folders
+	for _, folder in ipairs(searchFolders) do
+		local exact = folder:FindFirstChild(weaponId)
 		if exact then
-			if exact:IsA("MeshPart") then return exact, exact end
-			if exact:IsA("Model") then
-				local mesh = exact:FindFirstChildWhichIsA("MeshPart", true)
-				if mesh then return exact, mesh end
+			local root, mesh = InspectWeaponCandidate(exact)
+			if root and mesh then return root, mesh end
+		end
+	end
+
+	local targetNorm = NormalizeWeaponKey(weaponId)
+
+	-- 2. Normalized match (e.g. "IronReed" matches "1.Iron Reed", "HeavenPiercing" matches "10.Heaven-Piercing")
+	for _, folder in ipairs(searchFolders) do
+		for _, child in ipairs(folder:GetChildren()) do
+			if NormalizeWeaponKey(child.Name) == targetNorm then
+				local root, mesh = InspectWeaponCandidate(child)
+				if root and mesh then return root, mesh end
 			end
 		end
+	end
 
-		local targetClean = weaponId:gsub("%s+", ""):lower()
-		for _, child in ipairs(weaponsFolder:GetChildren()) do
-			if child.Name:gsub("%s+", ""):lower() == targetClean then
-				if child:IsA("MeshPart") then return child, child end
-				if child:IsA("Model") then
-					local mesh = child:FindFirstChildWhichIsA("MeshPart", true)
-					if mesh then return child, mesh end
-				end
+	-- 3. Fallback to first available weapon model in NewWeapons or Weapons
+	for _, folder in ipairs(searchFolders) do
+		for _, child in ipairs(folder:GetChildren()) do
+			if child:IsA("Model") or child:IsA("MeshPart") then
+				local root, mesh = InspectWeaponCandidate(child)
+				if root and mesh then return root, mesh end
 			end
-		end
-
-		local first = weaponsFolder:FindFirstChildWhichIsA("MeshPart") or weaponsFolder:FindFirstChildWhichIsA("Model")
-		if first then
-			if first:IsA("MeshPart") then return first, first end
-			local mesh = first:FindFirstChildWhichIsA("MeshPart", true)
-			if mesh then return first, mesh end
 		end
 	end
 
@@ -212,7 +228,7 @@ end
 
 function WeaponManager.GetEquippedWeapon(player: Player): string
 	local weaponData = activeCombatWeapons[player]
-	return (weaponData and weaponData.WeaponId) or "MortalIronJian"
+	return (weaponData and weaponData.WeaponId) or "IronReed"
 end
 
 function WeaponManager.GetWeaponState(player: Player): string
@@ -231,11 +247,17 @@ function WeaponManager.EquipWeapon(player: Player, weaponId: string, initialStat
 
 	local templateRoot, templateMesh = FindCombatWeaponTemplate(weaponId)
 	if not templateMesh then
+		templateRoot, templateMesh = FindCombatWeaponTemplate("IronReed")
+	end
+	if not templateMesh then
+		templateRoot, templateMesh = FindCombatWeaponTemplate("1.Iron Reed")
+	end
+	if not templateMesh then
 		templateRoot, templateMesh = FindCombatWeaponTemplate("MortalIronJian")
 	end
 
 	if not templateMesh then
-		warn("[WeaponManager] No combat sword found in ReplicatedStorage.Weapons!")
+		warn("[WeaponManager] No combat sword found in ReplicatedStorage.Weapons or NewWeapons!")
 		return
 	end
 
@@ -407,7 +429,7 @@ function WeaponManager.Init()
 			local rightArm = character:WaitForChild("Right Arm", 5) or character:WaitForChild("RightHand", 5)
 			if rightArm then
 				task.wait(0.15)
-				WeaponManager.EquipWeapon(player, "MortalIronJian", "Hand")
+				WeaponManager.EquipWeapon(player, "IronReed", "Hand")
 			end
 		end)
 	end)
@@ -423,7 +445,7 @@ function WeaponManager.Init()
 		end
 	end)
 
-	print("[ASCEND] WeaponManager Initialized (Upper Back Sheath Mount Suite Active).")
+	print("[ASCEND] WeaponManager Initialized (Upper Back Sheath Mount Suite & NewWeapons Dual Pipeline Active).")
 end
 
 return WeaponManager

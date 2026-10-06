@@ -3,8 +3,9 @@
     BloodlineManager.luau
     Location: src/ServerScriptService/Server/State/BloodlineManager.luau
     Server-authoritative Bloodline manager:
-    - 7-Tier Lineage Gacha with Bad-Luck Pity (Guaranteed Legendary @ 30, Mythic @ 100)
-    - Keep or Discard Decision Pipeline (Refunds unrefined stones on discard)
+    - 5-Tier Lineage Gacha with Bad-Luck Pity (Guaranteed Legendary @ 30)
+    - Top-Left Shoulder Spiritual Orb Welder (Matches Reference Rig)
+    - Clean Aesthetic: PointLight Illumination with Zero Particle VFX
     - Meridian Vault Slots (Store, swap, and unlock multiple lineages)
     - Resilient 3D Relic Welder: Supports Models, single MeshParts, R6 & R15 rigs
 ]]
@@ -22,40 +23,70 @@ local BloodlineManager = {}
 local bloodlineRemote: RemoteEvent
 
 local TIER_RANK: { [BloodlineConfig.BloodlineTier]: number } = {
-	Mortal = 1,
-	Common = 2,
-	Spiritual = 3,
-	Earth = 4,
-	Heaven = 5,
-	Legendary = 6,
-	Mythic = 7,
+	Common    = 1,
+	Uncommon  = 2,
+	Rare      = 3,
+	Epic      = 4,
+	Legendary = 5,
 }
 
 local LEGENDARY_PITY_THRESHOLD = 30
-local MYTHIC_PITY_THRESHOLD = 100
 local DISCARD_REFUND_STONES = 100
 local SLOT_3_STONE_COST = 25000
 
 local pendingRolls: { [Player]: BloodlineConfig.BloodlineDefinition } = {}
 
--- Calibrated back offsets for each visual artifact
-local ARTIFACT_OFFSETS: { [string]: CFrame } = {
-	-- Tiers 1–4: Spiritual Orbs (Clean upper-back float)
-	MortalSpineBone = CFrame.new(0, 0.45, 1.15),
-	WindCrestFeather = CFrame.new(0, 0.45, 1.15),
-	VanguardIronGorget = CFrame.new(0, 0.45, 1.15),
-	LotusBackRelic = CFrame.new(0, 0.45, 1.15),
-	MistVeilShoulder = CFrame.new(0, 0.45, 1.15),
-	TremorGildedBracer = CFrame.new(0, 0.45, 1.15),
-	ThunderRuneBackplate = CFrame.new(0, 0.45, 1.15),
+-- Calibrated Top-Left Shoulder Hover CFrame (Matches Reference Rig)
+local DEFAULT_ORB_OFFSET = CFrame.new(-1.65, 1.75, 0.1)
 
-	-- Tiers 5–7: 6-Pointed Sword Halos & Arrays (Floating upright behind torso)
-	DemonHeartCrown = CFrame.new(0, 0.50, 1.25),
-	FrostChasmHorns = CFrame.new(0, 0.50, 1.25),
-	SolarHaloRing = CFrame.new(0, 0.50, 1.25),
-	AsuraSpikePauldrons = CFrame.new(0, 0.50, 1.25),
-	PrimordialFloatingSwords = CFrame.new(0, 0.40, 1.20),
+local ARTIFACT_OFFSETS: { [string]: CFrame } = {
+	["Mortal Steel Vein"]             = DEFAULT_ORB_OFFSET,
+	["Spirit Iron Sword-Bone"]       = DEFAULT_ORB_OFFSET,
+	["Gale-Jade Sword-Vein"]         = DEFAULT_ORB_OFFSET,
+	["JadeLotusOrb"]                 = DEFAULT_ORB_OFFSET,
+	["Thunder-Severing Sword-Heart"] = DEFAULT_ORB_OFFSET,
+	["Heavy-Crag Sword-Marrow"]      = DEFAULT_ORB_OFFSET,
+	["CosmicVoidSphere"]             = DEFAULT_ORB_OFFSET,
+	["Innate Sovereign Sword-Bone"]  = DEFAULT_ORB_OFFSET,
+	["Ghost-Shadow Sword-Pulse"]     = DEFAULT_ORB_OFFSET,
+	["Scarlet-Lotus Blade-Bone"]     = DEFAULT_ORB_OFFSET,
 }
+
+local function NormalizeKey(name: string): string
+	return name:gsub("[%s%-_.]+", ""):lower()
+end
+
+local function FindBloodlinePrefab(artifactMeshName: string): Instance?
+	local RS = ReplicatedStorage
+	local bloodlineFolder = RS:FindFirstChild("Bloodlines")
+		or RS:FindFirstChild("Bloodline")
+		or (RS:FindFirstChild("Assets") and (RS.Assets:FindFirstChild("Bloodlines") or RS.Assets:FindFirstChild("Bloodline")))
+
+	if not bloodlineFolder then return nil end
+
+	local searchFolders: { Folder } = {}
+	local newBloodlines = bloodlineFolder:FindFirstChild("NewBloodlines") :: Folder?
+	if newBloodlines and newBloodlines:IsA("Folder") then
+		table.insert(searchFolders, newBloodlines)
+	end
+	table.insert(searchFolders, bloodlineFolder)
+
+	for _, folder in ipairs(searchFolders) do
+		local exact = folder:FindFirstChild(artifactMeshName)
+		if exact then return exact end
+	end
+
+	local targetNorm = NormalizeKey(artifactMeshName)
+	for _, folder in ipairs(searchFolders) do
+		for _, child in ipairs(folder:GetChildren()) do
+			if NormalizeKey(child.Name) == targetNorm then
+				return child
+			end
+		end
+	end
+
+	return nil
+end
 
 local function deductSpins(player: Player, count: number): boolean
 	local current = PlayerDataManager.GetBloodlineSpins(player)
@@ -88,21 +119,10 @@ local function attachVisualArtifact(character: Model, artifactMeshName: string?,
 
 	if not artifactMeshName or artifactMeshName == "" then return end
 
-	-- R6 uses "Torso", R15 uses "UpperTorso"
-	local upperTorso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") :: BasePart?
-	if not upperTorso then return end
+	local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso") :: BasePart?
+	if not torso then return end
 
-	local RS = ReplicatedStorage
-	local bloodlineFolder = RS:FindFirstChild("Bloodlines")
-		or RS:FindFirstChild("Bloodline")
-		or (RS:FindFirstChild("Assets") and (RS.Assets:FindFirstChild("Bloodlines") or RS.Assets:FindFirstChild("Bloodline")))
-	
-	if not bloodlineFolder then
-		warn("[BloodlineManager] ReplicatedStorage.Bloodlines folder not found!")
-		return
-	end
-
-	local prefab = bloodlineFolder:FindFirstChild(artifactMeshName)
+	local prefab = FindBloodlinePrefab(artifactMeshName)
 	if not prefab then
 		warn(string.format("[BloodlineManager] 3D Model '%s' missing from ReplicatedStorage.Bloodlines!", artifactMeshName))
 		return
@@ -132,6 +152,8 @@ local function attachVisualArtifact(character: Model, artifactMeshName: string?,
 			desc.Anchored = false
 			desc.CanCollide = false
 			desc.Massless = true
+		elseif desc:IsA("ParticleEmitter") or desc:IsA("Trail") then
+			desc:Destroy() -- Clean: No VFX per design
 		end
 	end
 	if clone:IsA("BasePart") then
@@ -140,55 +162,41 @@ local function attachVisualArtifact(character: Model, artifactMeshName: string?,
 		clone.Massless = true
 	end
 
-	local offset = ARTIFACT_OFFSETS[artifactMeshName] or CFrame.new(0, 0.45, 1.20)
-	primary.CFrame = upperTorso.CFrame * offset
+	local offset = ARTIFACT_OFFSETS[artifactMeshName] or DEFAULT_ORB_OFFSET
+	primary.CFrame = torso.CFrame * offset
 
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = upperTorso
+	for _, child in ipairs(primary:GetChildren()) do
+		if child:IsA("Weld") or child:IsA("WeldConstraint") or child:IsA("Motor6D") then
+			child:Destroy()
+		end
+	end
+
+	local weld = Instance.new("Weld")
+	weld.Name = "OrbWeld"
+	weld.Part0 = torso
 	weld.Part1 = primary
+	weld.C0 = offset
+	weld.C1 = CFrame.identity
 	weld.Parent = primary
 
 	if auraColor then
-		local light = primary:FindFirstChild("AuraLight") :: PointLight?
+		local light = primary:FindFirstChild("OrbLight") :: PointLight?
 		if not light then
 			light = Instance.new("PointLight")
-			light.Name = "AuraLight"
+			light.Name = "OrbLight"
 			light.Parent = primary
 		end
 		light.Color = auraColor
 		light.Range = 8
-		light.Brightness = 2.0
-
-		local particles = primary:FindFirstChild("AuraParticles") :: ParticleEmitter?
-		if not particles then
-			particles = Instance.new("ParticleEmitter")
-			particles.Name = "AuraParticles"
-			particles.Parent = primary
-		end
-		particles.LightEmission = 1
-		particles.Color = ColorSequence.new(auraColor)
-		particles.Size = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.15),
-			NumberSequenceKeypoint.new(0.5, 0.35),
-			NumberSequenceKeypoint.new(1, 0),
-		})
-		particles.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.8),
-			NumberSequenceKeypoint.new(0.5, 0.3),
-			NumberSequenceKeypoint.new(1, 1),
-		})
-		particles.Rate = 12
-		particles.Lifetime = NumberRange.new(1.2, 2.0)
-		particles.Speed = NumberRange.new(1, 2)
-		particles.SpreadAngle = Vector2.new(30, 30)
-		particles.Acceleration = Vector3.new(0, 1.5, 0)
+		light.Brightness = 1.6
+		light.Shadows = false
 	end
 
 	clone.Parent = character
 end
 
 local function sendState(player: Player)
-	local bloodlineId = PlayerDataManager.GetBloodline(player) or "MortalSwordBone"
+	local bloodlineId = PlayerDataManager.GetBloodline(player) or "MortalSteelVein"
 	local def = BloodlineConfig.GetBloodline(bloodlineId)
 	local slots = PlayerDataManager.GetBloodlineSlots(player)
 	local maxSlots = PlayerDataManager.GetMaxBloodlineSlots(player)
@@ -198,16 +206,15 @@ local function sendState(player: Player)
 	bloodlineRemote:FireClient(player, {
 		Action = "StateUpdate",
 		BloodlineId = bloodlineId,
-		DisplayName = def and def.Name or "Mortal Sword Bone",
-		Rarity = def and def.Tier or "Mortal",
-		Description = def and def.Description or "Base physical meridians. Awaken at the altar to inherit ancestral arts.",
+		DisplayName = def and def.Name or "Mortal Steel Vein",
+		Rarity = def and def.Tier or "Common",
+		Description = def and def.Description or "Mundane physical meridians. Awaken at the altar to inherit ancestral arts.",
 		Passives = def and def.Passives or {},
 		RemainingSpins = PlayerDataManager.GetBloodlineSpins(player),
 		RemainingStones = PlayerDataManager.GetSpiritStones(player),
 		Slots = slots,
 		MaxSlots = maxSlots,
 		LegendaryPity = pity.SpinsSinceLegendary,
-		MythicPity = pity.SpinsSinceMythic,
 		PendingRoll = pending and {
 			Id = pending.Id,
 			DisplayName = pending.Name,
@@ -222,9 +229,7 @@ local function rollSingleWithPity(player: Player): (string, BloodlineConfig.Bloo
 	local pity = PlayerDataManager.IncrementBloodlinePity(player)
 	local forcedTier: BloodlineConfig.BloodlineTier? = nil
 
-	if pity.SpinsSinceMythic >= MYTHIC_PITY_THRESHOLD then
-		forcedTier = "Mythic"
-	elseif pity.SpinsSinceLegendary >= LEGENDARY_PITY_THRESHOLD then
+	if pity.SpinsSinceLegendary >= LEGENDARY_PITY_THRESHOLD then
 		forcedTier = "Legendary"
 	end
 
@@ -241,11 +246,9 @@ local function rollSingleWithPity(player: Player): (string, BloodlineConfig.Bloo
 		rolledId = BloodlineConfig.RollBloodline()
 	end
 
-	local rolledDef = BloodlineConfig.GetBloodline(rolledId) or BloodlineConfig.GetBloodline("MortalSwordBone") :: BloodlineConfig.BloodlineDefinition
+	local rolledDef = BloodlineConfig.GetBloodline(rolledId) or BloodlineConfig.GetBloodline("MortalSteelVein") :: BloodlineConfig.BloodlineDefinition
 
-	if rolledDef.Tier == "Mythic" then
-		PlayerDataManager.ResetBloodlinePity(player, "Mythic")
-	elseif rolledDef.Tier == "Legendary" then
+	if rolledDef.Tier == "Legendary" then
 		PlayerDataManager.ResetBloodlinePity(player, "Legendary")
 	end
 
@@ -277,7 +280,6 @@ function BloodlineManager.ProcessSpin(player: Player)
 		RemainingSpins = PlayerDataManager.GetBloodlineSpins(player),
 		RemainingStones = PlayerDataManager.GetSpiritStones(player),
 		LegendaryPity = pity.SpinsSinceLegendary,
-		MythicPity = pity.SpinsSinceMythic,
 	})
 end
 
@@ -318,7 +320,6 @@ function BloodlineManager.Process10xSpin(player: Player)
 			RemainingSpins = PlayerDataManager.GetBloodlineSpins(player),
 			RemainingStones = PlayerDataManager.GetSpiritStones(player),
 			LegendaryPity = pity.SpinsSinceLegendary,
-			MythicPity = pity.SpinsSinceMythic,
 		})
 	end
 end
@@ -488,7 +489,7 @@ function BloodlineManager.Init()
 		pendingRolls[player] = nil
 	end)
 
-	print("[BloodlineManager] Master Gacha, Pity & Meridian Vault Server Engine Initialized (7-Tier Compatible).")
+	print("[BloodlineManager] Master Gacha & Top-Left Shoulder Welder Initialized.")
 end
 
 return BloodlineManager

@@ -7,7 +7,7 @@
     - Max 5 slots per row with balanced margins
     - Vibrant rarity-matched slot background gradients
     - Instant scroll snap to top on tab/category/search switches
-    - 2D High-Resolution Weapon Showcase for all 8 Sword Tiers
+    - 2D High-Resolution Weapon Showcase for all 10 Sword Tiers
     - Server-synchronized with InventoryManager via UpdateInventory remote
     - Performance Fix: Suppresses synchronous RenderGrid rebuilds while inventory is closed.
 ]]
@@ -142,6 +142,8 @@ local function GetItemIconAsset(itemId: string): string?
 		return UIAssets.Icons[itemId]
 	elseif itemDef and itemDef.Icon and itemDef.Icon ~= "" then
 		return itemDef.Icon
+	elseif itemDef and (itemDef.Type == "Weapon" or itemDef.Type == "FlyingSword" or itemDef.Type == "Sword") then
+		return (UIAssets.Icons and UIAssets.Icons.SwordPlaceholder) or "rbxassetid://109157084266033"
 	end
 	return nil
 end
@@ -213,7 +215,6 @@ function InventoryController.Init()
 	inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
 	updateInventoryRemote = RemoteEvents.GetRemote("UpdateInventory")
 
-	-- 1. Locate MainFrame (Docked in MainHubGui or legacy fallback)
 	local hub = playerGui:WaitForChild("MainHubGui", 10) :: ScreenGui?
 	if hub then
 		local backdrop = hub:WaitForChild("MenuBackdrop", 5) :: Frame?
@@ -387,7 +388,6 @@ function InventoryController.Init()
 		end)
 	end
 
-	-- 2. Server Inventory Event Listener (Performance Optimized: only rebuild DOM if UI is open)
 	updateInventoryRemote.OnClientEvent:Connect(function(newInventory: any)
 		inventoryCache = {}
 		if newInventory and type(newInventory) == "table" then
@@ -403,7 +403,6 @@ function InventoryController.Init()
 		end
 	end)
 
-	-- 3. Initial Server Sync Request
 	task.defer(function()
 		task.wait(0.3)
 		inventoryActionRemote:FireServer({ Action = "RequestSync" })

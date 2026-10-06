@@ -7,6 +7,7 @@
       - Maintains humanoid.AutoRotate = false across active M1 chains to lock facing toward aim vector
         while strafing with WASD.
       - Restores humanoid.AutoRotate = true when chain finishes or when canceled via CancelCurrentSwing().
+      - Smooth Sword Trail Activation: Reliably toggles Mesh_0.Trail during active swings and disables on recovery.
 ]]
 
 local Players = game:GetService("Players")
@@ -383,7 +384,7 @@ function AnimationController.Init()
 		end
 	end)
 
-	print("[ASCEND] AnimationController Initialized (Phase 3 Hybrid Facing & Movement Active).")
+	print("[ASCEND] AnimationController Initialized (Phase 3 Hybrid Facing & Trail Support Active).")
 end
 
 -- =============================================================================
@@ -407,11 +408,10 @@ function AnimationController.CancelCurrentSwing()
 			hum.AutoRotate = true
 		end
 		local sword = character:FindFirstChild("EquippedSword")
-		local trail = if sword then sword:FindFirstChildOfClass("Trail") else nil
+		local trail = if sword then sword:FindFirstChildWhichIsA("Trail", true) else nil
 		if trail then trail.Enabled = false end
 	end
 
-	-- Notify InputController to clear local attack governor
 	local InputController = require(script.Parent.InputController)
 	InputController.SetLocalAttacking(false)
 end
@@ -704,8 +704,9 @@ function AnimationController.PerformDash(_dashStep: number?, overrideDir: Vector
 end
 
 -- =============================================================================
--- PHASE 3 M1 PLAYBACK: HYBRID FACING LOCK & CLIENT MOVEMENT GOVERNOR
+-- PHASE 3 M1 PLAYBACK: HYBRID FACING LOCK & RELIABLE SWORD TRAIL EMISSION
 -- =============================================================================
+
 function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: number?)
 	local character = player.Character
 	if not character then return end
@@ -745,11 +746,6 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 		loadedTracks[trackKey] = track
 	end
 
-	if not printedTrackLengths[animKey] then
-		printedTrackLengths[animKey] = true
-		print(string.format("[AnimationController] Track [%s] Asset Length: %.4fs", animKey, track.Length))
-	end
-
 	local duration = animDef.CastDuration or 0.34
 	local rawLength = if track.Length > 0 then track.Length else duration
 	local computedSpeed = rawLength / duration
@@ -758,23 +754,22 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 	local maxSpeed = FlyingSwordConfig.ANIM_SPEED_MAX or 2.5
 	local clampedSpeed = math.clamp(computedSpeed, minSpeed, maxSpeed)
 
-	if (computedSpeed < minSpeed or computedSpeed > maxSpeed) and not printedTrackLengths[animKey .. "_warn"] then
-		printedTrackLengths[animKey .. "_warn"] = true
-		warn(string.format("[AnimationController] [%s] Playback speed %.2fx was clamped to %.2fx (Length: %.4fs, Duration: %.2fs)",
-			animKey, computedSpeed, clampedSpeed, rawLength, duration))
-	end
-
 	PlayLocalSFX(SWORD_SLASH_SOUND_ID, 0.95)
 	AnimationController.EmitSwordSlash(character)
 
+	-- Deep lookup for Mesh_0.Trail
 	local equippedSword = character:FindFirstChild("EquippedSword")
-	local trail = if equippedSword then equippedSword:FindFirstChildOfClass("Trail") else nil
-	if trail then trail.Enabled = true end
+	local trail = if equippedSword then equippedSword:FindFirstChildWhichIsA("Trail", true) else nil
 
-	-- Hybrid Facing: Lock AutoRotate false so body keeps facing aim direction while strafing with WASD
+	-- Enable trail strictly during the forward cut
+	if trail then
+		trail.Enabled = true
+	end
+
+	-- Hybrid Facing
 	humanoid.AutoRotate = false
 
-	-- Activate client-only attack movement governor
+	-- Client speed dampener
 	local InputController = require(script.Parent.InputController)
 	InputController.SetLocalAttacking(true, animDef.WalkSpeedDampen or 11.5)
 
@@ -783,11 +778,21 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 	track:Play(crossfade, 1, clampedSpeed)
 	activeAttackTrack = track
 
+	-- Cut trail immediately once the forward slash finishes (65% into swing)
+	task.delay(duration * 0.65, function()
+		if thisToken == currentSwingToken and trail then
+			trail.Enabled = false
+		end
+	end)
+
 	local chainEndDelay = FlyingSwordConfig.CHAIN_END_DELAY or 0.15
 	task.delay(duration, function()
 		if thisToken ~= currentSwingToken then return end
-		if trail and activeAttackTrack == track then trail.Enabled = false end
-		if track and track.IsPlaying and activeAttackTrack == track then track:Stop(crossfade) end
+		if trail then trail.Enabled = false end
+
+		if track and track.IsPlaying and activeAttackTrack == track then
+			track:Stop(crossfade)
+		end
 
 		task.delay(chainEndDelay, function()
 			if thisToken ~= currentSwingToken then return end
@@ -795,7 +800,6 @@ function AnimationController.PlayAttackAnimation(skillKey: string, comboIndex: n
 				activeAttackTrack = nil
 			end
 
-			-- Chain ended: restore AutoRotate and ramp speed back up
 			InputController.SetLocalAttacking(false)
 			if humanoid and humanoid.Parent then
 				humanoid.AutoRotate = true

@@ -31,15 +31,42 @@ UIAssets.Icons = {
 	SpiritGrass            = "rbxassetid://112390155425328",
 	SpiritHealingDan       = "rbxassetid://72471225624084",
 
-	-- 8 Sword Tiers (Updated Live Asset IDs)
-	MortalIronJian              = "rbxassetid://109157084266033", -- Common (Tier 1)
-	AzureCloudDiscipleJian      = "rbxassetid://115690610892281", -- Uncommon (Tier 2)
-	FlowingQiSpiritSword        = "rbxassetid://85610178645930",  -- Rare (Tier 3)
-	VerdantJadeFlyingSword      = "rbxassetid://114181885052834", -- Epic (Tier 4)
-	VioletSoulSovereignJian     = "rbxassetid://102454036931672", -- Legendary (Tier 5)
-	VoidStarCleaverDao          = "rbxassetid://73201319689599",  -- Mythic (Tier 6)
-	AzurePatriarchHeritageJian  = "rbxassetid://129279811461089", -- Divine (Tier 7)
-	RadiantImmortalSovereignJian= "rbxassetid://131309720641215", -- Immortal (Tier 8)
+	-- Universal Sword Placeholder Icon (NewWeapons Roster)
+	SwordPlaceholder       = "rbxassetid://109157084266033",
+
+	-- 10 Canonical Weapons
+	IronReed               = "rbxassetid://109157084266033",
+	BronzeDiscipline       = "rbxassetid://109157084266033",
+	EarthboundSteel        = "rbxassetid://109157084266033",
+	WanderingBlade         = "rbxassetid://109157084266033",
+	CraneAmidstClouds      = "rbxassetid://109157084266033",
+	ResonantHeart          = "rbxassetid://109157084266033",
+	HollowMoon             = "rbxassetid://109157084266033",
+	AscendantGold          = "rbxassetid://109157084266033",
+	VoidPurity             = "rbxassetid://109157084266033",
+	HeavenPiercing         = "rbxassetid://109157084266033",
+
+	-- Studio Folder Name Aliases
+	["1.Iron Reed"]           = "rbxassetid://109157084266033",
+	["2.Bronze Discipline"]   = "rbxassetid://109157084266033",
+	["3.Earthbound Steel"]    = "rbxassetid://109157084266033",
+	["4.Wandering Blade"]     = "rbxassetid://109157084266033",
+	["5.Crane Amidst Clouds"] = "rbxassetid://109157084266033",
+	["6.Resonant Heart"]      = "rbxassetid://109157084266033",
+	["7.Hollow Moon"]         = "rbxassetid://109157084266033",
+	["8.Ascendant Gold"]      = "rbxassetid://109157084266033",
+	["9.Void Purity"]         = "rbxassetid://109157084266033",
+	["10.Heaven-Piercing"]    = "rbxassetid://109157084266033",
+
+	-- Legacy Sword Tiers (Retained for Backwards Compatibility)
+	MortalIronJian              = "rbxassetid://109157084266033",
+	AzureCloudDiscipleJian      = "rbxassetid://115690610892281",
+	FlowingQiSpiritSword        = "rbxassetid://85610178645930",
+	VerdantJadeFlyingSword      = "rbxassetid://114181885052834",
+	VioletSoulSovereignJian     = "rbxassetid://102454036931672",
+	VoidStarCleaverDao          = "rbxassetid://73201319689599",
+	AzurePatriarchHeritageJian  = "rbxassetid://129279811461089",
+	RadiantImmortalSovereignJian= "rbxassetid://131309720641215",
 }
 
 -- Master Design Tokens

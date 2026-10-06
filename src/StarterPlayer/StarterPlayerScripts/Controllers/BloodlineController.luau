@@ -6,12 +6,18 @@
     - Auto-syncs live slot data upon opening
     - DecisionModal integration (Equip Active, Save to Vault, Discard +100)
     - 1X and 10X Awakening Rituals with server roll response
-    - 7-Tier Palette Support: Mortal, Common, Spiritual, Earth, Heaven, Legendary, Mythic
-    - Formats Passives directly from BloodlineConfig
+    - 5-Tier Palette Support: Common, Uncommon, Rare, Epic, Legendary
+    - Autonomous World-Space Living Spiritual Orb Engine:
+        * Top-left shoulder hover with fluid world-space momentum and damping
+        * Independent from jerky R6 walk animation keyframes
+        * Living breathing bobbing and drifting active during locomotion and idle
+        * Strict boundary leash clamping (cannot exceed 0.52 studs from shoulder anchor)
+        * Smooth axial spin and buoyancy tilt
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 
@@ -41,8 +47,6 @@ local descriptionLabel: TextLabel? = nil
 
 local legendFill: Frame? = nil
 local legendCountLabel: TextLabel? = nil
-local mythicFill: Frame? = nil
-local mythicCountLabel: TextLabel? = nil
 
 local stonesLabel: TextLabel? = nil
 local beadsLabel: TextLabel? = nil
@@ -52,24 +56,26 @@ local buttonConnections: { RBXScriptConnection } = {}
 local lastSyncData: any = nil
 local isInitialized = false
 
+-- Living Orb Motion Configuration
+local BASE_SHOULDER_OFFSET = CFrame.new(-1.65, 1.75, 0.1)
+local MAX_LEASH_DISTANCE = 0.52 -- Strict boundary leash constraint
+local FOLLOW_SPEED = 12.0 -- Smooth world-space momentum responsiveness
+local orbWorldPositions: { [Model]: Vector3 } = {}
+
 local TIER_COLORS = {
-	Mortal    = Color3.fromRGB(160, 165, 175),
-	Common    = Color3.fromRGB(150, 205, 180),
-	Spiritual = Color3.fromRGB(50, 215, 150),
-	Earth     = Color3.fromRGB(235, 180, 25),
-	Heaven    = Color3.fromRGB(215, 45, 85),
+	Common    = Color3.fromRGB(160, 165, 175),
+	Uncommon  = Color3.fromRGB(52, 211, 153),
+	Rare      = Color3.fromRGB(56, 189, 248),
+	Epic      = Color3.fromRGB(168, 85, 247),
 	Legendary = Color3.fromRGB(245, 195, 35),
-	Mythic    = Color3.fromRGB(255, 235, 120),
 }
 
 local TIER_BG_COLORS = {
-	Mortal    = Color3.fromRGB(24, 25, 28),
-	Common    = Color3.fromRGB(20, 28, 25),
-	Spiritual = Color3.fromRGB(14, 32, 24),
-	Earth     = Color3.fromRGB(34, 28, 12),
-	Heaven    = Color3.fromRGB(36, 14, 20),
+	Common    = Color3.fromRGB(24, 25, 28),
+	Uncommon  = Color3.fromRGB(14, 32, 24),
+	Rare      = Color3.fromRGB(16, 28, 42),
+	Epic      = Color3.fromRGB(36, 14, 38),
 	Legendary = Color3.fromRGB(42, 32, 10),
-	Mythic    = Color3.fromRGB(45, 38, 14),
 }
 
 local PANEL_CLICK_SOUND_ID = (UIAssets.Audio and UIAssets.Audio.PanelClick) or "rbxassetid://138567614125924"
@@ -173,10 +179,6 @@ local function EnsureUI(): boolean
 		legendFill = pityCard:FindFirstChild("Fill", true) :: Frame?
 		local legRow = pityCard:FindFirstChild("LegendaryRow")
 		legendCountLabel = legRow and legRow:FindFirstChild("CountLabel", true) :: TextLabel?
-
-		local mytRow = pityCard:FindFirstChild("MythicRow")
-		mythicFill = mytRow and mytRow:FindFirstChild("Fill", true) :: Frame?
-		mythicCountLabel = mytRow and mytRow:FindFirstChild("CountLabel", true) :: TextLabel?
 
 		stonesLabel = pityCard:FindFirstChild("StonesLabel", true) :: TextLabel?
 	end
@@ -303,10 +305,10 @@ end
 function BloodlineController.Render()
 	if not EnsureUI() or not page then return end
 
-	local activeId = (lastSyncData and (lastSyncData.BloodlineId or lastSyncData.Bloodline)) or player:GetAttribute("Bloodline") or "MortalSwordBone"
-	local def = BloodlineConfig.GetBloodline(activeId) or BloodlineConfig.GetBloodline("MortalSwordBone")
+	local activeId = (lastSyncData and (lastSyncData.BloodlineId or lastSyncData.Bloodline)) or player:GetAttribute("Bloodline") or "MortalSteelVein"
+	local def = BloodlineConfig.GetBloodline(activeId) or BloodlineConfig.GetBloodline("MortalSteelVein")
 
-	local tierColor = if def then (TIER_COLORS[def.Tier] or TIER_COLORS.Mortal) else TIER_COLORS.Mortal
+	local tierColor = if def then (TIER_COLORS[def.Tier] or TIER_COLORS.Common) else TIER_COLORS.Common
 
 	if tierBadgeLabel and def then
 		tierBadgeLabel.Text = string.upper(def.Tier)
@@ -323,7 +325,7 @@ function BloodlineController.Render()
 	end
 
 	if passiveSummaryLabel and def then
-		passiveSummaryLabel.Text = if def.Tier == "Mortal" then "Mundane Lineage (Unawakened)" else "Awakened Sovereign Roots"
+		passiveSummaryLabel.Text = if def.Tier == "Common" then "Mundane Lineage (Unawakened)" else "Awakened Sovereign Roots"
 	end
 
 	if descriptionLabel and def then
@@ -332,18 +334,11 @@ function BloodlineController.Render()
 
 	local pity = (lastSyncData and lastSyncData.Pity) or {}
 	local legPity = pity.SpinsSinceLegendary or player:GetAttribute("LegendaryPity") or 0
-	local mytPity = pity.SpinsSinceMythic or player:GetAttribute("MythicPity") or 0
 
 	if legendFill and legendCountLabel then
 		local pct = math.clamp(legPity / 30, 0, 1)
 		legendFill.Size = UDim2.new(pct, 0, 1, 0)
 		legendCountLabel.Text = string.format("%d/30", legPity)
-	end
-
-	if mythicFill and mythicCountLabel then
-		local pct = math.clamp(mytPity / 100, 0, 1)
-		mythicFill.Size = UDim2.new(pct, 0, 1, 0)
-		mythicCountLabel.Text = string.format("%d/100", mytPity)
 	end
 
 	local stones = (lastSyncData and lastSyncData.RemainingStones) or (lastSyncData and lastSyncData.SpiritStones) or player:GetAttribute("SpiritStones") or 0
@@ -376,7 +371,7 @@ function BloodlineController.Render()
 				if storedId and storedId ~= "" then
 					local sDef = BloodlineConfig.GetBloodline(storedId)
 					local name = sDef and sDef.Name or storedId
-					local sTier = sDef and sDef.Tier or "Mortal"
+					local sTier = sDef and sDef.Tier or "Common"
 					local isEquipped = (storedId == activeId)
 
 					sData.Label.Text = string.format("SLOT %d: [%s] %s", idx, string.upper(sTier), name)
@@ -455,7 +450,7 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 	for _, bDef in pairs(allRaw) do
 		if typeof(bDef) == "table" and bDef.Name then
 			table.insert(bloodlinePool, bDef)
-			if bDef.Tier == "Mythic" or bDef.Tier == "Legendary" then
+			if bDef.Tier == "Legendary" or bDef.Tier == "Epic" then
 				table.insert(highTierPool, bDef)
 			end
 		end
@@ -483,9 +478,9 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 
 		if not cDef then cDef = def end
 
-		local tierName = cDef.Tier or "Mortal"
-		local tColor = TIER_COLORS[tierName] or TIER_COLORS.Mortal
-		local bgColor = TIER_BG_COLORS[tierName] or TIER_BG_COLORS.Mortal
+		local tierName = cDef.Tier or "Common"
+		local tColor = TIER_COLORS[tierName] or TIER_COLORS.Common
+		local bgColor = TIER_BG_COLORS[tierName] or TIER_BG_COLORS.Common
 
 		local cFrame = Instance.new("Frame")
 		cFrame.Name = "Card_" .. i
@@ -543,7 +538,7 @@ function BloodlineController.ShowDecisionModal(bloodlineId: string)
 			local progress = elapsed / spinDuration
 			local interval = 0.035 + (progress ^ 2.2) * 0.35
 			task.wait(interval)
-			elaps += interval
+			elapsed += interval
 		end
 	end)
 
@@ -616,6 +611,69 @@ function BloodlineController.Close()
 	if decisionModal then decisionModal.Visible = false end
 end
 
+-- =============================================================================
+-- LIVING SPIRITUAL ORB ANIMATION ENGINE (WORLD-SPACE MOMENTUM & DRIFT)
+-- =============================================================================
+local function UpdateLivingOrbAnimation(dt: number)
+	local now = os.clock()
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		local char = p.Character
+		if char and char.Parent then
+			local artifact = char:FindFirstChild("BloodlineArtifact")
+			if artifact then
+				local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso") :: BasePart?
+				local prim = if artifact:IsA("BasePart") then artifact else (artifact.PrimaryPart or artifact:FindFirstChildWhichIsA("BasePart", true))
+				local weld = prim and (prim:FindFirstChild("OrbWeld") or prim:FindFirstChildWhichIsA("Weld")) :: Weld?
+
+				if torso and prim and weld and weld.Part0 == torso then
+					-- 1. Ideal Top-Left Shoulder Anchor in World Space
+					local anchorWorldCF = torso.CFrame * BASE_SHOULDER_OFFSET
+					local anchorWorldPos = anchorWorldCF.Position
+
+					-- 2. World-Space Damped Follow (Decouples the orb from jerky R6 walk keyframes)
+					local currentPos = orbWorldPositions[char]
+					if not currentPos or (currentPos - anchorWorldPos).Magnitude > 4.0 then
+						currentPos = anchorWorldPos
+					else
+						local followAlpha = 1 - math.exp(-FOLLOW_SPEED * dt)
+						currentPos = currentPos:Lerp(anchorWorldPos, followAlpha)
+
+						-- 3. Strict Boundary Leash Clamp: Cannot drift past 0.52 studs
+						local leashOffset = currentPos - anchorWorldPos
+						if leashOffset.Magnitude > MAX_LEASH_DISTANCE then
+							currentPos = anchorWorldPos + leashOffset.Unit * MAX_LEASH_DISTANCE
+						end
+					end
+					orbWorldPositions[char] = currentPos
+
+					-- 4. Organic Living Floating & Breathing (Active even while moving)
+					local bobY = math.sin(now * 2.2) * 0.14 + math.sin(now * 4.3) * 0.04
+					local driftX = math.cos(now * 1.5 + 0.9) * 0.09
+					local driftZ = math.sin(now * 1.7 + 1.4) * 0.09
+					local livingOffset = Vector3.new(driftX, bobY, driftZ)
+
+					local finalWorldPos = currentPos + livingOffset
+
+					-- 5. Independent Axial Spin & Buoyancy Tilt
+					local spinAngle = math.rad((now * 24) % 360)
+					local tiltX = math.rad(math.sin(now * 1.8) * 4.5)
+					local tiltZ = math.rad(math.cos(now * 1.6) * 4.5)
+
+					local torsoFacingRot = torso.CFrame - torso.CFrame.Position
+					local finalWorldRot = torsoFacingRot * CFrame.Angles(tiltX, spinAngle, tiltZ)
+
+					-- 6. Convert World Space CFrame back into Torso-relative weld.C0
+					local finalWorldCF = CFrame.new(finalWorldPos) * finalWorldRot
+					weld.C0 = torso.CFrame:Inverse() * finalWorldCF
+				end
+			end
+		else
+			orbWorldPositions[char] = nil
+		end
+	end
+end
+
 function BloodlineController.Init()
 	bloodlineRemote = RemoteEvents.GetRemote("BloodlineAction")
 
@@ -634,10 +692,12 @@ function BloodlineController.Init()
 	player:GetAttributeChangedSignal("Bloodline"):Connect(BloodlineController.Render)
 	player:GetAttributeChangedSignal("BloodlineSpins"):Connect(BloodlineController.Render)
 	player:GetAttributeChangedSignal("LegendaryPity"):Connect(BloodlineController.Render)
-	player:GetAttributeChangedSignal("MythicPity"):Connect(BloodlineController.Render)
 	player:GetAttributeChangedSignal("SpiritStones"):Connect(BloodlineController.Render)
 
-	print("[ASCEND] BloodlineController Initialized & Connected to MainHub (7-Tier UI Bound).")
+	-- Mount 60 FPS World-Space Living Spiritual Orb Engine
+	RunService.RenderStepped:Connect(UpdateLivingOrbAnimation)
+
+	print("[ASCEND] BloodlineController Initialized & Living Spiritual Orb Engine Active.")
 end
 
 return BloodlineController

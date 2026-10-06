@@ -25,26 +25,27 @@ local COST_1X = 100
 local COST_10X = 900
 local HARD_PITY = 50
 
--- Weighted Drop Pools
+-- Weighted Drop Pools (NewWeapons Roster)
 local POOL_5_STAR = {
-	{ Id = "RadiantImmortalSovereignJian", Name = "Celestial Jade Dragon Jian", Type = "Weapon", Rarity = "Mythic" },
-	{ Id = "AzurePatriarchHeritageJian", Name = "Cosmic Void Sovereign Jian", Type = "Weapon", Rarity = "Mythic" },
+	{ Id = "HeavenPiercing", Name = "Heaven-Piercing", Type = "Weapon", Rarity = "Legendary" },
+	{ Id = "VoidPurity", Name = "Void Purity", Type = "Weapon", Rarity = "Legendary" },
 }
 
 local POOL_4_STAR = {
-	{ Id = "CrimsonFlameDao", Name = "Crimson Flame Dao", Type = "Weapon", Rarity = "Legendary" },
-	{ Id = "FrostLotusDao", Name = "Frost Lotus Dao", Type = "Weapon", Rarity = "Legendary" },
-	{ Id = "VoidStarCleaverDao", Name = "Void Star Cleaver Dao", Type = "Weapon", Rarity = "Legendary" },
+	{ Id = "AscendantGold", Name = "Ascendant Gold", Type = "Weapon", Rarity = "Epic" },
+	{ Id = "HollowMoon", Name = "Hollow Moon", Type = "Weapon", Rarity = "Epic" },
 }
 
 local POOL_3_STAR = {
-	{ Id = "ThunderCragJian", Name = "Thunder Crag Jian", Type = "Weapon", Rarity = "Rare" },
-	{ Id = "MortalIronJian", Name = "Refined Iron Jian", Type = "Weapon", Rarity = "Rare" },
+	{ Id = "ResonantHeart", Name = "Resonant Heart", Type = "Weapon", Rarity = "Rare" },
+	{ Id = "CraneAmidstClouds", Name = "Crane Amidst Clouds", Type = "Weapon", Rarity = "Rare" },
 }
 
 local POOL_2_STAR = {
-	{ Id = "SpiritHerb_SpiritGrass", Name = "Spirit Grass Bundle (x5)", Type = "Item", Quantity = 5, Rarity = "Common" },
-	{ Id = "Item_Dan_FoundationPill", Name = "Qi Gathering Dan", Type = "Item", Quantity = 2, Rarity = "Common" },
+	{ Id = "WanderingBlade", Name = "Wandering Blade", Type = "Weapon", Rarity = "Uncommon" },
+	{ Id = "EarthboundSteel", Name = "Earthbound Steel", Type = "Weapon", Rarity = "Uncommon" },
+	{ Id = "SpiritGrass_1Yr", Name = "Spirit Grass Bundle (x5)", Type = "Item", Quantity = 5, Rarity = "Common" },
+	{ Id = "QiGatheringDan", Name = "Qi Gathering Dan (x2)", Type = "Item", Quantity = 2, Rarity = "Common" },
 	{ Id = "SpiritHealingDan", Name = "Spirit Healing Dan (x3)", Type = "Item", Quantity = 3, Rarity = "Common" },
 }
 
@@ -63,7 +64,7 @@ local function RollSingleDraw(player: Player): (any, boolean)
 	-- Increment Pity for non-5-star pulls
 	player:SetAttribute("AltarPity", currentPity + 1)
 
-	-- 2. 4-Star Legendary (12.0% -> roll 2.5 to 14.5)
+	-- 2. 4-Star Epic (12.0% -> roll 2.5 to 14.5)
 	if roll <= 14.5 then
 		return POOL_4_STAR[math.random(1, #POOL_4_STAR)], false
 	end
@@ -73,7 +74,7 @@ local function RollSingleDraw(player: Player): (any, boolean)
 		return POOL_3_STAR[math.random(1, #POOL_3_STAR)], false
 	end
 
-	-- 4. 2-Star Consumables (50.0% -> roll 50.0 to 100.0)
+	-- 4. 2-Star Consumables / Uncommons (50.0% -> roll 50.0 to 100.0)
 	return POOL_2_STAR[math.random(1, #POOL_2_STAR)], false
 end
 

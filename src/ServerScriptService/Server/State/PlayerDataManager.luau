@@ -5,11 +5,11 @@
     Server-authoritative DataStore persistence manager for ASCEND:
     - DataVersion 3 Persistence Pipeline with Legacy Test Sword Sanitizer
     - Developer Exclusive Arsenal Engine (Auto-grants all present & future swords to Han_jueee only)
-    - Normal Player Grind Isolation (Regular players / alts only have MortalIronJian and must buy/earn swords one-by-one)
+    - Normal Player Grind Isolation (Regular players / alts only have IronReed and must buy/earn swords one-by-one)
     - Sword Bloodline Lineages, Meridian Storage Slots, Pity Counter & Spin Economy (Phase 5.2)
     - Ultimate Pinnacle Samsara Rebirth Persistence & Celestial Footstep Trail / Aura Welder (Phase 5)
     - Authoritative Direct Workspace.SpawnLocation Router
-    - Fixed WeldConstraint CFrame displacement bug in AttachBloodlineVisual
+    - Top-Left Shoulder Spiritual Orb Welder with PointLight & Zero Particle VFX
     - Phase 2: RBXScriptConnection lifecycle cleanup & zero-delay stream-safe dais placement
     - Daily Sect Stipend 24-hour persistence integration
     - Sword Dao System Phase 1: Cultivation.SwordDao persistence, legacy-to-Thunder migration, and validated setter
@@ -56,7 +56,7 @@ export type SavedPlayerData = {
 		Order: number?,
 		CurrentQi: number,
 		CultivatedQi: number?,
-		SwordDao: string?, -- Phase 1: "Thunder" | "Fire" (extensible to future Daos)
+		SwordDao: string?,
 	},
 	EquippedWeapon: string,
 	Inventory: { [string]: SavedInventorySlot },
@@ -86,9 +86,11 @@ local CURRENT_VERSION = 3
 local MAX_RETRIES = 3
 local AUTO_SAVE_INTERVAL = 300
 local SHUTDOWN_SAVE_TIMEOUT = 25
-local STARTER_WEAPON = "MortalIronJian"
+local STARTER_WEAPON = "IronReed"
 
--- Developer Whitelist for Exclusive Arsenal Access
+-- Top-Left Shoulder Offset (Matches Reference Rig)
+local DEFAULT_ORB_OFFSET = CFrame.new(-1.65, 1.75, 0.1)
+
 local DEVELOPER_USERNAMES: { [string]: boolean } = {
 	["Han_jueee"] = true,
 }
@@ -99,7 +101,6 @@ local function IsDeveloper(player: Player): boolean
 	return false
 end
 
--- Roman Numeral Generator for Samsara Prestige Titles
 local function ToRoman(num: number): string
 	local romanNumerals = {
 		{ 10, "X" }, { 9, "IX" }, { 5, "V" }, { 4, "IV" }, { 1, "I" }
@@ -116,11 +117,15 @@ local function ToRoman(num: number): string
 	return if result ~= "" then result else "I"
 end
 
--- Legacy test swords to purge from regular players migrating from V2
 local LEGACY_TEST_SWORDS: { [string]: boolean } = {
+	["MortalIronJian"] = true,
 	["AzureCloudDiscipleJian"] = true,
 	["FlowingQiSpiritSword"] = true,
 	["VerdantJadeFlyingSword"] = true,
+	["VioletSoulSovereignJian"] = true,
+	["VoidStarCleaverDao"] = true,
+	["AzurePatriarchHeritageJian"] = true,
+	["RadiantImmortalSovereignJian"] = true,
 	["BreezeWhisperJian"] = true,
 	["VerdantBambooJian"] = true,
 	["CrimsonFlameDao"] = true,
@@ -135,7 +140,6 @@ local playerEconomyData: { [Player]: { SpiritStones: number, SectRank: SectConfi
 local playerGamepasses: { [Player]: { [string]: boolean } } = {}
 local playerSkinData: { [Player]: { EquippedSkin: string, UnlockedSkins: { [string]: boolean } } } = {}
 
--- Expanded Bloodline Session Cache: tracks active lineage, spins, unlocked meridian slots, and pity counters
 local playerBloodlines: {
 	[Player]: {
 		Current: string,
@@ -165,11 +169,11 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 		Order = 1,
 		CurrentQi = 200,
 		CultivatedQi = 200,
-		SwordDao = nil, -- Brand-new character: left nil to trigger selection UI in Phase 6
+		SwordDao = nil,
 	},
-	EquippedWeapon = "MortalIronJian",
+	EquippedWeapon = "IronReed",
 	Inventory = {
-		["1"] = { ItemId = "MortalIronJian", Count = 1 },
+		["1"] = { ItemId = "IronReed", Count = 1 },
 		["2"] = { ItemId = "SpiritHealingDan", Count = 5 },
 	},
 	Sect = "Azure Cloud Sect",
@@ -181,9 +185,9 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	OwnedGamepasses = {},
 	UnlockedSkins = { ["DefaultBronze"] = true },
 	EquippedSkin = "DefaultBronze",
-	Bloodline = "MortalSwordBone",
+	Bloodline = "MortalSteelVein",
 	BloodlineSpins = 5,
-	BloodlineSlots = { ["1"] = "MortalSwordBone" },
+	BloodlineSlots = { ["1"] = "MortalSteelVein" },
 	MaxBloodlineSlots = 1,
 	BloodlinePity = {
 		SpinsSinceLegendary = 0,
@@ -193,10 +197,6 @@ local DEFAULT_PLAYER_DATA: SavedPlayerData = {
 	LastStipendClaim = 0,
 }
 
--- =============================================================================
--- AUTHORITATIVE SPAWN ROUTER
--- Guarantees the player lands squarely on Workspace.SpawnLocation
--- =============================================================================
 local function GetPrimarySpawnLocation(): SpawnLocation?
 	local spawnLoc = Workspace:FindFirstChild("SpawnLocation")
 		or Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
@@ -221,7 +221,7 @@ local function RouteToSpawnDais(character: Model)
 	end
 end
 
--- 3D Visual Artifact Welder for Bloodlines
+-- Top-Left Shoulder Welder with PointLight & Zero VFX
 local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	local old = char:FindFirstChild("BloodlineArtifact")
 	if old then old:Destroy() end
@@ -230,14 +230,22 @@ local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 	if not def or not def.VisualArtifact then return end
 
 	local vSpec = def.VisualArtifact
-	local parentPart = char:FindFirstChild(vSpec.AttachmentPoint) :: BasePart?
-		or char:FindFirstChild("UpperTorso") :: BasePart?
-		or char:FindFirstChild("Torso") :: BasePart?
+	local parentPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso") :: BasePart?
 	if not parentPart then return end
 
 	local modelsFolder = ReplicatedStorage:FindFirstChild("Bloodlines")
 		or (ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("Bloodlines"))
-	local preMadeModel = modelsFolder and modelsFolder:FindFirstChild(vSpec.ArtifactName) :: Model?
+
+	if not modelsFolder then return end
+
+	local preMadeModel: Instance? = nil
+	local newBloodlines = modelsFolder:FindFirstChild("NewBloodlines")
+	if newBloodlines then
+		preMadeModel = newBloodlines:FindFirstChild(vSpec.ArtifactName)
+	end
+	if not preMadeModel then
+		preMadeModel = modelsFolder:FindFirstChild(vSpec.ArtifactName)
+	end
 
 	if not preMadeModel then return end
 
@@ -248,25 +256,43 @@ local function AttachBloodlineVisual(char: Model, bloodlineId: string)
 			p.Anchored = false
 			p.CanCollide = false
 			p.Massless = true
+		elseif p:IsA("ParticleEmitter") or p:IsA("Trail") then
+			p:Destroy() -- Clean: No VFX per design
 		end
 	end
 
-	local prim = artifactModel.PrimaryPart or artifactModel:FindFirstChildWhichIsA("BasePart", true)
+	local prim = if artifactModel:IsA("BasePart") then artifactModel else (artifactModel.PrimaryPart or artifactModel:FindFirstChildWhichIsA("BasePart", true))
 	if prim then
 		artifactModel.Parent = char
-		local offset = if vSpec.AttachmentPoint == "Head" then Vector3.new(0, 1.4, 0) else Vector3.new(0, 0.4, 0.95)
-		prim.CFrame = parentPart.CFrame * CFrame.new(offset)
+		prim.CFrame = parentPart.CFrame * DEFAULT_ORB_OFFSET
 
-		local weld = Instance.new("WeldConstraint")
+		for _, child in ipairs(prim:GetChildren()) do
+			if child:IsA("Weld") or child:IsA("WeldConstraint") or child:IsA("Motor6D") then
+				child:Destroy()
+			end
+		end
+
+		local weld = Instance.new("Weld")
+		weld.Name = "OrbWeld"
 		weld.Part0 = parentPart
 		weld.Part1 = prim
+		weld.C0 = DEFAULT_ORB_OFFSET
+		weld.C1 = CFrame.identity
 		weld.Parent = prim
+
+		local light = prim:FindFirstChild("OrbLight") :: PointLight?
+		if not light then
+			light = Instance.new("PointLight")
+			light.Name = "OrbLight"
+			light.Parent = prim
+		end
+		light.Color = vSpec.AuraColor or Color3.fromRGB(220, 220, 255)
+		light.Range = 8
+		light.Brightness = 1.6
+		light.Shadows = false
 	end
 end
 
--- =============================================================================
--- PHASE 5: CELESTIAL FOOTSTEP TRAIL & SAMSARA REBIRTH AURA WELDER
--- =============================================================================
 local function AttachSamsaraCelestialAura(character: Model, cycle: number)
 	if cycle <= 0 then return end
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -388,14 +414,14 @@ function PlayerDataManager.Init()
 		end
 	end)
 
-	print("[PlayerDataManager] Engine Initialized with Authoritative SpawnLocation Router, Bloodlines & Samsara Rebirth.")
+	print("[PlayerDataManager] Engine Initialized with Authoritative SpawnLocation Router & Top-Left Shoulder Welder.")
 end
 
 function PlayerDataManager.OnPlayerAdded(player: Player)
 	local dataKey = "Player_" .. player.UserId
 	local loadedData: any = nil
 	local isDev = IsDeveloper(player)
-	local defaultEquipped = if isDev then "VoidStarCleaverDao" else STARTER_WEAPON
+	local defaultEquipped = if isDev then "HeavenPiercing" else STARTER_WEAPON
 
 	local daisSpawn = GetPrimarySpawnLocation()
 	if daisSpawn then
@@ -433,7 +459,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 	end
 
 	if not loadedData then
-		-- BRAND-NEW CHARACTER: SwordDao is left nil to trigger selection in Phase 6
 		print(string.format("[PlayerDataManager] Creating brand new profile for %s (New Player Onboarding).", player.Name))
 		loadedData = {
 			Version = CURRENT_VERSION,
@@ -446,7 +471,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			},
 			EquippedWeapon = defaultEquipped,
 			Inventory = {
-				[1] = { ItemId = "MortalIronJian", Count = 1 },
+				[1] = { ItemId = "IronReed", Count = 1 },
 				[2] = { ItemId = "SpiritHealingDan", Count = 5 },
 			},
 			Sect = DEFAULT_PLAYER_DATA.Sect,
@@ -458,9 +483,9 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			OwnedGamepasses = {},
 			UnlockedSkins = { ["DefaultBronze"] = true },
 			EquippedSkin = "DefaultBronze",
-			Bloodline = "MortalSwordBone",
+			Bloodline = "MortalSteelVein",
 			BloodlineSpins = 5,
-			BloodlineSlots = { ["1"] = "MortalSwordBone" },
+			BloodlineSlots = { ["1"] = "MortalSteelVein" },
 			MaxBloodlineSlots = 1,
 			BloodlinePity = {
 				SpinsSinceLegendary = 0,
@@ -470,15 +495,11 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 			LastStipendClaim = 0,
 		}
 	else
-		-- RETURNING PLAYER (Existing save)
 		if not loadedData.Version or loadedData.Version < CURRENT_VERSION then
 			print(string.format("[PlayerDataManager] Migrating %s data to Version 3 schema.", player.Name))
 			loadedData.Version = CURRENT_VERSION
 		end
 
-		-- CRITICAL MIGRATION RULE: Legacy save migration for returning players
-		-- If an existing save has prior cultivation data but SwordDao is missing/nil,
-		-- automatically set it to "Thunder" silently with no prompt.
 		if loadedData.Cultivation then
 			if loadedData.Cultivation.SwordDao == nil then
 				loadedData.Cultivation.SwordDao = "Thunder"
@@ -495,7 +516,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		end
 
 		local eq = tostring(loadedData.EquippedWeapon or "")
-		if eq == "" or eq == "FlyingSword" or eq == "Celestial Thunder Sovereign Sword" or string.find(eq:lower(), "flyingsword") or (isDev and eq == "MortalIronJian") then
+		if eq == "" or eq == "FlyingSword" or eq == "Celestial Thunder Sovereign Sword" or string.find(eq:lower(), "flyingsword") or eq == "MortalIronJian" or (isDev and eq == "IronReed") then
 			loadedData.EquippedWeapon = defaultEquipped
 			print(string.format("[PlayerDataManager] Sanitized equipped weapon for %s -> '%s'", player.Name, defaultEquipped))
 		end
@@ -503,7 +524,6 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 
 	isLoadedMap[player] = true
 
-	-- Cache Sword Dao
 	local initialDao = if loadedData.Cultivation then loadedData.Cultivation.SwordDao else nil
 	playerSwordDao[player] = initialDao
 
@@ -525,19 +545,21 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 		UnlockedSkins = loadedData.UnlockedSkins or { ["DefaultBronze"] = true },
 	}
 
-	-- Hydrate Meridian Storage Slots
-	local activeBloodline = loadedData.Bloodline or "MortalSwordBone"
+	local rawBloodline = loadedData.Bloodline or "MortalSteelVein"
+	local activeDef = BloodlineConfig.GetBloodline(rawBloodline)
+	local activeBloodline = if activeDef then activeDef.Id else "MortalSteelVein"
+
 	local hydratedSlots: { [number]: string } = { [1] = activeBloodline }
 	if loadedData.BloodlineSlots and type(loadedData.BloodlineSlots) == "table" then
 		for slotKey, bloodlineId in pairs(loadedData.BloodlineSlots) do
 			local slotNum = tonumber(slotKey)
 			if slotNum and type(bloodlineId) == "string" then
-				hydratedSlots[slotNum] = bloodlineId
+				local sDef = BloodlineConfig.GetBloodline(bloodlineId)
+				hydratedSlots[slotNum] = if sDef then sDef.Id else "MortalSteelVein"
 			end
 		end
 	end
 
-	-- Hydrate Pity Progress
 	local loadedPity = loadedData.BloodlinePity or {}
 	local pityData = {
 		SpinsSinceLegendary = loadedPity.SpinsSinceLegendary or 0,
@@ -677,7 +699,7 @@ function PlayerDataManager.OnPlayerAdded(player: Player)
 				targetWeapon = defaultEquipped
 			end
 			WeaponManager.EquipWeapon(player, targetWeapon, "Hand")
-			AttachBloodlineVisual(character, (player:GetAttribute("Bloodline") :: string?) or "MortalSwordBone")
+			AttachBloodlineVisual(character, (player:GetAttribute("Bloodline") :: string?) or "MortalSteelVein")
 		end)
 	end
 
@@ -822,9 +844,6 @@ function PlayerDataManager.GetAlchemyData(player: Player): (number, number)
 	return data.Exp, data.Level
 end
 
--- =============================================================================
--- SWORD DAO ACCESSORS & VALIDATED SETTER (Phase 1)
--- =============================================================================
 function PlayerDataManager.GetSwordDao(player: Player): string?
 	local cached = playerSwordDao[player]
 	if cached ~= nil then return cached end
@@ -837,13 +856,11 @@ function PlayerDataManager.SetSwordDao(player: Player, daoId: string): (boolean,
 		return false, "Sword Dao identifier must be a string."
 	end
 
-	-- Dynamic validation against FlyingSwordConfig.Daos registry
 	local configDaos = (FlyingSwordConfig :: any).Daos
 	local isValidDao = false
 	if type(configDaos) == "table" then
 		isValidDao = (configDaos[daoId] ~= nil)
 	else
-		-- Fallback prior to Phase 2 registry restructure
 		isValidDao = (daoId == "Thunder" or daoId == "Fire")
 	end
 
@@ -854,7 +871,6 @@ function PlayerDataManager.SetSwordDao(player: Player, daoId: string): (boolean,
 	local currentDao = playerSwordDao[player]
 
 	if currentDao == nil then
-		-- FIRST CHOICE (FREE): Genuinely new player onboarding
 		playerSwordDao[player] = daoId
 		player:SetAttribute("SwordDao", daoId)
 		if player.Character then
@@ -865,12 +881,10 @@ function PlayerDataManager.SetSwordDao(player: Player, daoId: string): (boolean,
 		return true, nil
 	end
 
-	-- If already attuned to the requested Dao
 	if currentDao == daoId then
 		return false, "Already attuned to this Sword Dao."
 	end
 
-	-- RESPEC PATH: Requires consuming a DaoReversalToken from inventory
 	if not InventoryManager.HasItem(player, "DaoReversalToken", 1) then
 		return false, "Respec rejected: Requires a Dao Reversal Token."
 	end
@@ -890,14 +904,11 @@ function PlayerDataManager.SetSwordDao(player: Player, daoId: string): (boolean,
 	return true, nil
 end
 
--- =============================================================================
--- PHASE 4 & 5.2: BLOODLINE ACCESSORS, MERIDIAN SLOTS & PITY ENGINE
--- =============================================================================
 function PlayerDataManager.GetBloodline(player: Player): string
 	local data = playerBloodlines[player]
 	if not data then
 		local attr = player:GetAttribute("Bloodline")
-		return if type(attr) == "string" then attr else "MortalSwordBone"
+		return if type(attr) == "string" then attr else "MortalSteelVein"
 	end
 	return data.Current
 end
@@ -952,7 +963,6 @@ function PlayerDataManager.AddBloodlineSpins(player: Player, amount: number): nu
 	return data.Spins
 end
 
--- Meridian Vault Slots Management
 function PlayerDataManager.GetBloodlineSlots(player: Player): { [number]: string }
 	local data = playerBloodlines[player]
 	if not data then return { [1] = PlayerDataManager.GetBloodline(player) } end
@@ -998,7 +1008,6 @@ function PlayerDataManager.EquipBloodlineFromSlot(player: Player, slotIndex: num
 	return true
 end
 
--- Bad-Luck Pity Counter Management
 function PlayerDataManager.GetBloodlinePity(player: Player): { SpinsSinceLegendary: number, SpinsSinceMythic: number }
 	local data = playerBloodlines[player]
 	if not data then return { SpinsSinceLegendary = 0, SpinsSinceMythic = 0 } end
@@ -1008,10 +1017,11 @@ end
 function PlayerDataManager.IncrementBloodlinePity(player: Player): { SpinsSinceLegendary: number, SpinsSinceMythic: number }
 	local data = playerBloodlines[player]
 	if not data then
+		local current = PlayerDataManager.GetBloodline(player)
 		data = {
-			Current = PlayerDataManager.GetBloodline(player),
+			Current = current,
 			Spins = PlayerDataManager.GetBloodlineSpins(player),
-			Slots = { [1] = PlayerDataManager.GetBloodline(player) },
+			Slots = { [1] = current },
 			MaxSlots = 1,
 			Pity = { SpinsSinceLegendary = 0, SpinsSinceMythic = 0 },
 		}
@@ -1031,14 +1041,9 @@ function PlayerDataManager.ResetBloodlinePity(player: Player, tier: "Legendary" 
 	local data = playerBloodlines[player]
 	if not data then return end
 
-	if tier == "Legendary" then
+	if tier == "Legendary" or tier == "Mythic" then
 		data.Pity.SpinsSinceLegendary = 0
 		player:SetAttribute("LegendaryPity", 0)
-	elseif tier == "Mythic" then
-		data.Pity.SpinsSinceLegendary = 0
-		data.Pity.SpinsSinceMythic = 0
-		player:SetAttribute("LegendaryPity", 0)
-		player:SetAttribute("MythicPity", 0)
 	end
 end
 
@@ -1054,13 +1059,11 @@ function PlayerDataManager.RollBloodline(player: Player): (string?, boolean)
 
 	local def = BloodlineConfig.GetBloodline(rolledId)
 	if def then
-		if def.Tier == "Mythic" then
-			PlayerDataManager.ResetBloodlinePity(player, "Mythic")
-		elseif def.Tier == "Legendary" then
+		if def.Tier == "Legendary" then
 			PlayerDataManager.ResetBloodlinePity(player, "Legendary")
 		end
 
-		if def.Tier == "Legendary" or def.Tier == "Mythic" then
+		if def.Tier == "Legendary" then
 			local remote = RemoteEvents.GetRemote("HeavenlyAnnouncement")
 			if remote then
 				remote:FireAllClients(string.format("[HEAVENLY FATE] Cultivator %s awakened the [%s] (%s Lineage)!", player.DisplayName, def.Name, def.Tier))
@@ -1071,9 +1074,6 @@ function PlayerDataManager.RollBloodline(player: Player): (string?, boolean)
 	return rolledId, true
 end
 
--- =============================================================================
--- PHASE 5: SAMSARA REBIRTH PRESTIGE ACCESSORS & ENGINE
--- =============================================================================
 function PlayerDataManager.GetSamsaraCycle(player: Player): number
 	local cached = playerSamsaraData[player]
 	if cached ~= nil then return cached end
@@ -1115,9 +1115,9 @@ function PlayerDataManager.SaveData(player: Player): boolean
 	local gamepasses = playerGamepasses[player] or {}
 	local skinData = playerSkinData[player] or { EquippedSkin = "DefaultBronze", UnlockedSkins = { ["DefaultBronze"] = true } }
 	local bData = playerBloodlines[player] or {
-		Current = "MortalSwordBone",
+		Current = "MortalSteelVein",
 		Spins = 5,
-		Slots = { [1] = "MortalSwordBone" },
+		Slots = { [1] = "MortalSteelVein" },
 		MaxSlots = 1,
 		Pity = { SpinsSinceLegendary = 0, SpinsSinceMythic = 0 },
 	}
@@ -1132,7 +1132,7 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		return false
 	end
 
-	local defaultWep = if IsDeveloper(player) then "VoidStarCleaverDao" else STARTER_WEAPON
+	local defaultWep = if IsDeveloper(player) then "HeavenPiercing" else STARTER_WEAPON
 	if not equippedWeapon or equippedWeapon == "FlyingSword" or string.find(tostring(equippedWeapon):lower(), "flyingsword") then
 		equippedWeapon = defaultWep
 	end
@@ -1148,7 +1148,6 @@ function PlayerDataManager.SaveData(player: Player): boolean
 		end
 	end
 
-	-- Serialize Meridian Slots
 	local serializedSlots: { [string]: string } = {}
 	for slotIdx, bloodlineId in pairs(bData.Slots or {}) do
 		serializedSlots[tostring(slotIdx)] = bloodlineId

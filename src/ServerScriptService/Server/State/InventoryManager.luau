@@ -188,7 +188,7 @@ function InventoryManager.UseItem(player: Player, slotIndex: number)
 			local pData = CultivationManager.GetPlayerData(player)
 			if pData then
 				local maxCap = pData.CultivatedQi or 1000
-			pData.CurrentQi = math.min(maxCap, (pData.CurrentQi or 0) + itemDef.Stats.QiGrant)
+				pData.CurrentQi = math.min(maxCap, (pData.CurrentQi or 0) + itemDef.Stats.QiGrant)
 				CultivationManager.SyncClient(player)
 				used = true
 			end
@@ -277,11 +277,11 @@ function InventoryManager.DropItem(player: Player, slotIndex: number)
 		local itemDef = ItemConfig.GetItem(slot.ItemId)
 		inv[slotIndex] = nil
 
-		-- If dropped weapon is currently equipped, unequip 3D model
+		-- If dropped weapon is currently equipped, unequip and reset to starter weapon
 		if itemDef and itemDef.Type == "Weapon" then
 			local WeaponManager = getWeaponManager()
 			if WeaponManager.GetEquippedWeapon(player) == slot.ItemId then
-				WeaponManager.EquipWeapon(player, "MortalIronJian")
+				WeaponManager.EquipWeapon(player, "IronReed")
 			end
 		end
 

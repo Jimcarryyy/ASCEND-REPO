@@ -2,10 +2,12 @@
 --[[
     CultivationManager.luau
     Location: src/ServerScriptService/Server/Cultivation/CultivationManager.luau
-    Fixes:
-      - Removed hrp.Anchored = true/false: Eliminates the 'Network Ownership API cannot be called on Anchored parts' crash.
+    Features:
+      - Grounded Meditation Engine: Uses Tier1_Common exclusively for ALL tiers.
+      - Orb Color Identity: Dynamically tints aura particles, beams, lights & highlights to the equipped orb.
+      - Clean Xianxia Aesthetic: Purges any skeleton/face/skull/eye particles.
       - Freezes meditation via velocity zeroing, WalkSpeed, and JumpPower without anchoring the character.
-      - Live +QI/sec floating text: Derives exact whole-number Qi added every 1.0s from server passive loop.
+      - Live +QI/sec floating text derived from the passive cultivation loop.
 ]]
 
 local Players = game:GetService("Players")
@@ -49,118 +51,120 @@ type AuraPalette = {
 }
 
 local BLOODLINE_AURA_PALETTES: { [string]: AuraPalette } = {
-	["MortalSwordBone"] = {
+	-- 1. Mortal Steel Vein (Dark Iron / Gunmetal with warm amber core)
+	["MortalSteelVein"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(210, 225, 240)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(180, 205, 225)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(140, 175, 200)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(205, 195, 185)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(140, 130, 120)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(75, 70, 65)),
 		}),
-		LightColor = Color3.fromRGB(190, 210, 225),
+		LightColor = Color3.fromRGB(180, 160, 140),
 	},
-	["IronMeridianRoot"] = {
+	-- 2. Spirit Iron Sword-Bone (Slate Blue / Polished Blade Steel)
+	["SpiritIronSwordBone"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(220, 145, 95)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(180, 110, 60)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(120, 65, 30)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(215, 235, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(145, 185, 220)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(75, 115, 155)),
 		}),
-		LightColor = Color3.fromRGB(180, 115, 65),
+		LightColor = Color3.fromRGB(150, 195, 230),
 	},
-	["BreezeSpiritVein"] = {
+	-- 3. Gale-Jade Sword-Vein (Nephrite Jade / Pale Wind Teal)
+	["GaleJadeSwordVein"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(170, 250, 215)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(130, 230, 195)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(90, 200, 170)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(205, 255, 240)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(120, 225, 195)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(45, 150, 115)),
 		}),
-		LightColor = Color3.fromRGB(150, 235, 200),
+		LightColor = Color3.fromRGB(120, 225, 195),
 	},
-	["AzureDragonMeridian"] = {
+	-- 4. JadeLotusOrb (Vibrant Emerald Jade Lotus)
+	["JadeLotusOrb"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(60, 230, 255)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(34, 211, 238)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(245, 190, 40)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(180, 255, 195)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(34, 197, 94)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(15, 110, 50)),
 		}),
-		LightColor = Color3.fromRGB(34, 211, 238),
+		LightColor = Color3.fromRGB(34, 197, 94),
 	},
-	["VerdantLifeCore"] = {
+	-- 5. Thunder-Severing Sword-Heart (Electric Violet / Amethyst Lightning)
+	["ThunderSeveringSwordHeart"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(110, 245, 175)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(52, 211, 153)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(20, 150, 95)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(235, 185, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(168, 85, 247)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(90, 25, 160)),
 		}),
-		LightColor = Color3.fromRGB(52, 211, 153),
+		LightColor = Color3.fromRGB(168, 85, 247),
 	},
-	["ThunderSoulVessel"] = {
+	-- 6. Heavy-Crag Sword-Marrow (Basalt Terracotta & Amber Mountain Core)
+	["HeavyCragSwordMarrow"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(235, 140, 255)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(192, 132, 252)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(130, 60, 230)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 210, 135)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(245, 158, 11)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(140, 60, 5)),
 		}),
-		LightColor = Color3.fromRGB(192, 132, 252),
+		LightColor = Color3.fromRGB(245, 158, 11),
 	},
-	["AsuraSlaughterBloodline"] = {
+	-- 7. CosmicVoidSphere (Astral Indigo & Celestial Void Realm)
+	["CosmicVoidSphere"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 70, 90)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(220, 20, 60)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(110, 10, 25)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(215, 210, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(99, 102, 241)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(40, 30, 120)),
 		}),
-		LightColor = Color3.fromRGB(220, 20, 60),
+		LightColor = Color3.fromRGB(99, 102, 241),
 	},
-	["EightBladeCelestialHalo"] = {
+	-- 8. Innate Sovereign Sword-Bone (Imperial Sovereign Gold & Pearl White)
+	["InnateSovereignSwordBone"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 250, 210)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 250, 220)),
 			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(250, 204, 21)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(200, 135, 10)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(180, 120, 10)),
 		}),
 		LightColor = Color3.fromRGB(250, 204, 21),
 	},
-	["HeavenlySwordBody"] = {
+	-- 9. Ghost-Shadow Sword-Pulse (Midnight Void Blue & Phantom Sickle Cyan)
+	["GhostShadowSwordPulse"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 250, 210)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(250, 204, 21)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(200, 135, 10)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(190, 240, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 95, 180)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(10, 25, 60)),
 		}),
-		LightColor = Color3.fromRGB(250, 204, 21),
+		LightColor = Color3.fromRGB(56, 189, 248),
 	},
-	["GlacialPhoenixMeridian"] = {
+	-- 10. Scarlet-Lotus Blade-Bone (Carnelian Crimson & Slaughter Blood Red)
+	["ScarletLotusBladeBone"] = {
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(215, 245, 255)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 230, 255)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(50, 135, 255)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 160, 160)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(220, 38, 38)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(120, 10, 20)),
 		}),
-		LightColor = Color3.fromRGB(160, 230, 255),
-	},
-	["VoidSpiritRoot"] = {
-		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(200, 120, 255)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(147, 51, 234)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(55, 15, 125)),
-		}),
-		LightColor = Color3.fromRGB(147, 51, 234),
-	},
-	["ChaosPrimordialDaoBody"] = {
-		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 255, 230)),
-			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 235, 120)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(235, 160, 30)),
-		}),
-		LightColor = Color3.fromRGB(255, 235, 120),
-	},
-	["NineNetherSovereign"] = {
-		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(110, 255, 230)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(30, 220, 190)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(10, 85, 75)),
-		}),
-		LightColor = Color3.fromRGB(30, 220, 190),
+		LightColor = Color3.fromRGB(239, 68, 68),
 	},
 }
 
-local TIER_TEMPLATE_MAP: { [BloodlineConfig.BloodlineTier]: string } = {
-	Common = "Tier1_Common",
-	Rare = "Tier2_Rare",
-	Legendary = "Tier3_Legendary",
-	Mythic = "Tier4_Mythic",
-}
+-- Studio Folder Name Aliases for VFX Palettes
+BLOODLINE_AURA_PALETTES["Mortal Steel Vein"]             = BLOODLINE_AURA_PALETTES["MortalSteelVein"]
+BLOODLINE_AURA_PALETTES["Spirit Iron Sword-Bone"]       = BLOODLINE_AURA_PALETTES["SpiritIronSwordBone"]
+BLOODLINE_AURA_PALETTES["Gale-Jade Sword-Vein"]         = BLOODLINE_AURA_PALETTES["GaleJadeSwordVein"]
+BLOODLINE_AURA_PALETTES["Thunder-Severing Sword-Heart"] = BLOODLINE_AURA_PALETTES["ThunderSeveringSwordHeart"]
+BLOODLINE_AURA_PALETTES["Heavy-Crag Sword-Marrow"]      = BLOODLINE_AURA_PALETTES["HeavyCragSwordMarrow"]
+BLOODLINE_AURA_PALETTES["Innate Sovereign Sword-Bone"]  = BLOODLINE_AURA_PALETTES["InnateSovereignSwordBone"]
+BLOODLINE_AURA_PALETTES["Ghost-Shadow Sword-Pulse"]     = BLOODLINE_AURA_PALETTES["GhostShadowSwordPulse"]
+BLOODLINE_AURA_PALETTES["Scarlet-Lotus Blade-Bone"]     = BLOODLINE_AURA_PALETTES["ScarletLotusBladeBone"]
+
+-- Legacy Fallbacks
+BLOODLINE_AURA_PALETTES["MortalSwordBone"]              = BLOODLINE_AURA_PALETTES["MortalSteelVein"]
+BLOODLINE_AURA_PALETTES["IronBloodVanguard"]            = BLOODLINE_AURA_PALETTES["MortalSteelVein"]
+BLOODLINE_AURA_PALETTES["AzureWindPedigree"]            = BLOODLINE_AURA_PALETTES["SpiritIronSwordBone"]
+BLOODLINE_AURA_PALETTES["VerdantLotusVein"]             = BLOODLINE_AURA_PALETTES["JadeLotusOrb"]
+BLOODLINE_AURA_PALETTES["EarthTremorBone"]              = BLOODLINE_AURA_PALETTES["HeavyCragSwordMarrow"]
+BLOODLINE_AURA_PALETTES["VioletThunderCore"]            = BLOODLINE_AURA_PALETTES["ThunderSeveringSwordHeart"]
+BLOODLINE_AURA_PALETTES["CrimsonDemonHeart"]            = BLOODLINE_AURA_PALETTES["ScarletLotusBladeBone"]
+BLOODLINE_AURA_PALETTES["AbyssalFrostVein"]             = BLOODLINE_AURA_PALETTES["GhostShadowSwordPulse"]
+BLOODLINE_AURA_PALETTES["GoldenSunLineage"]             = BLOODLINE_AURA_PALETTES["InnateSovereignSwordBone"]
+BLOODLINE_AURA_PALETTES["AsuraBloodline"]               = BLOODLINE_AURA_PALETTES["ScarletLotusBladeBone"]
+BLOODLINE_AURA_PALETTES["PrimordialSwordImmortal"]      = BLOODLINE_AURA_PALETTES["InnateSovereignSwordBone"]
 
 local CultivationManager = {}
 local playerData: { [Player]: PlayerCultivationData } = {}
@@ -287,13 +291,13 @@ local function GetQiNodeMultiplier(character: Model, playerTier: number): number
 			if distance <= maxRadius then
 				local reqTier = nodePart:GetAttribute("RequiredTier") or nodePart:GetAttribute("MinTier")
 				if type(reqTier) == "number" and playerTier < reqTier then
-					return 1.0 -- Locked: realm tier too low
+					return 1.0
 				end
 				local customMultiplier = nodePart:GetAttribute("QiMultiplier")
 				if type(customMultiplier) == "number" and customMultiplier > 0 then
 					return math.clamp(customMultiplier, 1.0, 3.0)
 				end
-				return 1.5 -- Safe default
+				return 1.5
 			end
 		end
 	end
@@ -399,7 +403,6 @@ function CultivationManager.Init()
 								qiGainAccumulator[player] = (qiGainAccumulator[player] or 0) + gainedThisTick
 								tickCounter[player] = ((tickCounter[player] or 0) + 1) % 2
 
-								-- Fires exactly once per second (every 2nd 0.5s tick)
 								if tickCounter[player] == 0 then
 									local secTotal = math.floor((qiGainAccumulator[player] or 0) + 0.5)
 									qiGainAccumulator[player] = 0
@@ -420,7 +423,7 @@ function CultivationManager.Init()
 		end
 	end)
 
-	print("[ASCEND] CultivationManager Initialized (Unanchored Safe Meditation Engine Active).")
+	print("[ASCEND] CultivationManager Initialized (Universal Tier1_Common Pure Orb-Toned VFX Active).")
 end
 
 function CultivationManager.OnPlayerAdded(player: Player)
@@ -623,10 +626,11 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 	if not hrp or not humanoid then return end
 
 	local pdm = getPlayerDataManager()
-	local bloodlineId = if pdm and pdm.GetBloodline then pdm.GetBloodline(player) else (player:GetAttribute("Bloodline") or "MortalSwordBone")
+	local bloodlineId = if pdm and pdm.GetBloodline then pdm.GetBloodline(player) else (player:GetAttribute("Bloodline") or "MortalSteelVein")
 	local bloodlineDef = BloodlineConfig.GetBloodline(bloodlineId)
-	local tier: BloodlineConfig.BloodlineTier = if bloodlineDef then bloodlineDef.Tier else "Common"
-	local templateName = TIER_TEMPLATE_MAP[tier] or "Tier1_Common"
+
+	-- Enforce Tier1_Common for ALL bloodlines and tiers
+	local templateName = "Tier1_Common"
 
 	local palette = BLOODLINE_AURA_PALETTES[bloodlineId]
 	if not palette then
@@ -637,7 +641,6 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 		}
 	end
 
-	-- Zero velocities and lock humanoid without anchoring BasePart
 	humanoid.WalkSpeed = 0
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
@@ -669,15 +672,14 @@ function CultivationManager.StartGroundedMeditation(player: Player, character: M
 
 				for _, desc in ipairs(attClone:GetDescendants()) do
 					if desc:IsA("ParticleEmitter") then
-						local origEmission = desc:GetAttribute("OriginalEmission") or desc.LightEmission
-						if origEmission == 0 then
-							desc.Color = ColorSequence.new(Color3.fromRGB(20, 20, 30))
-						elseif desc.Name == "Eye" then
-							desc.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+						local lowerName = desc.Name:lower()
+						-- Purge any skeleton, skull, face, eye, or demon particles
+						if lowerName:match("skull") or lowerName:match("skeleton") or lowerName:match("face") or lowerName:match("eye") or lowerName:match("demon") then
+							desc:Destroy()
 						else
 							desc.Color = palette.Gradient
+							desc.Enabled = true
 						end
-						desc.Enabled = true
 					elseif desc:IsA("PointLight") then
 						desc.Color = palette.LightColor
 						desc.Enabled = true
@@ -878,7 +880,6 @@ function CultivationManager.AttemptBreakthrough(player: Player): boolean
 	if pData.IsTribulationActive then return false end
 	pData.IsTribulationActive = true
 
-	-- Phase 2.6 & 2.7: Heavenly Tribulation Lightning Sequence
 	task.spawn(function()
 		local char = player.Character
 		local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?

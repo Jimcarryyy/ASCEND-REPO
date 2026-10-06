@@ -3,7 +3,7 @@
     ItemConfig.luau
     Location: src/ReplicatedStorage/Shared/Configs/ItemConfig.luau
     Central configuration repository for all items in ASCEND:
-    - 8 Sword Tiers with Dynamic Weapon VFX Color Palettes
+    - 10 Canonical Weapons (NewWeapons Roster) with Dynamic Weapon VFX Color Palettes
     - 9 Major Realm Breakthrough Dans
     - 4-Tier Herb Ladder (1-Yr, 10-Yr, 100-Yr, 1000-Yr)
     - 4-Tier Graded Beast Cores (Base, 10-Yr, 100-Yr, 1000-Yr)
@@ -37,27 +37,63 @@ export type ItemDefinition = {
 local ItemConfig = {}
 
 local WEAPON_PALETTES: { [string]: WeaponVFXPalette } = {
-	["MortalIronJian"] = {
-		PrimaryColor = Color3.fromRGB(220, 225, 235),
-		SecondaryColor = Color3.fromRGB(140, 150, 165),
-		GlowColor = Color3.fromRGB(200, 215, 230),
+	-- 1. Iron Reed (Common Dao)
+	["IronReed"] = {
+		PrimaryColor = Color3.fromRGB(200, 215, 210),
+		SecondaryColor = Color3.fromRGB(130, 145, 140),
+		GlowColor = Color3.fromRGB(180, 200, 190),
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(245, 248, 255)),
-			ColorSequenceKeypoint.new(0.4, Color3.fromRGB(200, 210, 225)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(120, 135, 150)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(240, 245, 242)),
+			ColorSequenceKeypoint.new(0.4, Color3.fromRGB(185, 205, 198)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(115, 130, 125)),
 		}),
 	},
-	["AzureCloudDiscipleJian"] = {
-		PrimaryColor = Color3.fromRGB(56, 189, 248),
-		SecondaryColor = Color3.fromRGB(14, 116, 144),
-		GlowColor = Color3.fromRGB(125, 211, 252),
+	-- 2. Bronze Discipline (Common Cutlass)
+	["BronzeDiscipline"] = {
+		PrimaryColor = Color3.fromRGB(205, 127, 50),
+		SecondaryColor = Color3.fromRGB(140, 80, 30),
+		GlowColor = Color3.fromRGB(225, 155, 80),
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(224, 242, 254)),
-			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(56, 189, 248)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(14, 116, 144)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(250, 210, 160)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(205, 127, 50)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(120, 65, 25)),
 		}),
 	},
-	["FlowingQiSpiritSword"] = {
+	-- 3. Earthbound Steel (Uncommon Jian)
+	["EarthboundSteel"] = {
+		PrimaryColor = Color3.fromRGB(80, 180, 130),
+		SecondaryColor = Color3.fromRGB(40, 110, 80),
+		GlowColor = Color3.fromRGB(120, 210, 160),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(215, 250, 230)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(80, 180, 130)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(30, 90, 65)),
+		}),
+	},
+	-- 4. Wandering Blade (Uncommon Jian)
+	["WanderingBlade"] = {
+		PrimaryColor = Color3.fromRGB(100, 180, 220),
+		SecondaryColor = Color3.fromRGB(50, 110, 150),
+		GlowColor = Color3.fromRGB(150, 210, 240),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(220, 242, 255)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(100, 180, 220)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(35, 85, 120)),
+		}),
+	},
+	-- 5. Crane Amidst Clouds (Rare Dao)
+	["CraneAmidstClouds"] = {
+		PrimaryColor = Color3.fromRGB(230, 245, 255),
+		SecondaryColor = Color3.fromRGB(100, 160, 210),
+		GlowColor = Color3.fromRGB(200, 230, 255),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 255, 255)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(170, 215, 245)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(80, 140, 190)),
+		}),
+	},
+	-- 6. Resonant Heart (Rare Jian)
+	["ResonantHeart"] = {
 		PrimaryColor = Color3.fromRGB(14, 165, 233),
 		SecondaryColor = Color3.fromRGB(3, 105, 161),
 		GlowColor = Color3.fromRGB(56, 189, 248),
@@ -67,27 +103,30 @@ local WEAPON_PALETTES: { [string]: WeaponVFXPalette } = {
 			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(3, 105, 161)),
 		}),
 	},
-	["VerdantJadeFlyingSword"] = {
-		PrimaryColor = Color3.fromRGB(52, 211, 153),
-		SecondaryColor = Color3.fromRGB(5, 150, 105),
-		GlowColor = Color3.fromRGB(110, 231, 183),
-		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(209, 250, 229)),
-			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(52, 211, 153)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(4, 120, 87)),
-		}),
-	},
-	["VioletSoulSovereignJian"] = {
+	-- 7. Hollow Moon (Epic Cutlass)
+	["HollowMoon"] = {
 		PrimaryColor = Color3.fromRGB(192, 132, 252),
-		SecondaryColor = Color3.fromRGB(126, 34, 206),
+		SecondaryColor = Color3.fromRGB(107, 33, 168),
 		GlowColor = Color3.fromRGB(216, 180, 254),
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(245, 200, 255)),
-			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(180, 50, 255)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(90, 10, 160)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(245, 225, 255)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(180, 110, 245)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(85, 20, 140)),
 		}),
 	},
-	["VoidStarCleaverDao"] = {
+	-- 8. Ascendant Gold (Epic Jian)
+	["AscendantGold"] = {
+		PrimaryColor = Color3.fromRGB(250, 204, 21),
+		SecondaryColor = Color3.fromRGB(180, 83, 9),
+		GlowColor = Color3.fromRGB(254, 240, 138),
+		Gradient = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(254, 249, 195)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(250, 204, 21)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(160, 70, 8)),
+		}),
+	},
+	-- 9. Void Purity (Legendary Dao)
+	["VoidPurity"] = {
 		PrimaryColor = Color3.fromRGB(168, 85, 247),
 		SecondaryColor = Color3.fromRGB(88, 28, 135),
 		GlowColor = Color3.fromRGB(147, 51, 234),
@@ -97,29 +136,42 @@ local WEAPON_PALETTES: { [string]: WeaponVFXPalette } = {
 			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(59, 7, 100)),
 		}),
 	},
-	["AzurePatriarchHeritageJian"] = {
-		PrimaryColor = Color3.fromRGB(34, 211, 238),
-		SecondaryColor = Color3.fromRGB(14, 116, 144),
-		GlowColor = Color3.fromRGB(103, 232, 249),
+	-- 10. Heaven-Piercing (Legendary Jian)
+	["HeavenPiercing"] = {
+		PrimaryColor = Color3.fromRGB(255, 220, 100),
+		SecondaryColor = Color3.fromRGB(220, 38, 38),
+		GlowColor = Color3.fromRGB(255, 245, 180),
 		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(207, 250, 254)),
-			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(34, 211, 238)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(8, 145, 178)),
-		}),
-	},
-	["RadiantImmortalSovereignJian"] = {
-		PrimaryColor = Color3.fromRGB(250, 204, 21),
-		SecondaryColor = Color3.fromRGB(217, 119, 6),
-		GlowColor = Color3.fromRGB(254, 240, 138),
-		Gradient = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(254, 249, 195)),
-			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(250, 204, 21)),
-			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(180, 83, 9)),
+			ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 250, 215)),
+			ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 195, 60)),
+			ColorSequenceKeypoint.new(1.0, Color3.fromRGB(185, 25, 25)),
 		}),
 	},
 }
 
-local DEFAULT_PALETTE: WeaponVFXPalette = WEAPON_PALETTES["MortalIronJian"]
+-- Studio Model Name Aliases for VFX Palettes
+WEAPON_PALETTES["1.Iron Reed"]           = WEAPON_PALETTES["IronReed"]
+WEAPON_PALETTES["2.Bronze Discipline"]   = WEAPON_PALETTES["BronzeDiscipline"]
+WEAPON_PALETTES["3.Earthbound Steel"]    = WEAPON_PALETTES["EarthboundSteel"]
+WEAPON_PALETTES["4.Wandering Blade"]     = WEAPON_PALETTES["WanderingBlade"]
+WEAPON_PALETTES["5.Crane Amidst Clouds"] = WEAPON_PALETTES["CraneAmidstClouds"]
+WEAPON_PALETTES["6.Resonant Heart"]      = WEAPON_PALETTES["ResonantHeart"]
+WEAPON_PALETTES["7.Hollow Moon"]         = WEAPON_PALETTES["HollowMoon"]
+WEAPON_PALETTES["8.Ascendant Gold"]      = WEAPON_PALETTES["AscendantGold"]
+WEAPON_PALETTES["9.Void Purity"]         = WEAPON_PALETTES["VoidPurity"]
+WEAPON_PALETTES["10.Heaven-Piercing"]    = WEAPON_PALETTES["HeavenPiercing"]
+
+-- Legacy Palette Compatibility
+WEAPON_PALETTES["MortalIronJian"]               = WEAPON_PALETTES["IronReed"]
+WEAPON_PALETTES["AzureCloudDiscipleJian"]       = WEAPON_PALETTES["EarthboundSteel"]
+WEAPON_PALETTES["FlowingQiSpiritSword"]         = WEAPON_PALETTES["ResonantHeart"]
+WEAPON_PALETTES["VerdantJadeFlyingSword"]       = WEAPON_PALETTES["WanderingBlade"]
+WEAPON_PALETTES["VioletSoulSovereignJian"]      = WEAPON_PALETTES["HollowMoon"]
+WEAPON_PALETTES["VoidStarCleaverDao"]           = WEAPON_PALETTES["VoidPurity"]
+WEAPON_PALETTES["AzurePatriarchHeritageJian"]   = WEAPON_PALETTES["CraneAmidstClouds"]
+WEAPON_PALETTES["RadiantImmortalSovereignJian"] = WEAPON_PALETTES["HeavenPiercing"]
+
+local DEFAULT_PALETTE: WeaponVFXPalette = WEAPON_PALETTES["IronReed"]
 
 function ItemConfig.GetWeaponPalette(weaponId: string?): WeaponVFXPalette
 	if not weaponId then return DEFAULT_PALETTE end
@@ -448,88 +500,142 @@ local ITEMS: { [string]: ItemDefinition } = {
 		Icon = UIAssets.Icons.SpiritAsh,
 	},
 
-	-- WEAPONS & FLYING SWORDS (TIERS 1 - 8)
-	["MortalIronJian"] = {
-		Id = "MortalIronJian",
-		Name = "Mortal Iron Jian",
-		Description = "A beginner cultivator's mortal forged straight sword. Sturdy, reliable, and grounded in iron discipline.",
+	-- =========================================================================
+	-- 10 CANONICAL WEAPONS (NewWeapons Roster)
+	-- =========================================================================
+	["IronReed"] = {
+		Id = "IronReed",
+		Name = "Iron Reed",
+		Description = "A flexible mortal-forged Dao resembling a hardy river reed. Balanced for foundational blade katas.",
 		Rarity = "Common",
 		Type = "Weapon",
 		MaxStack = 1,
 		Damage = 15,
 		Stats = { Damage = 15, Speed = 1.0 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
 	},
-	["AzureCloudDiscipleJian"] = {
-		Id = "AzureCloudDiscipleJian",
-		Name = "Azure Cloud Disciple Jian",
-		Description = "Official initiate straight sword of the Azure Cloud Sect, engraved with flowing cloud qi runes.",
+	["BronzeDiscipline"] = {
+		Id = "BronzeDiscipline",
+		Name = "Bronze Discipline",
+		Description = "A heavy, curved bronze cutlass forged under strict martial discipline to instill endurance and poise.",
+		Rarity = "Common",
+		Type = "Weapon",
+		MaxStack = 1,
+		Damage = 18,
+		Stats = { Damage = 18, Speed = 1.0 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
+	},
+	["EarthboundSteel"] = {
+		Id = "EarthboundSteel",
+		Name = "Earthbound Steel",
+		Description = "A double-edged Jian folded from dense terrestrial iron. Anchors the wielder's stance firmly to the earth.",
 		Rarity = "Uncommon",
 		Type = "Weapon",
 		MaxStack = 1,
 		Damage = 25,
-		Stats = { Damage = 25, Speed = 1.0 },
+		Stats = { Damage = 25, Speed = 1.05 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
 	},
-	["FlowingQiSpiritSword"] = {
-		Id = "FlowingQiSpiritSword",
-		Name = "Flowing Qi Spirit Sword",
-		Description = "A refined spirit sword forged from deep sapphire crystal, channeling swirling currents of immortal wind qi.",
+	["WanderingBlade"] = {
+		Id = "WanderingBlade",
+		Name = "Wandering Blade",
+		Description = "A slender straight sword carried by itinerant vagabond cultivators across mountain ranges.",
+		Rarity = "Uncommon",
+		Type = "Weapon",
+		MaxStack = 1,
+		Damage = 30,
+		Stats = { Damage = 30, Speed = 1.05 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
+	},
+	["CraneAmidstClouds"] = {
+		Id = "CraneAmidstClouds",
+		Name = "Crane Amidst Clouds",
+		Description = "A graceful spirit Dao etched with soaring crane talismans, cutting the air like feathers through mist.",
 		Rarity = "Rare",
 		Type = "Weapon",
 		MaxStack = 1,
-		Damage = 40,
-		Stats = { Damage = 40, Speed = 1.1 },
+		Damage = 45,
+		Stats = { Damage = 45, Speed = 1.10 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
 	},
-	["VerdantJadeFlyingSword"] = {
-		Id = "VerdantJadeFlyingSword",
-		Name = "Verdant Jade Flying Sword",
-		Description = "An exquisite flying sword carved from imperial spirit emerald jade, humming with vital life-force qi.",
+	["ResonantHeart"] = {
+		Id = "ResonantHeart",
+		Name = "Resonant Heart",
+		Description = "A refined spirit Jian pulsating in sync with the cultivator's heartbeat, sharpening focus and sword intent.",
+		Rarity = "Rare",
+		Type = "Weapon",
+		MaxStack = 1,
+		Damage = 55,
+		Stats = { Damage = 55, Speed = 1.10 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
+	},
+	["HollowMoon"] = {
+		Id = "HollowMoon",
+		Name = "Hollow Moon",
+		Description = "An ethereal curved cutlass bathed in cold lunar luminescence, slicing through defenses without resistance.",
 		Rarity = "Epic",
 		Type = "Weapon",
 		MaxStack = 1,
-		Damage = 60,
-		Stats = { Damage = 60, Speed = 1.15 },
+		Damage = 75,
+		Stats = { Damage = 75, Speed = 1.15 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
 	},
-	["VioletSoulSovereignJian"] = {
-		Id = "VioletSoulSovereignJian",
-		Name = "Violet Soul Sovereign Jian",
-		Description = "A legendary Jian forged from deep amethyst soul crystal, pulsating with an ethereal purple mist.",
+	["AscendantGold"] = {
+		Id = "AscendantGold",
+		Name = "Ascendant Gold",
+		Description = "An imperial auric Jian imbued with concentrated solar Qi, leaving searing radiant arcs in its wake.",
+		Rarity = "Epic",
+		Type = "Weapon",
+		MaxStack = 1,
+		Damage = 95,
+		Stats = { Damage = 95, Speed = 1.15 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
+	},
+	["VoidPurity"] = {
+		Id = "VoidPurity",
+		Name = "Void Purity",
+		Description = "A supreme Dao forged from deep space starmetal, cleanly severing mortal karmic ties with quiet void intent.",
 		Rarity = "Legendary",
 		Type = "Weapon",
 		MaxStack = 1,
-		Damage = 120,
-		Stats = { Damage = 120, Speed = 1.2 },
+		Damage = 135,
+		Stats = { Damage = 135, Speed = 1.20 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
 	},
-	["VoidStarCleaverDao"] = {
-		Id = "VoidStarCleaverDao",
-		Name = "Void Star Cleaver Dao",
-		Description = "A heavy cosmic saber forged from fallen meteorite, gleaming with stardust constellations.",
-		Rarity = "Mythic",
+	["HeavenPiercing"] = {
+		Id = "HeavenPiercing",
+		Name = "Heaven-Piercing",
+		Description = "The pinnacle Jian of the sovereign realms, capable of sundering thunder tribulations and piercing celestial firmaments.",
+		Rarity = "Legendary",
 		Type = "Weapon",
 		MaxStack = 1,
-		Damage = 220,
-		Stats = { Damage = 220, Speed = 1.25 },
-	},
-	["AzurePatriarchHeritageJian"] = {
-		Id = "AzurePatriarchHeritageJian",
-		Name = "Azure Patriarch Heritage Jian",
-		Description = "An ancient ancestral straight sword handed down across millennia, humming with divine wind intent.",
-		Rarity = "Divine",
-		Type = "Weapon",
-		MaxStack = 1,
-		Damage = 450,
-		Stats = { Damage = 450, Speed = 1.35 },
-	},
-	["RadiantImmortalSovereignJian"] = {
-		Id = "RadiantImmortalSovereignJian",
-		Name = "Radiant Immortal Sovereign Jian",
-		Description = "A supreme celestial blade radiating blinding solar light, pure lightning arcs, and immortal Dao power.",
-		Rarity = "Immortal",
-		Type = "Weapon",
-		MaxStack = 1,
-		Damage = 1000,
-		Stats = { Damage = 1000, Speed = 1.5 },
+		Damage = 160,
+		Stats = { Damage = 160, Speed = 1.25 },
+		Icon = UIAssets.Icons.SwordPlaceholder,
 	},
 }
+
+-- Aliases for Studio Folder Model Names
+ITEMS["1.Iron Reed"]           = ITEMS["IronReed"]
+ITEMS["2.Bronze Discipline"]   = ITEMS["BronzeDiscipline"]
+ITEMS["3.Earthbound Steel"]    = ITEMS["EarthboundSteel"]
+ITEMS["4.Wandering Blade"]     = ITEMS["WanderingBlade"]
+ITEMS["5.Crane Amidst Clouds"] = ITEMS["CraneAmidstClouds"]
+ITEMS["6.Resonant Heart"]      = ITEMS["ResonantHeart"]
+ITEMS["7.Hollow Moon"]         = ITEMS["HollowMoon"]
+ITEMS["8.Ascendant Gold"]      = ITEMS["AscendantGold"]
+ITEMS["9.Void Purity"]         = ITEMS["VoidPurity"]
+ITEMS["10.Heaven-Piercing"]    = ITEMS["HeavenPiercing"]
+
+-- Legacy ID Compatibility Aliases
+ITEMS["MortalIronJian"]               = ITEMS["IronReed"]
+ITEMS["AzureCloudDiscipleJian"]       = ITEMS["EarthboundSteel"]
+ITEMS["FlowingQiSpiritSword"]         = ITEMS["ResonantHeart"]
+ITEMS["VerdantJadeFlyingSword"]       = ITEMS["WanderingBlade"]
+ITEMS["VioletSoulSovereignJian"]      = ITEMS["HollowMoon"]
+ITEMS["VoidStarCleaverDao"]           = ITEMS["VoidPurity"]
+ITEMS["AzurePatriarchHeritageJian"]   = ITEMS["CraneAmidstClouds"]
+ITEMS["RadiantImmortalSovereignJian"] = ITEMS["HeavenPiercing"]
 
 function ItemConfig.GetItem(itemId: string): ItemDefinition?
 	return ITEMS[itemId]
