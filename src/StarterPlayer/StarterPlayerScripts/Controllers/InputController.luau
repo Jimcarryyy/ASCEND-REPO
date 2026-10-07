@@ -2,14 +2,14 @@
 --[[
     InputController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/InputController.luau
-    Phase 3 Updates:
-      - Client-Only Attack Movement Governor (isAttackingLocally): Completely isolated from server attribute
-        replication, eliminating walkspeed stutter/desync.
-      - Controlled Attack Speed Cap: math.min(baseSpeed, localAttackDampen) so walking players are not sped up.
-      - Post-Chain Smooth Ramp: Eases walkspeed back to sprint/walk over SPEED_RAMP_DURATION (0.18s).
-      - Hybrid Facing: Replaced instant CFrame snap with 0.05s smooth turn (M1_TURN_TIME). AutoRotate kept
-        false during attacks to lock facing to the strike vector while WASD strafing.
-      - Alt Target Focus Integration: Skips camera turn when locked onto a target and routes target aim vector.
+    Input Router & Keybind Engine:
+      - Slot 1 (1 / R): Toggle Weapon Draw / Sheath
+      - Slot 2 (2 / V): Toggle Flying Sword Flight
+      - Slots 3-5 (3, 4, 5): Quick-use Consumables & Pills
+      - Keybind H: Toggle Bottom-Right Action Guide
+      - Active Cooldown Status Triggers (Dash 2.2s, Block 1.2s, Q 6.5s, E 6.5s, F 14.0s)
+      - Client-Only Attack Movement Governor (isAttackingLocally)
+      - Hybrid Facing & Input Buffering
 ]]
 
 local Players = game:GetService("Players")
@@ -63,7 +63,6 @@ local COMBO_TIMEOUT = 1.2
 local FINISHER_COOLDOWN = 2.20
 local isFinisherRecovery = false
 
--- Phase 2 & 3 State
 local hasBufferedM1 = false
 local bufferTask: thread? = nil
 local isAttackingLocally = false
@@ -141,9 +140,6 @@ function InputController.GetLocomotionSpeeds(): (number, number)
 	end
 end
 
--- =============================================================================
--- PHASE 3 CLIENT-ONLY MOVEMENT GOVERNOR & SPEED RAMPING
--- =============================================================================
 function InputController.CancelSpeedRamp()
 	if speedRampTask then
 		task.cancel(speedRampTask)
@@ -212,7 +208,6 @@ function InputController.EvaluateWalkSpeed(): number
 	local walkSpeed, sprintSpeed = InputController.GetLocomotionSpeeds()
 	local baseSpeed = if isSprinting then sprintSpeed else walkSpeed
 
-	-- Client-only movement governor (isolated from server attribute writes)
 	if isAttackingLocally then
 		return math.min(baseSpeed, localAttackDampen)
 	end
@@ -622,7 +617,7 @@ function InputController.Init()
 		end
 	end)
 
-	print("[ASCEND] InputController Initialized (Phase 3 Hybrid Facing & Movement Active).")
+	print("[ASCEND] InputController Initialized (Slot 1-5 Hotbar & Cooldown Bindings Active).")
 end
 
 function InputController.SetEnabled(state: boolean)
@@ -694,6 +689,49 @@ function InputController.StopBlock()
 	InputController.UpdateWalkSpeed()
 
 	combatActionRemote:FireServer({ Action = "BlockEnd", Timestamp = Workspace:GetServerTimeNow() })
+end
+
+function InputController.ToggleWeaponSheath()
+	local character = player.Character
+	if isMeditating or IsInCCState() then return end
+	local now = Workspace:GetServerTimeNow()
+	if now - lastRPress < 0.4 then return end
+	lastRPress = now
+
+	ClearInputBuffer()
+	InputController.SetLocalAttacking(false)
+	local AnimationController = require(script.Parent.AnimationController)
+	AnimationController.CancelCurrentSwing()
+
+	local isDrawn = character and character:GetAttribute("IsWeaponDrawn") == true
+	local newDrawn = not isDrawn
+	if character then
+		character:SetAttribute("IsWeaponDrawn", newDrawn)
+	end
+
+	AnimationController.PlayEquipAnimation(newDrawn)
+	combatActionRemote:FireServer({ ToggleSheath = true, IsDrawn = newDrawn })
+end
+
+function InputController.ToggleFlight()
+	local character = player.Character
+	if isMeditating or IsInCCState() then return end
+	local now = Workspace:GetServerTimeNow()
+	if now - lastVPress < 0.5 then return end
+	lastVPress = now
+
+	ClearInputBuffer()
+	InputController.SetLocalAttacking(false)
+	local AnimationController = require(script.Parent.AnimationController)
+	AnimationController.CancelCurrentSwing()
+	combatActionRemote:FireServer({ ToggleFlight = true })
+end
+
+function InputController.UseQuickItem(itemType: string)
+	local SkillBarController = require(script.Parent.SkillBarController)
+	if SkillBarController.UseHotbarSlotByType then
+		SkillBarController.UseHotbarSlotByType(itemType)
+	end
 end
 
 function InputController.GetTargetPayload(skillKey: string, comboIndex: number?, dashIndex: number?, overrideAim: Vector3?): ActionPayload
@@ -782,13 +820,10 @@ function InputController.TriggerDash()
 
 	local SkillBarController = require(script.Parent.SkillBarController)
 	if SkillBarController.TriggerCooldown then
-		SkillBarController.TriggerCooldown("Dash", DASH_COOLDOWN)
+		SkillBarController.TriggerCooldown("Shift", DASH_COOLDOWN)
 	end
 end
 
--- =============================================================================
--- PHASE 3 HYBRID FACING & M1 TRIGGER
--- =============================================================================
 function InputController.TriggerM1()
 	local character = player.Character
 	if not enabled or isMeditating or isBlocking or IsAnyMenuOpen() or isCastingSkillQ or isExecutingSkillF or IsInCCState() then
@@ -843,6 +878,10 @@ function InputController.TriggerM1()
 	if isFinisher then
 		isFinisherRecovery = true
 		m1ComboIndex = 1
+		local SkillBarController = require(script.Parent.SkillBarController)
+		if SkillBarController.TriggerCooldown then
+			SkillBarController.TriggerCooldown("M1", FINISHER_COOLDOWN)
+		end
 	else
 		m1ComboIndex = m1ComboIndex + 1
 	end
@@ -864,14 +903,11 @@ function InputController.TriggerM1()
 		end
 
 		if isTargetLocked and targetPos then
-			-- Target Focus Active: FocusTargetController already interpolates facing.
-			-- Route direct horizontal aim vector to target.
 			local toTarget = Vector3.new(targetPos.X - hrp.Position.X, 0, targetPos.Z - hrp.Position.Z)
 			if toTarget.Magnitude > 0.05 then
 				resolvedAimDir = toTarget.Unit
 			end
 		else
-			-- Hybrid Facing: Smooth 0.05s turn toward flat camera look
 			local cam = Workspace.CurrentCamera
 			local camLook = if cam then cam.CFrame.LookVector else hrp.CFrame.LookVector
 			if math.abs(camLook.Y) <= 0.96 then
@@ -894,11 +930,6 @@ function InputController.TriggerM1()
 
 	local payload = InputController.GetTargetPayload("M1", currentStep, nil, resolvedAimDir)
 	combatActionRemote:FireServer(payload)
-
-	local SkillBarController = require(script.Parent.SkillBarController)
-	if SkillBarController.TriggerCooldown then
-		SkillBarController.TriggerCooldown("M1", currentAttackLockout)
-	end
 end
 
 function InputController.TriggerSkill(skillKey: string)
@@ -1182,16 +1213,42 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 	local character = player.Character
 	local isFlying = character and character:GetAttribute("IsFlying") == true
 
-	if input.KeyCode == Enum.KeyCode.V then
-		if isMeditating or IsInCCState() then return end
-		local now = Workspace:GetServerTimeNow()
-		if now - lastVPress < 0.5 then return end
-		lastVPress = now
-		ClearInputBuffer()
-		InputController.SetLocalAttacking(false)
-		local AnimationController = require(script.Parent.AnimationController)
-		AnimationController.CancelCurrentSwing()
-		combatActionRemote:FireServer({ ToggleFlight = true })
+	-- Slot 1 (1 / R): Draw / Sheath Combat Sword
+	if input.KeyCode == Enum.KeyCode.One or input.KeyCode == Enum.KeyCode.KeypadOne or input.KeyCode == Enum.KeyCode.R then
+		InputController.ToggleWeaponSheath()
+		return
+	end
+
+	-- Slot 2 (2 / V): Flying Sword Flight
+	if input.KeyCode == Enum.KeyCode.Two or input.KeyCode == Enum.KeyCode.KeypadTwo or input.KeyCode == Enum.KeyCode.V then
+		InputController.ToggleFlight()
+		return
+	end
+
+	-- Slot 3 (3): Quick Healing Pill
+	if input.KeyCode == Enum.KeyCode.Three or input.KeyCode == Enum.KeyCode.KeypadThree then
+		InputController.UseQuickItem("Heal")
+		return
+	end
+
+	-- Slot 4 (4): Quick Qi Pill
+	if input.KeyCode == Enum.KeyCode.Four or input.KeyCode == Enum.KeyCode.KeypadFour then
+		InputController.UseQuickItem("Qi")
+		return
+	end
+
+	-- Slot 5 (5): Custom Slot
+	if input.KeyCode == Enum.KeyCode.Five or input.KeyCode == Enum.KeyCode.KeypadFive then
+		InputController.UseQuickItem("Custom")
+		return
+	end
+
+	-- Keybind H: Toggle Bottom-Right Action Guide
+	if input.KeyCode == Enum.KeyCode.H then
+		local SkillBarController = require(script.Parent.SkillBarController)
+		if SkillBarController.ToggleActionGuide then
+			SkillBarController.ToggleActionGuide()
+		end
 		return
 	end
 
@@ -1244,31 +1301,12 @@ function InputController.OnInputBegan(input: InputObject, gameProcessed: boolean
 		return
 	end
 
-	if input.KeyCode == Enum.KeyCode.R then
-		if isMeditating or IsInCCState() then return end
-		local now = Workspace:GetServerTimeNow()
-		if now - lastRPress < 0.4 then return end
-		lastRPress = now
-
-		ClearInputBuffer()
-		InputController.SetLocalAttacking(false)
-		local AnimationController = require(script.Parent.AnimationController)
-		AnimationController.CancelCurrentSwing()
-
-		local isDrawn = character and character:GetAttribute("IsWeaponDrawn") == true
-		local newDrawn = not isDrawn
-		if character then
-			character:SetAttribute("IsWeaponDrawn", newDrawn)
-		end
-
-		AnimationController.PlayEquipAnimation(newDrawn)
-
-		combatActionRemote:FireServer({ ToggleSheath = true, IsDrawn = newDrawn })
-		return
-	end
-
 	if input.KeyCode == Enum.KeyCode.B then
 		combatActionRemote:FireServer({ RequestBreakthrough = true })
+		local SkillBarController = require(script.Parent.SkillBarController)
+		if SkillBarController.TriggerCooldown then
+			SkillBarController.TriggerCooldown("B", 10.0)
+		end
 		return
 	end
 

@@ -3,13 +3,13 @@
     SkillBarController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/SkillBarController.luau
     Directly bound to StarterGui.MasterHUDGui:
-    - 10-Slot Desktop Hotbar & Mobile Touch Cluster
-    - Dual Cooldown Sweeper
-    - Bottom-Left Vitals Container (HP, Qi, Sword Intent with Bangers font)
-    - Anti-Death Bug: Strict Connection Garbage Collector purges zombie listeners on respawn
-    - Always binds to active live Humanoid (Permanently eliminates the 0 HP bug)
+    - BottomCenterItemHotbar (Slots 1-5): Clean Steel-Grey Palette
+    - BottomCenterCooldownRow: Dynamic status popups above 1-5 hotbar with seconds countdown
+    - BottomRightActionGuide:
+        * Collapsible RowsContainer via ToggleGuideButton or Keybind H
+        * Interactive Combat Action Rows
+    - Bottom-Left Vitals Container (HP, Qi, Sword Intent)
     - TopRight Currency (Live CP & Spirit Stones)
-    - BottomNavTray Modal Openers (Arena, Pouch, Guide, Mission)
 ]]
 
 local Players = game:GetService("Players")
@@ -19,7 +19,6 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
-local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 
 local SkillBarController = {}
 local LocalPlayer = Players.LocalPlayer
@@ -43,21 +42,43 @@ local currencyFrame: Frame?
 local cpLabel: TextLabel?
 local spiritStoneLabel: TextLabel?
 
-local hotbarContainer: Frame?
-local mobileScatterCluster: Frame?
-local bottomNavTray: Frame?
+local itemHotbar: Frame?
+local actionGuide: Frame?
+local guideRowsContainer: Frame?
+local guideToggleButton: TextButton?
+local guideToggleLabel: TextLabel?
+local isGuideCollapsed: boolean = false
+
+-- Cooldown Status Popups
+local cooldownRow: Frame?
+local cooldownTemplate: Frame?
+local activeCooldownBoxes: { [string]: Frame } = {}
+local activeCooldownThreads: { [string]: thread } = {}
 
 local combatActionRemote: RemoteEvent
+local inventoryActionRemote: RemoteEvent
 local sectRemote: RemoteEvent? = nil
 
 local currentSwordIntent = 0
 local lastHitLandedTime = os.clock()
 
-local cooldownSweeps: { [string]: { Frame } } = {}
-local cooldownTexts: { [string]: { TextLabel } } = {}
+local hotbarSlotButtons: { [number]: ImageButton } = {}
+local hotbarCountLabels: { [number]: TextLabel } = {}
 
--- Connection Garbage Collector (Kills all zombie listeners on death)
 local characterConnections: { RBXScriptConnection } = {}
+
+local SKILL_META = {
+	["Shift"] = { Key = "Shift", Symbol = "⚡", Order = 1 },
+	["Dash"]  = { Key = "Shift", Symbol = "⚡", Order = 1 },
+	["T"]     = { Key = "T",     Symbol = "🛡", Order = 2 },
+	["Block"] = { Key = "T",     Symbol = "🛡", Order = 2 },
+	["Q"]     = { Key = "Q",     Symbol = "🌀", Order = 3 },
+	["E"]     = { Key = "E",     Symbol = "➔", Order = 4 },
+	["F"]     = { Key = "F",     Symbol = "▼", Order = 5 },
+	["B"]     = { Key = "B",     Symbol = "✦", Order = 6 },
+	["Breakthrough"] = { Key = "B", Symbol = "✦", Order = 6 },
+	["M1"]    = { Key = "M1",    Symbol = "⚔", Order = 7 },
+}
 
 local function GetInputController(): any
 	local controllers = LocalPlayer.PlayerScripts:FindFirstChild("Controllers")
@@ -108,45 +129,49 @@ local function GetCurrentStones(): number
 	return tonumber(val) or 0
 end
 
-local function CleanSlotKey(rawName: string): string
-	local clean = rawName:gsub("_SKILL$", "")
-	return clean
+function SkillBarController.ToggleActionGuide()
+	if not guideRowsContainer then return end
+	isGuideCollapsed = not isGuideCollapsed
+
+	guideRowsContainer.Visible = not isGuideCollapsed
+	local text = isGuideCollapsed and "⌨ [SHOW]" or "⌨ [KEYS]"
+
+	if guideToggleLabel then
+		guideToggleLabel.Text = text
+	elseif guideToggleButton then
+		guideToggleButton.Text = text
+	end
+end
+
+function SkillBarController.UseHotbarSlotByType(slotType: string)
+	local ic = GetInputController()
+	if slotType == "Sword" or slotType == "1" then
+		if ic and ic.ToggleWeaponSheath then ic.ToggleWeaponSheath() end
+	elseif slotType == "Flight" or slotType == "2" then
+		if ic and ic.ToggleFlight then ic.ToggleFlight() end
+	elseif slotType == "Heal" or slotType == "3" then
+		inventoryActionRemote:FireServer({ Action = "UseItem", SlotIndex = 2 })
+	elseif slotType == "Qi" or slotType == "4" then
+		inventoryActionRemote:FireServer({ Action = "UseItem", SlotIndex = 3 })
+	elseif slotType == "Custom" or slotType == "5" then
+		inventoryActionRemote:FireServer({ Action = "UseItem", SlotIndex = 4 })
+	end
 end
 
 local function BindSkillButton(btn: GuiButton, rawName: string)
-	local cleanKey = CleanSlotKey(rawName)
+	local cleanKey = rawName:gsub("_SKILL$", ""):gsub("^Row_", "")
 
-	local sweep = btn:FindFirstChild("CooldownSweep") :: Frame?
-	local cdText = btn:FindFirstChild("CooldownText") :: TextLabel?
-
-	if sweep then
-		if not cooldownSweeps[cleanKey] then cooldownSweeps[cleanKey] = {} end
-		table.insert(cooldownSweeps[cleanKey], sweep)
-	end
-	if cdText then
-		if not cooldownTexts[cleanKey] then cooldownTexts[cleanKey] = {} end
-		table.insert(cooldownTexts[cleanKey], cdText)
-	end
-
-	if cleanKey == "M1" then
+	if cleanKey == "M1" or cleanKey == "Attack" then
 		btn.Activated:Connect(function()
 			local ic = GetInputController()
-			if ic and ic.TriggerM1 then
-				ic.TriggerM1()
-			else
-				combatActionRemote:FireServer({ SkillKey = "M1", AimDirection = Vector3.new(0, 0, -1), Timestamp = os.clock() })
-			end
+			if ic and ic.TriggerM1 then ic.TriggerM1() end
 		end)
-
 	elseif cleanKey == "Shift" or cleanKey == "Dash" then
 		btn.Activated:Connect(function()
 			local ic = GetInputController()
-			if ic and ic.TriggerDash then
-				ic.TriggerDash()
-			end
+			if ic and ic.TriggerDash then ic.TriggerDash() end
 		end)
-
-	elseif cleanKey == "T" or cleanKey == "Shield" then
+	elseif cleanKey == "T" or cleanKey == "Shield" or cleanKey == "Block" then
 		btn.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
 				local ic = GetInputController()
@@ -159,41 +184,26 @@ local function BindSkillButton(btn: GuiButton, rawName: string)
 				if ic and ic.StopBlock then ic.StopBlock() end
 			end
 		end)
-
-	elseif cleanKey == "Q" or cleanKey == "Whirl" then
+	elseif cleanKey == "Q" then
 		btn.Activated:Connect(function()
 			local ic = GetInputController()
 			if ic and ic.TriggerSkill then ic.TriggerSkill("Q") end
 		end)
-
-	elseif cleanKey == "E" or cleanKey == "Thrust" then
+	elseif cleanKey == "E" then
 		btn.Activated:Connect(function()
 			local ic = GetInputController()
 			if ic and ic.TriggerSkill then ic.TriggerSkill("E") end
 		end)
-
-	elseif cleanKey == "F" or cleanKey == "Slam" then
+	elseif cleanKey == "F" then
 		btn.Activated:Connect(function()
 			local ic = GetInputController()
 			if ic and ic.TriggerSkill then ic.TriggerSkill("F") end
 		end)
-
-	elseif cleanKey == "R" or cleanKey == "Sheath" then
-		btn.Activated:Connect(function()
-			combatActionRemote:FireServer({ ToggleSheath = true })
-		end)
-
-	elseif cleanKey == "V" or cleanKey == "Flight" then
-		btn.Activated:Connect(function()
-			combatActionRemote:FireServer({ ToggleFlight = true })
-		end)
-
 	elseif cleanKey == "C" or cleanKey == "Meditate" then
 		btn.Activated:Connect(function()
 			combatActionRemote:FireServer({ ToggleMeditation = true })
 		end)
-
-	elseif cleanKey == "B" or cleanKey == "Break" then
+	elseif cleanKey == "B" or cleanKey == "Breakthrough" then
 		btn.Activated:Connect(function()
 			combatActionRemote:FireServer({ RequestBreakthrough = true })
 		end)
@@ -206,9 +216,79 @@ function SkillBarController.HookStudioUI()
 	masterGui.DisplayOrder = 10
 	masterGui.ResetOnSpawn = false
 
-	table.clear(cooldownSweeps)
-	table.clear(cooldownTexts)
+	table.clear(hotbarSlotButtons)
+	table.clear(hotbarCountLabels)
 
+	-- 1. Hook Cooldown Row & Template
+	cooldownRow = masterGui:FindFirstChild("BottomCenterCooldownRow") :: Frame?
+	if cooldownRow then
+		cooldownTemplate = cooldownRow:FindFirstChild("CooldownTemplate") :: Frame?
+		if cooldownTemplate then
+			cooldownTemplate.Visible = false
+		end
+	end
+
+	-- 2. Hook Item Hotbar (Slots 1-5)
+	itemHotbar = masterGui:FindFirstChild("BottomCenterItemHotbar") :: Frame?
+	if itemHotbar then
+		for slotIdx = 1, 5 do
+			local slotBtn = itemHotbar:FindFirstChild("Slot_" .. slotIdx, true) :: ImageButton?
+			if not slotBtn then
+				for _, child in ipairs(itemHotbar:GetChildren()) do
+					if child:IsA("ImageButton") and child.Name:match("^Slot_" .. slotIdx) then
+						slotBtn = child
+						break
+					end
+				end
+			end
+
+			if slotBtn then
+				hotbarSlotButtons[slotIdx] = slotBtn
+				local countLbl = slotBtn:FindFirstChild("CountLabel") :: TextLabel?
+				if countLbl then hotbarCountLabels[slotIdx] = countLbl end
+
+				slotBtn.Activated:Connect(function()
+					SkillBarController.UseHotbarSlotByType(tostring(slotIdx))
+				end)
+			end
+		end
+	end
+
+	-- 3. Hook Action Guide & Toggle Button
+	actionGuide = masterGui:FindFirstChild("BottomRightActionGuide") :: Frame?
+	if actionGuide then
+		guideRowsContainer = actionGuide:FindFirstChild("RowsContainer") :: Frame?
+		guideToggleButton = actionGuide:FindFirstChild("ToggleGuideButton") :: TextButton?
+		guideToggleLabel = guideToggleButton and guideToggleButton:FindFirstChild("BtnLabel") :: TextLabel?
+
+		if guideToggleButton then
+			guideToggleButton.Activated:Connect(SkillBarController.ToggleActionGuide)
+			guideToggleButton.MouseButton1Click:Connect(SkillBarController.ToggleActionGuide)
+		end
+
+		local container = guideRowsContainer or actionGuide
+		for _, child in ipairs(container:GetChildren()) do
+			if child:IsA("Frame") and child.Name:match("^Row_") then
+				local cleanKey = child.Name:gsub("^Row_", "")
+				local clickTrigger = child:FindFirstChildWhichIsA("GuiButton")
+				if not clickTrigger then
+					local btn = Instance.new("TextButton")
+					btn.Name = "RowTriggerBtn"
+					btn.Size = UDim2.new(1, 0, 1, 0)
+					btn.BackgroundTransparency = 1
+					btn.Text = ""
+					btn.ZIndex = 15
+					btn.Parent = child
+					clickTrigger = btn
+				end
+				if clickTrigger then
+					BindSkillButton(clickTrigger, cleanKey)
+				end
+			end
+		end
+	end
+
+	-- 4. Hook Vitals
 	vitalsContainer = masterGui:FindFirstChild("VitalsContainer") :: Frame?
 	if vitalsContainer then
 		local hpFrame = vitalsContainer:FindFirstChild("HPBarFrame")
@@ -230,6 +310,7 @@ function SkillBarController.HookStudioUI()
 		end
 	end
 
+	-- 5. Hook Currencies
 	currencyFrame = masterGui:FindFirstChild("TopRightCurrencyFrame") :: Frame?
 	if currencyFrame then
 		local cpFrame = currencyFrame:FindFirstChild("CPFrame")
@@ -238,107 +319,73 @@ function SkillBarController.HookStudioUI()
 		local stoneFrame = currencyFrame:FindFirstChild("SpiritStoneFrame")
 		if stoneFrame then spiritStoneLabel = stoneFrame:FindFirstChildOfClass("TextLabel") end
 	end
-
-	local skillSlotNames = {
-		"B_SKILL", "C_SKILL", "E_SKILL", "F_SKILL", "M1_SKILL",
-		"Q_SKILL", "R_SKILL", "Shift_SKILL", "T_SKILL", "V_SKILL"
-	}
-
-	local bottomCenter = masterGui:FindFirstChild("BottomCenterFrame") :: Frame?
-	if bottomCenter then
-		hotbarContainer = bottomCenter:FindFirstChild("HotbarContainer") :: Frame?
-		if hotbarContainer then
-			for _, sName in ipairs(skillSlotNames) do
-				local btn = hotbarContainer:FindFirstChild(sName) :: GuiButton?
-				if btn then
-					BindSkillButton(btn, sName)
-				end
-			end
-		end
-	end
-
-	mobileScatterCluster = masterGui:FindFirstChild("MobileScatterCluster") :: Frame?
-	if mobileScatterCluster then
-		for _, sName in ipairs(skillSlotNames) do
-			local btn = mobileScatterCluster:FindFirstChild(sName) :: GuiButton?
-			if btn then
-				BindSkillButton(btn, sName)
-			end
-		end
-	end
-
-	bottomNavTray = masterGui:FindFirstChild("BottomNavTray") :: Frame?
-	if bottomNavTray then
-		local function bindNav(btnName: string, callback: () -> ())
-			local btn = bottomNavTray:FindFirstChild(btnName) :: TextButton?
-			if btn then
-				btn.Activated:Connect(callback)
-			end
-		end
-
-		bindNav("ArenaImageButton", function()
-			local c = LocalPlayer.PlayerScripts.Controllers:FindFirstChild("ArenaController")
-			if c then require(c).ToggleModal() end
-		end)
-
-		bindNav("BagImageButton", function()
-			local c = LocalPlayer.PlayerScripts.Controllers:FindFirstChild("InventoryController")
-			if c then require(c).Toggle() end
-		end)
-
-		bindNav("GuideImageButton", function()
-			local g = PlayerGui:FindFirstChild("StarterGuideGui")
-			if g then g.Enabled = not g.Enabled end
-		end)
-
-		bindNav("SectImageButton", function()
-			local c = LocalPlayer.PlayerScripts.Controllers:FindFirstChild("SectController")
-			if c then require(c).Open() end
-		end)
-	end
 end
 
-function SkillBarController.TriggerCooldown(slotName: string, duration: number?)
+function SkillBarController.TriggerCooldown(skillKey: string, duration: number?)
 	local cd = if duration and type(duration) == "number" and duration > 0 then duration else 1.5
-	local cleanKey = CleanSlotKey(slotName)
 
-	local sweepList = cooldownSweeps[cleanKey]
-	local textList = cooldownTexts[cleanKey]
+	if not cooldownRow or not cooldownTemplate then return end
 
-	if not sweepList or #sweepList == 0 then return end
-
-	for _, s in ipairs(sweepList) do s.Visible = true end
-	if textList then
-		for _, t in ipairs(textList) do t.Visible = true end
+	local normKey = skillKey
+	if normKey == "Dash" then normKey = "Shift"
+	elseif normKey == "Block" then normKey = "T"
+	elseif normKey == "Breakthrough" then normKey = "B"
 	end
 
+	if activeCooldownThreads[normKey] then
+		task.cancel(activeCooldownThreads[normKey])
+		activeCooldownThreads[normKey] = nil
+	end
+
+	local box = activeCooldownBoxes[normKey]
+	if not box or not box.Parent then
+		box = cooldownTemplate:Clone()
+		box.Name = "CD_" .. normKey
+		box.Visible = true
+
+		local meta = SKILL_META[normKey] or { Key = normKey, Symbol = "⚔", Order = 10 }
+		box.LayoutOrder = meta.Order
+
+		local kb = box:FindFirstChild("KeyBadge") :: Frame?
+		local kt = kb and kb:FindFirstChild("KeyText") :: TextLabel?
+		if kt then kt.Text = meta.Key end
+
+		local sym = box:FindFirstChild("SymbolLabel") :: TextLabel?
+		if sym then sym.Text = meta.Symbol end
+
+		box.Parent = cooldownRow
+		activeCooldownBoxes[normKey] = box
+	end
+
+	local sweep = box:FindFirstChild("CooldownSweep") :: Frame?
+	local secLabel = box:FindFirstChild("SecondsLabel") :: TextLabel?
+
 	local startTime = os.clock()
-	local conn: RBXScriptConnection?
-	conn = RunService.Heartbeat:Connect(function()
-		local elapsed = os.clock() - startTime
-		local remaining = math.max(0, cd - elapsed)
-		local progress = math.clamp(remaining / cd, 0, 1)
 
-		for _, s in ipairs(sweepList) do
-			s.Size = UDim2.new(1, 0, progress, 0)
-		end
+	activeCooldownThreads[normKey] = task.spawn(function()
+		while true do
+			local elapsed = os.clock() - startTime
+			local remaining = math.max(0, cd - elapsed)
+			local progress = math.clamp(remaining / cd, 0, 1)
 
-		if textList then
-			local formatted = string.format("%.1f", remaining)
-			for _, t in ipairs(textList) do
-				t.Text = formatted
+			if sweep then
+				sweep.Size = UDim2.new(1, 0, progress, 0)
 			end
-		end
 
-		if remaining <= 0 then
-			for _, s in ipairs(sweepList) do s.Visible = false end
-			if textList then
-				for _, t in ipairs(textList) do
-					t.Visible = false
-					t.Text = ""
+			if secLabel then
+				secLabel.Text = string.format("%.1fs", remaining)
+			end
+
+			if remaining <= 0 then
+				if box and box.Parent then
+					box:Destroy()
 				end
+				activeCooldownBoxes[normKey] = nil
+				activeCooldownThreads[normKey] = nil
+				break
 			end
-			if conn then conn:Disconnect() end
+
+			RunService.Heartbeat:Wait()
 		end
 	end)
 end
@@ -350,9 +397,8 @@ function SkillBarController.UpdateVitals(curHp: number, maxHp: number, curQi: nu
 
 	local qMax = math.max(1, maxQi or 100)
 	local qCur = math.clamp(curQi or 0, 0, qMax)
-	-- Responsive Dantian Progress: fill represents CultivatedQi towards TargetQi
 	local qRatio = math.clamp(qCur / qMax, 0, 1)
-	
+
 	if hpFill then TweenService:Create(hpFill, INTENT_BAR_TWEEN, { Size = UDim2.new(hRatio, 0, 1, 0) }):Play() end
 	if hpTextLabel then hpTextLabel.Text = string.format("%s / %s", FormatNum(hCur), FormatNum(hMax)) end
 
@@ -387,11 +433,7 @@ function SkillBarController.UpdateSwordIntent(current: number, max: number)
 	if intentTextLabel then intentTextLabel.Text = string.format("%d / %d", val, math.floor(maxVal)) end
 end
 
--- =============================================================================
--- BULLETPROOF ACTIVE-CHARACTER BINDER (Zero Stale Closures)
--- =============================================================================
 local function BindCharacter(newCharacter: Model)
-	-- 1. PURGE ALL ZOMBIE LISTENERS FROM PREVIOUS LIVES IMMEDIATELY
 	for _, conn in ipairs(characterConnections) do
 		conn:Disconnect()
 	end
@@ -401,7 +443,6 @@ local function BindCharacter(newCharacter: Model)
 
 	local humanoid = newCharacter:WaitForChild("Humanoid", 8) :: Humanoid?
 
-	-- Dynamic Active Evaluator: Always reads from the live character instance
 	local function checkVitals()
 		local char = LocalPlayer.Character
 		if not char or char ~= newCharacter then return end
@@ -438,6 +479,32 @@ local function BindCharacter(newCharacter: Model)
 		SkillBarController.UpdateSwordIntent(tonumber(intent) or 0, tonumber(maxIntent) or 100)
 	end
 
+	local function checkEquippedStates()
+		local char = LocalPlayer.Character
+		if not char or char ~= newCharacter then return end
+
+		local isDrawn = char:GetAttribute("IsWeaponDrawn") == true
+		local isFlying = char:GetAttribute("IsFlying") == true
+
+		local slot1 = hotbarSlotButtons[1]
+		if slot1 then
+			local stroke = slot1:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Color = isDrawn and Color3.fromRGB(190, 215, 245) or Color3.fromRGB(60, 78, 105)
+				stroke.Thickness = isDrawn and 1.8 or 1
+			end
+		end
+
+		local slot2 = hotbarSlotButtons[2]
+		if slot2 then
+			local stroke = slot2:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Color = isFlying and Color3.fromRGB(120, 180, 235) or Color3.fromRGB(60, 78, 105)
+				stroke.Thickness = isFlying and 1.8 or 1
+			end
+		end
+	end
+
 	if humanoid then
 		table.insert(characterConnections, humanoid:GetPropertyChangedSignal("Health"):Connect(checkVitals))
 		table.insert(characterConnections, humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(checkVitals))
@@ -460,14 +527,16 @@ local function BindCharacter(newCharacter: Model)
 	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("BreakthroughReady"):Connect(checkVitals))
 	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("IsMeditating"):Connect(checkVitals))
 	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("SwordIntent"):Connect(checkIntent))
+	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("IsWeaponDrawn"):Connect(checkEquippedStates))
+	table.insert(characterConnections, newCharacter:GetAttributeChangedSignal("IsFlying"):Connect(checkEquippedStates))
 
-	-- Rapid Sync Loop: Guarantees millions of HP are rendered within frames of revival
 	task.spawn(function()
 		local syncIntervals = { 0.05, 0.15, 0.30, 0.60, 1.0 }
 		for _, delaySec in ipairs(syncIntervals) do
 			task.wait(delaySec)
 			if LocalPlayer.Character == newCharacter and humanoid and humanoid.Parent and humanoid.Health > 0 then
 				checkVitals()
+				checkEquippedStates()
 				if humanoid.MaxHealth > 1000 then break end
 			end
 		end
@@ -476,10 +545,38 @@ local function BindCharacter(newCharacter: Model)
 	checkVitals()
 	SkillBarController.UpdateCurrencies()
 	checkIntent()
+	checkEquippedStates()
 end
 
 function SkillBarController.Init()
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
+	inventoryActionRemote = RemoteEvents.GetRemote("InventoryAction")
+
+	local updateInvRemote = RemoteEvents.GetRemote("UpdateInventory")
+	if updateInvRemote then
+		updateInvRemote.OnClientEvent:Connect(function(inventoryData: any)
+			if type(inventoryData) ~= "table" then return end
+			local healCount = 0
+			local qiCount = 0
+
+			for _, slotData in pairs(inventoryData) do
+				if type(slotData) == "table" and slotData.ItemId then
+					if slotData.ItemId == "SpiritHealingDan" then
+						healCount += (tonumber(slotData.Count) or 1)
+					elseif slotData.ItemId == "QiGatheringDan" then
+						qiCount += (tonumber(slotData.Count) or 1)
+					end
+				end
+			end
+
+			if hotbarCountLabels[3] then
+				hotbarCountLabels[3].Text = if healCount > 0 then "x" .. tostring(healCount) else ""
+			end
+			if hotbarCountLabels[4] then
+				hotbarCountLabels[4].Text = if qiCount > 0 then "x" .. tostring(qiCount) else ""
+			end
+		end)
+	end
 
 	pcall(function()
 		sectRemote = RemoteEvents.GetRemote("SectAction")
@@ -494,7 +591,6 @@ function SkillBarController.Init()
 
 	SkillBarController.HookStudioUI()
 
-	-- Dedicated Global Currency Listeners (Bound once to LocalPlayer)
 	local currencyAttributes = { "ContributionPoints", "SectContribution", "CP", "SpiritStones", "Stones" }
 	for _, attr in ipairs(currencyAttributes) do
 		LocalPlayer:GetAttributeChangedSignal(attr):Connect(SkillBarController.UpdateCurrencies)
@@ -521,7 +617,7 @@ function SkillBarController.Init()
 		end
 	end)
 
-	print("[ASCEND] SkillBarController Initialized (Zombie Listeners Purged, Bulletproof HP Revival Active).")
+	print("[ASCEND] SkillBarController Initialized (Interactive Collapsible Guide Active).")
 end
 
 return SkillBarController

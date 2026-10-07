@@ -3,18 +3,20 @@
     HUDController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/HUDController.luau
     Directly binds to:
-      1. MasterHUDGui.ToastContainer.ToastLabel with Generation-ID anti-race protection
-      2. KillRewardGui.KillBanner (Dynamic Spirit Stones, Qi & Item Drops on Mob Defeats)
-    Updates:
-      - Preloads victory chime SFX and reuses persistent sound instance to eliminate audio fetch stalls.
-      - Fixed syntax typo in ShowMobKillBanner parameter list.
+      1. MasterHUDGui.TopRightMapFrame (Minimap + Live Compass Heading)
+      2. MasterHUDGui.FullWorldMapFrame (Interactive Full Sector Map Modal with Live Pin & Landmarks)
+      3. MasterHUDGui.ToastContainer.ToastLabel with Generation-ID anti-race protection
+      4. KillRewardGui.KillBanner (Dynamic Spirit Stones, Qi & Item Drops on Mob Defeats)
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 local ContentProvider = game:GetService("ContentProvider")
+local UserInputService = game:GetService("UserInputService")
 
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
@@ -45,6 +47,22 @@ local killQiPill: Frame?
 local killDropPill: Frame?
 local killBannerThread: thread? = nil
 
+-- Minimap & Full World Map References
+local minimapFrame: Frame?
+local mapHeaderText: TextLabel?
+local minimapPlayerMarker: TextLabel?
+local minimapCoordsLabel: TextLabel?
+local fullWorldMapModal: Frame?
+local fullMapLivePin: TextLabel?
+local fullMapFooterCoords: TextLabel?
+local mapRenderConnection: RBXScriptConnection? = nil
+
+-- World Boundary Bounds for 2D Map Normalization (Studs)
+local MAP_MIN_X = -1200
+local MAP_MAX_X = 1200
+local MAP_MIN_Z = -1200
+local MAP_MAX_Z = 1200
+
 local function FormatNumber(num: number): string
 	local formatted = tostring(math.floor(math.abs(num)))
 	local k
@@ -72,6 +90,11 @@ local function PlayUISound(soundId: string, volume: number?)
 	end)
 end
 
+function HUDController.ToggleWorldMap()
+	if not fullWorldMapModal then return end
+	fullWorldMapModal.Visible = not fullWorldMapModal.Visible
+end
+
 function HUDController.HookStudioUI()
 	masterGui = (PlayerGui:FindFirstChild("MasterHUDGui") or PlayerGui:WaitForChild("MasterHUDGui", 6)) :: ScreenGui?
 	if masterGui then
@@ -83,6 +106,98 @@ function HUDController.HookStudioUI()
 				toastLabel.TextTransparency = 1
 			end
 		end
+
+		-- Wire Minimap
+		minimapFrame = masterGui:FindFirstChild("TopRightMapFrame") :: Frame?
+		if minimapFrame then
+			local mapHeader = minimapFrame:FindFirstChild("MapHeader")
+			mapHeaderText = if mapHeader then mapHeader:FindFirstChild("HeaderText") :: TextLabel? else nil
+
+			local mapCanvas = minimapFrame:FindFirstChild("MapCanvas")
+			minimapPlayerMarker = if mapCanvas then mapCanvas:FindFirstChild("PlayerMarker") :: TextLabel? else nil
+
+			local mapFooter = minimapFrame:FindFirstChild("MapFooter")
+			minimapCoordsLabel = if mapFooter then mapFooter:FindFirstChild("CoordinatesLabel") :: TextLabel? else nil
+
+			local openBtn = minimapFrame:FindFirstChild("OpenFullMapButton") :: TextButton?
+			if openBtn then
+				openBtn.Activated:Connect(HUDController.ToggleWorldMap)
+			end
+		end
+
+		-- Wire Full World Map Modal
+		fullWorldMapModal = masterGui:FindFirstChild("FullWorldMapFrame") :: Frame?
+		if fullWorldMapModal then
+			local modalHeader = fullWorldMapModal:FindFirstChild("ModalHeader")
+			local closeBtn = modalHeader and modalHeader:FindFirstChild("CloseMapButton") :: TextButton?
+			if closeBtn then
+				closeBtn.Activated:Connect(function()
+					fullWorldMapModal.Visible = false
+				end)
+			end
+
+			local fullCanvas = fullWorldMapModal:FindFirstChild("FullMapCanvas")
+			fullMapLivePin = if fullCanvas then fullCanvas:FindFirstChild("LivePlayerPin") :: TextLabel? else nil
+
+			local modalFooter = fullWorldMapModal:FindFirstChild("ModalFooter")
+			fullMapFooterCoords = if modalFooter then modalFooter:FindFirstChild("FooterCoordsLabel") :: TextLabel? else nil
+		end
+
+		if mapRenderConnection then
+			mapRenderConnection:Disconnect()
+			mapRenderConnection = nil
+		end
+
+		mapRenderConnection = RunService.RenderStepped:Connect(function()
+			local character = LocalPlayer.Character
+			local hrp = if character then character:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+			local cam = Workspace.CurrentCamera
+			if not cam then return end
+
+			local look = cam.CFrame.LookVector
+			local headingAngle = math.atan2(look.X, -look.Z)
+			local deg = math.deg(headingAngle)
+			if deg < 0 then deg += 360 end
+
+			local dirStr = "NORTH"
+			if deg >= 337.5 or deg < 22.5 then dirStr = "NORTH"
+			elseif deg >= 22.5 and deg < 67.5 then dirStr = "NE"
+			elseif deg >= 67.5 and deg < 112.5 then dirStr = "EAST"
+			elseif deg >= 112.5 and deg < 157.5 then dirStr = "SE"
+			elseif deg >= 157.5 and deg < 202.5 then dirStr = "SOUTH"
+			elseif deg >= 202.5 and deg < 247.5 then dirStr = "SW"
+			elseif deg >= 247.5 and deg < 292.5 then dirStr = "WEST"
+			elseif deg >= 292.5 and deg < 337.5 then dirStr = "NW"
+			end
+
+			if mapHeaderText then
+				mapHeaderText.Text = string.format("[ MAP · %s %03d° ]", dirStr, math.floor(deg))
+			end
+
+			if minimapPlayerMarker then
+				minimapPlayerMarker.Rotation = -deg
+			end
+
+			if hrp then
+				local pos = hrp.Position
+				if minimapCoordsLabel then
+					minimapCoordsLabel.Text = string.format("X: %d   Z: %d", math.floor(pos.X), math.floor(pos.Z))
+				end
+
+				-- Update Live Pin on Full World Map
+				if fullWorldMapModal and fullWorldMapModal.Visible and fullMapLivePin then
+					local normX = math.clamp((pos.X - MAP_MIN_X) / (MAP_MAX_X - MAP_MIN_X), 0, 1)
+					local normZ = math.clamp((pos.Z - MAP_MIN_Z) / (MAP_MAX_Z - MAP_MIN_Z), 0, 1)
+					fullMapLivePin.Position = UDim2.new(normX, 0, normZ, 0)
+					fullMapLivePin.Rotation = -deg
+
+					if fullMapFooterCoords then
+						fullMapFooterCoords.Text = string.format("COORDINATES: X: %d | Z: %d  •  HEADING: %s (%03d°)  •  [M] CLOSE",
+							math.floor(pos.X), math.floor(pos.Z), dirStr, math.floor(deg))
+					end
+				end
+			end
+		end)
 	end
 
 	killGui = (PlayerGui:FindFirstChild("KillRewardGui") or PlayerGui:WaitForChild("KillRewardGui", 6)) :: ScreenGui?
@@ -197,12 +312,10 @@ function HUDController.ShowMobKillBanner(payload: { [string]: any })
 
 	PlayUISound(VICTORY_CHIME_SFX, if payload.IsBoss == true then 1.4 else 0.85)
 
-	-- Anchor to top-center
 	killBanner.AnchorPoint = Vector2.new(0.5, 0)
 	killBanner.Position = UDim2.new(0.5, 0, -0.15, 0)
 	killBanner.Visible = true
 
-	-- Dynamically match the Y position of ToastContainer if present
 	local targetY = if toastContainer then toastContainer.Position.Y else UDim.new(0.035, 0)
 
 	local dropTween = TweenService:Create(killBanner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
@@ -224,7 +337,6 @@ end
 function HUDController.Init()
 	HUDController.HookStudioUI()
 
-	-- Preload victory sound asset once at startup to prevent play stalls
 	local sound = Instance.new("Sound")
 	sound.Name = "PreloadedVictoryChime"
 	sound.SoundId = VICTORY_CHIME_SFX
@@ -236,6 +348,14 @@ function HUDController.Init()
 		pcall(function()
 			ContentProvider:PreloadAsync({ sound })
 		end)
+	end)
+
+	-- Hotkey [M] to toggle World Map
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or UserInputService:GetFocusedTextBox() ~= nil then return end
+		if input.KeyCode == Enum.KeyCode.M then
+			HUDController.ToggleWorldMap()
+		end
 	end)
 
 	local gatherRemote = RemoteEvents.GetRemote("GatheringAction") :: RemoteEvent?
@@ -277,7 +397,7 @@ function HUDController.Init()
 		end)
 	end
 
-	print("[ASCEND] HUDController Initialized (MasterHUDGui & KillRewardGui Bound).")
+	print("[ASCEND] HUDController Initialized (Minimap + Interactive World Map Modal Active).")
 end
 
 return HUDController
