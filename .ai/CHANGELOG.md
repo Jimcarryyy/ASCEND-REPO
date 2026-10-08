@@ -842,3 +842,50 @@ This document records historical feature additions, engine enhancements, balance
   - Resolved mid-combo speed jumps caused by `CombatStateManager.luau` replicating `IsAttacking = false` on `RecoveryEndTime` while the client was executing subsequent chained swings [VERIFIED].
 - **Sword Intent Spending Misconception:**
   - Verified that crits in `FlyingSwordServer.luau` are determined by random math rolls and do not consume Sword Intent on the server; Sword Intent remains client-side [VERIFIED].
+
+  ## [Phase 8.6 — 10-Weapon Arsenal, 10-Orb Bloodlines, Steel-Grey HUD & Sect Market V2] — 2026-10-08
+
+### Added
+- **10-Weapon Canonical Arsenal Integration (`ReplicatedStorage.Weapons.NewWeapons`):**
+  - Replaced legacy 8-tier weapon list with 10 canonical non-elemental weapons split across 5 rarities (Common to Legendary): `1.Iron Reed` (Dao), `2.Bronze Discipline` (Cutlass), `3.Earthbound Steel` (Jian), `4.Wandering Blade` (Jian), `5.Crane Amidst Clouds` (Dao), `6.Resonant Heart` (Jian), `7.Hollow Moon` (Cutlass), `8.Ascendant Gold` (Jian), `9.Void Purity` (Dao), `10.Heaven-Piercing` (Jian).
+  - Registered full stat profiles, studio model name aliases, and dedicated `WEAPON_PALETTES` in `ItemConfig.luau`.
+  - Registered universal `SwordPlaceholder` (`rbxassetid://109157084266033`) across all weapon tokens in `UIAssets.luau`.
+  - Updated dual-lookup template finding in `WeaponManager.luau` (`NewWeapons` prioritized with normalized string matching).
+  - Updated starter weapon to `IronReed` and dev grant to `HeavenPiercing` in `PlayerDataManager.luau`, `InventoryManager.luau`, and `SwordAltarManager.luau`.
+- **10 Spiritual Bloodline Orbs (`ReplicatedStorage.Bloodlines.NewBloodlines`):**
+  - Replaced legacy visual artifacts with 10 canonical spiritual orbs: `Mortal Steel Vein` (Common), `Spirit Iron Sword-Bone` (Uncommon), `Gale-Jade Sword-Vein` (Rare), `JadeLotusOrb` (Rare), `Thunder-Severing Sword-Heart` (Epic), `Heavy-Crag Sword-Marrow` (Epic), `CosmicVoidSphere` (Epic), `Innate Sovereign Sword-Bone` (Legendary), `Ghost-Shadow Sword-Pulse` (Legendary), `Scarlet-Lotus Blade-Bone` (Legendary).
+  - Re-anchored orbs to the top of the left shoulder (`CFrame.new(-1.65, 1.75, 0.1)`) with dedicated PointLight illumination and zero particle VFX.
+  - Implemented client-authoritative 60 FPS living floating engine in `BloodlineController.luau` featuring world-space damped follow, inertia lag/lean, multi-frequency breathing, axial spin, and a strict 0.52-stud leash constraint.
+  - Unified meditation aura to `Tier1_Common` across all tiers in `CultivationManager.luau`, tinted strictly to orb color palettes; purged skull/skeleton/face VFX.
+- **Planar Razor-Sharp Weapon Trail Engine:**
+  - Configured 10 blade-attuned trails via Studio Command Bar linking `SwordTipAttachment` (Attachment0) and `SwordHandleAttachment` (Attachment1).
+  - Set `FaceCamera = false`, `Lifetime = 0.09s`, `WidthScale = 1.0 -> 0.0`, and `Transparency = 0.48 -> 1.0` to produce sharp, planar 3D triangular slices.
+  - Updated `AnimationController.luau` to deeply resolve `Mesh_0.Trail` and toggle trails strictly during active forward cut windows (`duration * 0.65`).
+- **Master HUD Steel-Grey Overhaul (`StarterGui.MasterHUDGui`):**
+  - Enforced design system: `Enum.Font.FredokaOne`, 0 `UICorner` (sharp rectangles), 100% solid opacity (`BackgroundTransparency = 0`), and slate/steel-grey metallic borders.
+  - Created `BottomCenterItemHotbar` with slots `1`–`5`: Slot 1 (Combat Sword Draw/Sheath), Slot 2 (Flying Sword Flight Mount), Slots 3–5 (Quick Consumables/Pills).
+  - Created `BottomCenterCooldownRow` directly above the hotbar displaying dynamic 38x38 status boxes with masking sweep overlays and live seconds countdowns for Dash, Block, Q, E, F, B, and Finisher lockout.
+  - Created `BottomRightActionGuide` with collapsible `[⌨ KEYS]` button and keybind `H`.
+  - Merged compass directly into `TopRightMapFrame` (live header heading, rotating player chevron, real-time coordinates).
+  - Added skeleton modal `FullWorldMapFrame` with landmark pins, live player position tracking, and toggle on <kbd>M</kbd> or minimap click.
+- **Sect Exchange Pavilion V2 (`StarterGui.SectMerchantMarketGui`):**
+  - Migrated controller bindings from legacy UI to the ornate Chinese bamboo/cloud pavilion GUI.
+  - Fixed Merchant Qian interaction by routing through `MarketAction` and adding client-side `ProximityPromptService` fallback.
+  - Sourced `SELL LOOT` directly from live inventory cache with support for bulk transactions up to 9,999 units in `VendorManager.luau`.
+  - Added empty-state fallback notices (`EmptyCatalogNotice` and `EmptyDetailsNotice`).
+  - Added responsive grid scaling (2–3 columns on mobile, 4 on desktop) in `MarketController.luau`.
+
+### Changed
+- **Weapon Progression Roster:** Amended ADR-068 to incorporate Dao and Cutlass blade forms alongside Jians (ADR-069).
+- **Vendor Transaction Ceiling:** Raised server transaction cap from 99 to 9,999 units in `VendorManager.luau`.
+- **Compass Integration:** Discontinued standalone ribbon compass; consolidated heading and coordinates into `TopRightMapFrame`.
+- **Keybind Remapping:** Rebound Draw/Sheath to `1` (retaining `R` as alias) and Flight to `2` (retaining `V` as alias).
+
+### Fixed
+- Fixed 99-item bulk sell cap in `VendorManager.luau` caused by `math.clamp(amount, 1, 99)`.
+- Fixed missing `Inventory` payload on `BuyItem` transactions in `VendorManager.luau`, restoring instant inventory delivery.
+- Fixed broken Herbs sell filter in `MarketController.luau` caused by unsupported regex alternation in `string.find`.
+- Fixed initial slot highlight disconnect by selecting item #1 before cloning slots in `MarketController.luau`.
+- Fixed double shop popup bug caused by simultaneous client and server proximity prompt listeners.
+- Fixed mobile 1-column grid collapse by dynamically updating `CellSize` based on container width.
+- Fixed missing `ApplyHotbarBackplateGradient` helper in Studio Command Bar script.

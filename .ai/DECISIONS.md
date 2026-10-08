@@ -38,3 +38,47 @@
   2. Prohibited elemental themes (no Fire, Ice, Lightning, Poison). Weapons embody pure martial craftsmanship, cold steel, jade, and sword intent.
   3. Capped the progression roster strictly at **Legendary (Divine Grade)**, omitting Mythic, Immortal, and Celestial tiers from the 10-sword list (2 swords per tier across Common, Uncommon, Rare, Epic, Legendary).
 * **Consequences:** Creates a pure, unified Xianxia sword cultivator aesthetic with balanced itemization.
+
+### ADR-069: 10-Weapon Multi-Blade Archetype Roster (Dao, Cutlass, Jian) & Roster Cap at Legendary
+* **Date:** 2026-10-08 (backfilled from Session Digest)
+* **Status:** Accepted [DEV-CONFIRMED] (Amends ADR-068)
+* **Context:** ADR-068 restricted the weapon ladder strictly to 10 Chinese Jian straight swords. The developer introduced a 10-weapon roster incorporating Dao sabers, Cutlasses, and Jians across 5 rarities (Common to Legendary).
+* **Decision:**
+  1. Replaced the 10-Jian mandate with the 10 NewWeapons roster: `1.Iron Reed` (Common Dao), `2.Bronze Discipline` (Common Cutlass), `3.Earthbound Steel` (Uncommon Jian), `4.Wandering Blade` (Uncommon Jian), `5.Crane Amidst Clouds` (Rare Dao), `6.Resonant Heart` (Rare Jian), `7.Hollow Moon` (Epic Cutlass), `8.Ascendant Gold` (Epic Jian), `9.Void Purity` (Legendary Dao), and `10.Heaven-Piercing` (Legendary Jian).
+  2. Maintained the strict roster progression cap at Legendary (Divine Grade).
+  3. Mapped all 10 weapons in `ItemConfig.luau`, `UIAssets.luau`, `WeaponManager.luau`, and `SwordAltarManager.luau`.
+* **Consequences:** Overrides ADR-068's strictly Jian constraint while maintaining the 10-weapon non-elemental progression cap.
+
+### ADR-070: 10 Spiritual Bloodline Orbs, Left-Shoulder Autonomous Float & Universal Tier1 Aura
+* **Date:** 2026-10-08 (backfilled from Session Digest)
+* **Status:** Accepted [DEV-CONFIRMED]
+* **Context:** Legacy bloodline visual artifacts (wings, horns, halos) created visual clutter and lacked cohesive mounting. Meditation VFX had inconsistent tiered animations including skeleton/skull particles.
+* **Decision:**
+  1. Replaced all legacy bloodlines with 10 spiritual orbs (`Mortal Steel Vein` through `Scarlet-Lotus Blade-Bone`).
+  2. Mounted orbs exclusively over the top of the left shoulder (`CFrame.new(-1.65, 1.75, 0.1)`) with PointLight illumination and zero particle emitters on the orb itself.
+  3. Implemented autonomous world-space damped floating with inertia lag, multi-frequency breathing bob, and a strict 0.52-stud leash constraint in `BloodlineController.luau`.
+  4. Unified all meditation VFX across all tiers to `Tier1_Common` in `CultivationManager.luau`, tinted strictly to orb color palettes; purged skull, skeleton, and face particles.
+* **Consequences:** Cohesive cultivator aesthetic, clean visual hierarchy, zero physics collision issues.
+
+### ADR-071: Master HUD Restructure: Steel-Grey Rectangular Language, Minimap Compass & Action Guide
+* **Date:** 2026-10-08 (backfilled from Session Digest)
+* **Status:** Accepted [DEV-CONFIRMED]
+* **Context:** HUD was cluttered with redundant keybinds (R and V duplicated on bottom-middle), circular compass separated from map, yellow/gold borders clashing with vitals, and lack of cooldown visibility.
+* **Decision:**
+  1. Enforced visual standard: `Enum.Font.FredokaOne`, strictly 0 `UICorner` (sharp rectangular geometry), 100% solid opacity (`BackgroundTransparency = 0`), and dark steel-grey metallic borders matching vitals.
+  2. Retired standalone ribbon compass; integrated live cardinal heading and rotating player marker directly into `TopRightMapFrame`.
+  3. Replaced bottom-middle hotkey strip with 1–5 Quick-Access Hotbar: Slot 1 = Combat Sword (Draw/Sheath), Slot 2 = Flying Sword (Flight Mount), Slots 3–5 = Consumables/Pills.
+  4. Transferred combat abilities to a collapsible bottom-right action guide with `[⌨ KEYS]` toggle button.
+  5. Added dynamic 38x38 cooldown popup boxes directly above the 1–5 hotbar with masking sweep and live seconds countdowns.
+* **Consequences:** Clean screen space, modern RPG HUD flow, instant tactical cooldown readability.
+
+### ADR-072: Sect Merchant Market Architecture & Infinite Commodity Stock
+* **Date:** 2026-10-08 (backfilled from Session Digest)
+* **Status:** Accepted [DEV-CONFIRMED]
+* **Context:** Merchant Qian had networking disconnects, stock was artificially capped to 99 preventing bulk transactions, and mobile viewports collapsed to 1 oversized item per row.
+* **Decision:**
+  1. Bound market controller directly to `SectMerchantMarketGui` using `MarketAction` and client-side prompt fallback.
+  2. Removed static "Stock: 99" in Buy Goods; shop stock is unlimited, and transaction capacity is expanded to 9,999 units in `VendorManager.luau`.
+  3. Dynamic responsive grid sizing on `itemGridScroll` enforcing 2–3 columns on mobile and 4 on desktop.
+  4. Sourced `SELL LOOT` directly from live cached player inventory with automatic fallbacks for empty states.
+* **Consequences:** Reliable merchant economy, smooth bulk trading, and native mobile responsiveness.

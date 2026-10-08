@@ -3,7 +3,7 @@
 > **Engineering Roadmap & Next Steps**  
 > **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
 > **Source of Truth:** Live Luau Codebase (`src/`) & Live Studio Place File  
-> **Active Priority:** ASCEND Combat V1 — Kinematic Overhaul & Single-Kit Hardening
+> **Active Priority:** ASCEND Combat V1 — Kinematic Overhaul & Production Polish  
 
 ---
 
@@ -11,47 +11,39 @@
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ [ACTIVE] COMBAT V1: KINEMATIC OVERHAUL & SINGLE-KIT HARDENING               │
+│ [ACTIVE] COMBAT V1: KINEMATIC OVERHAUL & PRODUCTION POLISH                  │
 │ - [x] Phase 0: Baseline Verification & Discrepancy Audit [COMPLETE]         │
-│ - [x] Phase 1: M1 Timing, Finisher Lockout (2.20s) & Server Combo [PENDING] │
-│ - [x] Phase 2: M1 Animation, Lunge Removal, Token & Buffer [PENDING]        │
-│ - [x] Phase 3: Movement Governor (11.5 studs/s) & Hybrid Facing [PENDING]   │
+│ - [x] Phase 1: M1 Timing, Finisher Lockout (2.20s) & Server Combo [COMPLETE]│
+│ - [x] Phase 2: M1 Animation, Lunge Removal, Token & Buffer [COMPLETE]       │
+│ - [x] Phase 3: Movement Governor (11.5 studs/s) & Hybrid Facing [COMPLETE]  │
 │ - [ ] Phase 4: Dash as a Leap (Air arc, landing check, i-frames) [ACTIVE]   │
 │ - [ ] Phase 5: Server Hardening (Clash cooldown, 0.5x posture scale, parry) │
-│ - [ ] Phase 6: Balance Metrics & COMBAT_SPEC.md Sync                        │
+│ - [ ] Phase 6: Balance Metrics & Documentation Parity                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ [PENDING] PHASE 2 (CULTIVATION): ORDER 9 GATE & TRIBULATION (DEFERRED)      │
-│ - Order 9 breakthrough gate enforcement & Tribulation lightning waves       │
-│ - Breakthrough Dan preservation on tribulation failure with 50% Qi penalty  │
-│ - Interactive flame-timing slider minigame (Option B)                       │
+│ [COMPLETE] WEAPON & BLOODLINE ARSENAL OVERHAUL (ADR-069, ADR-070)           │
+│ - 10 NewWeapons non-elemental ladder (Common to Legendary) [COMPLETE]       │
+│ - 10 NewBloodlines spiritual orbs with left-shoulder autonomous float [DONE]│
+│ - Planar razor-sharp 3D sword trail system [COMPLETE]                       │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ [CLOSED] PHASE 4: FLYING SWORD 3D FLIGHT ENGINE                             │
-│ - 3D flight, realm speed scaling, 25 Qi/s drain, clearance cushions.       │
+│ [COMPLETE] MASTER HUD V2 & SECT MERCHANT OVERHAUL (ADR-071, ADR-072)        │
+│ - Steel-grey rectangular HUD language with FredokaOne typography [COMPLETE] │
+│ - Minimap-integrated compass & FullWorldMapFrame modal [COMPLETE]           │
+│ - Bottom-center 1-5 quick hotbar & dynamic cooldown popup row [COMPLETE]    │
+│ - Collapsible bottom-right combat action guide [COMPLETE]                   │
+│ - SectMerchantMarketGui wiring, bulk transactions & mobile grid [COMPLETE]  │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 5: UNIFIED GUI SYSTEMS & MASTER DRAWER DOCKING                        │
-│ - Complete CharacterStats (Page_Stats) & Codex (Page_Archives) docking      │
-│ - Purge legacy CodexGui infinite yield                                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 6: BEGINNER WALKTHROUGH & GUIDING SYSTEMS                             │
-│ - 3D guide lines and Elder Qing introductory walkthrough flow               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 7: SECT DUTIES & ECONOMY EXPANSION                                    │
-│ - Sword Altar Communion gacha integration (Madame Tie forge purged)         │
+│ PHASE 7: SECT COMMUNION & REPUTATION ENGINE                                 │
+│ - Sword Altar Communion gacha weighting parity with NewWeapons [IN PROGRESS]│
 │ - Dynamic notice board duties (D, C, B, A ranks)                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 8: ON-DEMAND SPARRING ARENA & LEADERBOARDS                            │
-│ - 35-stud proximity sparring challenge & 50-stud dynamic Qi ring            │
-│ - Sector 3 Elo rating persistence and spectator podium                      │
+│ PHASE 8: 1V1 ARENA & STREAMING HARDENING                                    │
+│ - Sector 3 Elo rating persistence & spectator podium                        │
+│ - Proximity sparring challenge & dynamic boundary Qi ring                   │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 9: MULTI-ZONE EXPANSION (ZONE 2 VERDANT BAMBOO VALLEY)               │
+│ PHASE 9: MULTI-ZONE EXPANSION (ZONE 2 VERDANT BAMBOO VALLEY)                │
 │ - Zone 2 terrain integration, gathering nodes, and higher-order mobs        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 10: SAMSARA REBIRTH LOOP & ENDGAME ASCENSION                          │
-│ - Immortal Ascension Order 9 reset gate to QC Order 1                       │
+│ - Immortal Ascension Order 9 reset gate to Qi Condensation Order 1          │
 │ - Permanent perks: +30% Qi refining, +5% sword damage cap, [Samsara I] title│
-├─────────────────────────────────────────────────────────────────────────────┤
-│ [POST-V1] SWORD DAO EXPANSION: FIRE DAO & RESPEC ENGINE                     │
-│ - Fire Sword Dao kit (Solar Crucible, Cinderbrand Thrust, Comet Slam)       │
-│ - Blazeburn status-effect runner & Posture-freeze debuffs                   │
-│ - Registry-driven Dao Selection GUI & DaoReversalToken Robux item           │
 └─────────────────────────────────────────────────────────────────────────────┘

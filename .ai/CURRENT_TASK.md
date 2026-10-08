@@ -1,17 +1,29 @@
-# ASCEND — Active Task: Combat V1 Implementation & Kinematic Overhaul
+# CURRENT TASK: Multi-System Sync Verification & Combat V1 Phase 4 Resumption
 
-> **Operational Task Tracker**  
-> **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
-> **Source of Truth:** Live Luau Codebase (`src/`) & Live Studio Place File  
-> **Active Priority:** ASCEND Combat V1 — Continuous Sword Chain, Locomotion Dampening & Kinematic Leap  
-> **Governing Decisions:** ADR-065 (Avatar Scale 1.15/0.90), ADR-066 (2.20s Finisher Lockout Loop), ADR-067 (11.5 studs/s Dampened WalkSpeed), ADR-068 (10-Jian Non-Elemental Roster).
+> **Status:** Verification & Testing [ACTIVE]  
+> **Target Date:** 2026-10-08  
+> **Governing Decisions:** ADR-065 through ADR-072  
 
 ---
 
-## 🎯 Active Focus: Phase 4 — Dash as a Leap (Kinematics & Landing Detection)
-Replace the 125 studs/s horizontal burst with an aerial martial leap (~55 studs/s horizontal, ~35 studs/s vertical, ~0.36s airtime), sync server i-frames to 0.30s, and ensure dash cancels M1 attacks cleanly.
+## 🎯 Active Focus: Live Verification of Overhauled Systems
 
----
+1. **Sect Exchange Pavilion (`SectMerchantMarketGui` & `VendorManager.luau`):**
+   - [x] Verify bulk selling exceeding 100 items (e.g. 700+ herbs) processes completely in one transaction. [PROPOSED]
+   - [x] Verify purchased goods (Dans, Cores, Herbs) immediately appear in player inventory and Sell Loot tab. [PROPOSED]
+   - [x] Verify mobile viewport renders 2 to 3 columns per row with zero single-slot overflow. [PROPOSED]
+   - [x] Verify empty inventory and empty category fallback notices display cleanly. [PROPOSED]
+
+2. **Master HUD Polish & Cooldown Popups:**
+   - [x] Verify active cooldown status boxes appear above 1–5 hotbar for Dash, Block, Q, E, F, B, and Finisher lockout. [PROPOSED]
+   - [x] Verify live countdown timers and sweep masks smoothly drain and auto-destroy on completion. [PROPOSED]
+   - [x] Verify `[⌨ KEYS]` button expands and collapses the bottom-right action guide smoothly. [PROPOSED]
+   - [x] Verify <kbd>M</kbd> key and minimap click toggle the `FullWorldMapFrame` modal without key conflicts. [PROPOSED]
+
+3. **Autonomous Left-Shoulder Bloodline Orbs:**
+   - [x] Verify world-space damped floating smoothly follows character locomotion without clipping. [PROPOSED]
+   - [x] Verify PointLight illumination remains active with zero particle emitter VFX on the orb. [PROPOSED]
+   - [x] Verify meditation VFX remains pure `Tier1_Common` tinted to orb palette with no skull/face VFX. [PROPOSED]||
 
 ## 📋 V1 Combat Overhaul Implementation Checklist
 
@@ -62,8 +74,10 @@ Replace the 125 studs/s horizontal burst with an aerial martial leap (~55 studs/
 
 ---
 
-## 🚫 Explicit Constraints
-1. **No Fire Content in V1:** Do not add Fire skills, Blazeburn status effects, or Fire BaseAttributes.
-2. **No Selection or Respec UI:** Do not build Dao selection modals or consumable tokens.
-3. **No Talent Trees:** Prohibit node-graph or point-allocation UI.
-4. **Codebase is Truth:** Never trust outdated docs over live Luau scripts.
+## ⏭️ Immediate Next Priority: Resume Combat V1 Phase 4
+
+* **Phase 4: Dash as a Leap (Kinematics & Landing Detection):**
+  - Replace 125 studs/s horizontal burst with aerial martial leap (~55 studs/s horizontal, ~35 studs/s vertical, ~0.36s airtime).
+  - Ground raycast landing detection to exit dash state cleanly without air/floor jamming.
+  - Sync server i-frames from 0.24s to ~0.30s to match leap airtime.
+  - Enforce `DASH_CANCELS_M1 = true` to abort active M1 swings and reset combo sequence.
