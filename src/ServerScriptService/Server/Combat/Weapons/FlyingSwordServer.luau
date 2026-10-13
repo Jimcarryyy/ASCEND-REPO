@@ -2,14 +2,11 @@
 --[[
     FlyingSwordServer.luau
     Location: src/ServerScriptService/Server/Combat/Weapons/FlyingSwordServer.luau
-    Updates:
-      - Pass character as attacker to CastCompensatedBox across all attack steps.
-      - Phase 5.4: Reads Skill Q hitbox size and Skill F domain radius directly from FlyingSwordConfig
-        instead of hardcoded inline overrides.
-      - E Skill Piercing Void Thrust: High-velocity swept thrust with target penetration.
-      - F Skill 100-Slash Domain: High-velocity blink and omnidirectional slice domain.
-      - Q Skill: ZERO knockback (slices in-place without pushing targets away).
-      - Added missing Players service import resolving nil indexing in Skill F.
+    Authoritative combat weapon engine for Flying Sword M1–F skills.
+    Fixes:
+      - Targets both Humanoid Cultivators and Non-Humanoid Monsters (MonsterUtil).
+      - Accurate forward spatial hitboxes.
+      - Dispatches damage feedback and combo states.
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -22,9 +19,9 @@ local FlyingSwordConfig = require(ReplicatedStorage.Shared.Configs.Weapons.Flyin
 local CultivationConfig = require(ReplicatedStorage.Shared.Configs.CultivationConfig)
 local ItemConfig = require(ReplicatedStorage.Shared.Configs.ItemConfig)
 local RemoteEvents = require(ReplicatedStorage.Shared.Network.RemoteEvents)
+local MonsterUtil = require(ReplicatedStorage.Shared.Utils.MonsterUtil)
 
 local HitboxManager = require(ServerScriptService.Server.Combat.HitboxManager)
-local ArenaManager = require(ServerScriptService.Server.Combat.ArenaManager)
 
 local FlyingSwordServer = {}
 
@@ -56,10 +53,10 @@ end
 local function GetEquippedWeaponBaseDamage(player: Player): number
 	local character = player.Character
 	local weaponId = if character then (character:GetAttribute("EquippedWeapon") :: string?) else nil
-	if not weaponId or weaponId == "" then return 15 end
+	if not weaponId or weaponId == "" then return 20 end
 
 	local itemDef = ItemConfig.GetItem(weaponId)
-	local baseDmg = (itemDef and itemDef.Stats and itemDef.Stats.Damage) or 15
+	local baseDmg = (itemDef and itemDef.Stats and itemDef.Stats.Damage) or 20
 
 	local samsaraCycle = (character and character:GetAttribute("SamsaraCycle"))
 		or player:GetAttribute("SamsaraCycle")
@@ -67,6 +64,20 @@ local function GetEquippedWeaponBaseDamage(player: Player): number
 	local cycleBonus = 1.0 + math.min(0.20, (tonumber(samsaraCycle) or 0) * 0.05)
 
 	return math.floor(baseDmg * cycleBonus)
+end
+
+local function IsValidTarget(hit: any, selfChar: Model): boolean
+	if not hit or not hit.Character or hit.Character == selfChar then
+		return false
+	end
+	if hit.Humanoid and hit.Humanoid.Health > 0 then
+		return true
+	end
+	if hit.IsMonster then
+		local hp = MonsterUtil.GetHealth(hit.Character)
+		return hp > 0
+	end
+	return false
 end
 
 function FlyingSwordServer.StartChargeF(player: Player)
@@ -131,6 +142,9 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 		playerCombos[player] = comboData
 	end
 
+	-- =========================================================================
+	-- 1. M1 COMBO STEP
+	-- =========================================================================
 	if skillKey == "M1" then
 		local requestedStep = (payload and payload.ComboIndex) or 1
 		comboData.Step = requestedStep
@@ -154,20 +168,15 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 			finalDamage = math.floor((weaponBaseDmg + currentStepData.Damage) * powerMult * critMult)
 		end
 
-		local offsetPosition = hrp.Position + (flatAim * math.abs(currentStepData.Offset.Z)) + Vector3.new(0, currentStepData.Offset.Y, 0)
-		local hitboxCF = CFrame.lookAt(offsetPosition, offsetPosition + flatAim)
+		local offsetPos = hrp.Position + (flatAim * 3.5)
+		local hitboxCF = CFrame.lookAt(offsetPos, offsetPos + flatAim)
 		local filter = { character, Workspace.Terrain }
 
 		local hitResult = HitboxManager.CastCompensatedBox(character, hitboxCF, currentStepData.Range, filter)
-		local hasHit = false
-		local targetPos: Vector3? = nil
 
-		if hitResult and hitResult.Humanoid and hitResult.Humanoid.Health > 0 then
-			hasHit = true
-			targetPos = hitResult.HitPart.Position
-
-			local knockbackDir = flatAim
-			local knockbackVector = knockbackDir * math.abs(currentStepData.Knockback.Z)
+		if IsValidTarget(hitResult, character) then
+			local targetPos = hitResult.HitPart.Position
+			local knockbackVector = flatAim * math.abs(currentStepData.Knockback.Z)
 
 			local res = HitboxManager.ApplyCombatResolution(
 				player,
@@ -175,7 +184,8 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 				finalDamage,
 				currentStepData.PostureDamage,
 				knockbackVector,
-				character
+				character,
+				if isCrit then "Crit" else "LightAttack"
 			)
 
 			return {
@@ -198,43 +208,41 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 			AttackerCFrame = hrp.CFrame,
 		}
 
+	-- =========================================================================
+	-- 2. Q SKILL (SWORD TEMPEST)
+	-- =========================================================================
 	elseif skillKey == "Q" then
 		local aimDirection = ResolveAimDirection(hrp, payload and payload.AimDirection)
 		local flatAim = Vector3.new(aimDirection.X, 0, aimDirection.Z).Unit
 		local qSkill = FlyingSwordConfig.Skills.Q
 
 		local inArena = (character:GetAttribute("InArena") == true) or (character:GetAttribute("InSparringRing") == true)
-		local critRoll = math.random()
-		local isCrit = (critRoll <= 0.25)
-		local critMult = if isCrit then 1.75 else 1.0
-
-		local rawDmg = if inArena then qSkill.ArenaDamage else qSkill.Damage
 		local powerMult = if (not inArena and pData) then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
 		local weaponBase = if not inArena then GetEquippedWeaponBaseDamage(player) else 0
-		local totalSkillDamage = math.floor((weaponBase + rawDmg) * powerMult * critMult)
+		local totalSkillDamage = math.floor((weaponBase + qSkill.Damage) * powerMult)
 
 		local waveDamage = math.max(1, math.floor(totalSkillDamage / 3))
 		local wavePosture = math.max(1, math.floor(qSkill.PostureDamage / 3))
 
 		local meleeHitboxCF = CFrame.lookAt(hrp.Position + flatAim * 4.0, hrp.Position + flatAim * 5.0)
-		local qRange = qSkill.Range or Vector3.new(12, 5, 8)
+		local qRange = qSkill.Range or Vector3.new(12, 6, 10)
 		local meleeHits = HitboxManager.CastCompensatedBox(character, meleeHitboxCF, qRange, { character, Workspace.Terrain })
 
-		if meleeHits and meleeHits.Humanoid and meleeHits.Humanoid.Health > 0 then
+		if IsValidTarget(meleeHits, character) then
 			HitboxManager.ApplyCombatResolution(
 				player,
 				meleeHits,
 				waveDamage,
 				wavePosture,
 				Vector3.zero,
-				character
+				character,
+				"SwordTempest"
 			)
 		end
 
 		for waveIdx = 1, 3 do
 			task.delay((waveIdx - 1) * 0.08, function()
 				if not character.Parent or not hrp.Parent then return end
-				local hitLogged = false
 				local waveOrigin = hrp.Position + flatAim * (2.0 + waveIdx * 1.5)
 				local waveCF = CFrame.lookAt(waveOrigin, waveOrigin + flatAim)
 
@@ -248,22 +256,21 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 					local nextPos = currentCF.Position + flatAim * (70 * dt)
 					currentCF = CFrame.new(nextPos) * (currentCF - currentCF.Position)
 
-					if not hitLogged then
-						local hit = HitboxManager.CastCompensatedBox(character, currentCF, Vector3.new(9, 3, 9), { character, Workspace.Terrain })
-						if hit and hit.Humanoid and hit.Humanoid.Health > 0 then
-							hitLogged = true
-							HitboxManager.ApplyCombatResolution(
-								player,
-								hit,
-								waveDamage,
-								wavePosture,
-								Vector3.zero,
-								character
-							)
-						end
+					local hit = HitboxManager.CastCompensatedBox(character, currentCF, Vector3.new(9, 4, 9), { character, Workspace.Terrain })
+					if IsValidTarget(hit, character) then
+						if conn then conn:Disconnect() end
+						HitboxManager.ApplyCombatResolution(
+							player,
+							hit,
+							waveDamage,
+							wavePosture,
+							Vector3.zero,
+							character,
+							"SwordTempest"
+						)
 					end
 
-					if elapsed >= lifetime or hitLogged then
+					if elapsed >= lifetime then
 						if conn then conn:Disconnect() end
 					end
 				end)
@@ -273,32 +280,30 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 		return {
 			HasHit = true,
 			Damage = totalSkillDamage,
-			IsCrit = isCrit,
+			IsCrit = false,
 			AimDirection = flatAim,
 			AttackerCFrame = hrp.CFrame,
 		}
 
+	-- =========================================================================
+	-- 3. E SKILL (VOID THRUST)
+	-- =========================================================================
 	elseif skillKey == "E" then
 		local aimDirection = ResolveAimDirection(hrp, payload and payload.AimDirection)
 		local flatAim = Vector3.new(aimDirection.X, 0, aimDirection.Z).Unit
 		local eSkill = FlyingSwordConfig.Skills.E
 
 		local inArena = (character:GetAttribute("InArena") == true) or (character:GetAttribute("InSparringRing") == true)
-		local critRoll = math.random()
-		local isCrit = (critRoll <= 0.25)
-		local critMult = if isCrit then 1.75 else 1.0
-
-		local rawDmg = if inArena then eSkill.ArenaDamage else eSkill.Damage
 		local powerMult = if (not inArena and pData) then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
 		local weaponBase = if not inArena then GetEquippedWeaponBaseDamage(player) else 0
-		local finalDamage = math.floor((weaponBase + rawDmg) * powerMult * critMult)
+		local finalDamage = math.floor((weaponBase + eSkill.Damage) * powerMult)
 
-		local eRange = eSkill.Range or Vector3.new(5, 5, 12)
-		local offsetPos = hrp.Position + flatAim * 6.5
+		local eRange = eSkill.Range or Vector3.new(6, 6, 14)
+		local offsetPos = hrp.Position + flatAim * 7.0
 		local thrustCF = CFrame.lookAt(offsetPos, offsetPos + flatAim)
 
 		local hitResult = HitboxManager.CastCompensatedBox(character, thrustCF, eRange, { character, Workspace.Terrain })
-		if hitResult and hitResult.Humanoid and hitResult.Humanoid.Health > 0 then
+		if IsValidTarget(hitResult, character) then
 			local knockback = flatAim * math.abs(eSkill.Knockback.Z)
 			local res = HitboxManager.ApplyCombatResolution(
 				player,
@@ -306,12 +311,13 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 				finalDamage,
 				eSkill.PostureDamage,
 				knockback,
-				character
+				character,
+				"VoidThrust"
 			)
 			return {
 				HasHit = true,
 				Damage = finalDamage,
-				IsCrit = isCrit,
+				IsCrit = false,
 				WasBlocked = res.WasBlocked,
 				WasParried = res.WasParried,
 				WasGuardBroken = res.WasGuardBroken,
@@ -324,32 +330,29 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 		return {
 			HasHit = false,
 			Damage = finalDamage,
-			IsCrit = isCrit,
+			IsCrit = false,
 			AttackerCFrame = hrp.CFrame,
 		}
 
+	-- =========================================================================
+	-- 4. F SKILL (100-SLASH DOMAIN)
+	-- =========================================================================
 	elseif skillKey == "F" then
 		local aimDirection = ResolveAimDirection(hrp, payload and payload.AimDirection)
 		local flatAim = Vector3.new(aimDirection.X, 0, aimDirection.Z).Unit
 		local fSkill = FlyingSwordConfig.Skills.F
 
 		local inArena = (character:GetAttribute("InArena") == true) or (character:GetAttribute("InSparringRing") == true)
-		local critRoll = math.random()
-		local isCrit = (critRoll <= 0.30)
-		local critMult = if isCrit then 1.75 else 1.0
-
-		local rawDmg = if inArena then fSkill.ArenaDamage else fSkill.Damage
 		local powerMult = if (not inArena and pData) then CultivationConfig.GetPowerMultiplier(pData.Realm, pData.Order) else 1.0
 		local weaponBase = if not inArena then GetEquippedWeaponBaseDamage(player) else 0
-		local totalDamage = math.floor((weaponBase + rawDmg) * powerMult * critMult)
+		local totalDamage = math.floor((weaponBase + fSkill.Damage) * powerMult)
 
 		local domainCenter = if payload and payload.Origin then payload.Origin else (hrp.Position + flatAim * 14.0)
-
 		local shredRadius = if fSkill.Range then (fSkill.Range.X / 2) else 18.0
 		local sliceTickDamage = math.max(1, math.floor(totalDamage * 0.12))
 		local finalBurstDamage = math.max(1, math.floor(totalDamage * 0.40))
 
-		local victimTracker: { [Humanoid]: boolean } = {}
+		local victimTracker: { [Model]: boolean } = {}
 		local hitsList: { { Character: Model } } = {}
 
 		local overlap = OverlapParams.new()
@@ -362,21 +365,25 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 				local parts = Workspace:GetPartBoundsInRadius(domainCenter, shredRadius, overlap)
 				for _, p in ipairs(parts) do
 					local m = p:FindFirstAncestorOfClass("Model")
-					local hum = m and m:FindFirstChildOfClass("Humanoid")
-					local root = m and m:FindFirstChild("HumanoidRootPart") :: BasePart?
-					if m and hum and hum.Health > 0 and root and m ~= character then
-						if not victimTracker[hum] then
-							victimTracker[hum] = true
+					if m and m ~= character and not victimTracker[m] then
+						local hum = m:FindFirstChildOfClass("Humanoid")
+						local isMonster = MonsterUtil.IsMonster(m)
+						local root = m:FindFirstChild("HumanoidRootPart") or MonsterUtil.GetRootPart(m)
+
+						if root and ((hum and hum.Health > 0) or (isMonster and MonsterUtil.GetHealth(m) > 0)) then
+							victimTracker[m] = true
 							table.insert(hitsList, { Character = m })
+
+							HitboxManager.ApplyCombatResolution(
+								player,
+								{ Character = m, Humanoid = hum, HitPart = root, TargetPlayer = Players:GetPlayerFromCharacter(m), IsMonster = isMonster },
+								sliceTickDamage,
+								math.floor(fSkill.PostureDamage * 0.15),
+								Vector3.zero,
+								character,
+								"DomainSlash"
+							)
 						end
-						HitboxManager.ApplyCombatResolution(
-							player,
-							{ Character = m, Humanoid = hum, HitPart = root, TargetPlayer = Players:GetPlayerFromCharacter(m) },
-							sliceTickDamage,
-							math.floor(fSkill.PostureDamage * 0.15),
-							Vector3.zero,
-							character
-						)
 					end
 				end
 			end
@@ -385,19 +392,24 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 			local finisherParts = Workspace:GetPartBoundsInRadius(domainCenter, shredRadius + 2.0, overlap)
 			for _, p in ipairs(finisherParts) do
 				local m = p:FindFirstAncestorOfClass("Model")
-				local hum = m and m:FindFirstChildOfClass("Humanoid")
-				local root = m and m:FindFirstChild("HumanoidRootPart") :: BasePart?
-				if m and hum and hum.Health > 0 and root and m ~= character then
-					local toCenter = (root.Position - domainCenter)
-					local knockbackDir = if toCenter.Magnitude > 0.1 then toCenter.Unit else flatAim
-					HitboxManager.ApplyCombatResolution(
-						player,
-						{ Character = m, Humanoid = hum, HitPart = root, TargetPlayer = Players:GetPlayerFromCharacter(m) },
-						finalBurstDamage,
-						math.floor(fSkill.PostureDamage * 0.50),
-						knockbackDir * math.abs(fSkill.Knockback.Z),
-						character
-					)
+				if m and m ~= character then
+					local hum = m:FindFirstChildOfClass("Humanoid")
+					local isMonster = MonsterUtil.IsMonster(m)
+					local root = m:FindFirstChild("HumanoidRootPart") or MonsterUtil.GetRootPart(m)
+
+					if root and ((hum and hum.Health > 0) or (isMonster and MonsterUtil.GetHealth(m) > 0)) then
+						local toCenter = (root.Position - domainCenter)
+						local knockbackDir = if toCenter.Magnitude > 0.1 then toCenter.Unit else flatAim
+						HitboxManager.ApplyCombatResolution(
+							player,
+							{ Character = m, Humanoid = hum, HitPart = root, TargetPlayer = Players:GetPlayerFromCharacter(m), IsMonster = isMonster },
+							finalBurstDamage,
+							math.floor(fSkill.PostureDamage * 0.50),
+							knockbackDir * math.abs(fSkill.Knockback.Z),
+							character,
+							"DomainFinisher"
+						)
+					end
 				end
 			end
 		end)
@@ -405,7 +417,7 @@ function FlyingSwordServer.ExecuteAttack(player: Player, skillKey: string, paylo
 		return {
 			HasHit = true,
 			Damage = totalDamage,
-			IsCrit = isCrit,
+			IsCrit = false,
 			Origin = domainCenter,
 			AttackerCFrame = hrp.CFrame,
 			Hits = hitsList,

@@ -3,16 +3,16 @@
     CombatVFXController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/CombatVFXController.luau
     Master Combat VFX, Audio & Impact Engine for ASCEND:
-      1. Dynamic Weapon-Attuned Colors: Q Sawblades & F 100-Slash Domain match the equipped sword.
-      2. Pure Damage Numbers: Retro Press Start 2P / Arcade font (Pure White for normal, Vivid Gold for crit).
-         Zero words ("CRIT!", "PARRY!", "GUARD BROKEN!", "INTENT"), zero icons.
-      3. Slash VFX with Procedural Slashmark Fallback.
-      4. Camera Impact Shudder & Screen Hit Flash on Damage Received (Full Player & Mob Support).
-         Animation-induced flinches removed to prevent character collapse/ragdoll.
-      5. Parry Clashes, Block Sparks & Blade Impact Audio (Full Mob & Player Support).
-      6. Heavenly Tribulation Lightning Bolts, Ground Telegraphs & Ascension Light Pillars.
-      7. Interactive Martial Trees: Pure High-Frequency Shudder & Fluttering Leaves.
-      8. D1 Proximity Scoping: Distant fights never shake your camera or freeze your tracks.
+      1. Snappy Slash VFX: Pure crimson red only across all weapons, 360° randomized angle,
+         fast 0.25s lifetime to eliminate lingering clutter on rapid combos.
+      2. Transparent Red Body Hit Indicator: Flashes full body of mobs, monsters, bosses & players.
+      3. Dynamic Weapon-Attuned Colors: Q Sawblades & F 100-Slash Domain match the equipped sword.
+      4. Pure Damage Numbers: Retro Press Start 2P / Arcade font (Pure White / Vivid Gold).
+      5. Camera Impact Shudder & Screen Hit Flash on Damage Received.
+      6. Parry Clashes, Block Sparks & Blade Impact Audio.
+      7. Heavenly Tribulation Lightning Bolts, Ground Telegraphs & Ascension Light Pillars.
+      8. Interactive Martial Trees: High-Frequency Shudder & Fluttering Leaves.
+      9. Sovereign Boss AOE Telegraph Ground Markers.
 ]]
 
 local Players = game:GetService("Players")
@@ -47,6 +47,16 @@ local shakeDecay = 8
 
 local treeOriginalPivots: { [Model]: CFrame } = {}
 local treeIsVibrating: { [Model]: boolean } = {}
+
+local slashHitTemplate: Instance? = nil
+
+local function GetSlashHitTemplate(): Instance?
+	if not slashHitTemplate then
+		slashHitTemplate = (vfxFolder and vfxFolder:FindFirstChild("SlashHitAnimation"))
+			or (ReplicatedStorage:FindFirstChild("SlashHitAnimation", true))
+	end
+	return slashHitTemplate
+end
 
 local function Play3DSound(soundId: string, position: Vector3, volume: number?)
 	local soundPart = Instance.new("Part")
@@ -92,7 +102,123 @@ function CombatVFXController.AddCameraShake(intensity: number)
 end
 
 -- =============================================================================
--- INTERACTIVE TREE VIBRATION & FALLING LEAVES (ZERO TIPPING)
+-- 1. TRANSPARENT RED BODY HIT INDICATOR (UNIVERSAL FLASH)
+-- =============================================================================
+function CombatVFXController.TriggerBodyHitFlash(model: Model?)
+	if not model or not model.Parent then return end
+
+	local existing = model:FindFirstChild("CombatHitFlash") :: Highlight?
+	if existing then
+		existing:Destroy()
+	end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "CombatHitFlash"
+	highlight.FillColor = Color3.fromRGB(255, 30, 30)
+	highlight.OutlineTransparency = 1
+	highlight.FillTransparency = 0.45
+	highlight.Adornee = model
+	highlight.Parent = model
+
+	local fadeTween = TweenService:Create(highlight, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		FillTransparency = 1,
+	})
+	fadeTween:Play()
+	fadeTween.Completed:Connect(function()
+		highlight:Destroy()
+	end)
+
+	Debris:AddItem(highlight, 0.25)
+end
+
+-- =============================================================================
+-- 2. RANDOMIZED CRIMSON SLASH VFX (SNAPPY FADE)
+-- =============================================================================
+function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFrame: CFrame?, _weaponId: string?)
+	-- Randomize 360-degree slash roll and subtle tilt so each hit has a unique angle
+	local randomRoll = math.rad(math.random(0, 360))
+	local randomPitch = math.rad(math.random(-25, 25))
+	local randomYaw = math.rad(math.random(-20, 20))
+
+	local baseRot = if orientationCFrame then orientationCFrame.Rotation else CFrame.identity
+	local randomizedCF = CFrame.new(position) * baseRot * CFrame.Angles(randomPitch, randomYaw, randomRoll)
+
+	local hitHolder = Instance.new("Part")
+	hitHolder.Name = "ActiveSlashHit"
+	hitHolder.Size = Vector3.new(0.5, 0.5, 0.5)
+	hitHolder.Transparency = 1
+	hitHolder.CFrame = randomizedCF
+	hitHolder.Anchored = true
+	hitHolder.CanCollide = false
+	hitHolder.CanTouch = false
+	hitHolder.CanQuery = false
+	hitHolder.Parent = workspace
+
+	Play3DSound(HIT_IMPACT_SOUND_ID, position, 1.3)
+
+	local pureRedSequence = ColorSequence.new({
+		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(255, 35, 45)),
+		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(180, 10, 20)),
+	})
+
+	local vfxSource = GetSlashHitTemplate()
+	local spawnedFromPrefab = false
+
+	if vfxSource then
+		local attachmentSource = if vfxSource:IsA("Attachment") then vfxSource else vfxSource:FindFirstChildWhichIsA("Attachment", true)
+		if attachmentSource then
+			local clonedAtt = attachmentSource:Clone()
+			clonedAtt.Parent = hitHolder
+
+			for _, pe in ipairs(clonedAtt:GetChildren()) do
+				if pe:IsA("ParticleEmitter") then
+					-- Universal pure red color across all weapons
+					pe.Color = pureRedSequence
+					-- Fast 0.20-0.28s lifetime to prevent lingering slashes
+					pe.Lifetime = NumberRange.new(0.18, 0.26)
+					pe.Speed = NumberRange.new(8, 20)
+					pe:Emit(pe:GetAttribute("EmitCount") or 14)
+				end
+			end
+			spawnedFromPrefab = true
+		end
+	end
+
+	-- Procedural slash fallback
+	if not spawnedFromPrefab then
+		local slashMesh = Instance.new("Part")
+		slashMesh.Name = "ProceduralSlashSlice"
+		slashMesh.Size = Vector3.new(4.2, 0.15, 0.15)
+		slashMesh.CFrame = hitHolder.CFrame
+		slashMesh.Color = Color3.fromRGB(255, 30, 40)
+		slashMesh.Material = Enum.Material.Neon
+		slashMesh.Transparency = 0.05
+		slashMesh.Anchored = true
+		slashMesh.CanCollide = false
+		slashMesh.Parent = hitHolder
+
+		TweenService:Create(slashMesh, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Transparency = 1,
+			Size = Vector3.new(5.0, 0.01, 0.01),
+		}):Play()
+
+		local pe = Instance.new("ParticleEmitter")
+		pe.Texture = "rbxassetid://242200234"
+		pe.Color = pureRedSequence
+		pe.Size = NumberSequence.new(0.45, 0)
+		pe.Lifetime = NumberRange.new(0.15, 0.24)
+		pe.Rate = 0
+		pe.Speed = NumberRange.new(14, 26)
+		pe.SpreadAngle = Vector2.new(180, 180)
+		pe.Parent = hitHolder
+		pe:Emit(14)
+	end
+
+	Debris:AddItem(hitHolder, 0.35)
+end
+
+-- =============================================================================
+-- 3. INTERACTIVE TREE VIBRATION & FALLING LEAVES
 -- =============================================================================
 function CombatVFXController.TriggerTreeReaction(tree: Model, strikeOrigin: Vector3)
 	if treeIsVibrating[tree] then return end
@@ -205,12 +331,15 @@ function CombatVFXController.CheckAndTriggerNearbyTrees(strikePos: Vector3, radi
 end
 
 -- =============================================================================
--- DAMAGE FEEDBACK: CAMERA SHAKE & RED FLASH (ANIMATION COLLAPSE REMOVED)
+-- 4. DAMAGE FEEDBACK: CAMERA SHAKE, SCREEN FLASH & BODY INDICATOR
 -- =============================================================================
-function CombatVFXController.OnLocalPlayerDamaged(damage: number, isCrit: boolean)
+function CombatVFXController.OnLocalPlayerDamaged(_damage: number, isCrit: boolean)
 	CombatVFXController.AddCameraShake(if isCrit then 1.1 else 0.85)
 
-	-- Hit reaction animation disabled to eliminate animation-induced ragdoll/falldown
+	if player.Character then
+		CombatVFXController.TriggerBodyHitFlash(player.Character)
+	end
+
 	if camera then
 		task.spawn(function()
 			local origFOV = camera.FieldOfView
@@ -251,7 +380,7 @@ function CombatVFXController.OnLocalPlayerDamaged(damage: number, isCrit: boolea
 end
 
 -- =============================================================================
--- HEAVENLY TRIBULATION & ASCENSION VFX SUITE
+-- 5. HEAVENLY TRIBULATION & ASCENSION SUITE
 -- =============================================================================
 function CombatVFXController.SpawnTribulationTelegraph(pos: Vector3, duration: number, auraColor: Color3)
 	local ring = Instance.new("Part")
@@ -366,74 +495,39 @@ function CombatVFXController.SpawnAscensionPillar(pos: Vector3, auraColor: Color
 end
 
 -- =============================================================================
--- WEAPON-ATTUNED SLASHMARKS & COMBAT PARTICLES
+-- 6. SOVEREIGN BOSS AOE TELEGRAPH GROUND MARKERS
 -- =============================================================================
-function CombatVFXController.SpawnSlashHitVFX(position: Vector3, orientationCFrame: CFrame?, weaponId: string?)
-	local palette = ItemConfig.GetWeaponPalette(weaponId)
+function CombatVFXController.SpawnTelegraphMarker(position: Vector3, radius: number, duration: number, color: Color3?)
+	local marker = Instance.new("Part")
+	marker.Name = "AOE_TelegraphRing"
+	marker.Shape = Enum.PartType.Cylinder
+	marker.Size = Vector3.new(0.2, 0.2, 0.2)
+	marker.CFrame = CFrame.new(position + Vector3.new(0, 0.15, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	marker.Material = Enum.Material.Neon
+	marker.Color = color or Color3.fromRGB(255, 60, 60)
+	marker.Transparency = 0.4
+	marker.CanCollide = false
+	marker.CanTouch = false
+	marker.CanQuery = false
+	marker.Anchored = true
+	marker.Parent = workspace
 
-	local hitHolder = Instance.new("Part")
-	hitHolder.Name = "ActiveSlashHit"
-	hitHolder.Size = Vector3.new(1, 1, 1)
-	hitHolder.Transparency = 1
-	hitHolder.Position = position
-	if orientationCFrame then
-		hitHolder.CFrame = CFrame.new(position) * orientationCFrame.Rotation
-	end
-	hitHolder.Anchored = true
-	hitHolder.CanCollide = false
-	hitHolder.CanTouch = false
-	hitHolder.CanQuery = false
-	hitHolder.Parent = workspace
+	local targetSize = Vector3.new(0.2, radius * 2, radius * 2)
+	TweenService:Create(marker, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = targetSize,
+		Transparency = 0.85,
+	}):Play()
 
-	local attTemplate = (vfxFolder and vfxFolder:FindFirstChild("SlashHitAnimation"))
-		or (ReplicatedStorage:FindFirstChild("SlashHitAnimation", true) :: Attachment?)
+	Play3DSound("rbxassetid://9069609200", position, 0.65)
 
-	if attTemplate then
-		local attClone = attTemplate:Clone()
-		attClone.Parent = hitHolder
-		for _, pe in ipairs(attClone:GetDescendants()) do
-			if pe:IsA("ParticleEmitter") then
-				pe.Color = palette.Gradient
-				pe:Emit(pe:GetAttribute("EmitCount") or 4)
-			end
-		end
-	else
-		local slashMesh = Instance.new("Part")
-		slashMesh.Name = "ProceduralSlashSlice"
-		slashMesh.Size = Vector3.new(4.2, 0.15, 0.15)
-		slashMesh.CFrame = hitHolder.CFrame * CFrame.Angles(math.rad(math.random(-25, 25)), 0, math.rad(math.random(35, 65)))
-		slashMesh.Color = palette.PrimaryColor
-		slashMesh.Material = Enum.Material.Neon
-		slashMesh.Transparency = 0.05
-		slashMesh.Anchored = true
-		slashMesh.CanCollide = false
-		slashMesh.Parent = hitHolder
-
-		TweenService:Create(slashMesh, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Transparency = 1,
-			Size = Vector3.new(5.2, 0.02, 0.02),
-		}):Play()
-
-		local pe = Instance.new("ParticleEmitter")
-		pe.Texture = "rbxassetid://242200234"
-		pe.Color = palette.Gradient
-		pe.Size = NumberSequence.new(0.45, 0)
-		pe.Lifetime = NumberRange.new(0.12, 0.22)
-		pe.Rate = 0
-		pe.Speed = NumberRange.new(18, 32)
-		pe.SpreadAngle = Vector2.new(180, 180)
-		pe.Parent = hitHolder
-		pe:Emit(12)
-	end
-
-	Debris:AddItem(hitHolder, 0.4)
+	task.delay(duration, function()
+		if marker.Parent then marker:Destroy() end
+	end)
 end
 
--- Intent text popups suppressed: No words or icons displayed
-function CombatVFXController.SpawnIntentComboPopup(_position: Vector3, _comboCount: number, _currentIntent: number, _isEmpowered: boolean)
-	-- Pure numbers only: Intent word popups are intentionally silenced
-end
-
+-- =============================================================================
+-- 7. WEAPON SKILLS (Q & F)
+-- =============================================================================
 function CombatVFXController.SpawnTriplePurpleTwirl(originPos: Vector3, direction: Vector3, isLocalCaster: boolean, weaponId: string?)
 	local twirlPrefab = vfxFolder and vfxFolder:FindFirstChild("SwordTwirl")
 	if not twirlPrefab then return end
@@ -581,6 +675,9 @@ function CombatVFXController.SpawnUltimateSlashSphere(spherePos: Vector3, isLoca
 	end)
 end
 
+-- =============================================================================
+-- 8. INITIALIZATION & REMOTE SUITE
+-- =============================================================================
 function CombatVFXController.Init()
 	combatVFXRemote = RemoteEvents.GetRemote("CombatVFX")
 	combatActionRemote = RemoteEvents.GetRemote("CombatAction")
@@ -642,7 +739,6 @@ function CombatVFXController.Init()
 			CombatVFXController.CheckAndTriggerNearbyTrees(spherePos, 32)
 		end
 
-		-- Supports both player and mob hits (MobAttackHit)
 		if (skillKey == "MobAttackHit" or (type(payload) == "table" and payload.HasHit == true and payload.TargetPosition ~= nil)) then
 			local targetPos: Vector3 = payload.TargetPosition
 			local hitOrientation = if hrp then hrp.CFrame else (payload.AttackerCFrame or nil)
@@ -656,6 +752,8 @@ function CombatVFXController.Init()
 						isVictim = true
 						CombatVFXController.OnLocalPlayerDamaged(payload.Damage or 20, payload.IsCrit == true)
 					end
+					-- Universal transparent red body flash on victim
+					CombatVFXController.TriggerBodyHitFlash(hitData.Character)
 				end
 			end
 
@@ -687,7 +785,6 @@ function CombatVFXController.Init()
 					CombatVFXController.SpawnDamageNumber(targetPos, 0, false)
 				end
 			else
-				Play3DSound(HIT_IMPACT_SOUND_ID, targetPos, 1.3)
 				CombatVFXController.SpawnSlashHitVFX(targetPos, hitOrientation, weaponId)
 
 				if attacker == player then
@@ -708,12 +805,18 @@ function CombatVFXController.Init()
 		local myChar = player.Character
 		local myHrp = if myChar then myChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 		local dist = if myHrp then (myHrp.Position - payload.Position).Magnitude else 999
-		if dist > 85 then return end
+		if dist > 95 then return end
 
 		if payload.EffectType == "ParryClash" then
 			CombatVFXController.SpawnParryClash(payload.Position)
 		elseif payload.EffectType == "BlockSparks" then
 			CombatVFXController.SpawnBlockSparks(payload.Position)
+		elseif payload.EffectType == "DamageNumber" and payload.Damage then
+			CombatVFXController.SpawnDamageNumber(payload.Position, payload.Damage, payload.IsCrit == true)
+		elseif payload.EffectType == "SlashHit" then
+			CombatVFXController.SpawnSlashHitVFX(payload.Position, nil, nil)
+		elseif payload.EffectType == "AOETelegraph" and payload.Radius then
+			CombatVFXController.SpawnTelegraphMarker(payload.Position, payload.Radius, payload.Duration or 1.0, payload.Color)
 		end
 	end)
 
@@ -731,7 +834,7 @@ function CombatVFXController.Init()
 		end
 	end)
 
-	print("[ASCEND] CombatVFXController Initialized (Full VFX Suite & High-Visibility Numbers Active).")
+	print("[ASCEND] CombatVFXController Initialized (Full VFX Suite & Pure Crimson Slashes Active).")
 end
 
 function CombatVFXController.ApplyHitstop(duration: number)
@@ -823,7 +926,7 @@ function CombatVFXController.SpawnBlockSparks(position: Vector3)
 end
 
 -- =============================================================================
--- PRESS START 2P / ARCADE: HIGH-VISIBILITY PURE NUMBERS
+-- 9. PRESS START 2P / ARCADE: DAMAGE NUMBERS
 -- =============================================================================
 function CombatVFXController.SpawnDamageNumber(position: Vector3, damage: number, isCrit: boolean?)
 	local billboard = Instance.new("BillboardGui")

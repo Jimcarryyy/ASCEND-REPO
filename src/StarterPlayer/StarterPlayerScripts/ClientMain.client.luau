@@ -36,6 +36,7 @@ local CONTROLLER_NAMES = {
 	"StarterGuideController",
 	"CharacterStatsController",
 	"MusicController",
+	"MonsterVisualController",
 }
 
 local function InitializeClient()
@@ -56,7 +57,7 @@ local function InitializeClient()
 		end
 	end
 
-	print("[ASCEND] Client Initialized (Sect Shop & MarketController Active).")
+	print("[ASCEND] Client Initialized (Sect Shop, Market & MonsterVisualController Active).")
 end
 
 InitializeClient()

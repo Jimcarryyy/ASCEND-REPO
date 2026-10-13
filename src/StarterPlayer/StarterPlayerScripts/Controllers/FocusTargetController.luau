@@ -3,18 +3,19 @@
     FocusTargetController.luau
     Location: src/StarterPlayer/StarterPlayerScripts/Controllers/FocusTargetController.luau
     Updates:
-      - Keybind updated to ALT (LeftAlt / RightAlt) to toggle target focus reticle and HUD.
-      - Replaced 1-frame hard CFrame snaps with smooth Lerp interpolation.
-      - Added auto-disengagement when target is out of range (>65 studs) or obstructed.
-      - Sets Character attribute 'IsFocusMode' for unified facing coordination (A2).
-      - Top-Center Target Lock-On / Boss Frame (HP, Posture / Guard Break Gauge, Distance).
-      - Phase 3: Public getters IsFocusActive() and GetLockedTarget() added for hybrid facing.
+      - Keybind ALT (LeftAlt / RightAlt) toggles focus lock-on reticle and target HUD.
+      - Smooth Lerp facing interpolation.
+      - Dual support for both Humanoid Cultivators and Non-Humanoid Monsters (MonsterUtil).
+      - Tracks attribute-based HP and Posture for monsters.
 ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local MonsterUtil = require(ReplicatedStorage.Shared.Utils.MonsterUtil)
 
 local FocusTargetController = {}
 local player = Players.LocalPlayer
@@ -31,7 +32,6 @@ local targetHudGui: ScreenGui?
 local targetCard: Frame?
 local targetNameLabel: TextLabel?
 local targetRealmLabel: TextLabel?
-local targetDistanceLabel: TextLabel?
 local targetHpFill: Frame?
 local targetHpText: TextLabel?
 local targetPostureFill: Frame?
@@ -161,6 +161,22 @@ local function CreateReticleAndHUD()
 	Instance.new("UICorner", targetPostureFill).CornerRadius = UDim.new(0, 2)
 end
 
+local function GetTargetRootAndHealth(model: Model): (BasePart?, number, number)
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local hrp = model:FindFirstChild("HumanoidRootPart") :: BasePart?
+		return hrp, humanoid.Health, humanoid.MaxHealth
+	end
+
+	if MonsterUtil.IsMonster(model) then
+		local root = MonsterUtil.GetRootPart(model)
+		local hp, maxHp = MonsterUtil.GetHealth(model)
+		return root, hp, maxHp
+	end
+
+	return nil, 0, 0
+end
+
 local function FindBestTarget(): Model?
 	local myChar = player.Character
 	local myHrp = if myChar then myChar:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
@@ -176,17 +192,17 @@ local function FindBestTarget(): Model?
 
 	local mobSpawns = Workspace:FindFirstChild("MobSpawns") or Workspace:FindFirstChild("ActiveMobs")
 	if mobSpawns then
-		for _, m in ipairs(mobSpawns:GetChildren()) do
-			table.insert(potentialTargets, m)
+		for _, m in ipairs(mobSpawns:GetDescendants()) do
+			if m:IsA("Model") then
+				table.insert(potentialTargets, m)
+			end
 		end
 	end
 
 	for _, obj in ipairs(potentialTargets) do
 		if obj:IsA("Model") and obj ~= myChar then
-			local humanoid = obj:FindFirstChildOfClass("Humanoid")
-			local targetHrp = obj:FindFirstChild("HumanoidRootPart") :: BasePart?
-
-			if humanoid and humanoid.Health > 0 and targetHrp then
+			local targetHrp, hp, _ = GetTargetRootAndHealth(obj)
+			if targetHrp and hp > 0 then
 				local dist = (myHrp.Position - targetHrp.Position).Magnitude
 				if dist <= bestDist then
 					local toTarget = (targetHrp.Position - myHrp.Position).Unit
@@ -211,8 +227,8 @@ local function UpdateTargetHUD(_dt: number)
 		return
 	end
 
-	local humanoid = currentTarget:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then
+	local _, curHp, maxHp = GetTargetRootAndHealth(currentTarget)
+	if curHp <= 0 then
 		FocusTargetController.SetFocus(false)
 		return
 	end
@@ -220,18 +236,18 @@ local function UpdateTargetHUD(_dt: number)
 	if targetCard then targetCard.Visible = true end
 
 	if targetNameLabel then
-		targetNameLabel.Text = currentTarget.Name:upper()
+		local dispName = currentTarget:GetAttribute("DisplayName") or currentTarget.Name
+		targetNameLabel.Text = string.upper(tostring(dispName))
 	end
 
 	if targetRealmLabel then
-		local realm = currentTarget:GetAttribute("Realm") or currentTarget:GetAttribute("Tier") or "DISCIPLE"
+		local zone = currentTarget:GetAttribute("Zone")
+		local realm = currentTarget:GetAttribute("Realm") or currentTarget:GetAttribute("Tier") or (zone and (tostring(zone) .. " BEAST")) or "DISCIPLE"
 		targetRealmLabel.Text = string.upper(tostring(realm))
 	end
 
 	if targetHpFill and targetHpText then
-		local cur = humanoid.Health
-		local max = math.max(1, humanoid.MaxHealth)
-		local ratio = math.clamp(cur / max, 0, 1)
+		local ratio = math.clamp(curHp / math.max(1, maxHp), 0, 1)
 		targetHpFill.Size = UDim2.new(ratio, 0, 1, 0)
 		targetHpText.Text = string.format("%d%%", math.floor(ratio * 100))
 	end
@@ -271,10 +287,8 @@ function FocusTargetController.Init()
 		end
 
 		if currentTarget and currentTarget.Parent then
-			local targetHrp = currentTarget:FindFirstChild("HumanoidRootPart") :: BasePart?
-			local targetHum = currentTarget:FindFirstChildOfClass("Humanoid")
-
-			if not targetHrp or not targetHum or targetHum.Health <= 0 then
+			local targetHrp, hp, _ = GetTargetRootAndHealth(currentTarget)
+			if not targetHrp or hp <= 0 then
 				FocusTargetController.SetFocus(false)
 				return
 			end
@@ -299,7 +313,7 @@ function FocusTargetController.Init()
 		UpdateTargetHUD(dt)
 	end)
 
-	print("[ASCEND] FocusTargetController Initialized (ALT Keybind Active).")
+	print("[ASCEND] FocusTargetController Initialized with Monster & Humanoid Focus Support.")
 end
 
 function FocusTargetController.ToggleFocus()
@@ -330,17 +344,14 @@ function FocusTargetController.SetFocus(active: boolean)
 	UserInputService.MouseBehavior = if isFocusActive then Enum.MouseBehavior.LockCenter else Enum.MouseBehavior.Default
 end
 
--- =============================================================================
--- PHASE 3 GETTERS FOR HYBRID FACING & ATTACK TARGETING
--- =============================================================================
 function FocusTargetController.IsFocusActive(): boolean
 	return isFocusActive and currentTarget ~= nil and currentTarget.Parent ~= nil
 end
 
 function FocusTargetController.GetLockedTarget(): (Model?, Vector3?)
 	if isFocusActive and currentTarget and currentTarget.Parent then
-		local targetHrp = currentTarget:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if targetHrp then
+		local targetHrp, hp, _ = GetTargetRootAndHealth(currentTarget)
+		if targetHrp and hp > 0 then
 			return currentTarget, targetHrp.Position
 		end
 	end

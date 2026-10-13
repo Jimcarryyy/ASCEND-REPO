@@ -6,6 +6,7 @@
     Fixes:
       - A4: Configures 'Characters' CollisionGroup (Characters vs Characters non-collidable)
         to eliminate avatar pushing, bumping, and tripping glitches.
+      - Boots both Humanoid Mobs and Non-Humanoid Monsters independently.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -26,6 +27,8 @@ local TreeCollisionManager = require(ServerScriptService.Server.World.TreeCollis
 local VendorManager = require(ServerScriptService.Server.World.VendorManager)
 local SectManager = require(ServerScriptService.Server.Cultivation.SectManager)
 local MobAIManager = require(ServerScriptService.Server.Combat.MobAIManager)
+local MonsterAIManager = require(ServerScriptService.Server.Combat.MonsterAIManager)
+local LootChestManager = require(ServerScriptService.Server.World.LootChestManager)
 local ArenaManager = require(ServerScriptService.Server.Combat.ArenaManager)
 local WeaponManager = require(ServerScriptService.Server.Combat.WeaponManager)
 local SwordAltarManager = require(ServerScriptService.Server.World.SwordAltarManager)
@@ -90,8 +93,10 @@ local function InitializeServer()
 	-- 4. Combat Encounters & Arena
 	ArenaManager.Init()
 	MobAIManager.Init()
+	MonsterAIManager.Init()
+	LootChestManager.Init()
 
-	print("[ASCEND] Master Server Engine Initialized Successfully! (A4 Collision Group & Core Services Active)")
+	print("[ASCEND] Master Server Engine Initialized Successfully! (A4 Collision Group, Mobs & Monster Engines Active)")
 end
 
 InitializeServer()
