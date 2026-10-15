@@ -82,3 +82,33 @@
   3. Dynamic responsive grid sizing on `itemGridScroll` enforcing 2–3 columns on mobile and 4 on desktop.
   4. Sourced `SELL LOOT` directly from live cached player inventory with automatic fallbacks for empty states.
 * **Consequences:** Reliable merchant economy, smooth bulk trading, and native mobile responsiveness.
+
+
+### ADR-073: Non-Humanoid Monster Decoupling & Option B Spawner Architecture
+* **Date:** 2026-10-15 (backfilled from Session Digest #<<N>>)
+* **Status:** Accepted & Implemented [DEV-CONFIRMED]
+* **Context:** Non-humanoid quadruped beasts imported from Blender lacked standard R6 Humanoid rigs. Using Humanoids for beasts caused collision pushing, ragdoll tripping, and unnecessary physics overhead.
+* **Decision:**
+  1. Decoupled monster systems completely into dedicated parallel modules: `MonsterConfig.luau`, `MonsterUtil.luau`, `MonsterAIManager.luau`, and `MonsterVisualController.luau`.
+  2. Entity state, health, posture, and CC states are tracked purely via replicated model attributes (`Health`, `Posture`, `ActionState`, `IsStunned`).
+  3. Adopted Option B Spawner Architecture: Master rig templates live in `ReplicatedStorage.Assets.Monsters`, spawned into `Workspace.ActiveMonsters` via dedicated spawner parts in `Workspace.MobSpawns.MonsterSpawners`.
+* **Consequences:** Clean separation between humanoid cultivator combat and quadruped beasts; zero humanoid physics interference.
+
+### ADR-074: Scope Reduction: Voiding of 3 Sovereign Bosses & Monster Skill Simplification
+* **Date:** 2026-10-15 (backfilled from Session Digest #<<N>>)
+* **Status:** Accepted [DEV-CONFIRMED]
+* **Context:** The initial asset integration spec (`docs/Temporary.md`) planned 3 Sovereign Boss encounters (`Corrupted Alpha Wolf`, `Molten Hell-Lion Sovereign`, `Frost-Saber Sovereign`) alongside complex AoE abilities, shockwave projectiles, and boss HUD overlays, creating premature scope expansion.
+* **Decision:**
+  1. Completely voided and removed all 3 Sovereign Bosses from the monster track.
+  2. Monster roster is capped strictly at the 5 standard beasts: `Iron-Tusk Spirit Boar`, `Wilderness Spirit Wolf`, `Magma Hound`, `Obsidian Lava-Boar`, and `Frost-Fang Wolf`.
+  3. Stripped monster special skills (boar charge AoE, wolf pounce shockwaves, roar buffs) in favor of basic melee bites and swipes.
+* **Consequences:** Drastically tightens combat scope, stabilizes AI performance, and focuses development on core beast locomotion and hit feedback.
+
+### ADR-075: Spawner Tooling Visibility Policy (Studio Neon vs In-Game Invisible)
+* **Date:** 2026-10-15 (backfilled from Session Digest #<<N>>)
+* **Status:** Accepted [DEV-CONFIRMED]
+* **Context:** Developers need visual feedback on spawner pad locations, densities, and orientations while editing in Studio, but pads must never be visible to players during gameplay.
+* **Decision:**
+  1. In Studio Edit mode, all `Spawner_*` parts remain semi-transparent neon (`Transparency = 0.5`, `CanCollide = false`, `CastShadow = false`) with distinct color coding (Neon Cyan for monsters, Neon Orange for humanoids).
+  2. On server bootstrap, `MonsterAIManager.Init()` automatically sweeps `Workspace.MobSpawns` and sets `Transparency = 1` exclusively on loose parts matching `Spawner_*` that do not belong to character models.
+* **Consequences:** Convenient level-design placement in Studio with zero visual leakage into live player sessions.

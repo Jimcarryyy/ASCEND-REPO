@@ -93,3 +93,40 @@
 | [ ] | **`BLD-1`** | Config schema update and 3D visual attachment (offset `CFrame.new(-1.5, 2.2, 0.2)` on torso). | `src/ReplicatedStorage/Shared/Configs/BloodlineConfig.luau`<br>`src/ServerScriptService/Server/State/BloodlineManager.luau` |
 | [ ] | **`BLD-2`** | Passive stat wiring (posture recovery rate, dash leap distance, maximum posture gauge). | `src/ServerScriptService/Server/State/CombatStateManager.luau`<br>`src/ServerScriptService/Server/State/PlayerDataManager.luau` |
 | [ ] | **`BLD-3`** | Combat resolution passives (critical damage, bonus damage vs guard-broken, i-frame extensions, void echoes). | `src/ServerScriptService/Server/Combat/HitboxManager.luau` |
+
+---
+
+## Scope Amendment & Architecture Addendum — 2026-10-15 (ADR-073, ADR-074, ADR-075)
+
+### 1. Scope Decisions & Reductions
+* **Feature Track BOSS (BOSS-1 through BOSS-4) VOIDED:**
+  * The 3 Sovereign Boss encounters (`Corrupted Alpha Wolf`, `Molten Hell-Lion Sovereign`, `Frost-Saber Sovereign`) and their telegraphed AoE ability suites have been completely removed from project scope per developer directive [DEV-CONFIRMED, ADR-074].
+  * `BossHUDController.luau` is decoupled from non-humanoid monsters and restricted exclusively to Humanoid World Bosses (`Boss_FallenSwordGenius`) [DEV-CONFIRMED].
+* **Finalized 5-Beast Monster Roster (MON & MOB Tracks):**
+  * Total monster entity count reduced from 8 to strictly the 5 standard non-humanoid beasts [DEV-CONFIRMED]:
+    1. `Iron-Tusk Spirit Boar` (Wilderness Zone — High-speed armored tank)
+    2. `Wilderness Spirit Wolf` (Wilderness Zone — Agile pack hunter)
+    3. `Magma Hound` (Magma Zone — Flanking predator)
+    4. `Obsidian Lava-Boar` (Magma Zone — Heavy lava brute)
+    5. `Frost-Fang Wolf` (Ice Zone — Frost pouncer)
+* **Monster Skills Streamlined:**
+  * Removed all complex AoE shockwave projectiles and ground indicators from beasts; all 5 monsters now strictly execute basic melee attacks (bites, tusks, and paw strikes) with a clean stagger recovery window [DEV-CONFIRMED].
+
+### 2. Locomotion & Spawner Infrastructure (Implemented & Verified)
+* **Option B Spawner Architecture:**
+  * Master monster templates live in `ReplicatedStorage.Assets.Monsters` [DEV-CONFIRMED].
+  * World spawning is driven by dedicated spawner parts placed in `Workspace.MobSpawns.MonsterSpawners` [DEV-CONFIRMED, ADR-073].
+  * Multi-spawn enabled: Every placed or duplicated spawner part spawns its own independent beast runtime and maintains its own respawn timer [DEV-CONFIRMED].
+* **Spawner Tooling Visibility Policy (ADR-075):**
+  * In Studio Edit Mode: All `Spawner_*` pads remain visible (`Transparency = 0.5`, Neon) so developers can easily view and position spawn anchors [DEV-CONFIRMED].
+  * At Runtime In-Game: `MonsterAIManager.Init()` automatically sets `Transparency = 1`, `CanCollide = false`, and `CastShadow = false` exclusively on unmodeled `Spawner_*` pads [DEV-CONFIRMED].
+* **Terrain Locomotion & Raycast Suspension:**
+  * Upright Physics: `AlignOrientation.PrimaryAxisOnly = false` locks Pitch and Roll to 0, ensuring beasts never flip upside down or pitch onto their noses [VERIFIED].
+  * Lookahead Suspension: Dual-raycast ground height sensing dynamically lifts paws over terrain lips, grass curbs, and ledges [PROPOSED].
+  * Speed Calibration: Distinct strolling (`WalkSpeed = 12–14`, `ActionState = "Walking"`) and aggro charging (`RunSpeed = 35–38`, `ActionState = "Running"`) [VERIFIED].
+
+### 3. Combat & Visual Integration
+* **Universal Red Body Hit Indicator:** All damaged entities (players, humanoids, monsters) flash semi-transparent red (`Highlight`, `0.18s`) on damage [VERIFIED].
+* **VFX Integration:** Player sword strikes trigger `ReplicatedStorage.VFX.SlashHitAnimation` with snappy 0.25s crimson particle bursts and randomized 360° slice angles [VERIFIED].
+* **Stagger & Hitstun:** Damaging a monster halts active attack windups and enforces a 0.65s attack lockout window during which the beast cannot strike [PROPOSED].
+* **Grounded Fallen Carcass:** Defeated monsters sink flush to the terrain floor and smoothly fade out over 2.0s before despawning [PROPOSED].

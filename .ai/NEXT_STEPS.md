@@ -3,7 +3,7 @@
 > **Engineering Roadmap & Next Steps**  
 > **Repository:** `Jimcarryyy/ASCEND-REPO` | **Branch:** `main`  
 > **Source of Truth:** Live Luau Codebase (`src/`) & Live Studio Place File  
-> **Active Priority:** ASCEND Combat V1 — Kinematic Overhaul & Production Polish  
+> **Active Priority:** Monster Core Locomotion Polish & Combat V1 Phase 4 Resumption  
 
 ---
 
@@ -11,12 +11,19 @@
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ [ACTIVE] COMBAT V1: KINEMATIC OVERHAUL & PRODUCTION POLISH                  │
+│ [ACTIVE] MONSTER CORE & TERRAIN LOCOMOTION (ADR-073 to ADR-075)             │
+│ - [x] Decoupled non-humanoid monster stack (MonsterUtil, AIManager) [DONE]   │
+│ - [x] 5-Beast Roster calibrated (Boars, Wolves, Hounds); Bosses voided [DONE]│
+│ - [x] Multi-spawner Option B architecture with Studio-visible tooling [DONE] │
+│ - [ ] Lookahead suspension & obstacle vault verification [IN PROGRESS]      │
+│ - [ ] Wolf airborne leap pounce & stagger attack lockout verification [OPEN] │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [QUEUED] COMBAT V1: KINEMATIC OVERHAUL & PRODUCTION POLISH                  │
 │ - [x] Phase 0: Baseline Verification & Discrepancy Audit [COMPLETE]         │
 │ - [x] Phase 1: M1 Timing, Finisher Lockout (2.20s) & Server Combo [COMPLETE]│
 │ - [x] Phase 2: M1 Animation, Lunge Removal, Token & Buffer [COMPLETE]       │
 │ - [x] Phase 3: Movement Governor (11.5 studs/s) & Hybrid Facing [COMPLETE]  │
-│ - [ ] Phase 4: Dash as a Leap (Air arc, landing check, i-frames) [ACTIVE]   │
+│ - [ ] Phase 4: Dash as a Leap (Air arc, landing check, i-frames) [NEXT]     │
 │ - [ ] Phase 5: Server Hardening (Clash cooldown, 0.5x posture scale, parry) │
 │ - [ ] Phase 6: Balance Metrics & Documentation Parity                        │
 ├─────────────────────────────────────────────────────────────────────────────┤

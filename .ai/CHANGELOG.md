@@ -889,3 +889,40 @@ This document records historical feature additions, engine enhancements, balance
 - Fixed double shop popup bug caused by simultaneous client and server proximity prompt listeners.
 - Fixed mobile 1-column grid collapse by dynamically updating `CellSize` based on container width.
 - Fixed missing `ApplyHotbarBackplateGradient` helper in Studio Command Bar script.
+
+## [Phase 8.6 — Monster Core Architecture, Non-Humanoid Rigging & Locomotion Overhaul] — 2026-10-15 (backfilled from Session Digest #<<N>>)
+
+### Added
+- **Non-Humanoid Monster Subsystem Architecture:**
+  - Created standalone, humanoid-decoupled monster stack (`MonsterConfig.luau`, `MonsterUtil.luau`, `MonsterAIManager.luau`, `MonsterVisualController.luau`).
+  - Structured monster data and state machines around replicated attributes (`Health`, `MaxHealth`, `Posture`, `MaxPosture`, `ActionState`, `IsStunned`) with zero `Humanoid` dependencies [DEV-CONFIRMED].
+- **Option B Master Template & Spawner Architecture:**
+  - Monster assets centralized in `ReplicatedStorage.Assets.Monsters` [DEV-CONFIRMED].
+  - Automated world spawning driven by dedicated spawner parts in `Workspace.MobSpawns.MonsterSpawners` [DEV-CONFIRMED].
+  - Spawner Tooling Visibility Policy: Spawner parts remain visible in Studio Edit mode (`Transparency = 0.5`, Neon) and automatically turn invisible at runtime (`Transparency = 1`, `CanCollide = false`, `CastShadow = false`) [DEV-CONFIRMED].
+- **Kinematic Locomotion & Combat Resolution Integration:**
+  - Implemented `LinearVelocity` and `AlignOrientation` locomotion with `PrimaryAxisOnly = false` to guarantee upright posture [VERIFIED].
+  - Updated `HitboxManager.CastCompensatedBox` and `ApplyCombatResolution` to seamlessly route player attacks against non-humanoid monsters [VERIFIED].
+  - Implemented universal red body hit flash (`Highlight`) on damage across players, humanoids, and monsters [VERIFIED].
+  - Integrated `ReplicatedStorage.VFX.SlashHitAnimation` into `CombatVFXController.luau` with fast 0.25s lifetime and randomized 360° slash angles [VERIFIED].
+
+### Changed
+- **Monster Roster Capped at 5 Standard Beasts:**
+  - Completely voided the 3 Sovereign Bosses (`Corrupted Alpha Wolf`, `Molten Hell-Lion Sovereign`, `Frost-Saber Sovereign`). Retained exclusively: `Iron-Tusk Spirit Boar`, `Wilderness Spirit Wolf`, `Magma Hound`, `Obsidian Lava-Boar`, and `Frost-Fang Wolf` [DEV-CONFIRMED].
+- **Monster Combat Simplification:**
+  - Stripped boss abilities and special skills in favor of basic melee bites and strikes [DEV-CONFIRMED].
+- **Pacing Calibration:**
+  - Calibrated beasts to distinct strolling (`WalkSpeed = 12–14`) and charging (`RunSpeed = 35–38`) states [VERIFIED].
+
+### Fixed
+- **Combat Resolution & Hitbox Runtime Crashes:**
+  - Fixed `RaycastFilterType.Exclude` and `RaycastFilterType.Include` nil indexing by restoring `Enum.` prefix across `HitboxManager.luau` and `LootChestManager.luau` [VERIFIED].
+  - Fixed `ApplyCombatResolution` parameter order inversion (`attackerPlayer` vs `targetResult`) [VERIFIED].
+  - Fixed `CultivationConfig.Realms` crash by switching to direct top-level key lookup [VERIFIED].
+  - Fixed player sword attacks failing to hit monsters by removing humanoid-only gating in `FlyingSwordServer.luau` [VERIFIED].
+  - Fixed `CastCompensatedBox` world CFrame multiplication bug that displaced hitboxes hundreds of studs off-target [VERIFIED].
+- **Locomotion, Spawning & Physics Glitches:**
+  - Eliminated handstand and upside-down tipping bugs by disabling `PrimaryAxisOnly` on `AlignOrientation` [VERIFIED].
+  - Fixed duplicate monster spawning bug by adding startup purge of static `NewMonsterMobs` models and enforcing single-spawn limits [VERIFIED].
+  - Fixed accidental invisibility of humanoid mobs in `Workspace.MobSpawns` by restricting transparency overrides strictly to unmodeled `Spawner_*` pads [DEV-CONFIRMED].
+  - Resolved 2x damage number visual bug by eliminating redundant remote packet dispatches between `HitboxManager` and `MobAIManager` [VERIFIED].
